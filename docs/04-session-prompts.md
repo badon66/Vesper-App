@@ -26,7 +26,7 @@ Milestone M2: leads and knock sessions on the phone. This is the screen setters 
 
 ## M3 prompt
 ```
-Milestone M3: scheduling. Read the business rules in CLAUDE.md and the meetings section of the data model. Plan first and show me: how open slots are generated (Calgary time, DST), how the unique index prevents double booking and how the UI handles the race, how the distance warning works, and the exact confirmation text flow. Write the unit tests before the UI. Then build the booking screen and the Tonight view. Done means every M3 criterion passes.
+Milestone M3: scheduling. Read the business rules in CLAUDE.md and the meetings section of the data model. Plan first and show me: how open slots are generated (Calgary time, DST), how the unique index prevents double booking and how the UI handles the race, how the distance warning works, and how a qualified booking creates booking pay. Write the unit tests before the UI. Then build the booking screen, the Tonight view and the two pay screens. Done means every M3 criterion passes.
 ```
 
 ## M4 prompt
@@ -36,7 +36,7 @@ Milestone M4: pipeline board and lead detail for iPad and desktop. Plan first. K
 
 ## M5 prompt
 ```
-Milestone M5: meeting mode and quotes on iPad. Start with lib/pricing.ts and its unit tests, show me the function and tests, and wait for approval. Then the quote builder, then the presentation pages driven by settings, then the PDF. Customer-facing text must have no em dashes and must use settings.warranty_text verbatim. Done means every M5 criterion passes and you give me a sample PDF to look at.
+Milestone M5: meeting mode and quotes on iPad. Start with lib/pricing.ts and its unit tests, show me the function and tests, and wait for approval. Then the quote builder, the commission earning on acceptance, then the presentation pages driven by settings, then the PDF. Customer-facing text must have no em dashes and must use settings.warranty_text verbatim. Done means every M5 criterion passes and you give me a sample PDF to look at.
 ```
 
 ## M6 prompt

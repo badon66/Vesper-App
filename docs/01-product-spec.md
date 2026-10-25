@@ -7,7 +7,7 @@ Written Oct 25, 2026. V1 is the sales side of the business. Jobs, crews, timeshe
 | Role | Who | Device | Uses the app for |
 |---|---|---|---|
 | Owner | Keenan | Phone in the field, iPad at meetings, desktop at home | Everything: tonight's meetings, running the meeting, quotes, pipeline, dashboard, settings, people |
-| Sales (setter) | Two friends to start, more later | Phone | Logging doors, capturing leads, booking meetings, seeing their own numbers |
+| Sales (setter) | Two friends to start, more later | Phone | Logging doors, capturing leads, booking meetings, seeing the team's leads and bookings, seeing their own numbers and their own pay |
 | Crew | Installers | Phone | V2: job sheets, timesheets |
 | Customer | Homeowners | Their phone or email | V2: quote link, confirmation page. No login, ever |
 
@@ -32,6 +32,19 @@ Setters book meetings only for solid leads. A lead is solid when all of these ar
 
 Anything else is `new` or `follow_up`, with a note about when to come back.
 
+## Sales users
+
+Setters are a team. Each setter has their own profile, their own leads and their own numbers, but every sales user can see everyone's leads, bookings and knock sessions. That is so two setters do not knock the same street twice, and so a setter can book into an evening that already has meetings nearby. A setter can edit only their own leads. Sales users never see quotes, sale prices, revenue, the owner dashboard, settings or anyone else's pay.
+
+### Setter pay
+
+Setters earn two ways. Both rates live in settings. A rate change applies to new earnings only, and each earning stores the rate it was calculated at.
+
+- Booking pay: a flat amount per qualified booking, starting at $20. A booking qualifies when the meeting was held and Keenan marks it qualified. He can also mark it not qualified with a reason, and then nothing is earned.
+- Commission: a percentage of the sale, starting at 5%, calculated on the accepted quote total before GST. It is created when the quote is accepted and becomes payable when the lead is marked installed, since no customer pays until the install is complete. If the sale falls through before install, the commission is voided.
+
+Keenan marks earnings paid in batches. Only sales users earn; leads Keenan knocks himself create no earnings. No money moves through the app. It records what is owed and what has been paid, and the e-transfer happens outside it.
+
 ## V1 screens
 
 ### Phone (setters and Keenan in the field)
@@ -40,13 +53,15 @@ Anything else is `new` or `follow_up`, with a note about when to come back.
 
 **New lead.** One screen, under 30 seconds. Address with Google Places autocomplete (saves lat/lng), first name, last name, phone, email (optional), house type (bungalow, bi-level, two storey, other), soffit colour (white, black, brown, other with a note), a photo from the camera, notes, and the source (door, referral, neighbour card, website, other). Status defaults to `new`. A "book a meeting" button sits at the bottom and goes straight into booking with this lead.
 
-**My leads.** The setter's own leads, newest first, grouped by status. Tap to open. Edit anything. Add a note. Change status (within what a setter can do: `new`, `follow_up`, `meeting_booked`, `lost`).
+**My leads.** The setter's own leads, newest first, grouped by status, with a search box. Tap to open. Edit anything. Add a note. Change status (within what a setter can do: `new`, `follow_up`, `meeting_booked`, `lost`). An "everyone" switch shows all leads read only, so a setter can check an address before knocking.
 
-**Book a meeting.** Pick a day, see the open slots for that evening. Booked slots show only the time and the neighbourhood so the setter can cluster. Pick a slot, confirm "both decision makers will be there," confirm the phone number, book. If the address is more than 10 km from the neighbouring meeting, show a warning with the distance and let them choose. After booking, a "Text the customer" button opens their Messages app with a prewritten confirmation (see copy below). The setter marks it sent.
+**Book a meeting.** Pick a day, see the open slots for that evening. Booked slots show the time, the neighbourhood and who booked it so the setter can cluster. Pick a slot, confirm "both decision makers will be there," confirm the phone number, book. If the address is more than 10 km from the neighbouring meeting, show a warning with the distance and let them choose. The setter confirms the time with the customer at the door. The app does not send or prefill texts in V1.
 
-**Tonight (Keenan).** The evening's meetings in order with the drive between them, each with the lead's name, address, phone, notes, photos and a "navigate" link. Tap into a meeting to mark the outcome: held, no-show, rescheduled, cancelled. From a held meeting, open Meeting mode on the iPad (same lead, picks up where the phone left off).
+**Tonight (Keenan).** The evening's meetings in order with the drive between them, each with the lead's name, address, phone, notes, photos and a "navigate" link. Tap into a meeting to mark the outcome: held, no-show, rescheduled, cancelled. For a held meeting, mark the booking qualified or not qualified (with a reason). Qualified creates the setter's booking pay. From a held meeting, open Meeting mode on the iPad (same lead, picks up where the phone left off).
 
 **My numbers (setter).** This week: doors, conversations, leads, meetings booked, meetings that happened. Nothing about money or other people.
+
+**My pay (setter).** Three totals: owed now, pending install, paid. Under them, every line item with date, lead, type (booking or commission), amount and status. Nothing about other people.
 
 ### iPad (Keenan at the meeting)
 
@@ -61,30 +76,27 @@ Anything else is `new` or `follow_up`, with a note about when to come back.
 8. The neighbour discount and the referral credit.
 Pages are plain, large type, navy and white with gold accents, no animations beyond a simple page transition. Content is editable in settings so Keenan can change wording without a deploy.
 
-**Quote builder.** Runs: name (front eave, left gable, garage, etc.), feet, level (lower, upper). Boxes (default 1). Adders: height, complexity, custom, each with a label and amount. Discounts: neighbour, referral, custom. Financing offered: yes or no. The breakdown updates live. Save as draft, mark presented, mark accepted or declined. Export a PDF with the breakdown, the warranty text, the "no payment until complete" line, and the company contact. Email it to the customer from the app (V1: generate the PDF and open a share sheet; email sending is V1.5).
+**Quote builder.** Runs: name (front eave, left gable, garage, etc.), feet, level (lower, upper). Boxes (default 1). Adders: height, complexity, custom, each with a label and amount. Discounts: neighbour, referral, custom. Financing offered: yes or no. The breakdown updates live. Save as draft, mark presented, mark accepted or declined. Accepting creates the setter's commission earning. Export a PDF with the breakdown, the warranty text, the "no payment until complete" line, and the company contact. Email it to the customer from the app (V1: generate the PDF and open a share sheet; email sending is V1.5).
 
 **Pipeline board.** Columns by status, cards with name, address, neighbourhood, setter, feet (if quoted), total (if quoted), and age. Drag between columns on iPad and desktop. Tap to open lead detail.
 
-**Lead detail.** Everything about the lead: contact, address with a small map, photos, notes, the timeline of events (who did what, when), the meetings, the quotes. Owner can edit anything and change to any status. `lost` asks for a reason (price, went with another company, not now, could not reach, other).
+**Lead detail.** Everything about the lead: contact, address with a small map, photos, notes, the timeline of events (who did what, when), the meetings, the quotes, the earnings. Owner can edit anything and change to any status. The owner marks `installed` by hand in V1 (jobs come in V2); that makes the commission payable. `lost` asks for a reason (price, went with another company, not now, could not reach, other).
 
 ### Desktop and iPad (Keenan)
 
-**Dashboard.** Owner only. Keep it small and honest in V1 because there is not much data yet:
-- This week and this month: doors, conversations, leads, meetings booked, meetings held, show rate, quotes, sold, installed. Totals and per setter.
-- Sold: count, total dollars, average ticket, total feet.
-- Inventory: feet on hand (from settings and adjustments) minus feet sold but not installed = feet available to sell. A warning when it drops under a threshold.
+**Dashboard.** Owner only. A sales dashboard, kept small and honest because there is not much data yet:
+- Funnel, this week and this month, totals and per setter: doors, conversations, leads, meetings booked, meetings held, show rate, quotes, sold, installed.
+- Sold: count, total dollars, average ticket.
+- Setter pay: what each setter is owed now and what is pending install.
 - Lead sources this month.
+- Upcoming jobs: sold leads not yet installed, oldest first, with sold date and total feet.
 - Every number shows its date range and what it counts. Empty states explain what will show up.
 
-**Settings.** Pricing defaults, GST on or off, warranty text, presentation text, meeting slot template (days, start, slot length, count) and blocked times, inventory feet on hand, the confirmation text template, the lost reasons list.
+**Settings.** Pricing defaults, GST on or off, booking pay and commission rate, warranty text, presentation text, meeting slot template (days, start, slot length, count) and blocked times, the lost reasons list.
 
 **People.** Owner invites a setter by email, sets their role, deactivates them. No self sign-up.
 
-## Customer confirmation text (default template)
-
-Hi {first_name}, it's {setter_name} from Vesper Lighting. You're booked with Keenan on {day} at {time} at {address}. He'll walk you through the lights and give you a clear price for your house. If anything changes, text this number. Thanks!
-
-Rules: plain language, no em dashes. Editable in settings. Sent from the setter's own phone through a prefilled Messages link in V1. Automated texting (Twilio) is V1.5 and needs the CASL consent checkbox on the lead first.
+**Pay.** Owner only. Earnings grouped by setter: owed now, pending install, paid. Select the owed lines and mark them paid in one batch. Each line shows the lead, the type, the rate it was calculated at and the amount.
 
 ## Design
 
@@ -99,7 +111,9 @@ Rules: plain language, no em dashes. Editable in settings. Sent from the setter'
 - Payments, deposits, e-signature, invoices (waiting on the prepaid contracting licence, planned for January).
 - Jobs, crews, job sheets, timesheets, driver authorization, certifications (V2).
 - Customer-facing pages and public quote links (V2).
-- Automated SMS and email (V1.5, after CASL consent is in the lead form).
+- Any texting or emailing of customers from the app, including the prefilled confirmation text (see `docs/backlog.md`). Automated SMS and email are V1.5, after CASL consent is in the lead form.
+- Inventory and feet tracking.
+- Paying setters from the app. The app records earnings and payments; the money moves outside it.
 - Maps of knocked houses, territory management, route optimization beyond the distance warning.
 - Offline writes. V1 needs signal. Keep writes small and fast. Queueing offline writes is V1.5 if it turns out to be a problem.
 - Integrations with accounting, calendars or the website beyond the lead form endpoint.

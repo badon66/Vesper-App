@@ -14,6 +14,8 @@ meeting_status:  booked | confirmed | held | no_show | rescheduled | cancelled
 quote_status:    draft | presented | accepted | declined | expired
 event_type:      created | note | status_change | call | text | meeting_booked | meeting_outcome | quote_created | quote_presented | quote_accepted | quote_declined | photo_added | edited
 run_level:       lower | upper
+earning_type:    booking | commission
+earning_status:  pending | paid | void
 ```
 
 ## Tables
@@ -41,15 +43,14 @@ gst_rate numeric(5,4) not null default 0.0500
 gst_enabled boolean not null default false
 warranty_text text not null
 presentation jsonb not null          -- pages: [{title, body, image_paths[]}]
-confirmation_text text not null      -- template with {first_name} {setter_name} {day} {time} {address}
+booking_pay numeric(10,2) not null default 20.00      -- flat pay per qualified booking
+commission_rate numeric(5,4) not null default 0.0500  -- share of the accepted quote total before GST
 lost_reasons text[] not null default '{price, other company, not now, could not reach, other}'
 meeting_days int[] not null default '{1,2,3,4,5,6}'   -- 0 = Sunday
 meeting_start time not null default '18:00'
 meeting_slot_minutes int not null default 45
 meeting_slot_count int not null default 4
 distance_warning_km numeric(5,1) not null default 10
-inventory_feet_on_hand int not null default 0
-inventory_warning_feet int not null default 300
 company jsonb not null               -- name, phone, email, address for PDFs
 updated_at
 ```
@@ -74,7 +75,6 @@ lat double precision
 lng double precision
 place_id text
 house_type house_type
-storeys int
 soffit_colour soffit_colour
 soffit_note text
 est_feet int
@@ -137,7 +137,7 @@ created_at
 ```
 
 ### meetings
-Open slots are computed from settings (days, start, slot length, count) minus `meetings` minus `time_blocks`. There is no slots table. The unique index is what prevents double booking.
+Open slots are computed from settings (days, start, slot length, count) minus `meetings` minus `time_blocks`. There is no slots table. The unique index is what prevents double booking. Sales users can read every meeting, so `outcome_notes` must never contain a price.
 ```
 id uuid pk
 lead_id uuid not null references leads
@@ -147,8 +147,10 @@ starts_at timestamptz not null
 ends_at timestamptz not null
 status meeting_status not null default 'booked'
 both_decision_makers boolean not null default false
-confirmation_sent_at timestamptz
 outcome_notes text
+qualified boolean                               -- null until the owner decides on a held meeting; true creates a booking earning
+qualified_reason text                           -- required when qualified is false
+qualified_at timestamptz
 rescheduled_to uuid references meetings
 created_at, updated_at
 unique (owner_id, starts_at) where status in ('booked','confirmed','held')
@@ -177,37 +179,59 @@ valid_until date
 presented_at, accepted_at, declined_at timestamptz
 created_at, updated_at
 ```
-Totals are computed in one pure function in `lib/pricing.ts`, used by the UI and the server action, and covered by unit tests. The database stores the result so history is stable if prices change later.
+Totals are computed in one pure function in `lib/pricing.ts`, used by the UI and the server action, and covered by unit tests. The database stores the result so history is stable if prices change later. `subtotal` is the total before GST and is the base for commission. Accepting a quote creates a `commission` earning (see `earnings`).
 
-### inventory_adjustments
+### earnings
+What setters are owed and what they have been paid. One row per earning. Rows are created by server actions, never by the client directly.
 ```
 id uuid pk
-delta_feet int not null                          -- positive for stock in, negative for corrections
-reason text not null
-created_by uuid references profiles
-created_at
+profile_id uuid not null references profiles      -- the setter who earned it
+lead_id uuid not null references leads
+meeting_id uuid references meetings               -- set for type 'booking'
+quote_id uuid references quotes                   -- set for type 'commission'
+type earning_type not null
+rate numeric(10,4) not null                       -- booking_pay in dollars, or commission_rate as a fraction, at creation
+base_amount numeric(10,2)                         -- commission: the quote subtotal (before GST); null for booking
+amount numeric(10,2) not null                     -- booking: rate; commission: round(base_amount x rate, 2)
+status earning_status not null default 'pending'
+payable_at timestamptz                            -- booking: set at creation; commission: set when the lead is marked installed
+paid_at timestamptz
+paid_by uuid references profiles
+note text                                         -- void reason or payout reference
+created_at, updated_at
+unique (meeting_id) where type = 'booking'
+unique (quote_id) where type = 'commission'
 ```
-Feet available to sell = settings.inventory_feet_on_hand + sum(adjustments) - sum(total_feet of quotes with status accepted on leads not yet installed).
+Rules:
+- A booking earning is created when the owner marks a held meeting `qualified = true`, for `meetings.booked_by`, at `settings.booking_pay`, with `payable_at = now()`.
+- A commission earning is created when a quote is accepted, for `leads.assigned_to` at that moment, at `settings.commission_rate` on `quotes.subtotal`, with `payable_at` null. Marking the lead `installed` sets `payable_at`. Marking the lead `lost` while the commission is unpaid sets `status = 'void'` with the reason in `note`.
+- No earning is created when the profile that would receive it has role `owner`.
+- "Owed now" everywhere means `status = 'pending' and payable_at is not null`. "Pending install" means `status = 'pending' and payable_at is null`.
+- Marking paid is a batch update: `status = 'paid'`, `paid_at = now()`, `paid_by = auth.uid()` on the selected rows. Paid rows are never edited again.
 
 ## Planned for V2 (not created in V1)
 `jobs` (lead_id, install_date, crew lead, status, materials jsonb, box_location, zones jsonb, photos, checklist, completed_at), `job_assignments` (job_id, profile_id, role), `timesheets` (profile_id, job_id, clock_in, clock_out, minutes, approved), `crew_profiles` (pay_rate, height_authorized, driver_authorized, test_passed_at), `warranty_records`. Leave the `crew` role and `lead_status.installed` in place so these slot in without migrations to existing columns.
 
 ## RLS summary
 
+Sales users collaborate, so they can read the team's leads, meetings and knock sessions. They can write only their own. Because of that, no dollar amount is ever stored in `leads`, `lead_events`, `meetings` or `knock_sessions`. Prices live in `quotes` and `earnings` only, and `lead_events.payload` for quote events holds the quote id and nothing else.
+
 | Table | owner | sales |
 |---|---|---|
-| profiles | all | read own row; read `full_name` and `role` of active profiles (for names on the schedule) |
-| settings | all | read only the fields the client needs: slot template, confirmation_text, distance_warning_km (expose through a view `settings_public`) |
-| leads | all | insert; select and update where `created_by = auth.uid()` or `assigned_to = auth.uid()`; cannot set status to `met`, `quoted`, `sold`, `installed` |
-| lead_photos | all | insert and select for their own leads |
-| lead_events | all | insert for their own leads; select for their own leads |
-| knock_sessions | all | all on own rows |
-| time_blocks | all | select (times only) |
-| meetings | all | insert where `booked_by = auth.uid()` and the lead is theirs; select own meetings fully; select all meetings' `starts_at`, `ends_at`, `status` and the lead's `neighbourhood` through a view `meeting_slots_public` |
+| profiles | all | read own row; read `full_name` and `role` of active profiles (for names on leads and the schedule) |
+| settings | all | read only the fields the client needs: slot template and `distance_warning_km`, through a view `settings_public` that exposes nothing else |
+| leads | all | insert; select all; update where `created_by = auth.uid()` or `assigned_to = auth.uid()`; cannot set status to `met`, `quoted`, `sold`, `installed` |
+| lead_photos | all | select all; insert for their own leads |
+| lead_events | all | select all; insert for their own leads |
+| knock_sessions | all | select all; insert and update own rows |
+| time_blocks | all | select |
+| meetings | all | select all; insert where `booked_by = auth.uid()` and the lead is theirs |
 | quotes | all | none |
-| inventory_adjustments | all | none |
+| earnings | all | select where `profile_id = auth.uid()`; no insert, update or delete |
 
-Write the policies in SQL in the migration that creates each table. Add a test script that signs in as a sales user and proves it cannot read another setter's lead, cannot read quotes, and cannot double book a slot.
+Views on Supabase run with the privileges of the view's owner and bypass RLS, which is what lets sales read `settings_public`. That is safe only while the view exposes nothing but the safe columns. Never add a column to a public view without checking this table.
+
+Write the policies in SQL in the migration that creates each table. Add a test script that signs in as a sales user and proves it can read another setter's lead but cannot update it, cannot read quotes, cannot read another setter's earnings, and cannot double book a slot.
 
 ## Storage buckets
 - `lead-photos`: private, signed URLs, max 10 MB per file, images only. Resize client side to 1600 px on the long edge before upload.
