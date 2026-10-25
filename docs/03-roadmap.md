@@ -2,17 +2,17 @@
 
 One milestone per build session. A milestone is done only when every criterion passes and the owner has tried it on the real device. Keep the current milestone marked.
 
-**Current milestone: M0**
+**Current milestone: M1**
 
 ## M0: Foundation
 Repo, Next.js App Router with TypeScript, Tailwind, shadcn/ui, Supabase client and server helpers, environment setup, PWA manifest and icons, base layout with the brand, light and dark themes, a protected `/app` route group with a working email and password login (accounts are created by the owner in the Supabase dashboard until M1), Vercel preview deploy.
 - [x] `npm run dev`, `npm run build`, `npm run lint`, `npm test` all pass on a clean clone
 - [x] `.env.example` lists every variable with a comment
-- [ ] The app installs to an iPhone home screen with the Vesper icon and opens full screen
+- [x] The app installs to an iPhone home screen with the Vesper icon and opens full screen
 - [x] Light and dark themes both readable; brand colours applied through CSS variables
 - [x] Unauthenticated users are redirected to `/login`
-- [ ] Owner can sign in with email and password, land on `/app`, and sign out
-- [ ] Deployed to a Vercel preview URL
+- [x] Owner can sign in with email and password, land on `/app`, and sign out
+- [x] Deployed to a Vercel preview URL
 
 ## M1: Auth, roles, settings, people
 Supabase Auth (email plus password, invite only), `profiles` with the trigger, `settings` seeded with the defaults from the data model, People screen for the owner.
