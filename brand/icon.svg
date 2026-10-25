@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Placeholder app icon: navy tile with a gold V. Replace this file with the real
+       Vesper mark and run `npm run icons` to regenerate every PNG size. -->
+  <rect width="512" height="512" fill="#132E3F"/>
+  <polygon fill="#B99257" points="118,148 178,148 256,322 334,148 394,148 282,380 230,380"/>
+</svg>

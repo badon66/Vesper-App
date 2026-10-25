@@ -23,7 +23,7 @@ V1 is the sales side only. See `docs/01-product-spec.md` for scope, `docs/02-dat
 Three roles in `profiles.role`: `owner`, `sales`, `crew`. V1 uses `owner` and `sales`. `crew` exists in the schema but has no screens yet.
 
 - `owner`: everything. Dashboard, pipeline, all leads, all meetings, quotes, settings, people.
-- `sales`: capture leads, see and edit their own leads, see the meeting calendar (open slots, and for booked slots only the time and the neighbourhood, never the customer's details unless it is their own lead), book meetings for their own leads, see their own activity stats. Never revenue, never other people's leads, never quotes, never the dashboard.
+- `sales`: capture leads and edit their own. Sales users work as a team: every sales user can see every lead, booking and knock session (read only unless it is theirs) so they can cluster meetings and avoid knocking the same doors twice. They book meetings for their own leads, see their own activity stats, and see their own pay (what they are owed and what they have been paid). Never quotes, never sale prices or revenue, never the owner dashboard, never settings, never anyone else's pay.
 - Customers never log in. Anything customer facing is a public link with an unguessable token (V2).
 
 Enforce this in RLS first, then in the UI. The UI hides what a role cannot see, but the database is the actual gate. Never ship a table without RLS policies. Never bypass RLS with the service role key in a code path a non-owner can trigger.
@@ -32,7 +32,7 @@ Enforce this in RLS first, then in the UI. The UI hides what a role cannot see, 
 
 Design each screen for the device it will actually be used on, then make it tolerable elsewhere.
 
-- Phone first: lead capture, my leads, tonight's schedule and booking, knock session counters. Big tap targets, one-handed, works in bright daylight and at dusk. Fast.
+- Phone first: lead capture, my leads, tonight's schedule and booking, knock session counters, my pay. Big tap targets, one-handed, works in bright daylight and at dusk. Fast.
 - iPad first (landscape): meeting mode (presentation plus quote builder), pipeline board, lead detail with photos.
 - Desktop and iPad: dashboard, settings, people.
 - Theme: light by default, with a dark theme the user can switch to. Keep both themes readable. Brand colours: navy `#132E3F`, gold `#B99257`, white, minimal black. Clean and premium, not flashy. No emoji in the UI. No gradients or glassy effects.
@@ -41,10 +41,12 @@ Design each screen for the device it will actually be used on, then make it tole
 
 - Pricing defaults live in `settings`, never hardcoded: price per foot (list $23), control box price ($500), neighbour discount ($150), referral credit ($150), GST rate (5%), `gst_enabled` (false until the company is registered; quotes show "GST not applicable" until then).
 - Quote total = (total feet x price per foot) + (boxes x box price) + adders - discounts, then GST if enabled. Show the breakdown line by line. Round to the cent. Unit tests cover this.
+- Setter pay: two kinds of earnings, both with rates in `settings`. Booking pay is a flat amount (default $20) per qualified booking; a booking qualifies when its meeting was held and the owner marks it qualified (the owner can mark it not qualified with a reason, and then nothing is earned). Commission is a percentage (default 5%) of the accepted quote total before GST; it is created when the quote is accepted and becomes payable when the lead is marked `installed`, because no customer pays before install. Each earning stores the rate it was calculated at, so a rate change applies to new earnings only. The owner marks earnings paid in batches. Only `sales` users earn; the owner's own leads create no earnings. The app records pay, it never moves money.
+- Dollar amounts live only in `quotes` (sales cannot read them) and `earnings` (sales read only their own). Never copy a price or a total into lead notes, `lead_events.payload` or meeting outcome notes, because sales users can read those.
 - No deposits or payments are taken in the app in V1. Quotes state "No payment until your install is complete." Do not build payment capture.
 - Meetings: default slots 6:00, 6:45, 7:30 and 8:15 pm, Monday to Saturday, 45 minutes each, owner only. Configurable in settings. A slot can hold one meeting (database unique constraint). Booking requires a lead with a phone number, a geocoded address, and the "both decision makers will be there" checkbox. Warn (do not block) when the booked address is more than 10 km from the meeting before or after it.
-- Lead statuses: `new`, `follow_up`, `meeting_booked`, `met`, `quoted`, `sold`, `installed`, `lost`. Every status change writes a `lead_events` row with who and when. `lost` requires a reason.
-- Every customer facing string (quote PDF, confirmation texts, presentation) is written in plain language with no em dashes, no buzzwords, and no promises the business cannot keep. Use the exact warranty wording from `settings.warranty_text`.
+- Lead statuses: `new`, `follow_up`, `meeting_booked`, `met`, `quoted`, `sold`, `installed`, `lost`. Every status change writes a `lead_events` row with who and when. `lost` requires a reason. In V1 the owner sets `installed` by hand after the crew is done; jobs arrive in V2.
+- Every customer facing string (quote PDF, presentation) is written in plain language with no em dashes, no buzzwords, and no promises the business cannot keep. Use the exact warranty wording from `settings.warranty_text`.
 
 ## How to work in this repo
 
@@ -61,4 +63,4 @@ Design each screen for the device it will actually be used on, then make it tole
 
 ## Definition of done for V1
 
-An appointment setter can install the app on their phone, log in, capture a lead at a door in under 30 seconds with a photo and a geocoded address, book that lead into one of tonight's open slots without double booking, and text the customer a confirmation. The owner can see tonight's meetings on his phone, run a meeting on his iPad with the presentation and a quote that prints to a clean PDF, move leads through the pipeline, and see a dashboard that answers: how many doors, conversations, meetings, quotes and sales this week, by person, and how many feet are sold versus on hand.
+An appointment setter can install the app on their phone, log in, capture a lead at a door in under 30 seconds with a photo and a geocoded address, book that lead into one of tonight's open slots without double booking, and see what they are owed. The owner can see tonight's meetings on his phone, mark bookings qualified, run a meeting on his iPad with the presentation and a quote that prints to a clean PDF, move leads through the pipeline, mark setters paid, and see a dashboard that answers: how many doors, conversations, meetings, quotes and sales this week, by person, what each setter is owed, and which sold jobs are waiting to be installed.
