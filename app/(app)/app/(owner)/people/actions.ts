@@ -58,7 +58,8 @@ async function targetPerson(id: string, meId: string) {
 
 // Creates a member's login. The app generates the password, shows it once,
 // and the owner texts it. The profile row is created by the database trigger,
-// which honours the chosen role. The email is marked confirmed at creation.
+// which reads the role from app_metadata (only the service role can write
+// it). The email is marked confirmed at creation.
 export async function createPerson(
   _previous: CreatePersonState,
   formData: FormData,
@@ -69,7 +70,7 @@ export async function createPerson(
     full_name: formData.get("full_name"),
     email: formData.get("email"),
     phone: formData.get("phone") ?? "",
-    role: formData.get("role") ?? ASSIGNABLE_ROLES[0],
+    role: formData.get("role"),
   });
   if (!parsed.success) {
     const errors: CreatePersonState["errors"] = {};
@@ -89,8 +90,8 @@ export async function createPerson(
     user_metadata: {
       full_name: parsed.data.full_name,
       phone: parsed.data.phone || null,
-      role: parsed.data.role,
     },
+    app_metadata: { role: parsed.data.role },
   });
   if (error) {
     if (error.code === "email_exists") {

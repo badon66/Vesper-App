@@ -43,6 +43,7 @@ beforeAll(async () => {
       password: u.password,
       email_confirm: true,
       user_metadata: { full_name: `RLS Test ${key.toUpperCase()}` },
+      app_metadata: { role: "sales" },
     });
     if (error || !data.user) throw new Error(`could not create ${u.email}: ${error?.message}`);
     u.id = data.user.id;
@@ -154,6 +155,18 @@ describe("anonymous", () => {
 });
 
 describe("deactivation", () => {
+  it("a deactivated person disappears from profiles_public for everyone else", async () => {
+    await admin.from("profiles").update({ active: false }).eq("id", users.b.id);
+    try {
+      const { data, error } = await users.a.client.from("profiles_public").select("id");
+      expect(error).toBeNull();
+      expect(data?.some((p) => p.id === users.b.id)).toBe(false);
+      expect(data?.some((p) => p.id === users.a.id)).toBe(true);
+    } finally {
+      await admin.from("profiles").update({ active: true }).eq("id", users.b.id);
+    }
+  });
+
   it("a banned user cannot sign in, and lifting the ban restores it", async () => {
     const { error: banError } = await admin.auth.admin.updateUserById(users.b.id, { ban_duration: "876600h" });
     expect(banError).toBeNull();
@@ -169,21 +182,51 @@ describe("deactivation", () => {
 });
 
 describe("sign-up trigger and roles", () => {
-  it("honours a non-owner role in user metadata and never grants owner that way", async () => {
+  async function createWith(label: string, options: { app?: Record<string, unknown>; user?: Record<string, unknown> }) {
+    const { data, error } = await admin.auth.admin.createUser({
+      email: `rls-role-${label}-${stamp}@example.com`,
+      password: `Rls-role-${stamp}-pass`,
+      email_confirm: true,
+      user_metadata: { full_name: `Role ${label}`, ...(options.user ?? {}) },
+      app_metadata: options.app,
+    });
+    if (error || !data.user) throw new Error(error?.message);
+    return data.user.id;
+  }
+  async function profileRole(id: string) {
+    const { data } = await admin.from("profiles").select("role").eq("id", id).maybeSingle();
+    return data?.role ?? null;
+  }
+
+  it("takes the role from app_metadata, which only the service role can write", async () => {
     const made: string[] = [];
     try {
-      for (const [role, expected] of [["crew", "crew"], ["owner", "sales"], ["nonsense", "sales"]] as const) {
-        const { data, error } = await admin.auth.admin.createUser({
-          email: `rls-role-${role}-${stamp}@example.com`,
-          password: `Rls-role-${stamp}-pass`,
-          email_confirm: true,
-          user_metadata: { full_name: `Role ${role}`, role },
-        });
-        if (error || !data.user) throw new Error(error?.message);
-        made.push(data.user.id);
-        const { data: profile } = await admin.from("profiles").select("role").eq("id", data.user.id).single();
-        expect(profile?.role, `metadata role ${role}`).toBe(expected);
-      }
+      const sales = await createWith("sales", { app: { role: "sales" } }); made.push(sales);
+      const crew = await createWith("crew", { app: { role: "crew" } }); made.push(crew);
+      expect(await profileRole(sales)).toBe("sales");
+      expect(await profileRole(crew)).toBe("crew");
+    } finally {
+      for (const id of made) await admin.auth.admin.deleteUser(id);
+    }
+  });
+
+  it("gives no profile, and so no access, when the role is missing, unknown, owner, or only in user_metadata", async () => {
+    const made: string[] = [];
+    try {
+      const none = await createWith("none", {}); made.push(none);
+      const unknown = await createWith("unknown", { app: { role: "nonsense" } }); made.push(unknown);
+      const owner = await createWith("owner", { app: { role: "owner" } }); made.push(owner);
+      const userMeta = await createWith("usermeta", { user: { role: "sales" } }); made.push(userMeta);
+      for (const id of made) expect(await profileRole(id)).toBeNull();
+
+      // Signed in but profile-less: the public views return nothing and the tables refuse.
+      const signedIn = await signedInClient(`rls-role-none-${stamp}@example.com`, `Rls-role-${stamp}-pass`);
+      const people = await signedIn.from("profiles_public").select("*");
+      const slots = await signedIn.from("settings_public").select("*");
+      const own = await signedIn.from("profiles").select("*");
+      expect(people.data).toEqual([]);
+      expect(slots.data).toEqual([]);
+      expect(own.data).toEqual([]);
     } finally {
       for (const id of made) await admin.auth.admin.deleteUser(id);
     }
