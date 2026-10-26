@@ -1,23 +1,27 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { AppNav, type NavItem } from "@/components/app-nav";
 import { Wordmark } from "@/components/brand/wordmark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
-import { createClient } from "@/lib/supabase/server";
+import { requireProfile } from "@/lib/auth/profile";
 import { signOut } from "./actions";
 
-// Everything under /app needs a signed-in user. proxy.ts already redirects
-// signed-out visitors; this check is the second lock on the same door.
+const ownerNav: NavItem[] = [
+  { href: "/app", label: "Home" },
+  { href: "/app/people", label: "People" },
+  { href: "/app/settings", label: "Settings" },
+  { href: "/app/dashboard", label: "Dashboard" },
+];
+
+// Everything under /app needs a signed-in, active user with a profile.
+// proxy.ts already redirects signed-out visitors; this check is the second
+// lock on the same door, and it is the one that knows about roles.
 export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getClaims();
-  if (!data?.claims) {
-    redirect("/login");
-  }
+  const profile = await requireProfile();
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -39,6 +43,7 @@ export default async function AppLayout({
           </div>
         </div>
       </header>
+      {profile.role === "owner" ? <AppNav items={ownerNav} /> : null}
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         {children}
       </main>

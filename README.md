@@ -38,9 +38,12 @@ There is no sign-up. Until the People screen lands in M1, create accounts in the
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm test` | Vitest unit tests in `tests/unit` |
 | `npm run test:e2e` | Playwright smoke tests in `tests/e2e`, run against a production build (run `npm run build` first) |
+| `npm run test:rls` | Row Level Security tests in `tests/rls`, against the live Supabase project with throwaway users. Needs all three variables from `.env.example` |
 | `npm run icons` | Regenerate every app icon from `brand/icon.svg` |
 
 Before every commit: `npm run typecheck && npm run lint && npm test && npm run build`.
+
+In the Claude cloud environment, anything that talks to Supabase from Node (the RLS tests, `next start`, `next dev`) needs `NODE_USE_ENV_PROXY=1` in front of it so Node's fetch goes through the egress proxy. Vercel and a normal laptop need nothing.
 
 ## Project layout
 
@@ -60,6 +63,14 @@ supabase/       SQL migrations, from M1 on
 
 Replace `brand/icon.svg` with the real Vesper mark (square, 512 by 512 viewBox, solid background), then run `npm run icons`. It regenerates `public/icons/*.png`, `app/icon.png` and `app/apple-icon.png`. Commit all of them.
 
+## Database migrations
+
+Schema changes live in `supabase/migrations/` as SQL files with a comment on what and why. They are applied to the Supabase project through the Supabase connector in the build session (or the SQL editor in the dashboard), in file order. Never edit an applied migration; add a new one. After a schema change, regenerate `types/database.ts` from the project.
+
+## Accounts
+
+There is no sign-up and no invite email. The admin creates a sales associate's login in People and texts them the one-time temporary password; on first sign-in they choose their own. Public sign-up is turned off in the Supabase dashboard and must stay off.
+
 ## Deploying
 
-Vercel builds every push. The GitHub repo is linked to the Vercel project, and the two variables from `.env.example` are set under Preview and Production in the Vercel project settings. Never commit `.env.local`.
+Vercel builds every push. The GitHub repo is linked to the Vercel project with the Framework Preset set to Next.js, and every variable from `.env.example` is set under Preview and Production in the Vercel project settings, with exactly the same names. Production is https://vesper-app-mocha.vercel.app. Never commit `.env.local`.

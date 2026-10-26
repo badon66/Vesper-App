@@ -6,8 +6,8 @@ Written Oct 25, 2026. V1 is the sales side of the business. Jobs, crews, timeshe
 
 | Role | Who | Device | Uses the app for |
 |---|---|---|---|
-| Owner | Keenan | Phone in the field, iPad at meetings, desktop at home | Everything: tonight's meetings, running the meeting, quotes, pipeline, dashboard, settings, people |
-| Sales (setter) | Two friends to start, more later | Phone | Logging doors, capturing leads, booking meetings, seeing the team's leads and bookings, seeing their own numbers and their own pay |
+| Owner (Admin in the app) | Keenan, and only Keenan | Phone in the field, iPad at meetings, desktop at home | Everything: tonight's meetings, running the meeting, quotes, pipeline, dashboard, settings, people |
+| Sales (Sales associate in the app) | Two friends to start, more later | Phone | Logging doors, capturing leads, booking meetings, seeing the team's leads and bookings, seeing their own numbers and their own pay |
 | Crew | Installers | Phone | V2: job sheets, timesheets |
 | Customer | Homeowners | Their phone or email | V2: quote link, confirmation page. No login, ever |
 
@@ -94,7 +94,7 @@ Pages are plain, large type, navy and white with gold accents, no animations bey
 
 **Settings.** Pricing defaults, GST on or off, booking pay and commission rate, warranty text, presentation text, meeting slot template (days, start, slot length, count) and blocked times, the lost reasons list.
 
-**People.** Owner invites a setter by email, sets their role, deactivates them. No self sign-up.
+**People.** The admin creates a sales associate's login: name, email, phone. The app shows a one-time temporary password the admin texts to them, and on first sign-in they must choose their own password. Deactivate and reactivate from the same list; a deactivated person cannot sign in and is hidden from pickers. There is exactly one admin and People cannot hand out that role. No self sign-up and no invite emails in V1.
 
 **Pay.** Owner only. Earnings grouped by setter: owed now, pending install, paid. Select the owed lines and mark them paid in one batch. Each line shows the lead, the type, the rate it was calculated at and the amount.
 

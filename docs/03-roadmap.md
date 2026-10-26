@@ -15,11 +15,11 @@ Repo, Next.js App Router with TypeScript, Tailwind, shadcn/ui, Supabase client a
 - [x] Deployed to a Vercel preview URL
 
 ## M1: Auth, roles, settings, people
-Supabase Auth (email plus password, invite only), `profiles` with the trigger, `settings` seeded with the defaults from the data model, People screen for the owner.
-- [ ] Owner can invite a setter by email; the setter sets a password and lands on the phone home
-- [ ] Role is enforced: a `sales` user hitting `/app/dashboard` or `/app/settings` gets a clear "not for your role" page, and the RLS test proves the data is not readable either
-- [ ] Settings screen edits pricing, GST toggle, booking pay, commission rate, warranty text, slot template
-- [ ] Deactivating a setter blocks login and hides them from pickers
+Supabase Auth (email plus password, no public sign-up), `profiles` with the trigger, `settings` seeded with the defaults from the data model, People and Settings screens for the owner (shown as Admin in the app).
+- [ ] Admin creates a sales associate's login in People and gets a one-time temporary password to text them; on first sign-in the associate must choose their own password, then lands on the phone home
+- [x] Role is enforced: a `sales` user hitting `/app/dashboard` or `/app/settings` gets a clear "not for your role" page, and the RLS test proves the data is not readable either
+- [ ] Settings screen edits pricing, GST toggle, booking pay, commission rate, warranty text, slot template, lost reasons and company details
+- [x] Deactivating a setter blocks login and hides them from pickers
 
 ## M2: Leads and knock sessions (phone)
 New lead, my leads, lead detail, notes, status changes, photos, knock session counters.
