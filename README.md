@@ -39,6 +39,7 @@ There is no sign-up. The admin creates every login from the People screen; see A
 | `npm test` | Vitest unit tests in `tests/unit` |
 | `npm run test:e2e` | Playwright smoke tests in `tests/e2e`, run against a production build (run `npm run build` first) |
 | `npm run test:rls` | Row Level Security tests in `tests/rls`, against the live Supabase project with throwaway users. Needs all three variables from `.env.example` |
+| `npm run test:live` | Live browser walk-through in `tests/live` against the production build, with throwaway accounts it deletes. Run `npm run build` first; needs the same three variables |
 | `npm run icons` | Regenerate every app icon from `brand/icon.svg` |
 
 Before every commit: `npm run typecheck && npm run lint && npm test && npm run build`.

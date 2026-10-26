@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "icons": "node scripts/make-icons.mjs",
-    "test:rls": "node --env-file-if-exists=.env.local node_modules/vitest/vitest.mjs run --config vitest.rls.config.mts"
+    "test:rls": "node --env-file-if-exists=.env.local node_modules/vitest/vitest.mjs run --config vitest.rls.config.mts",
+    "test:live": "node --env-file-if-exists=.env.local tests/live/run.mjs"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "1.4.1",
