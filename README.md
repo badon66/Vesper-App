@@ -43,6 +43,8 @@ There is no sign-up. Until the People screen lands in M1, create accounts in the
 
 Before every commit: `npm run typecheck && npm run lint && npm test && npm run build`.
 
+In the Claude cloud environment, anything that talks to Supabase from Node (the RLS tests, `next start`, `next dev`) needs `NODE_USE_ENV_PROXY=1` in front of it so Node's fetch goes through the egress proxy. Vercel and a normal laptop need nothing.
+
 ## Project layout
 
 ```
@@ -71,4 +73,4 @@ There is no sign-up and no invite email. The admin creates a sales associate's l
 
 ## Deploying
 
-Vercel builds every push. The GitHub repo is linked to the Vercel project, and the two variables from `.env.example` are set under Preview and Production in the Vercel project settings. Never commit `.env.local`.
+Vercel builds every push. The GitHub repo is linked to the Vercel project with the Framework Preset set to Next.js, and every variable from `.env.example` is set under Preview and Production in the Vercel project settings, with exactly the same names. Production is https://vesper-app-mocha.vercel.app. Never commit `.env.local`.
