@@ -14,6 +14,7 @@ const valid = {
   referral_credit: "150",
   gst_enabled: false,
   gst_rate_percent: "5",
+  gst_number: "",
   booking_pay: "20",
   commission_rate_percent: "5",
   warranty_text: "Ten year warranty on parts and labour.",
@@ -83,6 +84,12 @@ describe("parseSettingsForm", () => {
     expect(fraction.ok).toBe(false);
   });
 
+  it("stores a trimmed GST number and turns blank into null", () => {
+    const withNumber = parseSettingsForm({ ...valid, gst_number: "  123456789 RT0001 " });
+    expect(withNumber.ok).toBe(true);
+    if (withNumber.ok) expect(settingsUpdateFromValues(withNumber.values).gst_number).toBe("123456789 RT0001");
+  });
+
   it("allows an empty company email but not a malformed one", () => {
     expect(parseSettingsForm({ ...valid, company_email: "" }).ok).toBe(true);
     expect(parseSettingsForm({ ...valid, company_email: "info@" }).ok).toBe(false);
@@ -95,6 +102,7 @@ describe("settingsUpdateFromValues", () => {
     if (!parsed.ok) throw new Error("expected valid input");
     const update = settingsUpdateFromValues(parsed.values);
     expect(update.gst_rate).toBe(0.05);
+    expect(update.gst_number).toBeNull();
     expect(update.commission_rate).toBe(0.05);
     expect(update).not.toHaveProperty("gst_rate_percent");
     expect(update.company).toEqual({
@@ -116,6 +124,7 @@ describe("settingsRowToFormDefaults", () => {
       referral_credit: 150,
       gst_rate: 0.05,
       gst_enabled: false,
+      gst_number: "123456789 RT0001",
       booking_pay: 20,
       commission_rate: 0.125,
       warranty_text: "w",
@@ -131,6 +140,7 @@ describe("settingsRowToFormDefaults", () => {
     });
     expect(defaults.price_per_ft).toBe("23.00");
     expect(defaults.gst_rate_percent).toBe("5");
+    expect(defaults.gst_number).toBe("123456789 RT0001");
     expect(defaults.commission_rate_percent).toBe("12.5");
     expect(defaults.meeting_start).toBe("18:00");
     expect(defaults.lost_reasons).toBe("price\nother");
@@ -139,7 +149,7 @@ describe("settingsRowToFormDefaults", () => {
 
   it("survives a company value that is not an object", () => {
     const defaults = settingsRowToFormDefaults({
-      id: 1, price_per_ft: 1, box_price: 1, neighbour_discount: 0, referral_credit: 0, gst_rate: 0, gst_enabled: false,
+      id: 1, price_per_ft: 1, box_price: 1, neighbour_discount: 0, referral_credit: 0, gst_rate: 0, gst_enabled: false, gst_number: null,
       booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], meeting_days: [1],
       meeting_start: "18:00:00", meeting_slot_minutes: 45, meeting_slot_count: 4, distance_warning_km: 10,
       company: "nonsense", updated_at: "2026-10-26T00:00:00Z",

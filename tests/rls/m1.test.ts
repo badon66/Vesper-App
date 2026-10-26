@@ -167,3 +167,51 @@ describe("deactivation", () => {
     expect(okError).toBeNull();
   });
 });
+
+describe("sign-up trigger and roles", () => {
+  it("honours a non-owner role in user metadata and never grants owner that way", async () => {
+    const made: string[] = [];
+    try {
+      for (const [role, expected] of [["crew", "crew"], ["owner", "sales"], ["nonsense", "sales"]] as const) {
+        const { data, error } = await admin.auth.admin.createUser({
+          email: `rls-role-${role}-${stamp}@example.com`,
+          password: `Rls-role-${stamp}-pass`,
+          email_confirm: true,
+          user_metadata: { full_name: `Role ${role}`, role },
+        });
+        if (error || !data.user) throw new Error(error?.message);
+        made.push(data.user.id);
+        const { data: profile } = await admin.from("profiles").select("role").eq("id", data.user.id).single();
+        expect(profile?.role, `metadata role ${role}`).toBe(expected);
+      }
+    } finally {
+      for (const id of made) await admin.auth.admin.deleteUser(id);
+    }
+  });
+});
+
+describe("ending sessions", () => {
+  it("a signed-in user cannot call end_user_sessions", async () => {
+    const { error } = await users.a.client.rpc("end_user_sessions", { target_user: users.b.id });
+    expect(error).not.toBeNull();
+  });
+
+  it("the service role ends every session for a user, and the Auth server then rejects that user", async () => {
+    const before = await users.b.client.auth.getUser();
+    expect(before.error).toBeNull();
+    const { data: ended, error } = await admin.rpc("end_user_sessions", { target_user: users.b.id });
+    expect(error).toBeNull();
+    expect(ended).toBeGreaterThanOrEqual(1);
+    const after = await users.b.client.auth.getUser();
+    expect(after.error).not.toBeNull();
+    const refreshed = await users.b.client.auth.refreshSession();
+    expect(refreshed.error).not.toBeNull();
+  });
+
+  it("refuses to end the owner's sessions", async () => {
+    const { data: owner } = await admin.from("profiles").select("id").eq("role", "owner").single();
+    if (!owner) return;
+    const { error } = await admin.rpc("end_user_sessions", { target_user: owner.id });
+    expect(error?.message ?? "").toMatch(/owner/i);
+  });
+});
