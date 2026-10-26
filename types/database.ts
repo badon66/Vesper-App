@@ -1,5 +1,5 @@
 // Generated from the Supabase project with the connector's type generator
-// after migration m1_profiles_settings. Regenerate after every migration.
+// after migration m1_followups. Regenerate after every migration.
 export type Json =
   | string
   | number
@@ -57,6 +57,7 @@ export type Database = {
           company: Json
           distance_warning_km: number
           gst_enabled: boolean
+          gst_number: string | null
           gst_rate: number
           id: number
           lost_reasons: string[]
@@ -78,6 +79,7 @@ export type Database = {
           company: Json
           distance_warning_km?: number
           gst_enabled?: boolean
+          gst_number?: string | null
           gst_rate?: number
           id: number
           lost_reasons?: string[]
@@ -99,6 +101,7 @@ export type Database = {
           company?: Json
           distance_warning_km?: number
           gst_enabled?: boolean
+          gst_number?: string | null
           gst_rate?: number
           id?: number
           lost_reasons?: string[]
@@ -165,6 +168,7 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
+      end_user_sessions: { Args: { target_user: string }; Returns: number }
       is_owner: { Args: never; Returns: boolean }
     }
     Enums: {

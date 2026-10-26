@@ -29,7 +29,7 @@ export async function signIn(
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase.auth.signInWithPassword({
+  const { error } = await supabase.auth.signInWithPassword({
     email: parsed.data.email,
     password: parsed.data.password,
   });
@@ -40,8 +40,5 @@ export async function signIn(
     return { error: "That email and password did not match. Try again." };
   }
 
-  // The client follows a server action's redirect without a fresh pass
-  // through proxy.ts, so the first-sign-in hold has to be decided here too.
-  const mustSetPassword = data.user?.user_metadata?.must_set_password === true;
-  redirect(mustSetPassword ? "/set-password" : safeNextPath(parsed.data.next));
+  redirect(safeNextPath(parsed.data.next));
 }

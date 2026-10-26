@@ -2,10 +2,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/proxy";
 
 // Runs before every matched request. Keeps the Supabase session fresh, sends
-// signed-out visitors away from /app, sends signed-in visitors away from
-// /login, and holds new accounts on /set-password until they have chosen a
-// password. The database, not this file, is the real gate: Row Level
-// Security decides what a user can read and write.
+// signed-out visitors away from /app and signed-in visitors away from /login.
+// The database, not this file, is the real gate: Row Level Security decides
+// what a user can read and write, and the app layout verifies the session
+// with the Auth server.
 export async function proxy(request: NextRequest) {
   const { response, user } = await updateSession(request);
   const { pathname, search } = request.nextUrl;
@@ -18,16 +18,9 @@ export async function proxy(request: NextRequest) {
     return withCookies(NextResponse.redirect(url), response);
   }
 
-  if (user && user.mustSetPassword && pathname.startsWith("/app")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/set-password";
-    url.search = "";
-    return withCookies(NextResponse.redirect(url), response);
-  }
-
   if (user && pathname === "/login") {
     const url = request.nextUrl.clone();
-    url.pathname = user.mustSetPassword ? "/set-password" : "/app";
+    url.pathname = "/app";
     url.search = "";
     return withCookies(NextResponse.redirect(url), response);
   }
@@ -43,5 +36,5 @@ function withCookies(target: NextResponse, source: NextResponse) {
 }
 
 export const config = {
-  matcher: ["/login", "/set-password", "/app/:path*"],
+  matcher: ["/login", "/app/:path*"],
 };

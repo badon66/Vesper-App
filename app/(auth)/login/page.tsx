@@ -15,8 +15,9 @@ export const metadata: Metadata = {
 const reasonMessages: Record<string, string> = {
   deactivated:
     "This account has been deactivated. Talk to Keenan if you think that is a mistake.",
-  no_profile:
-    "This account is not set up yet. Talk to Keenan.",
+  no_profile: "This account is not set up yet. Talk to Keenan.",
+  session_ended:
+    "You were signed out. If Keenan reset your password, sign in with the new one.",
 };
 
 export default async function LoginPage({
@@ -34,7 +35,7 @@ export default async function LoginPage({
       <CardHeader>
         <CardTitle>Sign in</CardTitle>
         <CardDescription>
-          Use the email and password Keenan set up for you. There is no sign-up.
+          Use the email and password Keenan gave you. There is no sign-up.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
@@ -44,6 +45,9 @@ export default async function LoginPage({
           </p>
         ) : null}
         <LoginForm next={next} />
+        <p className="text-sm text-muted-foreground">
+          Forgot your password? Ask Keenan.
+        </p>
       </CardContent>
     </Card>
   );

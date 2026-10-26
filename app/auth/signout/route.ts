@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-const reasons = new Set(["deactivated", "no_profile"]);
+const reasons = new Set(["deactivated", "no_profile", "session_ended"]);
 
 // Signs the current user out and sends them to /login with a reason the
 // login page can explain. A route handler is used because Server Components

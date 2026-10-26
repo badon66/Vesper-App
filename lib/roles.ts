@@ -9,11 +9,17 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   crew: "Crew",
 };
 
-// Roles the People screen can give out. The owner role is never assignable:
-// there is exactly one owner and the database enforces it. Crew arrives
-// with V2.
+// Roles the People screen can give out. Add "crew" here when V2 arrives and
+// the picker and the sign-up trigger both accept it; nothing else changes.
+// The owner role is never assignable: there is exactly one owner and the
+// database enforces it.
 export const ASSIGNABLE_ROLES = ["sales"] as const satisfies readonly UserRole[];
+export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
 
 export function roleLabel(role: UserRole): string {
   return ROLE_LABELS[role];
+}
+
+export function assignableRoleOptions(): { value: AssignableRole; label: string }[] {
+  return ASSIGNABLE_ROLES.map((value) => ({ value, label: ROLE_LABELS[value] }));
 }
