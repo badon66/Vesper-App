@@ -32,7 +32,7 @@ active boolean not null default true
 created_at, updated_at
 unique index on (true) where role = 'owner'     -- exactly one owner
 ```
-A new login is created by the admin, who also sets every non-owner password: the app generates it (three common words and four digits), shows it once, and the admin texts it. Reset password from People generates a new one and ends that person's open sessions through `end_user_sessions(uuid)`, a SECURITY DEFINER function callable only by the service role that deletes the user's rows from `auth.sessions` and `auth.refresh_tokens`. Non-owners have no self-service password change or reset. The trigger honours a `role` in the auth user metadata when it is a non-owner role, so a new role appears in People by adding it to the assignable list in code.
+A new login is created by the admin, who also sets every non-owner password: the app generates it (three common words and four digits), shows it once, and the admin texts it. Reset password from People generates a new one and ends that person's open sessions through `end_user_sessions(uuid)`, a SECURITY DEFINER function callable only by the service role that deletes the user's rows from `auth.sessions` and `auth.refresh_tokens`. Non-owners have no self-service password change or reset. The trigger reads the role from the auth user's `app_metadata` (only the service role can write it; users can edit their own `user_metadata`). The Auth server writes `app_metadata` in an update right after the insert, so the profile is created by the first of the insert or that update that carries a usable role. The owner is still decided by email. An account created with no role or an unknown role gets no profile row and therefore no access: no policy matches it, both public views return nothing to it, and the app signs it out with "not set up yet". A new role appears in People by adding it to the assignable list in code.
 
 ### settings
 Single row (id = 1). Owner only. Everything the business tunes without a deploy.
@@ -235,7 +235,7 @@ Sales users collaborate, so they can read the team's leads, meetings and knock s
 | quotes | all | none |
 | earnings | all | select where `profile_id = auth.uid()`; no insert, update or delete |
 
-Views on Supabase run with the privileges of the view's owner and bypass RLS, which is what lets sales read `settings_public` and `profiles_public`. That is safe only while each view exposes nothing but the safe columns. Never add a column to a public view without checking this table. Supabase's security advisor reports these views as a finding; that is expected and accepted.
+Views on Supabase run with the privileges of the view's owner and bypass RLS, which is what lets sales read `settings_public` and `profiles_public`. Both views return rows only when the caller has an active profile, so a signed-in account without a profile sees nothing. That is safe only while each view exposes nothing but the safe columns. Never add a column to a public view without checking this table. Supabase's security advisor reports these views as a finding; that is expected and accepted.
 
 Write the policies in SQL in the migration that creates each table. Add a test script that signs in as a sales user and proves it can read another setter's lead but cannot update it, cannot read quotes, cannot read another setter's earnings, and cannot double book a slot.
 

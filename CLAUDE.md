@@ -61,7 +61,10 @@ Design each screen for the device it will actually be used on, then make it tole
 8. Keep the dashboard honest: every number shows what it counts and the date range. No invented or placeholder numbers in production views. Empty states say what will appear and how to make it appear.
 9. Do not add features that are not in the current milestone. Put ideas in `docs/backlog.md`.
 10. Test on the real thing: after a milestone, give the owner a checklist of what to try on his phone and iPad.
-11. Milestone branches and spec-change branches stop at "ready to merge" and hand Keenan a checklist. They merge only after he confirms it on the Vercel preview link. Small fixes fully covered by the automated walk-through can merge once tests pass.
+11. After building, run the full automated suite: unit, RLS, smoke, build, and the live walk-through with throwaway users (deleted after). Keenan does not run checklists.
+12. If anything fails, stop and report. Never send a broken branch for review.
+13. If everything is green, push the branch, wait for its Vercel preview to finish deploying, and make the clickable preview link the first line of the report. Get the URL from GitHub's deployment status for that commit or any reliable method. If that is impossible, say so and give the exact Vercel dashboard path. Follow the link with a short list of what changed and where to see it.
+14. Never merge until Keenan says "push the changes" or anything that clearly means the same. That means: merge the branch from the last report into main, push, wait for production to redeploy, and reply with the production link. In a fresh session, merge the most recent branch that is ahead of main, and ask first if there is more than one.
 
 ## Definition of done for V1
 

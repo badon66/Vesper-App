@@ -18,7 +18,7 @@ Repo, Next.js App Router with TypeScript, Tailwind, shadcn/ui, Supabase client a
 Supabase Auth (email plus password, no public sign-up), `profiles` with the trigger, `settings` seeded with the defaults from the data model, People and Settings screens for the owner (shown as Admin in the app).
 - [ ] Admin adds a Vesper member in People (name, email, phone, role picker offering only Sales associate) and gets a generated password shown once (three words and four digits) to text them; the member signs in with it and lands on the phone home with no password change step
 - [ ] Reset password on a member generates a new password, shows it once, and ends that member's open sessions; the sign-in screen says "Forgot your password? Ask Keenan." and offers no self-service reset
-- [ ] Dark theme is the default on a fresh device; light is available from the toggle and remembered
+- [x] Dark theme is the default on a fresh device; light is available from the toggle and remembered
 - [ ] People lists current members first (name, role, status, Reset password, Deactivate or Reactivate) with "Add a Vesper member" at the bottom
 - [x] Role is enforced: a `sales` user hitting `/app/dashboard` or `/app/settings` gets a clear "not for your role" page on the server, and the RLS test proves the data is not readable either
 - [ ] Settings screen edits pricing, GST toggle and GST number, booking pay, commission rate, warranty text, slot template, lost reasons and company details, and lets the owner change his own password
