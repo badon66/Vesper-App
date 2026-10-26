@@ -5,7 +5,7 @@ Postgres on Supabase. Every table has RLS enabled. `id` columns are `uuid defaul
 ## Enums
 
 ```
-role:            owner | sales | crew
+role:            owner | sales | crew          -- Postgres type is named user_role; the UI says Admin, Sales associate, Crew
 lead_status:     new | follow_up | meeting_booked | met | quoted | sold | installed | lost
 lead_source:     door | referral | neighbour_card | website | other
 house_type:      bungalow | bi_level | two_storey | other
@@ -21,15 +21,18 @@ earning_status:  pending | paid | void
 ## Tables
 
 ### profiles
-One row per user, keyed to `auth.users.id`. Created by a trigger on sign-up; role set by the owner.
+One row per user, keyed to `auth.users.id`. Created by a trigger when Supabase Auth creates the user. The trigger gives `owner` to info@vesperlighting.ca and `sales` to everyone else. A partial unique index allows at most one owner row, and a trigger refuses to demote or deactivate it. The People screen can never assign the owner role.
 ```
 id uuid pk references auth.users
+email text not null                             -- copied from auth.users by the trigger, kept in step on change
 full_name text not null
 phone text
 role role not null default 'sales'
 active boolean not null default true
 created_at, updated_at
+unique index on (true) where role = 'owner'     -- exactly one owner
 ```
+A new login is created by the admin with a temporary password. The flag `must_set_password` lives in the auth user's metadata, not here; the app holds the person on `/set-password` until they choose their own.
 
 ### settings
 Single row (id = 1). Owner only. Everything the business tunes without a deploy.
@@ -218,7 +221,7 @@ Sales users collaborate, so they can read the team's leads, meetings and knock s
 
 | Table | owner | sales |
 |---|---|---|
-| profiles | all | read own row; read `full_name` and `role` of active profiles (for names on leads and the schedule) |
+| profiles | all | read own row; read `id`, `full_name` and `role` of active profiles through a view `profiles_public` (for names on leads and the schedule) |
 | settings | all | read only the fields the client needs: slot template and `distance_warning_km`, through a view `settings_public` that exposes nothing else |
 | leads | all | insert; select all; update where `created_by = auth.uid()` or `assigned_to = auth.uid()`; cannot set status to `met`, `quoted`, `sold`, `installed` |
 | lead_photos | all | select all; insert for their own leads |
@@ -229,7 +232,7 @@ Sales users collaborate, so they can read the team's leads, meetings and knock s
 | quotes | all | none |
 | earnings | all | select where `profile_id = auth.uid()`; no insert, update or delete |
 
-Views on Supabase run with the privileges of the view's owner and bypass RLS, which is what lets sales read `settings_public`. That is safe only while the view exposes nothing but the safe columns. Never add a column to a public view without checking this table.
+Views on Supabase run with the privileges of the view's owner and bypass RLS, which is what lets sales read `settings_public` and `profiles_public`. That is safe only while each view exposes nothing but the safe columns. Never add a column to a public view without checking this table. Supabase's security advisor reports these views as a finding; that is expected and accepted.
 
 Write the policies in SQL in the migration that creates each table. Add a test script that signs in as a sales user and proves it can read another setter's lead but cannot update it, cannot read quotes, cannot read another setter's earnings, and cannot double book a slot.
 

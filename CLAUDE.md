@@ -20,7 +20,7 @@ V1 is the sales side only. See `docs/01-product-spec.md` for scope, `docs/02-dat
 
 ## Roles and who sees what
 
-Three roles in `profiles.role`: `owner`, `sales`, `crew`. V1 uses `owner` and `sales`. `crew` exists in the schema but has no screens yet.
+Three roles in `profiles.role`: `owner`, `sales`, `crew`. V1 uses `owner` and `sales`. `crew` exists in the schema but has no screens yet. In the UI they are called Admin, Sales associate and Crew. There is exactly one owner, info@vesperlighting.ca, enforced in the database; the People screen can never assign the owner role. Logins are created by the owner with a temporary password; there is no public sign-up and no invite email.
 
 - `owner`: everything. Dashboard, pipeline, all leads, all meetings, quotes, settings, people.
 - `sales`: capture leads and edit their own. Sales users work as a team: every sales user can see every lead, booking and knock session (read only unless it is theirs) so they can cluster meetings and avoid knocking the same doors twice. They book meetings for their own leads, see their own activity stats, and see their own pay (what they are owed and what they have been paid). Never quotes, never sale prices or revenue, never the owner dashboard, never settings, never anyone else's pay.
