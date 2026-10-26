@@ -16,9 +16,12 @@ Repo, Next.js App Router with TypeScript, Tailwind, shadcn/ui, Supabase client a
 
 ## M1: Auth, roles, settings, people
 Supabase Auth (email plus password, no public sign-up), `profiles` with the trigger, `settings` seeded with the defaults from the data model, People and Settings screens for the owner (shown as Admin in the app).
-- [ ] Admin creates a sales associate's login in People and gets a one-time temporary password to text them; on first sign-in the associate must choose their own password, then lands on the phone home
-- [x] Role is enforced: a `sales` user hitting `/app/dashboard` or `/app/settings` gets a clear "not for your role" page, and the RLS test proves the data is not readable either
-- [ ] Settings screen edits pricing, GST toggle, booking pay, commission rate, warranty text, slot template, lost reasons and company details
+- [ ] Admin adds a Vesper member in People (name, email, phone, role picker offering only Sales associate) and gets a generated password shown once (three words and four digits) to text them; the member signs in with it and lands on the phone home with no password change step
+- [ ] Reset password on a member generates a new password, shows it once, and ends that member's open sessions; the sign-in screen says "Forgot your password? Ask Keenan." and offers no self-service reset
+- [ ] Dark theme is the default on a fresh device; light is available from the toggle and remembered
+- [ ] People lists current members first (name, role, status, Reset password, Deactivate or Reactivate) with "Add a Vesper member" at the bottom
+- [x] Role is enforced: a `sales` user hitting `/app/dashboard` or `/app/settings` gets a clear "not for your role" page on the server, and the RLS test proves the data is not readable either
+- [ ] Settings screen edits pricing, GST toggle and GST number, booking pay, commission rate, warranty text, slot template, lost reasons and company details, and lets the owner change his own password
 - [x] Deactivating a setter blocks login and hides them from pickers
 
 ## M2: Leads and knock sessions (phone)
@@ -38,10 +41,10 @@ Open slots from the template, time blocks, booking, distance warning, tonight vi
 - [ ] Two setters booking the same slot at the same moment: exactly one succeeds, the other sees "that slot was just taken" and the refreshed list
 - [ ] Distance warning appears when the address is more than the configured km from the previous or next meeting, with the distance shown, and booking can still proceed
 - [ ] Booked slots show time, neighbourhood and setter to every sales user
-- [ ] Tonight view lists the owner's meetings in order with address, phone, navigate link, photos and notes; outcomes update lead status (`held` sets `met`, `no_show` and `cancelled` set `follow_up` with a note, `rescheduled` links the new meeting)
+- [ ] Tonight view lists the owner's meetings in order with address, phone, navigate link, photos and notes; outcomes update lead status (Qualified and Not qualified set `met`, No-show and Cancelled set `follow_up` with a note); a no-show or cancelled lead can be rebooked and the old meeting links to the new one
 - [ ] Owner can add and remove time blocks
-- [ ] Owner marks a held meeting's booking qualified or not qualified (reason required); qualified creates one `booking` earning for the setter who booked it, at the current booking pay, never twice for the same meeting
-- [ ] My pay (setter): owed now, pending install and paid totals with line items; the RLS test proves a setter cannot read another setter's earnings
+- [ ] After each slot the owner marks the booking Qualified, Not qualified (reason from the settings list, Other with text), No-show or Cancelled (optional note); only Qualified creates a `booking` earning for the setter who booked it, at the current booking pay, and never a second one for the same lead
+- [ ] My pay (setter): owed now, pending install and paid totals with line items, each booking showing its outcome and reason; the RLS test proves a setter cannot read another setter's earnings
 - [ ] Pay (owner): earnings grouped by setter, select owed lines and mark them paid in one batch, stamping `paid_at` and `paid_by`
 - [ ] Unit tests cover slot generation, DST, the distance check and booking pay creation
 
@@ -54,10 +57,11 @@ Open slots from the template, time blocks, booking, distance warning, tonight vi
 ## M5: Meeting mode and quotes (iPad)
 - [ ] Landscape iPad layout: presentation pages on the left, quote builder on the right, or swipe between them on narrower screens
 - [ ] Presentation content and images come from settings, not from code
-- [ ] Quote builder: runs, boxes, adders, discounts, financing flag; totals update live and match `lib/pricing.ts`; unit tests cover a plain house, a house with adders and discounts, GST on and off, rounding
+- [ ] Quote builder: runs, boxes, adders, discounts, financing flag; every price is editable on the quote itself, with a custom line, and the quote stores the prices it used; totals update live and match `lib/pricing.ts`; unit tests cover a plain house, a house with adders and discounts, per-quote price changes, GST on and off, rounding
+- [ ] On screen, totals read like "$3,450 + GST" with no GST dollar figure; with GST off nothing on screen or paper mentions GST
 - [ ] Save draft, mark presented, accepted or declined; each writes a lead event and moves the lead status to `quoted` or `sold`
-- [ ] PDF export: breakdown, warranty text, "No payment until your install is complete," company contact, no em dashes anywhere; opens in a share sheet on iPad
-- [ ] Accepting a quote creates one pending `commission` earning for the lead's setter at the current commission rate on the total before GST; marking the lead `installed` makes it payable; marking it `lost` voids it; unit tests cover the amount and rounding
+- [ ] PDF export: breakdown, subtotal, GST as a dollar amount, total and the GST number when GST is on, warranty text, "No payment until your install is complete," company contact, no em dashes anywhere; always white regardless of theme; opens in a share sheet on iPad
+- [ ] Accepting a quote creates one pending `commission` earning for the lead's setter at the current commission rate on the total as actually priced before GST; marking the lead `installed` makes it payable; marking it `lost` voids it; unit tests cover the amount and rounding
 
 ## M6: Dashboard (owner, desktop and iPad)
 - [ ] Funnel, week and month, totals and per setter: doors, conversations, leads, meetings booked, meetings held, show rate, quotes, sold, installed

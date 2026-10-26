@@ -40,8 +40,8 @@ Setters are a team. Each setter has their own profile, their own leads and their
 
 Setters earn two ways. Both rates live in settings. A rate change applies to new earnings only, and each earning stores the rate it was calculated at.
 
-- Booking pay: a flat amount per qualified booking, starting at $20. A booking qualifies when the meeting was held and Keenan marks it qualified. He can also mark it not qualified with a reason, and then nothing is earned.
-- Commission: a percentage of the sale, starting at 5%, calculated on the accepted quote total before GST. It is created when the quote is accepted and becomes payable when the lead is marked installed, since no customer pays until the install is complete. If the sale falls through before install, the commission is voided.
+- Booking pay: a flat amount per qualified booking, starting at $20. After each meeting slot Keenan marks the booking Qualified, Not qualified, No-show or Cancelled. Only Qualified earns the fee. One booking fee per lead, maximum: a no-show or cancelled lead can be rebooked, and if that meeting is held and marked Qualified the fee is paid then.
+- Commission: a percentage of the sale, starting at 5%, calculated on the accepted quote total as actually priced (after any per-quote price changes), before GST. It is created when the quote is accepted and becomes payable when the lead is marked installed, since no customer pays until the install is complete. If the sale falls through before install, the commission is voided. Earlier no-shows on the same lead do not affect it.
 
 Keenan marks earnings paid in batches. Only sales users earn; leads Keenan knocks himself create no earnings. No money moves through the app. It records what is owed and what has been paid, and the e-transfer happens outside it.
 
@@ -57,11 +57,11 @@ Keenan marks earnings paid in batches. Only sales users earn; leads Keenan knock
 
 **Book a meeting.** Pick a day, see the open slots for that evening. Booked slots show the time, the neighbourhood and who booked it so the setter can cluster. Pick a slot, confirm "both decision makers will be there," confirm the phone number, book. If the address is more than 10 km from the neighbouring meeting, show a warning with the distance and let them choose. The setter confirms the time with the customer at the door. The app does not send or prefill texts in V1.
 
-**Tonight (Keenan).** The evening's meetings in order with the drive between them, each with the lead's name, address, phone, notes, photos and a "navigate" link. Tap into a meeting to mark the outcome: held, no-show, rescheduled, cancelled. For a held meeting, mark the booking qualified or not qualified (with a reason). Qualified creates the setter's booking pay. From a held meeting, open Meeting mode on the iPad (same lead, picks up where the phone left off).
+**Tonight (Keenan).** The evening's meetings in order with the drive between them, each with the lead's name, address, phone, notes, photos and a "navigate" link. After each slot, mark the booking Qualified, Not qualified, No-show or Cancelled. Not qualified needs a reason from the list in settings (Not the homeowner, Decision maker missing, Didn't want a price, Roofline we can't do, Other with text). No-show and Cancelled take an optional note. Only Qualified creates the setter's booking pay, and never a second one for the same lead. A no-show or cancelled lead can be rebooked into a later slot. From a held meeting, open Meeting mode on the iPad (same lead, picks up where the phone left off).
 
 **My numbers (setter).** This week: doors, conversations, leads, meetings booked, meetings that happened. Nothing about money or other people.
 
-**My pay (setter).** Three totals: owed now, pending install, paid. Under them, every line item with date, lead, type (booking or commission), amount and status. Nothing about other people.
+**My pay (setter).** Three totals: owed now, pending install, paid. Under them, every line item with date, lead, type (booking or commission), amount and status, and for each booking its outcome and, when not qualified, the reason. Nothing about other people.
 
 ### iPad (Keenan at the meeting)
 
@@ -71,12 +71,12 @@ Keenan marks earnings paid in batches. Only sales users earn; leads Keenan knock
 3. Scenes: warm white every night, Christmas, Halloween, game day. Real photos of finished houses.
 4. How install day works and what the box is (plugs into a standard outlet, indoors or outdoors, zones).
 5. The warranty, in the exact words from settings.
-6. The price breakdown for this house (live from the quote builder).
+6. The price breakdown for this house (live from the quote builder, shown as a total plus GST, never as a GST dollar figure).
 7. Financing available, and "no payment until your install is complete."
 8. The neighbour discount and the referral credit.
 Pages are plain, large type, navy and white with gold accents, no animations beyond a simple page transition. Content is editable in settings so Keenan can change wording without a deploy.
 
-**Quote builder.** Runs: name (front eave, left gable, garage, etc.), feet, level (lower, upper). Boxes (default 1). Adders: height, complexity, custom, each with a label and amount. Discounts: neighbour, referral, custom. Financing offered: yes or no. The breakdown updates live. Save as draft, mark presented, mark accepted or declined. Accepting creates the setter's commission earning. Export a PDF with the breakdown, the warranty text, the "no payment until complete" line, and the company contact. Email it to the customer from the app (V1: generate the PDF and open a share sheet; email sending is V1.5).
+**Quote builder.** Runs: name (front eave, left gable, garage, etc.), feet, level (lower, upper). Boxes (default 1). Adders: height, complexity, custom, each with a label and amount. Discounts: neighbour, referral, custom. Financing offered: yes or no. Settings supplies the defaults, and Keenan can change every price on the quote itself: price per foot, control box, each adder, each discount, and a custom line. Changes apply to that quote only, and the quote stores the prices it actually used, so later changes to Settings never alter it. The breakdown updates live. On screen the total reads "$3,450 + GST" with no GST dollar figure. Save as draft, mark presented, mark accepted or declined. Accepting creates the setter's commission earning on the total as actually priced, before GST. Export a PDF with the breakdown, subtotal, GST as a dollar amount, total and the GST number, the warranty text, the "no payment until complete" line, and the company contact. When GST is off, the PDF and every screen show the price alone with no mention of GST. The PDF is always white, whatever theme the app is in. Email it to the customer from the app (V1: generate the PDF and open a share sheet; email sending is V1.5).
 
 **Pipeline board.** Columns by status, cards with name, address, neighbourhood, setter, feet (if quoted), total (if quoted), and age. Drag between columns on iPad and desktop. Tap to open lead detail.
 
@@ -92,9 +92,9 @@ Pages are plain, large type, navy and white with gold accents, no animations bey
 - Upcoming jobs: sold leads not yet installed, oldest first, with sold date and total feet.
 - Every number shows its date range and what it counts. Empty states explain what will show up.
 
-**Settings.** Pricing defaults, GST on or off, booking pay and commission rate, warranty text, presentation text, meeting slot template (days, start, slot length, count) and blocked times, the lost reasons list.
+**Settings.** Pricing defaults, GST on or off and the GST number, booking pay and commission rate, warranty text, presentation text, meeting slot template (days, start, slot length, count) and blocked times, the lost reasons list.
 
-**People.** The admin creates a sales associate's login: name, email, phone. The app shows a one-time temporary password the admin texts to them, and on first sign-in they must choose their own password. Deactivate and reactivate from the same list; a deactivated person cannot sign in and is hidden from pickers. There is exactly one admin and People cannot hand out that role. No self sign-up and no invite emails in V1.
+**People.** Current members are the main content: name, role, active or deactivated, with Reset password and Deactivate or Reactivate on each row. At the bottom, a button labelled "Add a Vesper member" opens the form: name, email, phone and a role picker that offers only Sales associate for now and is built so a new role (Crew in V2) appears by adding it to the list, never by rebuilding the screen. Owner is never a choice. The app generates the password (three lowercase common words and four digits, like maple-river-stone-4821), shows it once in the gold box, and the admin texts it. That password is permanent until the admin resets it: Reset password generates a new one, shows it once, and ends the person's open sessions. Non-owners have no way to change or reset their own password and get no emails of any kind; the sign-in screen says "Forgot your password? Ask Keenan." A deactivated person cannot sign in and is hidden from pickers. There is exactly one admin and People cannot hand out that role.
 
 **Pay.** Owner only. Earnings grouped by setter: owed now, pending install, paid. Select the owed lines and mark them paid in one batch. Each line shows the lead, the type, the rate it was calculated at and the amount.
 
@@ -102,7 +102,7 @@ Pages are plain, large type, navy and white with gold accents, no animations bey
 
 - Brand: navy `#132E3F`, gold `#B99257`, white, minimal black. Gold is for emphasis and primary actions only.
 - Type: one clean sans for the app (Manrope or similar), large sizes on phone, generous spacing. The presentation can use the website's heading face for consistency.
-- Light theme by default with a dark theme available. Setters knock at dusk and Keenan meets in the evening, so the dark theme matters.
+- Dark theme by default with a light theme available, remembered per device. Setters knock at dusk and Keenan meets in the evening. Anything printed or exported as a PDF is always white.
 - Premium and calm. No emoji, no gradients, no glass, no icon grids, no filler. Empty space is fine. Empty states are written, not decorated.
 - Phone screens are one task per screen. iPad screens can show two panes.
 

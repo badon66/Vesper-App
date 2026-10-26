@@ -10,7 +10,7 @@ lead_status:     new | follow_up | meeting_booked | met | quoted | sold | instal
 lead_source:     door | referral | neighbour_card | website | other
 house_type:      bungalow | bi_level | two_storey | other
 soffit_colour:   white | black | brown | other
-meeting_status:  booked | confirmed | held | no_show | rescheduled | cancelled
+meeting_status:  booked | confirmed | qualified | not_qualified | no_show | cancelled   -- qualified and not_qualified both mean the meeting was held
 quote_status:    draft | presented | accepted | declined | expired
 event_type:      created | note | status_change | call | text | meeting_booked | meeting_outcome | quote_created | quote_presented | quote_accepted | quote_declined | photo_added | edited
 run_level:       lower | upper
@@ -32,7 +32,7 @@ active boolean not null default true
 created_at, updated_at
 unique index on (true) where role = 'owner'     -- exactly one owner
 ```
-A new login is created by the admin with a temporary password. The flag `must_set_password` lives in the auth user's metadata, not here; the app holds the person on `/set-password` until they choose their own.
+A new login is created by the admin, who also sets every non-owner password: the app generates it (three common words and four digits), shows it once, and the admin texts it. Reset password from People generates a new one and ends that person's open sessions through `end_user_sessions(uuid)`, a SECURITY DEFINER function callable only by the service role that deletes the user's rows from `auth.sessions` and `auth.refresh_tokens`. Non-owners have no self-service password change or reset. The trigger honours a `role` in the auth user metadata when it is a non-owner role, so a new role appears in People by adding it to the assignable list in code.
 
 ### settings
 Single row (id = 1). Owner only. Everything the business tunes without a deploy.
@@ -44,11 +44,13 @@ neighbour_discount numeric(10,2) not null default 150.00
 referral_credit numeric(10,2) not null default 150.00
 gst_rate numeric(5,4) not null default 0.0500
 gst_enabled boolean not null default false
+gst_number text                      -- printed on formal documents when GST is on
 warranty_text text not null
 presentation jsonb not null          -- pages: [{title, body, image_paths[]}]
 booking_pay numeric(10,2) not null default 20.00      -- flat pay per qualified booking
 commission_rate numeric(5,4) not null default 0.0500  -- share of the accepted quote total before GST
 lost_reasons text[] not null default '{price, other company, not now, could not reach, other}'
+not_qualified_reasons text[] not null default '{Not the homeowner, Decision maker missing, Did not want a price, Roofline we cannot do, Other}'   -- added in M3
 meeting_days int[] not null default '{1,2,3,4,5,6}'   -- 0 = Sunday
 meeting_start time not null default '18:00'
 meeting_slot_minutes int not null default 45
@@ -140,7 +142,7 @@ created_at
 ```
 
 ### meetings
-Open slots are computed from settings (days, start, slot length, count) minus `meetings` minus `time_blocks`. There is no slots table. The unique index is what prevents double booking. Sales users can read every meeting, so `outcome_notes` must never contain a price.
+Open slots are computed from settings (days, start, slot length, count) minus `meetings` minus `time_blocks`. There is no slots table. The unique index is what prevents double booking. After each slot the owner sets the outcome: `qualified`, `not_qualified`, `no_show` or `cancelled`. Sales users can read every meeting, so `outcome_note` must never contain a price.
 ```
 id uuid pk
 lead_id uuid not null references leads
@@ -150,13 +152,12 @@ starts_at timestamptz not null
 ends_at timestamptz not null
 status meeting_status not null default 'booked'
 both_decision_makers boolean not null default false
-outcome_notes text
-qualified boolean                               -- null until the owner decides on a held meeting; true creates a booking earning
-qualified_reason text                           -- required when qualified is false
-qualified_at timestamptz
-rescheduled_to uuid references meetings
+outcome_reason text                             -- required when status is not_qualified; from settings.not_qualified_reasons, free text when Other
+outcome_note text                               -- optional for no_show and cancelled, never a price
+outcome_at timestamptz
+rebooked_as uuid references meetings            -- set on a no_show or cancelled meeting when the lead is booked again
 created_at, updated_at
-unique (owner_id, starts_at) where status in ('booked','confirmed','held')
+unique (owner_id, starts_at) where status in ('booked','confirmed','qualified','not_qualified')
 ```
 
 ### quotes
@@ -172,6 +173,8 @@ runs jsonb not null default '[]'                 -- [{name, feet, level}]
 total_feet int not null default 0
 adders jsonb not null default '[]'               -- [{label, amount}]
 discounts jsonb not null default '[]'            -- [{label, amount}]
+gst_rate numeric(5,4) not null                   -- copied from settings at creation
+gst_number text                                  -- copied from settings at creation
 subtotal numeric(10,2) not null default 0
 gst numeric(10,2) not null default 0
 total numeric(10,2) not null default 0
@@ -182,7 +185,7 @@ valid_until date
 presented_at, accepted_at, declined_at timestamptz
 created_at, updated_at
 ```
-Totals are computed in one pure function in `lib/pricing.ts`, used by the UI and the server action, and covered by unit tests. The database stores the result so history is stable if prices change later. `subtotal` is the total before GST and is the base for commission. Accepting a quote creates a `commission` earning (see `earnings`).
+Totals are computed in one pure function in `lib/pricing.ts`, used by the UI and the server action, and covered by unit tests. The database stores the result so history is stable if prices change later. `subtotal` is the total before GST and is the base for commission. Every price on a quote belongs to that quote: `price_per_ft`, `box_price`, each adder and discount amount, and custom lines in `adders` and `discounts`. Settings supplies the defaults when the quote is created; later changes to settings never alter an existing quote. Accepting a quote creates a `commission` earning (see `earnings`).
 
 ### earnings
 What setters are owed and what they have been paid. One row per earning. Rows are created by server actions, never by the client directly.
@@ -202,12 +205,12 @@ paid_at timestamptz
 paid_by uuid references profiles
 note text                                         -- void reason or payout reference
 created_at, updated_at
-unique (meeting_id) where type = 'booking'
+unique (lead_id) where type = 'booking'          -- one booking fee per lead, ever
 unique (quote_id) where type = 'commission'
 ```
 Rules:
-- A booking earning is created when the owner marks a held meeting `qualified = true`, for `meetings.booked_by`, at `settings.booking_pay`, with `payable_at = now()`.
-- A commission earning is created when a quote is accepted, for `leads.assigned_to` at that moment, at `settings.commission_rate` on `quotes.subtotal`, with `payable_at` null. Marking the lead `installed` sets `payable_at`. Marking the lead `lost` while the commission is unpaid sets `status = 'void'` with the reason in `note`.
+- A booking earning is created when the owner marks a meeting `qualified`, for `meetings.booked_by`, at `settings.booking_pay`, with `payable_at = now()`, unless the lead already has a booking earning. Not qualified, no-show and cancelled earn nothing.
+- A commission earning is created when a quote is accepted, for `leads.assigned_to` at that moment, at `settings.commission_rate` on `quotes.subtotal` (the total as actually priced, before GST), with `payable_at` null. Earlier no-shows on the lead do not change it. Marking the lead `installed` sets `payable_at`. Marking the lead `lost` while the commission is unpaid sets `status = 'void'` with the reason in `note`.
 - No earning is created when the profile that would receive it has role `owner`.
 - "Owed now" everywhere means `status = 'pending' and payable_at is not null`. "Pending install" means `status = 'pending' and payable_at is null`.
 - Marking paid is a batch update: `status = 'paid'`, `paid_at = now()`, `paid_by = auth.uid()` on the selected rows. Paid rows are never edited again.
