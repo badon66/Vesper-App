@@ -34,6 +34,9 @@ export async function signIn(
     password: parsed.data.password,
   });
   if (error) {
+    if (error.code === "user_banned") {
+      return { error: "This account has been deactivated. Talk to Keenan." };
+    }
     return { error: "That email and password did not match. Try again." };
   }
 

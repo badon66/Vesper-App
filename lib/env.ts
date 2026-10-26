@@ -14,12 +14,20 @@ const publicEnvSchema = z.object({
     .min(1, { error: "must be the Supabase publishable key" }),
 });
 
-export type PublicEnv = z.infer<typeof publicEnvSchema>;
+const serverEnvSchema = z.object({
+  SUPABASE_SERVICE_ROLE_KEY: z
+    .string()
+    .min(1, { error: "must be the Supabase service role key (server only)" }),
+});
 
-export function parsePublicEnv(
+export type PublicEnv = z.infer<typeof publicEnvSchema>;
+export type ServerEnv = z.infer<typeof serverEnvSchema>;
+
+function parseEnv<T extends z.ZodObject>(
+  schema: T,
   source: Record<string, string | undefined>,
-): PublicEnv {
-  const result = publicEnvSchema.safeParse(source);
+): z.infer<T> {
+  const result = schema.safeParse(source);
   if (!result.success) {
     const problems = result.error.issues
       .map((issue) => `${issue.path.join(".")} ${issue.message}`)
@@ -31,15 +39,36 @@ export function parsePublicEnv(
   return result.data;
 }
 
-let cached: PublicEnv | undefined;
+export function parsePublicEnv(
+  source: Record<string, string | undefined>,
+): PublicEnv {
+  return parseEnv(publicEnvSchema, source);
+}
+
+export function parseServerEnv(
+  source: Record<string, string | undefined>,
+): ServerEnv {
+  return parseEnv(serverEnvSchema, source);
+}
+
+let cachedPublic: PublicEnv | undefined;
+let cachedServer: ServerEnv | undefined;
 
 // The process.env references below must stay as literal property reads so
-// Next.js can inline them into the browser bundle.
+// Next.js can inline the public ones into the browser bundle.
 export function getPublicEnv(): PublicEnv {
-  cached ??= parsePublicEnv({
+  cachedPublic ??= parsePublicEnv({
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
   });
-  return cached;
+  return cachedPublic;
+}
+
+// Server only. Never import this from a Client Component.
+export function getServerEnv(): ServerEnv {
+  cachedServer ??= parseServerEnv({
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  });
+  return cachedServer;
 }
