@@ -116,6 +116,9 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
           <Field name="gst_rate_percent" label="GST rate (%)" errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" max="99.99" defaultValue={defaults.gst_rate_percent} />}
           </Field>
+          <Field name="gst_number" label="GST number" hint="Printed on quotes and invoices once GST is on." errors={errors}>
+            {(p) => <Input {...p} autoComplete="off" defaultValue={defaults.gst_number} />}
+          </Field>
         </CardContent>
       </Card>
 

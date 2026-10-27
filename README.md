@@ -25,7 +25,7 @@ Requirements: Node 22 or newer (`.nvmrc` says 22) and npm.
    npm run dev
    ```
 
-There is no sign-up. Until the People screen lands in M1, create accounts in the Supabase dashboard under Authentication, Users, Add user, with "auto confirm" on.
+There is no sign-up. The admin creates every login from the People screen; see Accounts below.
 
 ## Scripts
 
@@ -39,6 +39,7 @@ There is no sign-up. Until the People screen lands in M1, create accounts in the
 | `npm test` | Vitest unit tests in `tests/unit` |
 | `npm run test:e2e` | Playwright smoke tests in `tests/e2e`, run against a production build (run `npm run build` first) |
 | `npm run test:rls` | Row Level Security tests in `tests/rls`, against the live Supabase project with throwaway users. Needs all three variables from `.env.example` |
+| `npm run test:live` | Live browser walk-through in `tests/live` against the production build, with throwaway accounts it deletes. Run `npm run build` first; needs the same three variables |
 | `npm run icons` | Regenerate every app icon from `brand/icon.svg` |
 
 Before every commit: `npm run typecheck && npm run lint && npm test && npm run build`.
@@ -69,7 +70,7 @@ Schema changes live in `supabase/migrations/` as SQL files with a comment on wha
 
 ## Accounts
 
-There is no sign-up and no invite email. The admin creates a sales associate's login in People and texts them the one-time temporary password; on first sign-in they choose their own. Public sign-up is turned off in the Supabase dashboard and must stay off.
+There is no sign-up, no invite email and no self-service password reset. The admin adds a member in People; the app generates their password (three words and four digits), shows it once, and the admin texts it. It stays their password until the admin resets it from People, which also ends their open sessions. The admin changes his own password from Settings. Public sign-up is turned off in the Supabase dashboard and must stay off.
 
 ## Deploying
 

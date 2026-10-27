@@ -28,7 +28,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   // Updated at runtime by ThemeToggle when the user switches theme.
-  themeColor: "#ffffff",
+  themeColor: "#0c1b26",
 };
 
 export default function RootLayout({

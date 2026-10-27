@@ -43,6 +43,7 @@ beforeAll(async () => {
       password: u.password,
       email_confirm: true,
       user_metadata: { full_name: `RLS Test ${key.toUpperCase()}` },
+      app_metadata: { role: "sales" },
     });
     if (error || !data.user) throw new Error(`could not create ${u.email}: ${error?.message}`);
     u.id = data.user.id;
@@ -154,6 +155,18 @@ describe("anonymous", () => {
 });
 
 describe("deactivation", () => {
+  it("a deactivated person disappears from profiles_public for everyone else", async () => {
+    await admin.from("profiles").update({ active: false }).eq("id", users.b.id);
+    try {
+      const { data, error } = await users.a.client.from("profiles_public").select("id");
+      expect(error).toBeNull();
+      expect(data?.some((p) => p.id === users.b.id)).toBe(false);
+      expect(data?.some((p) => p.id === users.a.id)).toBe(true);
+    } finally {
+      await admin.from("profiles").update({ active: true }).eq("id", users.b.id);
+    }
+  });
+
   it("a banned user cannot sign in, and lifting the ban restores it", async () => {
     const { error: banError } = await admin.auth.admin.updateUserById(users.b.id, { ban_duration: "876600h" });
     expect(banError).toBeNull();
@@ -165,5 +178,83 @@ describe("deactivation", () => {
     const again = createClient<Database>(url!, anonKey!, noSession);
     const { error: okError } = await again.auth.signInWithPassword({ email: users.b.email, password: users.b.password });
     expect(okError).toBeNull();
+  });
+});
+
+describe("sign-up trigger and roles", () => {
+  async function createWith(label: string, options: { app?: Record<string, unknown>; user?: Record<string, unknown> }) {
+    const { data, error } = await admin.auth.admin.createUser({
+      email: `rls-role-${label}-${stamp}@example.com`,
+      password: `Rls-role-${stamp}-pass`,
+      email_confirm: true,
+      user_metadata: { full_name: `Role ${label}`, ...(options.user ?? {}) },
+      app_metadata: options.app,
+    });
+    if (error || !data.user) throw new Error(error?.message);
+    return data.user.id;
+  }
+  async function profileRole(id: string) {
+    const { data } = await admin.from("profiles").select("role").eq("id", id).maybeSingle();
+    return data?.role ?? null;
+  }
+
+  it("takes the role from app_metadata, which only the service role can write", async () => {
+    const made: string[] = [];
+    try {
+      const sales = await createWith("sales", { app: { role: "sales" } }); made.push(sales);
+      const crew = await createWith("crew", { app: { role: "crew" } }); made.push(crew);
+      expect(await profileRole(sales)).toBe("sales");
+      expect(await profileRole(crew)).toBe("crew");
+    } finally {
+      for (const id of made) await admin.auth.admin.deleteUser(id);
+    }
+  });
+
+  it("gives no profile, and so no access, when the role is missing, unknown, owner, or only in user_metadata", async () => {
+    const made: string[] = [];
+    try {
+      const none = await createWith("none", {}); made.push(none);
+      const unknown = await createWith("unknown", { app: { role: "nonsense" } }); made.push(unknown);
+      const owner = await createWith("owner", { app: { role: "owner" } }); made.push(owner);
+      const userMeta = await createWith("usermeta", { user: { role: "sales" } }); made.push(userMeta);
+      for (const id of made) expect(await profileRole(id)).toBeNull();
+
+      // Signed in but profile-less: the public views return nothing and the tables refuse.
+      const signedIn = await signedInClient(`rls-role-none-${stamp}@example.com`, `Rls-role-${stamp}-pass`);
+      const people = await signedIn.from("profiles_public").select("*");
+      const slots = await signedIn.from("settings_public").select("*");
+      const own = await signedIn.from("profiles").select("*");
+      expect(people.data).toEqual([]);
+      expect(slots.data).toEqual([]);
+      expect(own.data).toEqual([]);
+    } finally {
+      for (const id of made) await admin.auth.admin.deleteUser(id);
+    }
+  });
+});
+
+describe("ending sessions", () => {
+  it("a signed-in user cannot call end_user_sessions", async () => {
+    const { error } = await users.a.client.rpc("end_user_sessions", { target_user: users.b.id });
+    expect(error).not.toBeNull();
+  });
+
+  it("the service role ends every session for a user, and the Auth server then rejects that user", async () => {
+    const before = await users.b.client.auth.getUser();
+    expect(before.error).toBeNull();
+    const { data: ended, error } = await admin.rpc("end_user_sessions", { target_user: users.b.id });
+    expect(error).toBeNull();
+    expect(ended).toBeGreaterThanOrEqual(1);
+    const after = await users.b.client.auth.getUser();
+    expect(after.error).not.toBeNull();
+    const refreshed = await users.b.client.auth.refreshSession();
+    expect(refreshed.error).not.toBeNull();
+  });
+
+  it("refuses to end the owner's sessions", async () => {
+    const { data: owner } = await admin.from("profiles").select("id").eq("role", "owner").single();
+    if (!owner) return;
+    const { error } = await admin.rpc("end_user_sessions", { target_user: owner.id });
+    expect(error?.message ?? "").toMatch(/owner/i);
   });
 });

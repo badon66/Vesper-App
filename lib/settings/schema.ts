@@ -74,6 +74,7 @@ export const settingsFormSchema = z.object({
   referral_credit: money,
   gst_enabled: z.boolean(),
   gst_rate_percent: percent,
+  gst_number: z.string().trim().max(30, { error: "is too long" }),
   booking_pay: money,
   commission_rate_percent: percent,
   warranty_text: z.string().trim().min(1, { error: "cannot be empty" }),
@@ -136,6 +137,7 @@ export function settingsFormDataToInput(
     referral_credit: text("referral_credit"),
     gst_enabled: formData.get("gst_enabled") === "on",
     gst_rate_percent: text("gst_rate_percent"),
+    gst_number: text("gst_number"),
     booking_pay: text("booking_pay"),
     commission_rate_percent: text("commission_rate_percent"),
     warranty_text: text("warranty_text"),
@@ -161,6 +163,7 @@ export function settingsUpdateFromValues(v: SettingsFormValues): SettingsUpdate 
     referral_credit: v.referral_credit,
     gst_enabled: v.gst_enabled,
     gst_rate: v.gst_rate_percent,
+    gst_number: v.gst_number || null,
     booking_pay: v.booking_pay,
     commission_rate: v.commission_rate_percent,
     warranty_text: v.warranty_text,
@@ -190,6 +193,7 @@ export type SettingsFormDefaults = {
   referral_credit: string;
   gst_enabled: boolean;
   gst_rate_percent: string;
+  gst_number: string;
   booking_pay: string;
   commission_rate_percent: string;
   warranty_text: string;
@@ -220,6 +224,7 @@ export function settingsRowToFormDefaults(row: SettingsRow): SettingsFormDefault
     referral_credit: row.referral_credit.toFixed(2),
     gst_enabled: row.gst_enabled,
     gst_rate_percent: fractionToPercentString(row.gst_rate),
+    gst_number: row.gst_number ?? "",
     booking_pay: row.booking_pay.toFixed(2),
     commission_rate_percent: fractionToPercentString(row.commission_rate),
     warranty_text: row.warranty_text,

@@ -8,9 +8,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { requireProfile } from "@/lib/auth/profile";
-import { roleLabel } from "@/lib/roles";
+import { assignableRoleOptions, roleLabel } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
-import { AddPersonForm } from "./add-person-form";
+import { AddMember } from "./add-member";
 import { PersonActions } from "./person-actions";
 
 export const metadata: Metadata = {
@@ -36,44 +36,47 @@ export default async function PeoplePage() {
       <div>
         <h1 className="text-2xl font-bold">People</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Everyone with a login. Deactivated people cannot sign in and do not
-          appear in pickers.
+          Everyone with a Vesper login. Deactivated people cannot sign in and
+          do not appear in pickers.
         </p>
       </div>
-
-      <AddPersonForm />
 
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead>Phone</TableHead>
             <TableHead>Role</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead className="text-right">Action</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {people.map((person) => (
             <TableRow key={person.id} className={person.active ? undefined : "text-muted-foreground"}>
-              <TableCell className="font-semibold text-foreground">
-                {person.full_name}
-                {person.id === me.id ? <span className="ml-2 text-xs font-normal text-muted-foreground">you</span> : null}
+              <TableCell>
+                <div className="font-semibold text-foreground">
+                  {person.full_name}
+                  {person.id === me.id ? (
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">you</span>
+                  ) : null}
+                </div>
+                <div className="text-xs text-muted-foreground">{person.email}</div>
               </TableCell>
-              <TableCell>{person.email}</TableCell>
-              <TableCell>{person.phone ?? ""}</TableCell>
               <TableCell>{roleLabel(person.role)}</TableCell>
               <TableCell>{person.active ? "Active" : "Deactivated"}</TableCell>
               <TableCell className="text-right">
-                {person.role === "owner" ? null : (
-                  <PersonActions id={person.id} active={person.active} />
+                {person.role === "owner" ? (
+                  <span className="text-xs text-muted-foreground">Change your password in Settings</span>
+                ) : (
+                  <PersonActions id={person.id} name={person.full_name} active={person.active} />
                 )}
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
+
+      <AddMember roles={assignableRoleOptions()} />
     </div>
   );
 }

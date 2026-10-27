@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ASSIGNABLE_ROLES, roleLabel } from "@/lib/roles";
+import { ASSIGNABLE_ROLES, assignableRoleOptions, roleLabel } from "@/lib/roles";
 
 describe("roles", () => {
   it("labels the enum values the way people see them", () => {
@@ -10,5 +10,9 @@ describe("roles", () => {
 
   it("never lets the People screen hand out the owner role", () => {
     expect(ASSIGNABLE_ROLES).not.toContain("owner");
+  });
+
+  it("offers only Sales associate in the picker for now", () => {
+    expect(assignableRoleOptions()).toEqual([{ value: "sales", label: "Sales associate" }]);
   });
 });

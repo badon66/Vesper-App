@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { settingsRowToFormDefaults } from "@/lib/settings/schema";
 import { createClient } from "@/lib/supabase/server";
+import { ChangePasswordForm } from "./change-password-form";
 import { SettingsForm } from "./settings-form";
 
 export const metadata: Metadata = {
@@ -28,6 +29,7 @@ export default async function SettingsPage() {
         </p>
       </div>
       <SettingsForm defaults={settingsRowToFormDefaults(settings)} />
+      <ChangePasswordForm />
     </div>
   );
 }
