@@ -2,7 +2,7 @@
 
 One milestone per build session. A milestone is done only when every criterion passes and the owner has tried it on the real device. Keep the current milestone marked.
 
-**Current milestone: M1**
+**Current milestone: M2**
 
 ## M0: Foundation
 Repo, Next.js App Router with TypeScript, Tailwind, shadcn/ui, Supabase client and server helpers, environment setup, PWA manifest and icons, base layout with the brand, light and dark themes, a protected `/app` route group with a working email and password login (accounts are created by the owner in the Supabase dashboard until M1), Vercel preview deploy.
@@ -27,7 +27,7 @@ Supabase Auth (email plus password, no public sign-up), `profiles` with the trig
 ## M2: Leads and knock sessions (phone)
 New lead, my leads, lead detail, notes, status changes, photos, knock session counters.
 - [ ] New lead on a phone in under 30 seconds: address autocomplete fills address, neighbourhood and lat/lng; photo from camera uploads and shows; save returns to my leads
-- [ ] Phone numbers normalize to E.164 and show formatted
+- [ ] Phone numbers normalize to E.164, treating a number typed without a country code as Canadian (+1), and show formatted
 - [ ] My leads groups the setter's own leads by status, newest first, with a search box and an "everyone" switch that shows all leads read only
 - [ ] Every status change and note writes a `lead_events` row visible in the lead timeline with who and when
 - [ ] A setter can open another setter's lead read only; the RLS test proves an update is rejected

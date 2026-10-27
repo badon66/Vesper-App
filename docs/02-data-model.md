@@ -70,7 +70,7 @@ status lead_status not null default 'new'
 source lead_source not null default 'door'
 first_name text not null
 last_name text
-phone text                                      -- E.164 normalized, required before booking
+phone text                                      -- E.164 normalized, Canada (+1) when no country code is typed, required before booking
 email text
 address_line text not null
 city text not null default 'Calgary'
