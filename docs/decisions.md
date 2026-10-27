@@ -105,3 +105,11 @@ Judgment calls and spec changes, newest at the bottom. Each entry says what chan
 **Canada is the default country for phone numbers (Keenan).** A lead's phone typed without a country code is treated as Canadian and saved as +1 in E.164. A number typed with + and a country code is kept as typed. Applies from M2, where phone capture is built.
 
 **M1 follow-ups merged, M2 current.** `m1-followups` was merged into main on Keenan's "push the changes". Four M1 criteria that need the owner screens stay unticked until Keenan confirms them. M2 is the current milestone and has not been started.
+
+**No separate test Supabase project for now (Keenan).** The RLS suite and live walk-throughs keep running against the production project. They create and delete only test-prefixed accounts, plus the leads, photos and knock sessions those accounts make, all removed in the same run. Real accounts and real data are never touched. The test project stays in the backlog, to revisit before setters log real leads.
+
+**Google Maps key (Keenan).** `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is set in Vercel for Production and Preview and in the cloud environment, restricted to the production site and localhost on ports 3000 and 3300. Preview sites therefore get no address autocomplete, which is accepted; a typed address must still save there, without a map position. A new M2 criterion records this. Environment changes reach only new sessions, so the session that planned M2 could not see the key.
+
+**Logo files come later (Keenan).** They do not block M2.
+
+**M2 session prompt corrected.** It still said the RLS test proves a setter cannot see another setter's lead, which predates the team-visibility change of 2026-10-25. It now says the test proves a setter can read another setter's lead but cannot change it.

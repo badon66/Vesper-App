@@ -27,6 +27,7 @@ Supabase Auth (email plus password, no public sign-up), `profiles` with the trig
 ## M2: Leads and knock sessions (phone)
 New lead, my leads, lead detail, notes, status changes, photos, knock session counters.
 - [ ] New lead on a phone in under 30 seconds: address autocomplete fills address, neighbourhood and lat/lng; photo from camera uploads and shows; save returns to my leads
+- [ ] A typed address saves without autocomplete, for example on preview sites or without signal; that lead has no map position until its address is picked from the suggestions
 - [ ] Phone numbers normalize to E.164, treating a number typed without a country code as Canadian (+1), and show formatted
 - [ ] My leads groups the setter's own leads by status, newest first, with a search box and an "everyone" switch that shows all leads read only
 - [ ] Every status change and note writes a `lead_events` row visible in the lead timeline with who and when
