@@ -125,3 +125,25 @@ Judgment calls and spec changes, newest at the bottom. Each entry says what chan
 - Duplicate address warning: when a picked address already has a lead, the form shows who has it and links to it. Matching is by Google place id; typed addresses are not matched.
 
 **Walk-through test leads are named "TEST LEAD (automated)" (Keenan).** A real setter who sees one in Everyone during a run knows to ignore it. They are deleted at the end of the same run.
+
+## 2026-10-28, M2 build
+
+**Photos are shrunk on the phone before upload.** Longest edge 1600 px, JPEG at 82 percent quality, which also drops the camera's metadata, including GPS location. Up to six per form. Files go in the private `lead-photos` bucket under the uploader's own folder, images only, 10 MB cap. Pages show them through links that expire after an hour, and only the owner can delete files. A failed upload offers a retry.
+
+**Knock counters save in the background.** A tap shows at once and is sent in order in small batches; a failed send retries every two seconds, and the card says "Saving" until every tap is stored. The database adds each batch atomically, caps a batch at 100 either way and never goes below zero. One open session per setter. A session left open on an earlier day is closed at its last tap the next time that setter opens the app, using Calgary's midnight.
+
+**Neighbourhood on a new lead.** It is prefilled from the open knock session. A picked Google address replaces it only if the setter has not typed their own. Editing a lead keeps the stored one.
+
+**Leads list.** It shows the newest 200 and says so when it reaches that. Search covers first and last name, address, neighbourhood and, from three digits, the phone. Characters other than letters, digits, spaces, apostrophes, #, / and - are dropped from a search, because some of them have special meaning to the database filter.
+
+**The timeline records edits by field name only.** An edit writes which fields changed, for example "Changed the address, map position and postal code.", never the old or new values, so the timeline can never carry anything a setter should not read.
+
+**Forms that must keep what was typed after an error submit directly.** React 19 empties a form's fields after a form action returns, even with an error. The new lead, edit lead, status and note forms therefore call their server actions directly. The sign-in form has the same problem, confirmed by a probe: after a wrong password both fields are empty. Fixing it touches auth, so it is in the backlog under Known issues and waits for Keenan.
+
+**Settings copy corrected.** The GST card said "While off, quotes say GST not applicable", which contradicts the rule that nothing mentions GST while it is off. It now says "While off, prices show with no mention of GST."
+
+**Roadmap header follows the new workflow.** It still said a milestone is done when the owner has tried it on the real device. It now says a milestone is done when every criterion passes in the full automated suite, including the live walk-through on a phone-sized screen, and anything the suite cannot reach is named in the report.
+
+**What the automated suite cannot reach in M2.** The walk-through runs Chromium at iPhone 14 size; Safari is not installed in the test environment, so the iPhone's own camera sheet and the home screen app are not exercised. The photo goes through the same file input the camera fills. Human speed is not measured: the scripted new lead, with a photo upload, took about 4 seconds end to end. Daylight readability is covered by the contrast test (WCAG AA for every text pair in both themes, AAA for body text), not by eye.
+
+**M2 complete, M3 current.** All ten M2 criteria passed in the full suite. M2 is merged into main and M3 is marked current. M3 has not been started.
