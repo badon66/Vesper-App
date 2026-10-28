@@ -2,7 +2,7 @@
 
 One milestone per build session. A milestone is done when every criterion passes in the full automated suite, including the live walk-through on a phone-sized screen against the real database. Anything the suite cannot reach is named in the report. Keep the current milestone marked.
 
-**Current milestone: M2.5** (M3 next, not started)
+**Current milestone: M3** (not started)
 
 ## M0: Foundation
 Repo, Next.js App Router with TypeScript, Tailwind, shadcn/ui, Supabase client and server helpers, environment setup, PWA manifest and icons, base layout with the brand, light and dark themes, a protected `/app` route group with a working email and password login (accounts are created by the owner in the Supabase dashboard until M1), Vercel preview deploy.
@@ -49,7 +49,9 @@ Asked for by Keenan on 2026-10-28, between M2 and M3.
 - [x] Choosing Follow up asks when (Tomorrow, In 3 days, Next week, or a date); the RLS test proves the database refuses a follow-up without a date and clears the date when the lead leaves Follow up
 - [x] Leads opens to Active in attention order, with an All switch, search across every status, and Mine and Everyone
 - [x] View as: owner only and checked on the server on every request, strictly read only with the server refusing every write, a gold bar with Exit, and only what that role can see; a test compares View as with what a real test setter sees on every setter screen
-- [ ] Functions run in pdx1 next to the database; every tab has a loading screen and prefetched links; tab-switch time is measured on production before and after
+- [x] Functions run in pdx1 next to the database; every tab has a loading screen and prefetched links; tab-switch time is measured on production before and after
+
+All nine proved on 2026-10-28 by the unit, RLS and live suites, the live ones also run against production, with View as compared screen by screen through the approved one-time owner session. Tab-switch numbers are in `decisions.md`.
 
 ## M3: Scheduling and booking pay (phone)
 Open slots from the template, time blocks, booking, distance warning, tonight's meetings, outcomes, qualified bookings, the `earnings` table, booking pay, the Schedule and My pay tabs, and Pay in Admin.

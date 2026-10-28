@@ -71,10 +71,22 @@ async function switchTo(path) {
       { timeout: 30000, polling: "raf" },
     )
     .then(() => Date.now() - started);
+  // Checked on every animation frame from the tap, like the response, so the
+  // moment the content shows is caught to the frame. (Playwright's own waits
+  // check less and less often, which hides anything after the first switch.)
+  const content = page
+    .waitForFunction(
+      (selector) =>
+        [...document.querySelectorAll(selector)].some((element) => {
+          const box = element.getBoundingClientRect();
+          return box.width > 0 && box.height > 0;
+        }),
+      target.ready,
+      { timeout: 30000, polling: "raf" },
+    )
+    .then(() => Date.now() - started);
   await link.click();
-  const responseMs = await response;
-  await page.locator(target.ready).first().waitFor({ state: "visible", timeout: 30000 });
-  const contentMs = Date.now() - started;
+  const [responseMs, contentMs] = await Promise.all([response, content]);
   await page.waitForLoadState("networkidle").catch(() => {});
   page.off("request", onRequest);
   const serverMs = await page.evaluate((urls) => {
@@ -117,7 +129,7 @@ try {
   await page.fill("#password", person.password);
   await page.click("button[type=submit]");
   await page.waitForURL("**/app", { timeout: 30000 });
-  await page.locator(screens["/app"].ready).waitFor({ timeout: 30000 });
+  await page.locator(screens["/app"].ready).first().waitFor({ state: "visible", timeout: 30000 });
 
   // Warm up: every screen once, so cold starts do not count.
   await switchTo("/app/leads");
@@ -129,7 +141,7 @@ try {
     if (i % 2 === 0) {
       record("Home to New lead", await switchTo("/app/leads/new"));
       await page.goto(`${base}/app`);
-      await page.locator(screens["/app"].ready).waitFor({ timeout: 30000 });
+      await page.locator(screens["/app"].ready).first().waitFor({ state: "visible", timeout: 30000 });
       await page.waitForLoadState("networkidle").catch(() => {});
     }
   }
