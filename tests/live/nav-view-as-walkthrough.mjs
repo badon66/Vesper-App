@@ -54,8 +54,13 @@ const formatDay = (day) => shortDay.format(new Date(`${day}T12:00:00Z`));
 const visibleTabs = (page) =>
   page.locator('nav[aria-label="Tabs"]:visible').getByRole("link").evaluateAll((links) => links.map((link) => link.textContent.trim()));
 
+// A tap shows the tab's loading screen at once and the content streams in
+// after it. Playwright's network-idle state belongs to the page load, not to
+// moves between tabs, so every check after a move also waits for something
+// on the new screen itself.
 async function settle(page) {
   await page.waitForLoadState("networkidle").catch(() => {});
+  await page.waitForTimeout(150);
   await page.locator("[data-loading-screen]").first().waitFor({ state: "detached", timeout: 20000 }).catch(() => {});
 }
 
@@ -231,6 +236,7 @@ try {
   await page.locator('nav[aria-label="Tabs"]:visible').getByRole("link", { name: "Leads", exact: true }).click();
   await page.waitForURL("**/app/leads", { timeout: 20000 });
   await settle(page);
+  await page.locator("main section").first().waitFor({ timeout: 20000 });
   const sectionOrder = await page.locator("main section").evaluateAll((sections) =>
     sections.map((section) => [section.querySelector("h2").textContent.trim(), [...section.querySelectorAll("a")].map((link) => link.getAttribute("href"))]),
   );
@@ -246,6 +252,7 @@ try {
   await page.getByRole("navigation", { name: "Which leads" }).getByRole("link", { name: "All" }).click();
   await page.waitForURL(/view=all/, { timeout: 20000 });
   await settle(page);
+  await page.getByRole("heading", { name: "Lost (1)" }).waitFor({ timeout: 20000 }).catch(() => {});
   check("All shows lost leads too", (await page.getByRole("heading", { name: "Lost (1)" }).count()) === 1);
   await page.goto(`${base}/app/leads?scope=mine&view=active&q=${encodeURIComponent("6 Attention")}`);
   await settle(page);

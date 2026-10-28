@@ -214,3 +214,23 @@ No password is used or changed. The account shows a sign-in for each run.
 Nothing on screen changed until the new screen arrived.
 
 **Forms keep what was typed.** Sign-in, Settings, Add a Vesper member and Start knocking now submit through their own handler instead of React's form action, which empties the form even after an error. Sign-in then clears only the password after a failure.
+
+**Function region confirmed.** After the deploy, production responses carry `x-vercel-id: iad1::pdx1::...`: the request enters Vercel near the caller and the function runs in Portland. `regions` in `vercel.json` was enough, and nothing needs changing in the Vercel dashboard.
+
+**Tab-switch time after the change.** Same script, same machine near Washington, D.C., same throwaway setter on an iPhone 14-sized screen, 25 switches.
+
+| What | Before (median / slowest) | After (median / slowest) |
+|---|---|---|
+| Tap to the first visible change | 936 ms / 1,646 ms | 65 ms / 95 ms |
+| Tap to the new screen's content | 943 ms / 1,656 ms | 411 ms / 898 ms |
+| Server sending the screen | 885 ms / 1,457 ms | 344 ms / 841 ms |
+| Leads to Home, the slowest switch before | 1,065 ms | 385 ms |
+
+- **Content is now timed every animation frame from the tap.** Playwright's own waits check less and less often, and once the loading screen appears first they noticed the content hundreds of milliseconds late. Before the change, content arrived with the address change, so that number was already exact.
+- **Keenan in Calgary should see better numbers than these.** The measuring machine is near Washington, D.C., so each request now crosses the continent once to reach Portland. From Calgary both the function and the database are close.
+
+**Testing note.** A tap now changes the address before the content arrives, and while a page streams in it can briefly hold a hidden second copy of its content. The walk-throughs and the timing script therefore wait for the new screen's own visible content before checking anything.
+
+**Real use has begun.** Production now holds one knock session of Keenan's (ended, no taps) and no real leads. The walk-throughs only read it, and the View as run checks that nothing of the owner's changed. The backlog's separate test database should be set up before setters log real leads.
+
+**M2.5 complete, M3 current.** All nine M2.5 criteria pass. M3 has not been started.

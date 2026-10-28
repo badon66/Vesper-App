@@ -78,6 +78,7 @@ async function checkTapTargets(page, screen) {
 // finish loading first.
 async function settle(page) {
   await page.waitForLoadState("networkidle").catch(() => {});
+  await page.waitForTimeout(150);
   await page.locator("[data-loading-screen]").first().waitFor({ state: "detached", timeout: 20000 }).catch(() => {});
 }
 
