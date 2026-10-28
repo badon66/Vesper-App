@@ -113,12 +113,12 @@ describe("settings", () => {
     expect(data).toEqual([]);
   });
 
-  it("a sales user reads the slot template through settings_public, nothing more", async () => {
+  it("a sales user reads the slot template and lost reasons through settings_public, nothing more", async () => {
     const { data, error } = await users.a.client.from("settings_public").select("*");
     expect(error).toBeNull();
     expect(data).toHaveLength(1);
     expect(Object.keys(data![0]).sort()).toEqual(
-      ["distance_warning_km", "meeting_days", "meeting_slot_count", "meeting_slot_minutes", "meeting_start"],
+      ["distance_warning_km", "lost_reasons", "meeting_days", "meeting_slot_count", "meeting_slot_minutes", "meeting_start"],
     );
   });
 
