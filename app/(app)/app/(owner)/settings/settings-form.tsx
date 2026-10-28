@@ -104,8 +104,8 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
         <CardHeader>
           <CardTitle>GST</CardTitle>
           <CardDescription>
-            Off until the company is registered. While off, quotes say GST not
-            applicable.
+            Off until the company is registered. While off, prices show with no
+            mention of GST.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5 sm:grid-cols-2">
