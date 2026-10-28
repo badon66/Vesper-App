@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import {
   NotAllowedError,
+  ReadOnlyError,
   requireSalesSideForAction,
   type SessionProfile,
 } from "@/lib/auth/profile";
@@ -15,10 +16,12 @@ import {
   parseLeadForm,
   type LeadFormErrors,
 } from "@/lib/leads/schema";
+import { followUpDateFor } from "@/lib/leads/attention";
 import { canChangeStatus, leadName, STATUS_LABELS } from "@/lib/leads/status";
 import { isOwnPhotoPath, MAX_PHOTOS_PER_FORM } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/server";
-import { formatDate } from "@/lib/time";
+import { calgaryToday, formatDate } from "@/lib/time";
+import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 import { Constants } from "@/types/database";
 
 export type LeadFormState = { error?: string; errors?: LeadFormErrors };
@@ -34,11 +37,13 @@ export type DuplicateLead = {
 const NOT_YOURS = "You can only change your own leads.";
 const NOT_FOR_ROLE = "Not for your role.";
 
-async function salesSide(): Promise<SessionProfile | null> {
+// Who is acting, or the message to show instead.
+async function salesSide(): Promise<SessionProfile | string> {
   try {
     return await requireSalesSideForAction();
   } catch (e) {
-    if (e instanceof NotAllowedError) return null;
+    if (e instanceof ReadOnlyError) return VIEW_AS_READ_ONLY;
+    if (e instanceof NotAllowedError) return NOT_FOR_ROLE;
     throw e;
   }
 }
@@ -50,7 +55,7 @@ export async function createLead(
   formData: FormData,
 ): Promise<LeadFormState> {
   const me = await salesSide();
-  if (!me) return { error: NOT_FOR_ROLE };
+  if (typeof me === "string") return { error: me };
 
   const parsed = parseLeadForm(leadFormDataToInput(formData));
   if (!parsed.ok) return { error: "Some fields need a look.", errors: parsed.errors };
@@ -94,7 +99,7 @@ export async function updateLead(
   formData: FormData,
 ): Promise<LeadFormState> {
   const me = await salesSide();
-  if (!me) return { error: NOT_FOR_ROLE };
+  if (typeof me === "string") return { error: me };
   const id = z.uuid().safeParse(formData.get("id"));
   if (!id.success) return { error: "That lead was not found." };
 
@@ -121,18 +126,30 @@ const statusSchema = z.object({
   id: z.uuid(),
   status: z.enum(Constants.public.Enums.lead_status),
   lost_reason: z.string().trim().max(200).optional(),
+  follow_up: z.string().max(20).optional(),
+  follow_up_date: z.string().max(20).optional(),
 });
+
+// Error codes from the leads guard and its checks, in plain words.
+function statusSaveError(code: string | undefined): string {
+  if (code === "42501") return "That status isn't yours to set.";
+  if (code === "22023") return "Pick today or a later day.";
+  if (code === "23514") return "Pick when to follow up.";
+  return "The status could not be saved. Try again.";
+}
 
 export async function changeLeadStatus(
   _previous: SimpleState,
   formData: FormData,
 ): Promise<SimpleState> {
   const me = await salesSide();
-  if (!me) return { error: NOT_FOR_ROLE };
+  if (typeof me === "string") return { error: me };
   const parsed = statusSchema.safeParse({
     id: formData.get("id"),
     status: formData.get("status"),
     lost_reason: formData.get("lost_reason") ?? undefined,
+    follow_up: formData.get("follow_up") ?? undefined,
+    follow_up_date: formData.get("follow_up_date") ?? undefined,
   });
   if (!parsed.success) return { error: "Pick a status." };
   const { id, status } = parsed.data;
@@ -140,13 +157,39 @@ export async function changeLeadStatus(
   const supabase = await createClient();
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, status, created_by, assigned_to")
+    .select("id, status, created_by, assigned_to, follow_up_on")
     .eq("id", id)
     .maybeSingle();
   if (!lead) return { error: "That lead was not found." };
   const mine = me.role === "owner" || lead.created_by === me.id || lead.assigned_to === me.id;
   if (!mine) return { error: NOT_YOURS };
-  if (lead.status === status) return { ok: true };
+
+  // Follow up needs a day to come back, worked out here in Calgary time.
+  let followUpOn: string | null = null;
+  if (status === "follow_up") {
+    if (parsed.data.follow_up === "keep" && lead.status === "follow_up" && lead.follow_up_on) {
+      followUpOn = lead.follow_up_on;
+    } else {
+      const day = followUpDateFor(parsed.data.follow_up ?? "", parsed.data.follow_up_date ?? null, calgaryToday());
+      if (!day.ok) return { error: day.error };
+      followUpOn = day.date;
+    }
+  }
+
+  if (lead.status === status) {
+    if (status !== "follow_up" || followUpOn === lead.follow_up_on) return { ok: true };
+    // Moving the follow-up day on a lead that stays in Follow up.
+    const { data, error } = await supabase
+      .from("leads")
+      .update({ follow_up_on: followUpOn })
+      .eq("id", id)
+      .select("id");
+    if (error) return { error: statusSaveError(error.code) };
+    if (!data || data.length === 0) return { error: NOT_YOURS };
+    revalidatePath("/app/leads");
+    revalidatePath(`/app/leads/${id}`);
+    return { ok: true };
+  }
   if (!canChangeStatus(me.role, lead.status, status)) {
     return {
       error: "That status isn't yours to set. Booking sets Meeting booked, and Keenan sets the rest.",
@@ -163,17 +206,10 @@ export async function changeLeadStatus(
 
   const { data, error } = await supabase
     .from("leads")
-    .update({ status, lost_reason: lostReason })
+    .update({ status, lost_reason: lostReason, follow_up_on: followUpOn })
     .eq("id", id)
     .select("id");
-  if (error) {
-    return {
-      error:
-        error.code === "42501"
-          ? "That status isn't yours to set."
-          : "The status could not be saved. Try again.",
-    };
-  }
+  if (error) return { error: statusSaveError(error.code) };
   if (!data || data.length === 0) return { error: NOT_YOURS };
 
   revalidatePath("/app/leads");
@@ -195,7 +231,7 @@ export async function addLeadNote(
   formData: FormData,
 ): Promise<SimpleState> {
   const me = await salesSide();
-  if (!me) return { error: NOT_FOR_ROLE };
+  if (typeof me === "string") return { error: me };
   const parsed = noteSchema.safeParse({ id: formData.get("id"), text: formData.get("text") ?? "" });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Write the note first." };
 
@@ -215,7 +251,7 @@ export async function attachLeadPhotos(
   paths: string[],
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const me = await salesSide();
-  if (!me) return { ok: false, error: NOT_FOR_ROLE };
+  if (typeof me === "string") return { ok: false, error: me };
   const id = z.uuid().safeParse(leadId);
   if (!id.success) return { ok: false, error: "That lead was not found." };
   if (
@@ -247,7 +283,7 @@ export async function findLeadsAtPlace(
   excludeLeadId: string | null,
 ): Promise<DuplicateLead[]> {
   const me = await salesSide();
-  if (!me) return [];
+  if (typeof me === "string") return [];
   const place = z.string().trim().min(1).max(300).safeParse(placeId);
   if (!place.success) return [];
 

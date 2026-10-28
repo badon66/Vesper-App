@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { submitKeepingValues } from "@/lib/forms/submit";
 import {
   DAY_OPTIONS,
   type SettingsFormDefaults,
@@ -75,7 +76,7 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
   const errors = state.errors;
 
   return (
-    <form action={formAction} className="flex flex-col gap-6" noValidate>
+    <form onSubmit={submitKeepingValues(formAction)} className="flex flex-col gap-6" noValidate>
       <Card>
         <CardHeader>
           <CardTitle>Pricing</CardTitle>

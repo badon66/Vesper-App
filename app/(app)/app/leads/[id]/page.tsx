@@ -25,7 +25,8 @@ import { formatPhone } from "@/lib/phone";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { mapsLink } from "@/lib/places";
 import { createClient } from "@/lib/supabase/server";
-import { formatDate, formatDateTime } from "@/lib/time";
+import { followUpLabel } from "@/lib/leads/attention";
+import { calgaryToday, formatDate, formatDateTime, formatLongDay } from "@/lib/time";
 
 export const metadata: Metadata = {
   title: "Lead",
@@ -76,6 +77,8 @@ export default async function LeadPage({
   const owner = names.get(lead.created_by) ?? "someone";
   const choices = canEdit ? statusChoices(me.role, lead.status) : [];
   const session = sessionResult.data;
+  const today = calgaryToday();
+  const followUp = lead.status === "follow_up" && lead.follow_up_on ? lead.follow_up_on : null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -95,6 +98,11 @@ export default async function LeadPage({
           Added by {owner} on {formatDate(lead.created_at)}
           {session ? `, while knocking in ${session.neighbourhood}` : ""}.
         </p>
+        {followUp ? (
+          <p className="text-sm font-semibold">
+            Follow up on {formatLongDay(followUp)}. {followUpLabel(followUp, today)}.
+          </p>
+        ) : null}
         {!canEdit ? (
           <p role="status" className="rounded-md bg-muted px-3 py-2 text-sm">
             Read only. This is {owner}&apos;s lead.
@@ -212,11 +220,13 @@ export default async function LeadPage({
           <CardContent>
             {choices.length > 0 ? (
               <StatusControl
-                key={lead.status}
+                key={`${lead.status}-${lead.follow_up_on ?? ""}`}
                 leadId={lead.id}
                 current={lead.status}
                 choices={choices}
                 lostReasons={reasons}
+                followUpOn={lead.follow_up_on}
+                today={today}
               />
             ) : (
               <p className="text-sm text-muted-foreground">

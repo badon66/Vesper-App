@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { submitKeepingValues } from "@/lib/forms/submit";
 import { formatTime } from "@/lib/time";
 
 export type KnockSessionView = {
@@ -58,7 +59,7 @@ function StartSession({ lastNeighbourhood }: { lastNeighbourhood: string | null 
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form action={formAction} className="flex flex-col gap-3">
+        <form onSubmit={submitKeepingValues(formAction)} className="flex flex-col gap-3">
           <Label htmlFor="knock-neighbourhood">Neighbourhood</Label>
           <Input
             id="knock-neighbourhood"

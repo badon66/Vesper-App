@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { submitKeepingValues } from "@/lib/forms/submit";
 import { createPerson, type CreatePersonState } from "./actions";
 import { PasswordBox } from "./password-box";
 
@@ -52,7 +53,7 @@ export function AddMember({ roles }: { roles: RoleOption[] }) {
         ) : null}
 
         <form
-          action={formAction}
+          onSubmit={submitKeepingValues(formAction)}
           className="grid gap-5 sm:grid-cols-2"
           noValidate
           key={state.created?.email ?? "new"}

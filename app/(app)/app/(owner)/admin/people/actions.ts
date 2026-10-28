@@ -1,12 +1,20 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { z } from "zod";
-import { NotOwnerError, requireOwnerForAction } from "@/lib/auth/profile";
+import { NotOwnerError, ReadOnlyError, requireOwnerForAction } from "@/lib/auth/profile";
 import { generatePassword } from "@/lib/people/password";
 import { ASSIGNABLE_ROLES } from "@/lib/roles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import {
+  VIEW_AS_COOKIE,
+  VIEW_AS_READ_ONLY,
+  viewAsCookieOptions,
+  viewAsCookieValue,
+} from "@/lib/view-as";
 
 export type CreatePersonState = {
   error?: string;
@@ -23,6 +31,10 @@ export type SetActiveState = {
   error?: string;
 };
 
+export type ViewAsState = {
+  error?: string;
+};
+
 const createSchema = z.object({
   full_name: z.string().trim().min(1, { error: "Enter their name." }).max(80),
   email: z.email({ error: "Enter a valid email address." }),
@@ -33,11 +45,13 @@ const createSchema = z.object({
 // A long ban is how Supabase Auth refuses sign-in for a deactivated account.
 const BAN_FOREVER = "876600h";
 
+// The owner, or the message to show instead.
 async function owner() {
   try {
     return await requireOwnerForAction();
   } catch (e) {
-    if (e instanceof NotOwnerError) return null;
+    if (e instanceof ReadOnlyError) return VIEW_AS_READ_ONLY;
+    if (e instanceof NotOwnerError) return "Not for your role.";
     throw e;
   }
 }
@@ -64,7 +78,8 @@ export async function createPerson(
   _previous: CreatePersonState,
   formData: FormData,
 ): Promise<CreatePersonState> {
-  if (!(await owner())) return { error: "Not for your role." };
+  const me = await owner();
+  if (typeof me === "string") return { error: me };
 
   const parsed = createSchema.safeParse({
     full_name: formData.get("full_name"),
@@ -100,7 +115,7 @@ export async function createPerson(
     return { error: "The login could not be created. Try again." };
   }
 
-  revalidatePath("/app/people");
+  revalidatePath("/app/admin/people");
   return {
     created: {
       fullName: parsed.data.full_name,
@@ -119,7 +134,7 @@ export async function resetPassword(
   formData: FormData,
 ): Promise<ResetPasswordState> {
   const me = await owner();
-  if (!me) return { error: "Not for your role." };
+  if (typeof me === "string") return { error: me };
 
   const parsed = idSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return { error: "That request did not make sense." };
@@ -143,7 +158,7 @@ export async function resetPassword(
     };
   }
 
-  revalidatePath("/app/people");
+  revalidatePath("/app/admin/people");
   return {
     reset: {
       id: target.person.id,
@@ -165,7 +180,7 @@ export async function setPersonActive(
   formData: FormData,
 ): Promise<SetActiveState> {
   const me = await owner();
-  if (!me) return { error: "Not for your role." };
+  if (typeof me === "string") return { error: me };
 
   const parsed = setActiveSchema.safeParse({
     id: formData.get("id"),
@@ -202,6 +217,30 @@ export async function setPersonActive(
     await admin.rpc("end_user_sessions", { target_user: id });
   }
 
-  revalidatePath("/app/people");
+  revalidatePath("/app/admin/people");
   return {};
+}
+
+// Opens the app exactly as an active member sees it, read only. Owner only.
+// It sets a cookie naming the owner and the member; the server honours it on
+// every request only for this owner's own session and only while the member
+// is active and not the owner (lib/auth/profile.ts). No session or password
+// of the member is used.
+export async function startViewAs(
+  _previous: ViewAsState,
+  formData: FormData,
+): Promise<ViewAsState> {
+  const me = await owner();
+  if (typeof me === "string") return { error: me };
+
+  const parsed = idSchema.safeParse({ id: formData.get("id") });
+  if (!parsed.success) return { error: "That request did not make sense." };
+  const target = await targetPerson(parsed.data.id, me.id);
+  if ("error" in target) return { error: target.error };
+  if (!target.person.active) {
+    return { error: "Deactivated people cannot sign in, so there is nothing to view." };
+  }
+
+  (await cookies()).set(VIEW_AS_COOKIE, viewAsCookieValue(me.id, target.person.id), viewAsCookieOptions);
+  redirect("/app");
 }

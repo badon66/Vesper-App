@@ -4,21 +4,25 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
   NotAllowedError,
+  ReadOnlyError,
   requireSalesSideForAction,
   type SessionProfile,
 } from "@/lib/auth/profile";
 import { createClient } from "@/lib/supabase/server";
+import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 
 export type KnockState = { ok?: boolean; error?: string };
 export type KnockBumpResult =
   | { ok: true; doors: number; conversations: number }
   | { ok: false; error: string; fatal: boolean };
 
-async function salesSide(): Promise<SessionProfile | null> {
+// Who is acting, or the message to show instead.
+async function salesSide(): Promise<SessionProfile | string> {
   try {
     return await requireSalesSideForAction();
   } catch (e) {
-    if (e instanceof NotAllowedError) return null;
+    if (e instanceof ReadOnlyError) return VIEW_AS_READ_ONLY;
+    if (e instanceof NotAllowedError) return "Not for your role.";
     throw e;
   }
 }
@@ -34,7 +38,7 @@ export async function startKnockSession(
   formData: FormData,
 ): Promise<KnockState> {
   const me = await salesSide();
-  if (!me) return { error: "Not for your role." };
+  if (typeof me === "string") return { error: me };
   const parsed = neighbourhoodSchema.safeParse(formData.get("neighbourhood") ?? "");
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Enter the neighbourhood." };
 
@@ -69,7 +73,7 @@ export async function bumpKnockSession(
   conversations: number,
 ): Promise<KnockBumpResult> {
   const me = await salesSide();
-  if (!me) return { ok: false, error: "Not for your role.", fatal: true };
+  if (typeof me === "string") return { ok: false, error: me, fatal: true };
   const parsed = bumpSchema.safeParse({ session: sessionId, doors, conversations });
   if (!parsed.success) return { ok: false, error: "That tap could not be counted.", fatal: true };
 
@@ -92,7 +96,7 @@ export async function endKnockSession(
   formData: FormData,
 ): Promise<KnockState> {
   const me = await salesSide();
-  if (!me) return { error: "Not for your role." };
+  if (typeof me === "string") return { error: me };
   const id = z.uuid().safeParse(formData.get("id"));
   if (!id.success) return { error: "That session was not found." };
 

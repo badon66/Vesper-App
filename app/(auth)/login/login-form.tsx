@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { submitKeepingValues } from "@/lib/forms/submit";
 import { signIn, type LoginState } from "./actions";
 
 const initialState: LoginState = {};
@@ -12,7 +13,7 @@ export function LoginForm({ next }: { next?: string }) {
   const [state, formAction, pending] = useActionState(signIn, initialState);
 
   return (
-    <form action={formAction} className="flex flex-col gap-5" noValidate>
+    <form onSubmit={submitKeepingValues(formAction)} className="flex flex-col gap-5" noValidate>
       {next ? <input type="hidden" name="next" value={next} /> : null}
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">Email</Label>
@@ -31,7 +32,9 @@ export function LoginForm({ next }: { next?: string }) {
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="password">Password</Label>
+        {/* A new key after each failed attempt empties this field, and only this one. */}
         <Input
+          key={`password-${state.attempt ?? 0}`}
           id="password"
           name="password"
           type="password"

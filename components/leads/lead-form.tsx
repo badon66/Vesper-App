@@ -261,7 +261,7 @@ export function LeadForm({
         error={errors.source}
       />
 
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:left-20">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-2">
           {state.error ? (
             <p role="alert" className="text-sm font-medium text-destructive">
