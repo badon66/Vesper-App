@@ -59,8 +59,10 @@ try {
   await signIn(page, firstPassword);
   await page.waitForURL("**/app", { timeout: 20000 });
   check("b. generated password lands on /app with no set-password step", page.url().endsWith("/app"), page.url());
-  const old = await page.request.get(`${base}/set-password`);
-  check("b. /set-password no longer exists", old.status() === 404, String(old.status()));
+  // Fetched from inside the page, so it uses the browser's network path and
+  // works against a deployed site as well as a local server.
+  const oldStatus = await page.evaluate(async (url) => (await fetch(url)).status, `${base}/set-password`);
+  check("b. /set-password no longer exists", oldStatus === 404, String(oldStatus));
 
   // c. dark by default, sales home, no owner tabs
   await page.getByRole("heading", { name: /Hello, Live/ }).waitFor({ timeout: 15000 });
