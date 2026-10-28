@@ -6,10 +6,10 @@ import { cn } from "@/lib/utils";
 
 export type NavItem = { href: string; label: string };
 
-export function AppNav({ items }: { items: NavItem[] }) {
+export function AppNav({ items, className }: { items: NavItem[]; className?: string }) {
   const pathname = usePathname();
   return (
-    <nav aria-label="Main" className="border-b bg-background">
+    <nav aria-label="Main" className={cn("border-b bg-background", className)}>
       <ul className="mx-auto flex w-full max-w-5xl gap-1 overflow-x-auto px-2">
         {items.map((item) => {
           const current =

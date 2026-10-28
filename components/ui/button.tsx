@@ -21,7 +21,8 @@ const buttonVariants = cva(
       },
       size: {
         default: "h-11 px-5",
-        sm: "h-9 px-3 text-sm",
+        // Still 44 px tall: every button is a thumb target.
+        sm: "h-11 px-3 text-sm",
         lg: "h-12 px-6",
         icon: "size-11",
       },

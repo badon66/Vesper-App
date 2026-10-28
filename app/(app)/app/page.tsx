@@ -1,5 +1,8 @@
+import { Plus } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { KnockCard } from "@/components/knock/knock-card";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -7,8 +10,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { requireProfile } from "@/lib/auth/profile";
+import { isSalesSide, requireProfile } from "@/lib/auth/profile";
+import { lastNeighbourhood, openKnockSession } from "@/lib/leads/queries";
 import { roleLabel } from "@/lib/roles";
+import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
   title: "Home",
@@ -18,7 +23,7 @@ const ownerLinks = [
   {
     href: "/app/people",
     title: "People",
-    text: "Create logins for sales associates, see who is active, deactivate someone.",
+    text: "Add Vesper members, reset a password, deactivate someone.",
   },
   {
     href: "/app/settings",
@@ -35,6 +40,11 @@ const ownerLinks = [
 export default async function HomePage() {
   const profile = await requireProfile();
   const firstName = profile.full_name.split(" ")[0] || profile.full_name;
+  const salesSide = isSalesSide(profile);
+
+  const supabase = await createClient();
+  const session = salesSide ? await openKnockSession(supabase, profile.id) : null;
+  const last = salesSide && !session ? await lastNeighbourhood(supabase, profile.id) : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -44,6 +54,28 @@ export default async function HomePage() {
           {roleLabel(profile.role)}. Signed in as {profile.email}
         </p>
       </div>
+
+      {salesSide ? (
+        <>
+          <Button asChild size="lg" className="h-14 text-lg">
+            <Link href="/app/leads/new">
+              <Plus aria-hidden="true" />
+              New lead
+            </Link>
+          </Button>
+          <KnockCard key={session?.id ?? "none"} session={session} lastNeighbourhood={last} />
+        </>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Nothing here yet</CardTitle>
+            <CardDescription>
+              Crew job sheets and timesheets arrive with the next version of Vesper.
+            </CardDescription>
+          </CardHeader>
+          <CardContent />
+        </Card>
+      )}
 
       {profile.role === "owner" ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -62,23 +94,7 @@ export default async function HomePage() {
             </Link>
           ))}
         </div>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Nothing to do here yet</CardTitle>
-            <CardDescription>
-              Your login works. The tools you will use at the door are next.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm leading-relaxed">
-            <p>
-              Coming in order: lead capture and knock sessions, then booking
-              meetings into Keenan&apos;s evening slots, then your pay. Each
-              one arrives with its own milestone.
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      ) : null}
     </div>
   );
 }
