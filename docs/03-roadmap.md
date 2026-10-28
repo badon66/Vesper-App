@@ -2,7 +2,7 @@
 
 One milestone per build session. A milestone is done when every criterion passes in the full automated suite, including the live walk-through on a phone-sized screen against the real database. Anything the suite cannot reach is named in the report. Keep the current milestone marked.
 
-**Current milestone: M3**
+**Current milestone: M2.5** (M3 next, not started)
 
 ## M0: Foundation
 Repo, Next.js App Router with TypeScript, Tailwind, shadcn/ui, Supabase client and server helpers, environment setup, PWA manifest and icons, base layout with the brand, light and dark themes, a protected `/app` route group with a working email and password login (accounts are created by the owner in the Supabase dashboard until M1), Vercel preview deploy.
@@ -39,21 +39,37 @@ New lead, my leads, lead detail, notes, status changes, photos, knock session co
 
 All ten proved on 2026-10-28 by the RLS suite and the live walk-through (Chromium at iPhone 14 size, real Google suggestions). What automation cannot reach is in `decisions.md` under that date.
 
+## M2.5: Navigation, View as, follow-up dates, speed
+Asked for by Keenan on 2026-10-28, between M2 and M3.
+- [x] A failed sign-in keeps the email and clears only the password; Settings and Add a Vesper member keep everything typed after an error
+- [x] A bottom tab bar on phone and iPad and a slim left rail at 1024 px and wider, with the same items and no top tabs; owner tabs Home, New lead (the prominent centre button), Leads, Admin; setter tabs Home, New lead, Leads; Schedule and My pay stay hidden until M3
+- [x] Admin holds People and Settings; the Dashboard tab is gone, and the old People, Settings and Dashboard links lead to their new places
+- [x] The owner's Home shows today across the team (whose knock session is open, neighbourhood, doors, conversations, leads logged today, with team totals) and today's leads; every number says what it counts and that it covers today
+- [x] The setter's Home shows their knock session and their follow-ups due
+- [x] Choosing Follow up asks when (Tomorrow, In 3 days, Next week, or a date); the RLS test proves the database refuses a follow-up without a date and clears the date when the lead leaves Follow up
+- [x] Leads opens to Active in attention order, with an All switch, search across every status, and Mine and Everyone
+- [x] View as: owner only and checked on the server on every request, strictly read only with the server refusing every write, a gold bar with Exit, and only what that role can see; a test compares View as with what a real test setter sees on every setter screen
+- [ ] Functions run in pdx1 next to the database; every tab has a loading screen and prefetched links; tab-switch time is measured on production before and after
+
 ## M3: Scheduling and booking pay (phone)
-Open slots from the template, time blocks, booking, distance warning, tonight view, outcomes, qualified bookings, the `earnings` table, booking pay, My pay (setter) and Pay (owner).
+Open slots from the template, time blocks, booking, distance warning, tonight's meetings, outcomes, qualified bookings, the `earnings` table, booking pay, the Schedule and My pay tabs, and Pay in Admin.
+- [ ] The Schedule tab appears for the owner and setters, in the tab bar and the side rail: pick a day and see its open and booked slots; booking starts there, from New lead or from the lead page
 - [ ] Open slots for any day come from settings minus meetings minus time blocks, in Calgary time, DST safe
 - [ ] Booking requires phone, geocoded address and the decision makers checkbox; otherwise the button is disabled with the reason shown
 - [ ] Two setters booking the same slot at the same moment: exactly one succeeds, the other sees "that slot was just taken" and the refreshed list
 - [ ] Distance warning appears when the address is more than the configured km from the previous or next meeting, with the distance shown, and booking can still proceed
 - [ ] Booked slots show time, neighbourhood and setter to every sales user
-- [ ] Tonight view lists the owner's meetings in order with address, phone, navigate link, photos and notes; outcomes update lead status (Qualified and Not qualified set `met`, No-show and Cancelled set `follow_up` with a note); a no-show or cancelled lead can be rebooked and the old meeting links to the new one
+- [ ] Tonight's meetings sit at the top of the owner's Home and in Schedule, in order with address, phone, navigate link, photos and notes; outcomes update lead status (Qualified and Not qualified set `met`, No-show and Cancelled set `follow_up` with the next day as the follow-up date and a note); a no-show or cancelled lead can be rebooked and the old meeting links to the new one
+- [ ] Leads Active lists booked meetings after the follow-ups and new leads, soonest meeting first
 - [ ] Owner can add and remove time blocks
 - [ ] After each slot the owner marks the booking Qualified, Not qualified (reason from the settings list, Other with text), No-show or Cancelled (optional note); only Qualified creates a `booking` earning for the setter who booked it, at the current booking pay, and never a second one for the same lead
-- [ ] My pay (setter): owed now, pending install and paid totals with line items, each booking showing its outcome and reason; the RLS test proves a setter cannot read another setter's earnings
-- [ ] Pay (owner): earnings grouped by setter, select owed lines and mark them paid in one batch, stamping `paid_at` and `paid_by`
+- [ ] My pay tab (setter): owed now, pending install and paid totals with line items, each booking showing its outcome and reason; the RLS test proves a setter cannot read another setter's earnings
+- [ ] Pay in Admin (owner): earnings grouped by setter, select owed lines and mark them paid in one batch, stamping `paid_at` and `paid_by`
+- [ ] Every new setter screen (Schedule, booking, My pay) supports View as and is in the View as comparison test
 - [ ] Unit tests cover slot generation, DST, the distance check and booking pay creation
 
 ## M4: Pipeline board and lead detail (iPad and desktop)
+- [ ] The board is a Board view inside Leads for the owner on iPad and desktop; phones keep the list
 - [ ] Board columns match the status enum, cards show name, address, neighbourhood, setter, feet and total when quoted, and age
 - [ ] Drag between columns on iPad and desktop writes a status change event; `lost` prompts for a reason
 - [ ] Lead detail shows contact, map pin, photos, timeline, meetings, quotes and earnings; owner can edit everything, including marking `installed` by hand
@@ -68,14 +84,15 @@ Open slots from the template, time blocks, booking, distance warning, tonight vi
 - [ ] PDF export: breakdown, subtotal, GST as a dollar amount, total and the GST number when GST is on, warranty text, "No payment until your install is complete," company contact, no em dashes anywhere; always white regardless of theme; opens in a share sheet on iPad
 - [ ] Accepting a quote creates one pending `commission` earning for the lead's setter at the current commission rate on the total as actually priced before GST; marking the lead `installed` makes it payable; marking it `lost` voids it; unit tests cover the amount and rounding
 
-## M6: Dashboard (owner, desktop and iPad)
+## M6: Dashboard on the owner's Home (desktop and iPad)
+- [ ] The tiles sit on the owner's Home, below tonight's meetings and today's team; there is no separate dashboard page or tab
 - [ ] Funnel, week and month, totals and per setter: doors, conversations, leads, meetings booked, meetings held, show rate, quotes, sold, installed
 - [ ] Sold: count, dollars, average ticket
 - [ ] Setter pay: owed now and pending install, per setter, matching the Pay screen
 - [ ] Lead sources this month
 - [ ] Upcoming jobs: sold leads not yet installed, oldest first, with sold date and feet
 - [ ] Every tile shows its date range and what it counts; empty states explain what will appear
-- [ ] Loads in under two seconds with a month of data
+- [ ] Home still loads in under two seconds with a month of data
 
 ## M7: Website lead endpoint and polish
 - [ ] `POST /api/leads/website` with a shared secret creates a `website` lead and emails info@vesperlighting.ca; rate limited; validated with Zod

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { PASSWORD_MIN_LENGTH } from "@/lib/auth";
-import { NotOwnerError, requireOwnerForAction } from "@/lib/auth/profile";
+import { NotOwnerError, ReadOnlyError, requireOwnerForAction } from "@/lib/auth/profile";
 import {
   parseSettingsForm,
   settingsFormDataToInput,
@@ -11,6 +11,7 @@ import {
   type SettingsFormErrors,
 } from "@/lib/settings/schema";
 import { createClient } from "@/lib/supabase/server";
+import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 
 export type SettingsState = {
   ok?: boolean;
@@ -26,6 +27,7 @@ export async function updateSettings(
   try {
     await requireOwnerForAction();
   } catch (e) {
+    if (e instanceof ReadOnlyError) return { error: VIEW_AS_READ_ONLY };
     if (e instanceof NotOwnerError) return { error: "Not for your role." };
     throw e;
   }
@@ -44,7 +46,7 @@ export async function updateSettings(
     return { error: "Settings could not be saved. Try again." };
   }
 
-  revalidatePath("/app/settings");
+  revalidatePath("/app/admin/settings");
   return { ok: true, savedAt: new Date().toISOString() };
 }
 
@@ -69,6 +71,7 @@ export async function changeOwnPassword(
   try {
     await requireOwnerForAction();
   } catch (e) {
+    if (e instanceof ReadOnlyError) return { error: VIEW_AS_READ_ONLY };
     if (e instanceof NotOwnerError) return { error: "Not for your role." };
     throw e;
   }

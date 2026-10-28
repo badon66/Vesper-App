@@ -5,13 +5,16 @@ import { Button } from "@/components/ui/button";
 import {
   resetPassword,
   setPersonActive,
+  startViewAs,
   type ResetPasswordState,
   type SetActiveState,
+  type ViewAsState,
 } from "./actions";
 import { PasswordBox } from "./password-box";
 
 const noActive: SetActiveState = {};
 const noReset: ResetPasswordState = {};
+const noViewAs: ViewAsState = {};
 
 export function PersonActions({
   id,
@@ -24,11 +27,20 @@ export function PersonActions({
 }) {
   const [activeState, activeAction, activePending] = useActionState(setPersonActive, noActive);
   const [resetState, resetAction, resetPending] = useActionState(resetPassword, noReset);
+  const [viewAsState, viewAsAction, viewAsPending] = useActionState(startViewAs, noViewAs);
   const [confirmingReset, setConfirmingReset] = useState(false);
 
   return (
     <div className="flex flex-col items-end gap-2">
       <div className="flex flex-wrap items-center justify-end gap-2">
+        {active ? (
+          <form action={viewAsAction}>
+            <input type="hidden" name="id" value={id} />
+            <Button type="submit" variant="outline" size="sm" disabled={viewAsPending}>
+              {viewAsPending ? "Opening" : "View as"}
+            </Button>
+          </form>
+        ) : null}
         {confirmingReset ? (
           <form
             action={(formData) => {
@@ -75,6 +87,11 @@ export function PersonActions({
           </Button>
         </form>
       </div>
+      {viewAsState.error ? (
+        <p role="alert" className="text-xs font-medium text-destructive">
+          {viewAsState.error}
+        </p>
+      ) : null}
       {activeState.error ? (
         <p role="alert" className="text-xs font-medium text-destructive">
           {activeState.error}

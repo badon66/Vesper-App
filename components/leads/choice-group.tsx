@@ -13,7 +13,7 @@ export function ChoiceGroup<T extends string>({
 }: {
   name: string;
   legend: string;
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; hint?: string }[];
   defaultValue?: T | null;
   columns?: 2 | 3 | 4;
   error?: string;
@@ -37,7 +37,14 @@ export function ChoiceGroup<T extends string>({
               onChange={onChange ? () => onChange(option.value) : undefined}
               className="sr-only"
             />
-            {option.label}
+            {option.hint ? (
+              <span className="flex flex-col py-1">
+                <span>{option.label}</span>
+                <span className="text-sm font-normal">{option.hint}</span>
+              </span>
+            ) : (
+              option.label
+            )}
           </label>
         ))}
       </div>

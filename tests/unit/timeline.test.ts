@@ -24,6 +24,21 @@ describe("describeEvent", () => {
     ).toBe("Moved from Follow up to Lost. Reason: price.");
   });
 
+  it("includes the follow-up day", () => {
+    expect(
+      describeEvent({
+        ...base,
+        type: "status_change",
+        from_status: "new",
+        to_status: "follow_up",
+        payload: { follow_up_on: "2026-10-30" },
+      }),
+    ).toBe("Moved from New to Follow up. Follow up on Fri, Oct 30.");
+    expect(describeEvent({ ...base, type: "edited", payload: { fields: ["follow_up_on"] } })).toBe(
+      "Changed the follow-up day.",
+    );
+  });
+
   it("returns a note as written", () => {
     expect(describeEvent({ ...base, type: "note", payload: { text: "Come back Thursday.\nAsk for Sam." } })).toBe(
       "Come back Thursday.\nAsk for Sam.",

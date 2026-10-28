@@ -147,3 +147,70 @@ Judgment calls and spec changes, newest at the bottom. Each entry says what chan
 **What the automated suite cannot reach in M2.** The walk-through runs Chromium at iPhone 14 size; Safari is not installed in the test environment, so the iPhone's own camera sheet and the home screen app are not exercised. The photo goes through the same file input the camera fills. Human speed is not measured: the scripted new lead, with a photo upload, took about 4 seconds end to end. Daylight readability is covered by the contrast test (WCAG AA for every text pair in both themes, AAA for body text), not by eye.
 
 **M2 complete, M3 current.** All ten M2 criteria passed in the full suite. M2 is merged into main and M3 is marked current. M3 has not been started.
+
+## 2026-10-28, navigation, View as, follow-up dates and speed
+
+**Four changes from Keenan, tracked as M2.5.**
+- A failed sign-in keeps the email and clears only the password. Settings and Add a Vesper member keep everything typed after an error.
+- View as for the owner.
+- Navigation reordered around the evening schedule: bottom tabs on phone and iPad, a side rail from 1024 px, no top tabs. The owner's Home is the dashboard, and Admin holds People and Settings.
+- Speed: functions next to the database, loading screens and prefetched tabs, with tab-switch time measured on production before and after.
+
+M3 has not started.
+
+**The View as test signs in as the owner (Keenan).** View as is owner only, and the database allows exactly one owner, so a test can compare View as with a real setter only by signing in as Keenan. Each run does the following:
+- It creates a one-time server-side session for info@vesperlighting.ca through the Auth admin API: a magic link verified on the server, never emailed.
+- It uses that session only to view screens and to submit forms that are refused before anything saves.
+- It signs that one session out at the end.
+
+No password is used or changed. The account shows a sign-in for each run.
+
+**Follow-up date (Keenan).**
+- Leads get `follow_up_on`. Choosing Follow up asks when: Tomorrow, In 3 days, Next week, or a date.
+- The database requires the date while a lead is in Follow up and clears it when the lead leaves. It refuses a date before today, in Calgary time, from a signed-in person.
+- Leads Active orders by attention: follow-ups due today or overdue (oldest date first), then New (oldest first), then later follow-ups (soonest first), then booked meetings (soonest first, from M3).
+- The setter's Home lists their follow-ups due today or overdue.
+- M3's No-show and Cancelled outcomes will set the next day as the date.
+
+**How View as works.**
+- **It is a setting on the owner's own session, not an impersonation.** Starting it from People, owner only, sets an HttpOnly cookie holding the owner's id and the viewed person's id, valid for two hours.
+- **The server checks it on every request.** It honours the cookie only when the signed-in session belongs to the active owner and the viewed person is an active non-owner; otherwise the cookie is ignored.
+- **Screens render as the viewed person.** While it is on, `requireProfile()` returns the viewed person, so every screen shows their tabs, their Home and their "Not for your role" pages.
+- **Data is read with the owner's session.** No token is ever made for the viewed person. That is why every non-owner screen must scope its queries itself (CLAUDE.md).
+- **Writes are refused three ways:**
+  - `proxy.ts` rejects every request under /app other than GET or HEAD while the cookie is set, except Exit.
+  - Every server action's guard checks the real signed-in profile and refuses while viewing.
+  - The screen sits inside a disabled fieldset, so no button or field works. Navigation links still do.
+- **Rendering never writes while viewing.** The one screen that writes while rendering, Home closing a stale knock session, skips that write.
+- **Exit and sign-in.** Exit clears the cookie and returns to People. Signing in or out clears it too.
+- **Rejected alternatives:**
+  - Minting a token for the viewed person. It would carry their identity and could write as them.
+  - Rewriting every RLS policy to follow a "view as" setting. That is a large, risky change to the real gate, for a viewer who may read everything anyway.
+
+**View as only for active members.** A deactivated person cannot sign in and sees nothing, so their row offers no View as.
+
+**Keenan keeps his own knock session on Home.** The spec has Keenan knocking too, and his Home is now the dashboard. His knock card sits below today's team.
+
+**Tab bar details.**
+- Until M3 adds Schedule, the owner has four tabs (Home, New lead, Leads, Admin), so New lead sits second; it is centred once Schedule arrives.
+- On New lead and Edit lead the phone tab bar gives way to the form's own Cancel and Save bar, as in M2; the side rail stays on wide screens.
+- The slim top bar keeps the wordmark, the theme switch and Sign out. It holds no tabs.
+
+**Old addresses.** `/app/people`, `/app/settings` and `/app/dashboard` redirect to `/app/admin/people`, `/app/admin/settings` and `/app`, so bookmarks and home screen shortcuts keep working.
+
+**Prefetching.** Tab links use Next.js's automatic prefetch. With a loading screen in each tab, that prefetches the shared layout and the loading screen, so a tap switches at once and the data streams in fresh. Full prefetching was not used: it would render every tab on the server on every page view and keep up to five minutes of stale data on the phone.
+
+**Function region.** Functions ran in iad1 (Washington, D.C.) while Supabase is in us-west-2 (Oregon), so every database call crossed the continent, several times per screen. `vercel.json` now sets `regions` to `pdx1` (Portland). The result is checked after deploy from the `x-vercel-id` response header.
+
+**Tab-switch time before the change.** Measured on production on 2026-10-28 with `tests/perf/tab-switch.mjs`. The run used a throwaway setter on an iPhone 14-sized screen: 10 rounds of Home to Leads and back, plus 5 of Home to New lead, from a test machine near Washington, D.C.
+
+| What | Median | Slowest |
+|---|---|---|
+| Tap to the new screen's content | 943 ms | 1,656 ms |
+| Tap to the first visible change | 936 ms | |
+| Server sending the screen | 885 ms | |
+| Leads to Home, the slowest switch | 1,065 ms | |
+
+Nothing on screen changed until the new screen arrived.
+
+**Forms keep what was typed.** Sign-in, Settings, Add a Vesper member and Start knocking now submit through their own handler instead of React's form action, which empties the form even after an error. Sign-in then clears only the password after a failure.

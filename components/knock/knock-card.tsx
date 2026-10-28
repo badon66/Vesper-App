@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { submitKeepingValues } from "@/lib/forms/submit";
 import { formatTime } from "@/lib/time";
 
 export type KnockSessionView = {
@@ -29,6 +30,9 @@ export type KnockSessionView = {
 };
 
 type Counts = { doors: number; conversations: number };
+
+// "5:16 a.m." already ends a sentence; "17:16" needs the full stop.
+const sentenceEnd = (text: string) => (text.endsWith(".") ? text : `${text}.`);
 const ZERO: Counts = { doors: 0, conversations: 0 };
 const initialState: KnockState = {};
 
@@ -58,7 +62,7 @@ function StartSession({ lastNeighbourhood }: { lastNeighbourhood: string | null 
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form action={formAction} className="flex flex-col gap-3">
+        <form onSubmit={submitKeepingValues(formAction)} className="flex flex-col gap-3">
           <Label htmlFor="knock-neighbourhood">Neighbourhood</Label>
           <Input
             id="knock-neighbourhood"
@@ -168,7 +172,7 @@ function ActiveSession({ session }: { session: KnockSessionView }) {
       <CardHeader>
         <CardTitle>Knocking in {session.neighbourhood}</CardTitle>
         <CardDescription>
-          Started at {formatTime(session.started_at)}. New leads link to this session.
+          Started at {sentenceEnd(formatTime(session.started_at))} New leads link to this session.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -242,7 +246,7 @@ function Counter({
         type="button"
         onClick={onAdd}
         aria-label={`Add one to ${name}, now ${count}`}
-        className="flex h-32 touch-manipulation flex-col items-center justify-center gap-1 rounded-xl bg-primary text-primary-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:bg-primary/85"
+        className="flex h-32 touch-manipulation flex-col items-center justify-center gap-1 rounded-xl bg-primary text-primary-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:bg-primary/85 disabled:pointer-events-none disabled:opacity-50"
       >
         <span className="text-5xl font-bold tabular-nums" aria-hidden="true">
           {count}

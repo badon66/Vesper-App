@@ -1,4 +1,5 @@
 import { STATUS_LABELS, type LeadStatus } from "@/lib/leads/status";
+import { formatDay } from "@/lib/time";
 import type { Database, Json } from "@/types/database";
 
 export type TimelineEvent = {
@@ -27,6 +28,7 @@ const FIELD_LABELS: Record<string, string> = {
   notes: "notes",
   source: "source",
   assigned_to: "setter",
+  follow_up_on: "follow-up day",
 };
 
 function payloadObject(payload: Json | null): { [key: string]: Json | undefined } {
@@ -49,7 +51,11 @@ export function describeEvent(event: TimelineEvent): string {
       const to = event.to_status ? STATUS_LABELS[event.to_status] : "no status";
       const reason =
         typeof payload.reason === "string" && payload.reason ? ` Reason: ${payload.reason}.` : "";
-      return `Moved from ${from} to ${to}.${reason}`;
+      const followUp =
+        typeof payload.follow_up_on === "string" && /^\d{4}-\d{2}-\d{2}$/.test(payload.follow_up_on)
+          ? ` Follow up on ${formatDay(payload.follow_up_on)}.`
+          : "";
+      return `Moved from ${from} to ${to}.${reason}${followUp}`;
     }
     case "note":
       return typeof payload.text === "string" ? payload.text : "Added a note.";

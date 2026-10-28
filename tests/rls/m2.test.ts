@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { addDays, calgaryToday } from "@/lib/time";
 import type { Database } from "@/types/database";
 
 // Proves the M2 rules in the database itself, signed in as two throwaway
@@ -205,7 +206,11 @@ describe("leads", () => {
   });
 
   it("setters move their own lead between New, Follow up and Lost, and Lost needs a reason", async () => {
-    const toFollowUp = await users.a.client.from("leads").update({ status: "follow_up" }).eq("id", leadA).select("status");
+    const toFollowUp = await users.a.client
+      .from("leads")
+      .update({ status: "follow_up", follow_up_on: addDays(calgaryToday(), 1) })
+      .eq("id", leadA)
+      .select("status");
     expect(toFollowUp.data).toEqual([{ status: "follow_up" }]);
 
     const noReason = await users.a.client.from("leads").update({ status: "lost" }).eq("id", leadA);
