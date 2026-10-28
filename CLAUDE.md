@@ -46,7 +46,7 @@ Design each screen for the device it will actually be used on, then make it tole
 - Dollar amounts live only in `quotes` (sales cannot read them) and `earnings` (sales read only their own). Never copy a price or a total into lead notes, `lead_events.payload` or meeting outcome notes, because sales users can read those.
 - No deposits or payments are taken in the app in V1. Quotes state "No payment until your install is complete." Do not build payment capture.
 - Meetings: default slots 6:00, 6:45, 7:30 and 8:15 pm, Monday to Saturday, 45 minutes each, owner only. Configurable in settings. A slot can hold one meeting (database unique constraint). Booking requires a lead with a phone number, a geocoded address, and the "both decision makers will be there" checkbox. Warn (do not block) when the booked address is more than 10 km from the meeting before or after it.
-- Lead statuses: `new`, `follow_up`, `meeting_booked`, `met`, `quoted`, `sold`, `installed`, `lost`. Every status change writes a `lead_events` row with who and when. `lost` requires a reason. In V1 the owner sets `installed` by hand after the crew is done; jobs arrive in V2.
+- Lead statuses: `new`, `follow_up`, `meeting_booked`, `met`, `quoted`, `sold`, `installed`, `lost`. Every status change writes a `lead_events` row with who and when. `lost` requires a reason. Setters change status only between `new`, `follow_up` and `lost`; booking a meeting sets `meeting_booked`, and the owner sets everything after it. In V1 the owner sets `installed` by hand after the crew is done; jobs arrive in V2.
 - Every customer facing string (quote PDF, presentation) is written in plain language with no em dashes, no buzzwords, and no promises the business cannot keep. Use the exact warranty wording from `settings.warranty_text`.
 
 ## How to work in this repo
@@ -60,11 +60,10 @@ Design each screen for the device it will actually be used on, then make it tole
 7. When something in the docs is unclear or wrong, stop and ask instead of guessing. When you make a judgment call, write it down in `docs/decisions.md` with the date.
 8. Keep the dashboard honest: every number shows what it counts and the date range. No invented or placeholder numbers in production views. Empty states say what will appear and how to make it appear.
 9. Do not add features that are not in the current milestone. Put ideas in `docs/backlog.md`.
-10. Test on the real thing: after a milestone, give the owner a checklist of what to try on his phone and iPad.
-11. After building, run the full automated suite: unit, RLS, smoke, build, and the live walk-through with throwaway users (deleted after). Keenan does not run checklists.
-12. If anything fails, stop and report. Never send a broken branch for review.
-13. If everything is green, push the branch, wait for its Vercel preview to finish deploying, and make the clickable preview link the first line of the report. Get the URL from GitHub's deployment status for that commit or any reliable method. If that is impossible, say so and give the exact Vercel dashboard path. Follow the link with a short list of what changed and where to see it.
-14. Never merge until Keenan says "push the changes" or anything that clearly means the same. That means: merge the branch from the last report into main, push, wait for production to redeploy, and reply with the production link. In a fresh session, merge the most recent branch that is ahead of main, and ask first if there is more than one.
+10. Test on the real thing: the live walk-through drives the app in a phone-sized browser against the real database. Anything it cannot reach, such as the owner's own screens, is named in the report.
+11. After building, run the full automated suite: unit, RLS, smoke, build, and the live walk-through with test-prefixed accounts, deleted after. Keenan does not run checklists or review preview links.
+12. If anything fails, do not merge. Stop and report what failed.
+13. If everything is green, merge the branch into main, push, wait for production to redeploy, and verify it. The report's first line is the production link, followed by a short list of what changed and where to see it.
 
 ## Definition of done for V1
 

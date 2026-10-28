@@ -113,3 +113,15 @@ Judgment calls and spec changes, newest at the bottom. Each entry says what chan
 **Logo files come later (Keenan).** They do not block M2.
 
 **M2 session prompt corrected.** It still said the RLS test proves a setter cannot see another setter's lead, which predates the team-visibility change of 2026-10-25. It now says the test proves a setter can read another setter's lead but cannot change it.
+
+## 2026-10-28
+
+**Workflow replaced again (Keenan).** CLAUDE.md rules 11 to 13 now say: run the full automated suite after building; if anything fails, do not merge and report; if everything is green, merge into main, push, wait for production to redeploy, verify it, and report with the production link first, followed by a short list of what changed and where to see it. Keenan no longer says "push the changes" and no longer reviews preview links. Rule 10 was reworded to match, since it still asked for a device checklist.
+
+**M2 approved with all four recommendations (Keenan).**
+- No manual Meeting booked. Setters change status only between `new`, `follow_up` and `lost`, in both directions, enforced by the leads trigger and proved by an RLS test. M3's booking sets `meeting_booked` through the server, inside a database function the trigger trusts.
+- The Book a meeting button stays hidden until M3 builds booking.
+- `settings_public` gains `lost_reasons`, so setters can pick a lost reason. A new view `profile_names` exposes `id` and `full_name` of every profile, deactivated ones included, to callers with an active profile, so old leads and timelines still say who did what. Neither contains money.
+- Duplicate address warning: when a picked address already has a lead, the form shows who has it and links to it. Matching is by Google place id; typed addresses are not matched.
+
+**Walk-through test leads are named "TEST LEAD (automated)" (Keenan).** A real setter who sees one in Everyone during a run knows to ignore it. They are deleted at the end of the same run.

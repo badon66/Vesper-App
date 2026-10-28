@@ -17,3 +17,4 @@ Ideas and removed features that are not in the current milestone. Say which vers
 
 - **Separate test Supabase project.** Run the RLS suite and the live walk-throughs against a test project instead of production. Deferred by Keenan on 2026-10-27; revisit before setters log real leads. It would also give the walk-through a test owner account, so the owner screens could be checked automatically. Needs its own URL and keys in the cloud environment and a way to apply the same migrations to both.
 - **Edit my name and phone.** A small self-service screen for the signed-in person. Until then the admin sets names when creating logins.
+- **Orphaned lead photos.** Photos uploaded from a New lead form that was never saved stay in storage unlinked. A scheduled cleanup can delete files older than a day with no `lead_photos` row.

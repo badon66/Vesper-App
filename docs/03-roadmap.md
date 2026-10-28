@@ -31,6 +31,8 @@ New lead, my leads, lead detail, notes, status changes, photos, knock session co
 - [ ] Phone numbers normalize to E.164, treating a number typed without a country code as Canadian (+1), and show formatted
 - [ ] My leads groups the setter's own leads by status, newest first, with a search box and an "everyone" switch that shows all leads read only
 - [ ] Every status change and note writes a `lead_events` row visible in the lead timeline with who and when
+- [ ] Setters change status only between New, Follow up and Lost, and Lost needs a reason from settings; the RLS test proves a setter cannot set Meeting booked or any later status
+- [ ] Picking an address that already has a lead shows who has it, with a link to that lead
 - [ ] A setter can open another setter's lead read only; the RLS test proves an update is rejected
 - [ ] Knock session: start with a neighbourhood, two counters that update instantly, end the session; leads created during a session link to it
 - [ ] Works one-handed in daylight; tap targets at least 44 px
