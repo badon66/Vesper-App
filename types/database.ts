@@ -207,6 +207,7 @@ export type Database = {
           email: string | null
           est_feet: number | null
           first_name: string
+          follow_up_on: string | null
           house_type: Database["public"]["Enums"]["house_type"] | null
           id: string
           installed_at: string | null
@@ -239,6 +240,7 @@ export type Database = {
           email?: string | null
           est_feet?: number | null
           first_name: string
+          follow_up_on?: string | null
           house_type?: Database["public"]["Enums"]["house_type"] | null
           id?: string
           installed_at?: string | null
@@ -271,6 +273,7 @@ export type Database = {
           email?: string | null
           est_feet?: number | null
           first_name?: string
+          follow_up_on?: string | null
           house_type?: Database["public"]["Enums"]["house_type"] | null
           id?: string
           installed_at?: string | null
