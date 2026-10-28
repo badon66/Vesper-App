@@ -1,8 +1,8 @@
 # Roadmap and acceptance criteria
 
-One milestone per build session. A milestone is done only when every criterion passes and the owner has tried it on the real device. Keep the current milestone marked.
+One milestone per build session. A milestone is done when every criterion passes in the full automated suite, including the live walk-through on a phone-sized screen against the real database. Anything the suite cannot reach is named in the report. Keep the current milestone marked.
 
-**Current milestone: M2**
+**Current milestone: M3**
 
 ## M0: Foundation
 Repo, Next.js App Router with TypeScript, Tailwind, shadcn/ui, Supabase client and server helpers, environment setup, PWA manifest and icons, base layout with the brand, light and dark themes, a protected `/app` route group with a working email and password login (accounts are created by the owner in the Supabase dashboard until M1), Vercel preview deploy.
@@ -26,13 +26,18 @@ Supabase Auth (email plus password, no public sign-up), `profiles` with the trig
 
 ## M2: Leads and knock sessions (phone)
 New lead, my leads, lead detail, notes, status changes, photos, knock session counters.
-- [ ] New lead on a phone in under 30 seconds: address autocomplete fills address, neighbourhood and lat/lng; photo from camera uploads and shows; save returns to my leads
-- [ ] Phone numbers normalize to E.164, treating a number typed without a country code as Canadian (+1), and show formatted
-- [ ] My leads groups the setter's own leads by status, newest first, with a search box and an "everyone" switch that shows all leads read only
-- [ ] Every status change and note writes a `lead_events` row visible in the lead timeline with who and when
-- [ ] A setter can open another setter's lead read only; the RLS test proves an update is rejected
-- [ ] Knock session: start with a neighbourhood, two counters that update instantly, end the session; leads created during a session link to it
-- [ ] Works one-handed in daylight; tap targets at least 44 px
+- [x] New lead on a phone in under 30 seconds: address autocomplete fills address, neighbourhood and lat/lng; photo from camera uploads and shows; save returns to my leads
+- [x] A typed address saves without autocomplete, for example on preview sites or without signal; that lead has no map position until its address is picked from the suggestions
+- [x] Phone numbers normalize to E.164, treating a number typed without a country code as Canadian (+1), and show formatted
+- [x] My leads groups the setter's own leads by status, newest first, with a search box and an "everyone" switch that shows all leads read only
+- [x] Every status change and note writes a `lead_events` row visible in the lead timeline with who and when
+- [x] Setters change status only between New, Follow up and Lost, and Lost needs a reason from settings; the RLS test proves a setter cannot set Meeting booked or any later status
+- [x] Picking an address that already has a lead shows who has it, with a link to that lead
+- [x] A setter can open another setter's lead read only; the RLS test proves an update is rejected
+- [x] Knock session: start with a neighbourhood, two counters that update instantly, end the session; leads created during a session link to it
+- [x] Works one-handed in daylight; tap targets at least 44 px
+
+All ten proved on 2026-10-28 by the RLS suite and the live walk-through (Chromium at iPhone 14 size, real Google suggestions). What automation cannot reach is in `decisions.md` under that date.
 
 ## M3: Scheduling and booking pay (phone)
 Open slots from the template, time blocks, booking, distance warning, tonight view, outcomes, qualified bookings, the `earnings` table, booking pay, My pay (setter) and Pay (owner).

@@ -21,7 +21,7 @@ Milestone M1. Read docs/02-data-model.md carefully: profiles, settings, the role
 
 ## M2 prompt
 ```
-Milestone M2: leads and knock sessions on the phone. This is the screen setters use at the door, so speed and one-handed use matter more than anything. Plan first, including how photos are resized and uploaded and how Places autocomplete fills neighbourhood and lat/lng. Then build. Test on a 390 px wide viewport. Done means every M2 criterion passes and the RLS test proves a setter cannot see another setter's lead.
+Milestone M2: leads and knock sessions on the phone. This is the screen setters use at the door, so speed and one-handed use matter more than anything. Plan first, including how photos are resized and uploaded and how Places autocomplete fills neighbourhood and lat/lng. Then build. Test on a 390 px wide viewport. Done means every M2 criterion passes and the RLS test proves a setter can read another setter's lead but cannot change it.
 ```
 
 ## M3 prompt

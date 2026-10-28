@@ -17,7 +17,7 @@ if (!url || !anonKey || !serviceKey) {
   console.error("Live walk-through needs NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY and SUPABASE_SERVICE_ROLE_KEY.");
   process.exit(2);
 }
-const TEST_PREFIX = /^(rls-|m1-live-|m1-probe-|m1-ban-|m0-smoke)/;
+const TEST_PREFIX = /^(rls-|m1-live-|m1-probe-|m1-ban-|m0-smoke|m2-live-)/;
 
 const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 const results = [];

@@ -10,15 +10,16 @@ import {
 
 // Shown in place of a page when a signed-in user's role does not include it.
 // The database refuses the data too; this is only the polite version.
-export function NotForYourRole() {
+export function NotForYourRole({
+  message = "This part of Vesper is for the admin. If you think you need it, talk to Keenan.",
+}: {
+  message?: string;
+}) {
   return (
     <Card className="mx-auto w-full max-w-md">
       <CardHeader>
         <CardTitle>Not for your role</CardTitle>
-        <CardDescription>
-          This part of Vesper is for the admin. If you think you need it, talk
-          to Keenan.
-        </CardDescription>
+        <CardDescription>{message}</CardDescription>
       </CardHeader>
       <CardContent>
         <Button asChild variant="outline">

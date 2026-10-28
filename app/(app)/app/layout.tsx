@@ -1,16 +1,23 @@
 import Link from "next/link";
 import { AppNav, type NavItem } from "@/components/app-nav";
+import { BottomNav } from "@/components/bottom-nav";
 import { Wordmark } from "@/components/brand/wordmark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
-import { requireProfile } from "@/lib/auth/profile";
+import { isSalesSide, requireProfile } from "@/lib/auth/profile";
 import { signOut } from "./actions";
 
 const ownerNav: NavItem[] = [
   { href: "/app", label: "Home" },
+  { href: "/app/leads", label: "Leads" },
   { href: "/app/people", label: "People" },
   { href: "/app/settings", label: "Settings" },
   { href: "/app/dashboard", label: "Dashboard" },
+];
+
+const salesNav: NavItem[] = [
+  { href: "/app", label: "Home" },
+  { href: "/app/leads", label: "Leads" },
 ];
 
 // Everything under /app needs a signed-in, active user with a profile.
@@ -29,7 +36,7 @@ export default async function AppLayout({
         <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-4">
           <Link
             href="/app"
-            className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="inline-flex min-h-11 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Wordmark />
           </Link>
@@ -44,9 +51,11 @@ export default async function AppLayout({
         </div>
       </header>
       {profile.role === "owner" ? <AppNav items={ownerNav} /> : null}
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      {profile.role === "sales" ? <AppNav items={salesNav} className="hidden md:block" /> : null}
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         {children}
       </main>
+      {isSalesSide(profile) ? <BottomNav /> : null}
     </div>
   );
 }

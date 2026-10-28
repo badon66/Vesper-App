@@ -92,7 +92,15 @@ sold_at timestamptz
 installed_at timestamptz
 created_at, updated_at
 ```
-Indexes: `(assigned_to, status)`, `(status, created_at)`, `(lat, lng)`.
+Indexes: `(assigned_to, status)`, `(status, created_at)`, `(lat, lng)`, `place_id`, `knock_session_id`, `(created_by, created_at)`.
+
+Rules enforced in the database:
+- `created_by` is always the signed-in user, and `assigned_to` defaults to it. A lead can only link to a knock session of the person who created it.
+- A setter may change status only when both the old and new status are `new`, `follow_up` or `lost`. Setters can never change `created_by` or `assigned_to`. M3's booking sets `meeting_booked` inside a database function the guard trusts; the owner can set any status.
+- `lost` requires `lost_reason`, from `settings.lost_reasons`. `lost_at`, `sold_at` and `installed_at` are stamped automatically, and reopening a lost lead clears `lost_at` and `lost_reason`.
+- `lat` and `lng` are both set or both empty. A typed address with no map position is allowed; booking will require one.
+- `phone` is stored in E.164 or not at all.
+- Deleting a profile that still owns leads or knock sessions is refused; deactivate people instead.
 
 ### lead_photos
 ```
@@ -105,7 +113,7 @@ created_at
 ```
 
 ### lead_events
-Append only. The lead's timeline and the raw material for the dashboard.
+Append only for everyone, the owner included: no updates, no deletes. The lead's timeline and the raw material for the dashboard. Database triggers write `created`, `status_change` (with from and to), `edited` (with the names of the changed fields, never their values) and `photo_added`, with the signed-in user as actor. People write only `note` events by hand.
 ```
 id uuid pk
 lead_id uuid not null references leads on delete cascade
@@ -129,6 +137,7 @@ conversations int not null default 0
 notes text
 created_at, updated_at
 ```
+One open session per person, enforced by a partial unique index. Counters change only through `bump_knock_session(session, doors, conversations)`, one atomic update that never goes below zero, so fast taps never lose counts. A session still open from an earlier Calgary day is closed the next time its owner opens the app, with `ended_at` set to its last update. Leads saved while a session is open link to it.
 
 ### time_blocks
 Owner-blocked time (no meetings), for example a late install day.
@@ -224,22 +233,22 @@ Sales users collaborate, so they can read the team's leads, meetings and knock s
 
 | Table | owner | sales |
 |---|---|---|
-| profiles | all | read own row; read `id`, `full_name` and `role` of active profiles through a view `profiles_public` (for names on leads and the schedule) |
-| settings | all | read only the fields the client needs: slot template and `distance_warning_km`, through a view `settings_public` that exposes nothing else |
-| leads | all | insert; select all; update where `created_by = auth.uid()` or `assigned_to = auth.uid()`; cannot set status to `met`, `quoted`, `sold`, `installed` |
-| lead_photos | all | select all; insert for their own leads |
-| lead_events | all | select all; insert for their own leads |
+| profiles | all | read own row; read `id`, `full_name` and `role` of active profiles through a view `profiles_public` (for pickers and the schedule); read `id` and `full_name` of every profile, deactivated ones included, through a view `profile_names` (so old leads and timelines still show who did what) |
+| settings | all | read only the fields the client needs: slot template, `distance_warning_km` and `lost_reasons`, through a view `settings_public` that exposes nothing else |
+| leads | all | insert as themselves; select all; update where `created_by = auth.uid()` or `assigned_to = auth.uid()`; change status only among `new`, `follow_up`, `lost`; no delete |
+| lead_photos | all | select all; insert for their own leads, with the file inside their own storage folder |
+| lead_events | select and insert; never update or delete | select all; insert `note` events on their own leads |
 | knock_sessions | all | select all; insert and update own rows |
 | time_blocks | all | select |
 | meetings | all | select all; insert where `booked_by = auth.uid()` and the lead is theirs |
 | quotes | all | none |
 | earnings | all | select where `profile_id = auth.uid()`; no insert, update or delete |
 
-Views on Supabase run with the privileges of the view's owner and bypass RLS, which is what lets sales read `settings_public` and `profiles_public`. Both views return rows only when the caller has an active profile, so a signed-in account without a profile sees nothing. That is safe only while each view exposes nothing but the safe columns. Never add a column to a public view without checking this table. Supabase's security advisor reports these views as a finding; that is expected and accepted.
+Views on Supabase run with the privileges of the view's owner and bypass RLS, which is what lets sales read `settings_public`, `profiles_public` and `profile_names`. All three views return rows only when the caller has an active profile, so a signed-in account without a profile sees nothing. That is safe only while each view exposes nothing but the safe columns. Never add a column to a public view without checking this table. Supabase's security advisor reports these views as a finding; that is expected and accepted.
 
 Write the policies in SQL in the migration that creates each table. Add a test script that signs in as a sales user and proves it can read another setter's lead but cannot update it, cannot read quotes, cannot read another setter's earnings, and cannot double book a slot.
 
 ## Storage buckets
-- `lead-photos`: private, signed URLs, max 10 MB per file, images only. Resize client side to 1600 px on the long edge before upload.
+- `lead-photos`: private, signed URLs valid one hour, max 10 MB per file, JPEG, PNG or WebP. Resized in the browser to 1600 px on the long edge and re-encoded as JPEG, which also drops location data, then uploaded straight from the phone to `<uploader id>/<random id>.jpg` while the form is still open. Active owner and sales profiles can read every file; people can upload only into their own folder; only the owner can delete. Files from abandoned forms stay unlinked; cleanup is in the backlog.
 - `quotes`: private, PDFs, owner only.
 - `presentation`: private, owner writes, app reads through signed URLs.
