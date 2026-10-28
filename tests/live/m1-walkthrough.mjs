@@ -17,7 +17,7 @@ if (!url || !anonKey || !serviceKey) {
   console.error("Live walk-through needs NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY and SUPABASE_SERVICE_ROLE_KEY.");
   process.exit(2);
 }
-const TEST_PREFIX = /^(rls-|m1-live-|m1-probe-|m1-ban-|m0-smoke|m2-live-)/;
+const TEST_PREFIX = /^(rls-|m1-live-|m1-probe-|m1-ban-|m0-smoke|m2-live-|nav-live-|perf-live-)/;
 
 const admin = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 const results = [];
@@ -68,7 +68,7 @@ try {
   await page.getByRole("heading", { name: /Hello, Live/ }).waitFor({ timeout: 15000 });
   const htmlClass = await page.evaluate(() => document.documentElement.className);
   const hello = await page.getByRole("heading", { name: /Hello, Live/ }).count();
-  const tabs = await page.getByRole("link", { name: /^(People|Settings|Dashboard)$/ }).count();
+  const tabs = await page.getByRole("link", { name: /^(People|Settings|Dashboard|Admin)$/ }).count();
   check("c. dark theme by default", /\bdark\b/.test(htmlClass), htmlClass);
   check("c. home shows Hello, Live and Sales associate with no owner tabs", hello === 1 && (await page.getByText("Sales associate").count()) >= 1 && tabs === 0, `tabs=${tabs}`);
   await page.screenshot({ path: `${out}/sales-home-dark.png`, fullPage: true });
@@ -82,13 +82,16 @@ try {
   await page.screenshot({ path: `${out}/sales-home-light.png`, fullPage: true });
   await page.click('button[aria-label="Switch to dark theme"]');
 
-  // e. owner pages refused on the server
-  for (const path of ["/app/settings", "/app/people", "/app/dashboard"]) {
+  // e. owner pages refused on the server, at their Admin addresses and the old ones
+  for (const path of ["/app/admin", "/app/admin/settings", "/app/admin/people", "/app/settings", "/app/people"]) {
     await page.goto(`${base}${path}`);
     const heading = await page.getByRole("heading", { name: "Not for your role" }).count();
     const leaked = (await page.getByText("Save settings").count()) + (await page.getByText("Add a Vesper member").count());
-    check(`e. ${path} shows Not for your role`, heading === 1 && leaked === 0 && page.url().endsWith(path), page.url());
+    const landed = path.startsWith("/app/admin") ? path : path.replace("/app/", "/app/admin/");
+    check(`e. ${path} shows Not for your role`, heading === 1 && leaked === 0 && page.url().endsWith(landed), page.url());
   }
+  await page.goto(`${base}/app/dashboard`);
+  check("e. the old Dashboard address leads Home", new URL(page.url()).pathname === "/app", page.url());
 
   // f. reset: new password set by the admin, sessions ended, old session dies at once
   const upd = await admin.auth.admin.updateUserById(userId, { password: secondPassword });

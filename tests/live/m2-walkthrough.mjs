@@ -73,6 +73,14 @@ async function checkTapTargets(page, screen) {
   check(`tap targets on ${screen} are at least 44 px`, small.length === 0, small.join("; "));
 }
 
+// Tabs show a loading screen the moment they are tapped, so the address
+// changes before the content arrives. Every check waits for the screen to
+// finish loading first.
+async function settle(page) {
+  await page.waitForLoadState("networkidle").catch(() => {});
+  await page.locator("[data-loading-screen]").first().waitFor({ state: "detached", timeout: 20000 }).catch(() => {});
+}
+
 async function removeEverythingOf(id) {
   await admin.from("leads").delete().eq("created_by", id);
   await admin.from("knock_sessions").delete().eq("user_id", id);
@@ -124,10 +132,12 @@ try {
 
   // 1. Sign in and start a knock session.
   await page.goto(`${base}/login`);
+  await settle(page);
   await page.fill("#email", people.a.email);
   await page.fill("#password", people.a.password);
   await page.click("button[type=submit]");
   await page.waitForURL("**/app", { timeout: 20000 });
+  await settle(page);
   await page.fill("#knock-neighbourhood", TEST_PLACE);
   await page.getByRole("button", { name: "Start knocking" }).click();
   await page.getByRole("heading", { name: `Knocking in ${TEST_PLACE}` }).waitFor({ timeout: 20000 });
@@ -162,6 +172,7 @@ try {
   const started = Date.now();
   await page.getByRole("link", { name: "New lead" }).first().click();
   await page.waitForURL("**/app/leads/new", { timeout: 20000 });
+  await settle(page);
   check("there is no Book a meeting button before M3", (await page.getByText(/book a meeting/i).count()) === 0);
   await page.fill("#lead-address", TYPED_ADDRESS);
   await page.keyboard.press("Escape");
@@ -181,6 +192,7 @@ try {
   await page.screenshot({ path: `${out}/m2-new-lead.png`, fullPage: false });
   await save.click();
   await page.waitForURL("**/app/leads?added=*", { timeout: 30000 });
+  await settle(page);
   const seconds = (Date.now() - started) / 1000;
   check("save returns to Leads", true, `${seconds.toFixed(1)} s for the scripted flow`);
   check("the scripted new-lead flow takes well under 30 seconds", seconds < 30, `${seconds.toFixed(1)} s`);
@@ -214,17 +226,22 @@ try {
   await page.fill('input[name="q"]', "TEST LEAD");
   await page.getByRole("button", { name: "Search" }).click();
   await page.waitForURL(/q=TEST\+LEAD/, { timeout: 20000 });
+  await settle(page);
   check("search by name finds the lead", (await page.getByRole("link", { name: new RegExp(TYPED_ADDRESS.replace(/[()]/g, "\\$&")) }).count()) === 1);
   await page.fill('input[name="q"]', "5550199");
   await page.getByRole("button", { name: "Search" }).click();
   await page.waitForURL(/q=5550199/, { timeout: 20000 });
+  await settle(page);
   check("search by phone digits finds the lead", (await page.getByText(TYPED_ADDRESS).count()) === 1);
   check("Mine does not show another setter's lead", (await page.getByText(OTHER_ADDRESS).count()) === 0);
   await page.goto(`${base}/app/leads?scope=everyone`);
+  await settle(page);
   const otherRow = page.getByRole("link", { name: new RegExp(OTHER_ADDRESS.replace(/[()]/g, "\\$&")) });
   check("Everyone shows another setter's lead with who added it", (await otherRow.count()) === 1 && (await otherRow.innerText()).includes("by Live Test B, read only"));
   await otherRow.click();
   await page.waitForURL(`**/app/leads/${bLead.id}`, { timeout: 20000 });
+  await settle(page);
+  await page.getByText("Read only. This is Live Test B's lead.").waitFor({ timeout: 20000 }).catch(() => {});
   check("another setter's lead opens read only", (await page.getByText("Read only. This is Live Test B's lead.").count()) === 1);
   check("a read-only lead offers no edit, status or note controls", (await page.getByRole("link", { name: "Edit lead" }).count()) + (await page.getByRole("button", { name: /Save status|Add note|Add photo/ }).count()) === 0);
   await checkTapTargets(page, "another setter's lead, read only");
@@ -232,6 +249,7 @@ try {
 
   // 5. Own lead: photo shows, statuses offered, timeline with who and when.
   await page.goto(`${base}/app/leads/${typedLead.id}`);
+  await settle(page);
   await page.getByRole("heading", { name: TEST_LEAD }).waitFor({ timeout: 20000 });
   check("the call button shows the formatted phone", (await page.getByRole("link", { name: "Call (403) 555-0199" }).count()) === 1);
   check("a lead with a typed address says it has no map position yet", (await page.getByText("No map position yet.").count()) === 1);
@@ -244,6 +262,9 @@ try {
   check("a setter is offered only New, Follow up and Lost", JSON.stringify(offered) === JSON.stringify(["New", "Follow up", "Lost"]), offered.join(", "));
   await checkTapTargets(page, "the lead page");
   await statusGroup.getByText("Follow up", { exact: true }).click();
+  const whenGroup = page.locator("fieldset").filter({ has: page.locator("legend", { hasText: "When to follow up?" }) });
+  const whenLabels = (await whenGroup.locator("label").allInnerTexts()).map((t) => t.split("\n")[0].trim());
+  check("choosing Follow up asks when", JSON.stringify(whenLabels) === JSON.stringify(["Tomorrow", "In 3 days", "Next week", "On a date"]), whenLabels.join(", "));
   await page.getByRole("button", { name: "Save status" }).click();
   await page.getByText("Moved from New to Follow up.").waitFor({ timeout: 20000 });
   const followEntry = page.locator("li", { hasText: "Moved from New to Follow up." });
@@ -279,6 +300,7 @@ try {
     check("Google address suggestions can be tested", false, "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is not set in this environment");
   } else {
     await page.goto(`${base}/app/leads/new`);
+    await settle(page);
     await page.fill("#lead-address", GOOGLE_QUERY);
     const firstOption = page.getByRole("option").first();
     await firstOption.waitFor({ timeout: 15000 });
@@ -299,6 +321,7 @@ try {
     await page.fill("#lead-first_name", TEST_LEAD);
     await page.getByRole("button", { name: "Save lead" }).click();
     await page.waitForURL("**/app/leads?added=*", { timeout: 30000 });
+    await settle(page);
     const { data: googleLead } = await admin
       .from("leads")
       .select("id, lat, lng, place_id, address_line, city")
@@ -309,6 +332,7 @@ try {
     googleLeadId = googleLead?.id ?? null;
 
     await page.goto(`${base}/app/leads/new`);
+    await settle(page);
     await page.fill("#lead-address", GOOGLE_QUERY);
     await page.getByRole("option").first().waitFor({ timeout: 15000 });
     await page.getByRole("option").first().click();
@@ -319,9 +343,11 @@ try {
     await page.screenshot({ path: `${out}/m2-duplicate-warning.png`, fullPage: false });
     await page.getByRole("link", { name: "Cancel" }).click();
     await page.waitForURL("**/app/leads", { timeout: 20000 });
+    await settle(page);
 
     // The typed lead gets its map position once its address is picked.
     await page.goto(`${base}/app/leads/${typedLead.id}/edit`);
+    await settle(page);
     await page.getByRole("heading", { name: "Edit lead" }).waitFor({ timeout: 20000 });
     await checkTapTargets(page, "Edit lead");
     await page.fill("#lead-address", GOOGLE_QUERY);
@@ -330,25 +356,35 @@ try {
     await page.getByText("Map position saved.").waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: "Save changes" }).click();
     await page.waitForURL(`**/app/leads/${typedLead.id}`, { timeout: 30000 });
+    await settle(page);
     const { data: placed } = await admin.from("leads").select("lat, lng, place_id").eq("id", typedLead.id).single();
     check("a typed address gets its map position once it is picked from the suggestions", placed?.lat !== null && placed?.lng !== null && placed?.place_id === picked.place);
+    await page.getByRole("heading", { name: TEST_LEAD }).waitFor({ timeout: 20000 });
     check("the lead page then drops the no map position note", (await page.getByText("No map position yet.").count()) === 0);
+    await page.getByText(/^Changed the .*address.*map position/).waitFor({ timeout: 20000 }).catch(() => {});
     check("the timeline says the address and map position changed", (await page.getByText(/^Changed the .*address.*map position/).count()) === 1);
   }
 
-  // 7. Grouping on Leads, newest first within a group, then end the session.
+  // 7. Active hides Lost; All groups by status, newest first within a group.
   await page.goto(`${base}/app/leads`);
+  await settle(page);
+  const activeHeadings = (await page.getByRole("heading", { level: 2 }).allTextContents()).map((t) => t.trim());
+  check("Leads opens to Active, which leaves Lost out", !activeHeadings.some((h) => h.startsWith("Lost")), activeHeadings.join(", "));
+  await page.goto(`${base}/app/leads?view=all`);
+  await settle(page);
   const headings = (await page.getByRole("heading", { level: 2 }).allTextContents()).map((t) => t.trim());
-  check("Leads groups by status in status order", headings[headings.length - 1] === "Lost (1)" && (!mapsKey || headings[0] === "New (1)"), headings.join(", "));
+  check("All groups by status in status order", headings[headings.length - 1] === "Lost (1)" && (!mapsKey || headings[0] === "New (1)"), headings.join(", "));
   if (googleLeadId) {
     // Everyone's New group holds B's lead and A's later Google lead.
-    await page.goto(`${base}/app/leads?scope=everyone`);
+    await page.goto(`${base}/app/leads?scope=everyone&view=all`);
+    await settle(page);
     const order = await page.locator('section[aria-labelledby="group-new"] a').evaluateAll((links) => links.map((link) => link.getAttribute("href")));
     const newer = order.indexOf(`/app/leads/${googleLeadId}`);
     const older = order.indexOf(`/app/leads/${bLead.id}`);
     check("within a group the newest lead comes first", newer !== -1 && older !== -1 && newer < older, `positions ${newer} and ${older}`);
   }
   await page.goto(`${base}/app`);
+  await settle(page);
   await page.getByRole("button", { name: "End session" }).click();
   await page.getByRole("button", { name: "Yes, end it" }).click();
   await page.getByRole("button", { name: "Start knocking" }).waitFor({ timeout: 20000 });
