@@ -41,14 +41,14 @@ All ten proved on 2026-10-28 by the RLS suite and the live walk-through (Chromiu
 
 ## M2.5: Navigation, View as, follow-up dates, speed
 Asked for by Keenan on 2026-10-28, between M2 and M3.
-- [ ] A failed sign-in keeps the email and clears only the password; Settings and Add a Vesper member keep everything typed after an error
-- [ ] A bottom tab bar on phone and iPad and a slim left rail at 1024 px and wider, with the same items and no top tabs; owner tabs Home, New lead (the prominent centre button), Leads, Admin; setter tabs Home, New lead, Leads; Schedule and My pay stay hidden until M3
-- [ ] Admin holds People and Settings; the Dashboard tab is gone, and the old People, Settings and Dashboard links lead to their new places
-- [ ] The owner's Home shows today across the team (whose knock session is open, neighbourhood, doors, conversations, leads logged today, with team totals) and today's leads; every number says what it counts and that it covers today
-- [ ] The setter's Home shows their knock session and their follow-ups due
-- [ ] Choosing Follow up asks when (Tomorrow, In 3 days, Next week, or a date); the RLS test proves the database refuses a follow-up without a date and clears the date when the lead leaves Follow up
-- [ ] Leads opens to Active in attention order, with an All switch, search across every status, and Mine and Everyone
-- [ ] View as: owner only and checked on the server on every request, strictly read only with the server refusing every write, a gold bar with Exit, and only what that role can see; a test compares View as with what a real test setter sees on every setter screen
+- [x] A failed sign-in keeps the email and clears only the password; Settings and Add a Vesper member keep everything typed after an error
+- [x] A bottom tab bar on phone and iPad and a slim left rail at 1024 px and wider, with the same items and no top tabs; owner tabs Home, New lead (the prominent centre button), Leads, Admin; setter tabs Home, New lead, Leads; Schedule and My pay stay hidden until M3
+- [x] Admin holds People and Settings; the Dashboard tab is gone, and the old People, Settings and Dashboard links lead to their new places
+- [x] The owner's Home shows today across the team (whose knock session is open, neighbourhood, doors, conversations, leads logged today, with team totals) and today's leads; every number says what it counts and that it covers today
+- [x] The setter's Home shows their knock session and their follow-ups due
+- [x] Choosing Follow up asks when (Tomorrow, In 3 days, Next week, or a date); the RLS test proves the database refuses a follow-up without a date and clears the date when the lead leaves Follow up
+- [x] Leads opens to Active in attention order, with an All switch, search across every status, and Mine and Everyone
+- [x] View as: owner only and checked on the server on every request, strictly read only with the server refusing every write, a gold bar with Exit, and only what that role can see; a test compares View as with what a real test setter sees on every setter screen
 - [ ] Functions run in pdx1 next to the database; every tab has a loading screen and prefetched links; tab-switch time is measured on production before and after
 
 ## M3: Scheduling and booking pay (phone)
