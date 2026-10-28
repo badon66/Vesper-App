@@ -71,3 +71,25 @@ export async function requireOwnerForAction(): Promise<SessionProfile> {
   }
   return session.profile;
 }
+
+// The sales side of the app (leads, knock sessions) is for active owners and
+// sales associates. Crew has no screens there yet.
+export function isSalesSide(profile: SessionProfile): boolean {
+  return profile.active && (profile.role === "owner" || profile.role === "sales");
+}
+
+export class NotAllowedError extends Error {
+  constructor() {
+    super("Not for your role");
+    this.name = "NotAllowedError";
+  }
+}
+
+// For server actions on leads and knock sessions.
+export async function requireSalesSideForAction(): Promise<SessionProfile> {
+  const session = await getSession();
+  if (session.status !== "ok" || !isSalesSide(session.profile)) {
+    throw new NotAllowedError();
+  }
+  return session.profile;
+}

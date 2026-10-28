@@ -12,6 +12,12 @@ const publicEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z
     .string()
     .min(1, { error: "must be the Supabase publishable key" }),
+  // Optional. Without it the address field is plain text and leads save
+  // without a map position.
+  NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z.string().trim().optional(),
+  ),
 });
 
 const serverEnvSchema = z.object({
@@ -61,6 +67,7 @@ export function getPublicEnv(): PublicEnv {
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
   });
   return cachedPublic;
 }
