@@ -227,12 +227,14 @@ try {
   await page.waitForURL(`**/app/leads/${bLead.id}`, { timeout: 20000 });
   check("another setter's lead opens read only", (await page.getByText("Read only. This is Live Test B's lead.").count()) === 1);
   check("a read-only lead offers no edit, status or note controls", (await page.getByRole("link", { name: "Edit lead" }).count()) + (await page.getByRole("button", { name: /Save status|Add note|Add photo/ }).count()) === 0);
+  await checkTapTargets(page, "another setter's lead, read only");
   await page.screenshot({ path: `${out}/m2-read-only.png`, fullPage: true });
 
   // 5. Own lead: photo shows, statuses offered, timeline with who and when.
   await page.goto(`${base}/app/leads/${typedLead.id}`);
   await page.getByRole("heading", { name: TEST_LEAD }).waitFor({ timeout: 20000 });
   check("the call button shows the formatted phone", (await page.getByRole("link", { name: "Call (403) 555-0199" }).count()) === 1);
+  check("a lead with a typed address says it has no map position yet", (await page.getByText("No map position yet.").count()) === 1);
   const image = page.locator('img[alt="Photo 1 of the house"]');
   await image.waitFor({ timeout: 20000 });
   const loaded = await image.evaluate((el) => new Promise((resolve) => (el.complete ? resolve(el.naturalWidth) : el.addEventListener("load", () => resolve(el.naturalWidth)))));
@@ -317,6 +319,21 @@ try {
     await page.screenshot({ path: `${out}/m2-duplicate-warning.png`, fullPage: false });
     await page.getByRole("link", { name: "Cancel" }).click();
     await page.waitForURL("**/app/leads", { timeout: 20000 });
+
+    // The typed lead gets its map position once its address is picked.
+    await page.goto(`${base}/app/leads/${typedLead.id}/edit`);
+    await page.getByRole("heading", { name: "Edit lead" }).waitFor({ timeout: 20000 });
+    await checkTapTargets(page, "Edit lead");
+    await page.fill("#lead-address", GOOGLE_QUERY);
+    await page.getByRole("option").first().waitFor({ timeout: 15000 });
+    await page.getByRole("option").first().click();
+    await page.getByText("Map position saved.").waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await page.waitForURL(`**/app/leads/${typedLead.id}`, { timeout: 30000 });
+    const { data: placed } = await admin.from("leads").select("lat, lng, place_id").eq("id", typedLead.id).single();
+    check("a typed address gets its map position once it is picked from the suggestions", placed?.lat !== null && placed?.lng !== null && placed?.place_id === picked.place);
+    check("the lead page then drops the no map position note", (await page.getByText("No map position yet.").count()) === 0);
+    check("the timeline says the address and map position changed", (await page.getByText(/^Changed the .*address.*map position/).count()) === 1);
   }
 
   // 7. Grouping on Leads, newest first within a group, then end the session.
