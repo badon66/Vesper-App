@@ -58,13 +58,18 @@ export default async function LeadsPage({
       </div>
 
       {addedLead ? (
-        <p role="status" className="rounded-md border border-primary bg-accent px-4 py-3 text-sm text-accent-foreground">
-          Lead saved:{" "}
-          <Link href={`/app/leads/${addedLead.id}`} className="font-semibold underline underline-offset-4">
-            {leadName(addedLead)}
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-x-3 rounded-md border border-primary bg-accent px-4 py-1 text-sm text-accent-foreground"
+        >
+          <span>Lead saved.</span>
+          <Link
+            href={`/app/leads/${addedLead.id}`}
+            className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4"
+          >
+            Open {leadName(addedLead)}
           </Link>
-          .
-        </p>
+        </div>
       ) : null}
 
       <nav aria-label="Whose leads" className="grid grid-cols-2 rounded-md border p-1">
