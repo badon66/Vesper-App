@@ -1,4 +1,4 @@
-import { addDays, formatDay } from "@/lib/time";
+import { addDays, formatDay, formatLongDay } from "@/lib/time";
 import type { LeadStatus } from "@/lib/leads/status";
 
 // The Active list on Leads: New, Follow up and Meeting booked, ordered by
@@ -60,6 +60,14 @@ export function followUpLabel(day: string, today: string): string {
   if (day < today) return `Overdue since ${formatDay(day)}`;
   if (day === addDays(today, 1)) return "Due tomorrow";
   return `Due ${formatDay(day)}`;
+}
+
+// One plain sentence for the lead page.
+export function followUpSentence(day: string, today: string): string {
+  if (day === today) return "Follow up today.";
+  if (day < today) return `Follow-up overdue since ${formatLongDay(day)}.`;
+  if (day === addDays(today, 1)) return `Follow up tomorrow, ${formatLongDay(day)}.`;
+  return `Follow up on ${formatLongDay(day)}.`;
 }
 
 // The quick choices offered when a lead moves to Follow up. The server works

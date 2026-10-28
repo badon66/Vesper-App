@@ -25,8 +25,8 @@ import { formatPhone } from "@/lib/phone";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { mapsLink } from "@/lib/places";
 import { createClient } from "@/lib/supabase/server";
-import { followUpLabel } from "@/lib/leads/attention";
-import { calgaryToday, formatDate, formatDateTime, formatLongDay } from "@/lib/time";
+import { followUpSentence } from "@/lib/leads/attention";
+import { calgaryToday, formatDate, formatDateTime } from "@/lib/time";
 
 export const metadata: Metadata = {
   title: "Lead",
@@ -99,8 +99,8 @@ export default async function LeadPage({
           {session ? `, while knocking in ${session.neighbourhood}` : ""}.
         </p>
         {followUp ? (
-          <p className="text-sm font-semibold">
-            Follow up on {formatLongDay(followUp)}. {followUpLabel(followUp, today)}.
+          <p className={followUp < today ? "text-sm font-semibold text-destructive" : "text-sm font-semibold"}>
+            {followUpSentence(followUp, today)}
           </p>
         ) : null}
         {!canEdit ? (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { followUpDateFor, followUpLabel, groupByAttention, isDue } from "@/lib/leads/attention";
+import { followUpDateFor, followUpLabel, followUpSentence, groupByAttention, isDue } from "@/lib/leads/attention";
 
 const today = "2026-10-28";
 const lead = (id: string, status: string, created_at: string, follow_up_on: string | null = null) => ({
@@ -48,6 +48,15 @@ describe("followUpLabel", () => {
     expect(followUpLabel("2026-10-26", today)).toBe("Overdue since Mon, Oct 26");
     expect(followUpLabel("2026-10-29", today)).toBe("Due tomorrow");
     expect(followUpLabel("2026-10-30", today)).toBe("Due Fri, Oct 30");
+  });
+});
+
+describe("followUpSentence", () => {
+  it("says it once, in plain words", () => {
+    expect(followUpSentence("2026-10-28", today)).toBe("Follow up today.");
+    expect(followUpSentence("2026-10-26", today)).toBe("Follow-up overdue since Monday, October 26.");
+    expect(followUpSentence("2026-10-29", today)).toBe("Follow up tomorrow, Thursday, October 29.");
+    expect(followUpSentence("2026-11-04", today)).toBe("Follow up on Wednesday, November 4.");
   });
 });
 
