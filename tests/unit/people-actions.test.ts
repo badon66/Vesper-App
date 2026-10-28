@@ -3,7 +3,7 @@ import {
   createPerson,
   resetPassword,
   setPersonActive,
-} from "@/app/(app)/app/(owner)/people/actions";
+} from "@/app/(app)/app/(owner)/admin/people/actions";
 import { PASSWORD_PATTERN } from "@/lib/people/password";
 
 // The People server actions with Supabase replaced by fakes, so the tests
@@ -12,8 +12,10 @@ import { PASSWORD_PATTERN } from "@/lib/people/password";
 
 const mocks = vi.hoisted(() => {
   class NotOwnerError extends Error {}
+  class ReadOnlyError extends Error {}
   return {
     NotOwnerError,
+    ReadOnlyError,
     ownerId: "0b6f6f0e-2c1a-4e8b-9a7d-5c3e2f1a0b9c",
     isOwner: { value: true },
     target: {
@@ -30,6 +32,7 @@ vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
 vi.mock("@/lib/auth/profile", () => ({
   NotOwnerError: mocks.NotOwnerError,
+  ReadOnlyError: mocks.ReadOnlyError,
   requireOwnerForAction: async () => {
     if (!mocks.isOwner.value) throw new mocks.NotOwnerError("Not for your role");
     return {
