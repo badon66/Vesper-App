@@ -26,7 +26,7 @@ Milestone M2: leads and knock sessions on the phone. This is the screen setters 
 
 ## M3 prompt
 ```
-Milestone M3: scheduling. Read the business rules in CLAUDE.md and the meetings section of the data model. Plan first and show me: how open slots are generated (Calgary time, DST), how the unique index prevents double booking and how the UI handles the race, how the distance warning works, and how a qualified booking creates booking pay. Write the unit tests before the UI. Then build the booking screen, the Tonight view and the two pay screens. Done means every M3 criterion passes.
+Milestone M3: scheduling. Read the business rules in CLAUDE.md and the meetings section of the data model. Plan first and show me: how open slots are generated (Calgary time, DST), how the unique index prevents double booking and how the UI handles the race, how the distance warning works, and how a qualified booking creates booking pay. Write the unit tests before the UI. Then build the Schedule tab with booking, tonight's meetings at the top of the owner's Home, the My pay tab and Pay in Admin. Every new setter screen must support View as. Done means every M3 criterion passes.
 ```
 
 ## M4 prompt

@@ -88,16 +88,18 @@ both_decision_makers boolean                    -- set at booking time
 consent_text boolean not null default false     -- CASL: agreed to texts and emails
 lost_reason text
 lost_at timestamptz
+follow_up_on date                               -- the day to come back; required while status is follow_up, cleared when it leaves
 sold_at timestamptz
 installed_at timestamptz
 created_at, updated_at
 ```
-Indexes: `(assigned_to, status)`, `(status, created_at)`, `(lat, lng)`, `place_id`, `knock_session_id`, `(created_by, created_at)`.
+Indexes: `(assigned_to, status)`, `(status, created_at)`, `(lat, lng)`, `place_id`, `knock_session_id`, `(created_by, created_at)`, and `follow_up_on` where status is `follow_up`.
 
 Rules enforced in the database:
 - `created_by` is always the signed-in user, and `assigned_to` defaults to it. A lead can only link to a knock session of the person who created it.
 - A setter may change status only when both the old and new status are `new`, `follow_up` or `lost`. Setters can never change `created_by` or `assigned_to`. M3's booking sets `meeting_booked` inside a database function the guard trusts; the owner can set any status.
 - `lost` requires `lost_reason`, from `settings.lost_reasons`. `lost_at`, `sold_at` and `installed_at` are stamped automatically, and reopening a lost lead clears `lost_at` and `lost_reason`.
+- `follow_up` requires `follow_up_on`. Leaving `follow_up` clears it. A signed-in person cannot set a follow-up date earlier than today in Calgary; moving the date on a lead that stays in `follow_up` is an edit. The status change into `follow_up` records the date in its event payload, and a date change alone logs an `edited` event naming the field.
 - `lat` and `lng` are both set or both empty. A typed address with no map position is allowed; booking will require one.
 - `phone` is stored in E.164 or not at all.
 - Deleting a profile that still owns leads or knock sessions is refused; deactivate people instead.
@@ -113,7 +115,7 @@ created_at
 ```
 
 ### lead_events
-Append only for everyone, the owner included: no updates, no deletes. The lead's timeline and the raw material for the dashboard. Database triggers write `created`, `status_change` (with from and to), `edited` (with the names of the changed fields, never their values) and `photo_added`, with the signed-in user as actor. People write only `note` events by hand.
+Append only for everyone, the owner included: no updates, no deletes. The lead's timeline and the raw material for the dashboard. Database triggers write `created`, `status_change` (with from and to, plus the reason for `lost` or the date for `follow_up` in the payload), `edited` (with the names of the changed fields, never their values) and `photo_added`, with the signed-in user as actor. People write only `note` events by hand.
 ```
 id uuid pk
 lead_id uuid not null references leads on delete cascade
