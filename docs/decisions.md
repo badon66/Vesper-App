@@ -234,3 +234,39 @@ Nothing on screen changed until the new screen arrived.
 **Real use has begun.** Production now holds one knock session of Keenan's (ended, no taps) and no real leads. The walk-throughs only read it, and the View as run checks that nothing of the owner's changed. The backlog's separate test database should be set up before setters log real leads.
 
 **M2.5 complete, M3 current.** All nine M2.5 criteria pass. M3 has not been started.
+
+## 2026-10-31
+
+**No separate test database (Keenan).** Keenan has decided against it. The backlog item is removed and the app no longer recommends it. Tests keep using test-prefixed accounts and data on production and clean up after themselves.
+
+**Only the owner adds members (Keenan).** The owner's test session stays view only. It never creates, changes or deletes anything, members included. The four M1 owner-screen items stay unticked until Keenan says to tick them, and they are no longer raised as open questions.
+
+**Soffit and track colour on quotes (Keenan, for M5).** A quote can't be marked ready until Keenan has confirmed the soffit colour in person against the colour book and set the track colour; both print on the quote. The data model gains `quotes.soffit_colour_confirmed`, `soffit_confirmed_at` and `track_colour`. "Ready" is read as leaving draft: being presented, accepted or exported as a PDF. To confirm when M5 is planned.
+
+**The door process (Keenan), built as M2.6.** A setter's visit is a short conversation with a structure: open, find out, photos, book. The app follows it with:
+- a Door guide, its text owner-edited in Settings and read by setters through `settings_public`;
+- four guided photo slots plus More photos, each photo storing its slot;
+- six optional one-tap Find out questions, each in its own column.
+
+Nothing in it is required to save a lead. Soffit colour becomes White, Off-white or cream, Other or Not sure, because white is the only stock track and a recent install found an off-white soffit too late.
+
+**Before you book (Keenan, for M3).** Booking passes only when all of these hold:
+- a phone number is saved;
+- Owns the home is Yes;
+- Wants a price is Yes;
+- Soffit colour is answered (Not sure is fine);
+- the Front, Left corner and Right corner photos exist, or the setter picks a skip reason (Homeowner said no, or Other with a note), which the owner sees on Schedule;
+- the setter confirms everyone who decides on the house will be at the meeting, stored on the booking.
+
+The list does not mention the map position that the earlier rule required for the distance warning and the navigate link. That stays open and is asked in the M3 plan; the docs say so where it matters.
+
+**Door process build calls.**
+- **Door guide display.** The guide starts closed, so New lead stays quick. Its text is plain text shown line by line, so Keenan edits it like any other setting.
+- **Answers clear on a second tap.** Tapping a chosen Find out answer again clears it, since every question is optional and a mistaken tap needs undoing.
+- **Column names.**
+  - Booleans: `owns_home` (No is false) and `wants_price` (Not yet is false).
+  - Enums: `christmas_lights_now` (hires, diy, none), `areas_wanted` (front, front_and_sides, full_wrap, not_sure) and `install_timing` (before_christmas, new_year, no_rush).
+- **Soffit enum rebuilt.** The `soffit_colour` enum is recreated as white, off_white, other, not_sure. No lead used black or brown; the migration maps any to other. `soffit_note` stays for Other.
+- **Retakes on the lead page.** A retake on the lead page makes the new photo the slot's photo and keeps the earlier one as an extra, because only the owner deletes photos. On New lead, a retake simply replaces the upload before saving.
+- **Soffit slot hint.** The soffit slot's hint reads "Close enough to see its colour", in line with why the slot exists.
+- **Form order.** On the form, Find out sits after the phone number and before the photos, in the order of the visit.

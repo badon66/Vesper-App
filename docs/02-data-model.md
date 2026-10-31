@@ -9,7 +9,11 @@ role:            owner | sales | crew          -- Postgres type is named user_ro
 lead_status:     new | follow_up | meeting_booked | met | quoted | sold | installed | lost
 lead_source:     door | referral | neighbour_card | website | other
 house_type:      bungalow | bi_level | two_storey | other
-soffit_colour:   white | black | brown | other
+soffit_colour:   white | off_white | other | not_sure                    -- changed 2026-10-31; black and brown were dropped while no lead used them
+photo_slot:      front | left_corner | right_corner | soffit
+christmas_lights_now: hires | diy | none
+roofline_areas:  front | front_and_sides | full_wrap | not_sure
+install_timing:  before_christmas | new_year | no_rush
 meeting_status:  booked | confirmed | qualified | not_qualified | no_show | cancelled   -- qualified and not_qualified both mean the meeting was held
 quote_status:    draft | presented | accepted | declined | expired
 event_type:      created | note | status_change | call | text | meeting_booked | meeting_outcome | quote_created | quote_presented | quote_accepted | quote_declined | photo_added | edited
@@ -50,6 +54,7 @@ presentation jsonb not null          -- pages: [{title, body, image_paths[]}]
 booking_pay numeric(10,2) not null default 20.00      -- flat pay per qualified booking
 commission_rate numeric(5,4) not null default 0.0500  -- share of the accepted quote total before GST
 lost_reasons text[] not null default '{price, other company, not now, could not reach, other}'
+door_guide text not null                        -- the Door guide on New lead, owner edited; starts as the four steps in the product spec
 not_qualified_reasons text[] not null default '{Not the homeowner, Decision maker missing, Did not want a price, Roofline we cannot do, Other}'   -- added in M3
 meeting_days int[] not null default '{1,2,3,4,5,6}'   -- 0 = Sunday
 meeting_start time not null default '18:00'
@@ -80,11 +85,16 @@ lat double precision
 lng double precision
 place_id text
 house_type house_type
-soffit_colour soffit_colour
+soffit_colour soffit_colour                     -- Find out: White, Off-white or cream, Other (with soffit_note), Not sure
 soffit_note text
+owns_home boolean                               -- Find out: Yes true, No false
+wants_price boolean                             -- Find out: Yes true, Not yet false
+christmas_lights_now christmas_lights_now       -- Find out: Hires someone, Does it themselves, None
+areas_wanted roofline_areas                     -- Find out: Front only, Front and sides, Full wrap, Not sure
+install_timing install_timing                   -- Find out: Before Christmas, New year, No rush
 est_feet int
 notes text
-both_decision_makers boolean                    -- set at booking time
+both_decision_makers boolean                    -- unused; M3 keeps the confirmation on the booking instead (meetings.everyone_deciding_present)
 consent_text boolean not null default false     -- CASL: agreed to texts and emails
 lost_reason text
 lost_at timestamptz
@@ -100,7 +110,7 @@ Rules enforced in the database:
 - A setter may change status only when both the old and new status are `new`, `follow_up` or `lost`. Setters can never change `created_by` or `assigned_to`. M3's booking sets `meeting_booked` inside a database function the guard trusts; the owner can set any status.
 - `lost` requires `lost_reason`, from `settings.lost_reasons`. `lost_at`, `sold_at` and `installed_at` are stamped automatically, and reopening a lost lead clears `lost_at` and `lost_reason`.
 - `follow_up` requires `follow_up_on`. Leaving `follow_up` clears it. A signed-in person cannot set a follow-up date earlier than today in Calgary; moving the date on a lead that stays in `follow_up` is an edit. The status change into `follow_up` records the date in its event payload, and a date change alone logs an `edited` event naming the field.
-- `lat` and `lng` are both set or both empty. A typed address with no map position is allowed; booking will require one.
+- `lat` and `lng` are both set or both empty. A typed address with no map position is allowed; whether booking requires one is open until Keenan answers the M3 plan.
 - `phone` is stored in E.164 or not at all.
 - Deleting a profile that still owns leads or knock sessions is refused; deactivate people instead.
 
@@ -109,10 +119,15 @@ Rules enforced in the database:
 id uuid pk
 lead_id uuid not null references leads on delete cascade
 storage_path text not null                      -- bucket 'lead-photos', private, signed URLs
+slot photo_slot                                 -- Front, Left corner, Right corner or Soffit close-up; null for More photos
 caption text
 created_by uuid references profiles
 created_at
 ```
+
+The Find out answers are null until answered, and none of them is required to save a lead. Changes to them are logged as `edited` events by field name, like other edits.
+
+One photo per slot per lead (a partial unique index on `(lead_id, slot)`). A photo added to a slot that already has one takes the slot, and the earlier photo stays as an extra with its slot cleared, through a trigger, because only the owner deletes photos. The `photo_added` event records the slot in its payload.
 
 ### lead_events
 Append only for everyone, the owner included: no updates, no deletes. The lead's timeline and the raw material for the dashboard. Database triggers write `created`, `status_change` (with from and to, plus the reason for `lost` or the date for `follow_up` in the payload), `edited` (with the names of the changed fields, never their values) and `photo_added`, with the signed-in user as actor. People write only `note` events by hand.
@@ -162,7 +177,9 @@ booked_by uuid not null references profiles
 starts_at timestamptz not null
 ends_at timestamptz not null
 status meeting_status not null default 'booked'
-both_decision_makers boolean not null default false
+everyone_deciding_present boolean not null      -- the setter's confirmation that everyone who decides on the house will be there; must be true to book
+photos_skipped text                             -- set when the Front, Left corner or Right corner photo is missing at booking: 'homeowner_said_no' or 'other'; shown to the owner on Schedule
+photos_skip_note text                           -- required when photos_skipped is 'other'
 outcome_reason text                             -- required when status is not_qualified; from settings.not_qualified_reasons, free text when Other
 outcome_note text                               -- optional for no_show and cancelled, never a price
 outcome_at timestamptz
@@ -190,13 +207,16 @@ subtotal numeric(10,2) not null default 0
 gst numeric(10,2) not null default 0
 total numeric(10,2) not null default 0
 financing_offered boolean not null default false
+soffit_colour_confirmed text                     -- the soffit colour as Keenan matched it in person against the colour book
+soffit_confirmed_at timestamptz
+track_colour text                                -- set by Keenan; white is the only stock colour
 notes text
 pdf_path text                                    -- bucket 'quotes', private
 valid_until date
 presented_at, accepted_at, declined_at timestamptz
 created_at, updated_at
 ```
-Totals are computed in one pure function in `lib/pricing.ts`, used by the UI and the server action, and covered by unit tests. The database stores the result so history is stable if prices change later. `subtotal` is the total before GST and is the base for commission. Every price on a quote belongs to that quote: `price_per_ft`, `box_price`, each adder and discount amount, and custom lines in `adders` and `discounts`. Settings supplies the defaults when the quote is created; later changes to settings never alter an existing quote. Accepting a quote creates a `commission` earning (see `earnings`).
+A quote can't be marked ready until `soffit_colour_confirmed` and `track_colour` are set, and both print on the quote. Totals are computed in one pure function in `lib/pricing.ts`, used by the UI and the server action, and covered by unit tests. The database stores the result so history is stable if prices change later. `subtotal` is the total before GST and is the base for commission. Every price on a quote belongs to that quote: `price_per_ft`, `box_price`, each adder and discount amount, and custom lines in `adders` and `discounts`. Settings supplies the defaults when the quote is created; later changes to settings never alter an existing quote. Accepting a quote creates a `commission` earning (see `earnings`).
 
 ### earnings
 What setters are owed and what they have been paid. One row per earning. Rows are created by server actions, never by the client directly.
@@ -236,7 +256,7 @@ Sales users collaborate, so they can read the team's leads, meetings and knock s
 | Table | owner | sales |
 |---|---|---|
 | profiles | all | read own row; read `id`, `full_name` and `role` of active profiles through a view `profiles_public` (for pickers and the schedule); read `id` and `full_name` of every profile, deactivated ones included, through a view `profile_names` (so old leads and timelines still show who did what) |
-| settings | all | read only the fields the client needs: slot template, `distance_warning_km` and `lost_reasons`, through a view `settings_public` that exposes nothing else |
+| settings | all | read only the fields the client needs: slot template, `distance_warning_km`, `lost_reasons` and `door_guide`, through a view `settings_public` that exposes nothing else |
 | leads | all | insert as themselves; select all; update where `created_by = auth.uid()` or `assigned_to = auth.uid()`; change status only among `new`, `follow_up`, `lost`; no delete |
 | lead_photos | all | select all; insert for their own leads, with the file inside their own storage folder |
 | lead_events | select and insert; never update or delete | select all; insert `note` events on their own leads |

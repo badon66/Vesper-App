@@ -2,7 +2,7 @@
 
 One milestone per build session. A milestone is done when every criterion passes in the full automated suite, including the live walk-through on a phone-sized screen against the real database. Anything the suite cannot reach is named in the report. Keep the current milestone marked.
 
-**Current milestone: M3** (not started)
+**Current milestone: M2.6** (M3 next: plan only, not started)
 
 ## M0: Foundation
 Repo, Next.js App Router with TypeScript, Tailwind, shadcn/ui, Supabase client and server helpers, environment setup, PWA manifest and icons, base layout with the brand, light and dark themes, a protected `/app` route group with a working email and password login (accounts are created by the owner in the Supabase dashboard until M1), Vercel preview deploy.
@@ -23,6 +23,8 @@ Supabase Auth (email plus password, no public sign-up), `profiles` with the trig
 - [x] Role is enforced: a `sales` user hitting `/app/dashboard` or `/app/settings` gets a clear "not for your role" page on the server, and the RLS test proves the data is not readable either
 - [ ] Settings screen edits pricing, GST toggle and GST number, booking pay, commission rate, warranty text, slot template, lost reasons and company details, and lets the owner change his own password
 - [x] Deactivating a setter blocks login and hides them from pickers
+
+The four unticked items need the owner's own screens. Only the owner adds members, and the owner's test session stays view only, so they are ticked when Keenan says so.
 
 ## M2: Leads and knock sessions (phone)
 New lead, my leads, lead detail, notes, status changes, photos, knock session counters.
@@ -53,11 +55,28 @@ Asked for by Keenan on 2026-10-28, between M2 and M3.
 
 All nine proved on 2026-10-28 by the unit, RLS and live suites, the live ones also run against production, with View as compared screen by screen through the approved one-time owner session. Tab-switch numbers are in `decisions.md`.
 
+## M2.6: The door process (phone)
+Asked for by Keenan on 2026-10-31, between M2.5 and M3. Nothing here is required to save a lead.
+- [ ] A collapsible Door guide card at the top of New lead shows the text Keenan sets in Settings; setters read it through `settings_public`, as they read the lost reasons
+- [ ] Four labelled photo slots (Front, Left corner, Right corner, Soffit close-up): each opens the camera, shows the photo once taken and allows a retake; More photos takes extras; the hint shows under the slots; each photo stores its slot; resizing, metadata stripping and background upload work as before
+- [ ] Six optional one-tap Find out questions on New lead and Edit lead (Owns the home, Wants a price, Soffit colour, Christmas lights now, Which areas, Timing), each stored in its own column and empty until answered, shown on the lead page and in View as, with changes in the timeline
+- [ ] Soffit colour offers White, Off-white or cream, Other and Not sure
+- [ ] The M2 walk-through and the View as comparison cover the guide, the photo slots and the questions
+
 ## M3: Scheduling and booking pay (phone)
 Open slots from the template, time blocks, booking, distance warning, tonight's meetings, outcomes, qualified bookings, the `earnings` table, booking pay, the Schedule and My pay tabs, and Pay in Admin.
 - [ ] The Schedule tab appears for the owner and setters, in the tab bar and the side rail: pick a day and see its open and booked slots; booking starts there, from New lead or from the lead page
 - [ ] Open slots for any day come from settings minus meetings minus time blocks, in Calgary time, DST safe
-- [ ] Booking requires phone, geocoded address and the decision makers checkbox; otherwise the button is disabled with the reason shown
+- [ ] Before you book passes only when:
+  - a phone number is saved;
+  - Owns the home is Yes;
+  - Wants a price is Yes;
+  - Soffit colour is answered (Not sure is fine);
+  - the Front, Left corner and Right corner photos exist, or the setter picks a skip reason (Homeowner said no, or Other with a note);
+  - the setter confirms everyone who decides on the house will be at the meeting, stored on the booking.
+
+  Otherwise the book button is disabled with each missing item shown. Whether a map position is also required is open until Keenan answers the M3 plan.
+- [ ] The owner sees any photo skip, with its reason and note, on Schedule
 - [ ] Two setters booking the same slot at the same moment: exactly one succeeds, the other sees "that slot was just taken" and the refreshed list
 - [ ] Distance warning appears when the address is more than the configured km from the previous or next meeting, with the distance shown, and booking can still proceed
 - [ ] Booked slots show time, neighbourhood and setter to every sales user
@@ -82,6 +101,7 @@ Open slots from the template, time blocks, booking, distance warning, tonight's 
 - [ ] Presentation content and images come from settings, not from code
 - [ ] Quote builder: runs, boxes, adders, discounts, financing flag; every price is editable on the quote itself, with a custom line, and the quote stores the prices it used; totals update live and match `lib/pricing.ts`; unit tests cover a plain house, a house with adders and discounts, per-quote price changes, GST on and off, rounding
 - [ ] On screen, totals read like "$3,450 + GST" with no GST dollar figure; with GST off nothing on screen or paper mentions GST
+- [ ] A quote can't be marked ready until Keenan has confirmed the soffit colour in person against the colour book and set the track colour; both print on the quote
 - [ ] Save draft, mark presented, accepted or declined; each writes a lead event and moves the lead status to `quoted` or `sold`
 - [ ] PDF export: breakdown, subtotal, GST as a dollar amount, total and the GST number when GST is on, warranty text, "No payment until your install is complete," company contact, no em dashes anywhere; always white regardless of theme; opens in a share sheet on iPad
 - [ ] Accepting a quote creates one pending `commission` earning for the lead's setter at the current commission rate on the total as actually priced before GST; marking the lead `installed` makes it payable; marking it `lost` voids it; unit tests cover the amount and rounding

@@ -53,8 +53,19 @@ Design each screen for the device it will actually be used on, then make it tole
 - Setter pay: two kinds of earnings, both with rates in `settings`. Booking pay is a flat amount (default $20) per qualified booking. After each meeting slot the owner marks the booking Qualified, Not qualified (reason from the list in settings), No-show or Cancelled (optional note); only Qualified earns. One booking fee per lead at most; a no-show or cancelled lead can be rebooked and earns when that later meeting is marked Qualified. Commission is a percentage (default 5%) of the accepted quote total as actually priced, before GST, and earlier no-shows do not affect it; it is created when the quote is accepted and becomes payable when the lead is marked `installed`, because no customer pays before install. Each earning stores the rate it was calculated at, so a rate change applies to new earnings only. The owner marks earnings paid in batches. Only `sales` users earn; the owner's own leads create no earnings. The app records pay, it never moves money.
 - Dollar amounts live only in `quotes` (sales cannot read them) and `earnings` (sales read only their own). Never copy a price or a total into lead notes, `lead_events.payload` or meeting outcome notes, because sales users can read those.
 - No deposits or payments are taken in the app in V1. Quotes state "No payment until your install is complete." Do not build payment capture.
-- Meetings: default slots 6:00, 6:45, 7:30 and 8:15 pm, Monday to Saturday, 45 minutes each, owner only. Configurable in settings. A slot can hold one meeting (database unique constraint). Booking requires a lead with a phone number, a geocoded address, and the "both decision makers will be there" checkbox. Warn (do not block) when the booked address is more than 10 km from the meeting before or after it.
+- Meetings: default slots 6:00, 6:45, 7:30 and 8:15 pm, Monday to Saturday, 45 minutes each, owner only. Configurable in settings. A slot can hold one meeting (database unique constraint). Warn (do not block) when the booked address is more than 10 km from the meeting before or after it.
+- Before you book (M3): a lead can be booked only when all of these hold:
+  - a phone number is saved;
+  - Owns the home is Yes;
+  - Wants a price is Yes;
+  - Soffit colour is answered (Not sure is fine);
+  - the Front, Left corner and Right corner photos exist, or the setter picks a skip reason (Homeowner said no, or Other with a note), which the owner sees on Schedule;
+  - the setter confirms everyone who decides on the house will be at the meeting, stored on the booking.
+
+  Whether a map position (an address picked from the suggestions) is still required, as it was before this list, is open until Keenan answers the M3 plan.
+- The door process: a setter's visit is a short conversation with a structure: open, find out, photos, book. The app follows it with the Door guide, six Find out questions and four guided photos. Nothing in it is required to save a lead, so a quick follow-up lead stays quick; only booking requires some of it.
 - Lead statuses: `new`, `follow_up`, `meeting_booked`, `met`, `quoted`, `sold`, `installed`, `lost`. Every status change writes a `lead_events` row with who and when. `lost` requires a reason. `follow_up` requires a follow-up date, the day to come back, and leaving `follow_up` clears it; both are enforced in the database. Setters change status only between `new`, `follow_up` and `lost`; booking a meeting sets `meeting_booked`, and the owner sets everything after it. In V1 the owner sets `installed` by hand after the crew is done; jobs arrive in V2.
+- Soffit and track colour: white is the only stock track colour. A quote can't be marked ready until the owner has confirmed the soffit colour in person against the colour book and set the track colour (M5). Both print on the quote.
 - Every customer facing string (quote PDF, presentation) is written in plain language with no em dashes, no buzzwords, and no promises the business cannot keep. Use the exact warranty wording from `settings.warranty_text`.
 
 ## How to work in this repo
@@ -68,7 +79,13 @@ Design each screen for the device it will actually be used on, then make it tole
 7. When something in the docs is unclear or wrong, stop and ask instead of guessing. When you make a judgment call, write it down in `docs/decisions.md` with the date.
 8. Keep the dashboard honest: every number shows what it counts and the date range. No invented or placeholder numbers in production views. Empty states say what will appear and how to make it appear.
 9. Do not add features that are not in the current milestone. Put ideas in `docs/backlog.md`.
-10. Test on the real thing: the live walk-through drives the app in a phone-sized browser against the real database. The View as test signs in as the owner through a one-time server-side session (approved by Keenan on 2026-10-28): no password is used or changed, no email is sent, it only views and submits nothing that saves, and it ends that session afterwards. Anything the walk-through cannot reach is named in the report.
+10. Test on the real thing: the live walk-through drives the app in a phone-sized browser against the real database. There is no separate test database (Keenan, 2026-10-31): tests create test-prefixed accounts and data on production and clean up after themselves. The View as test signs in as the owner through a one-time server-side session (approved by Keenan on 2026-10-28). It follows these rules:
+    - no password is used or changed, and no email is sent;
+    - it only views; it never creates, changes or deletes anything, members included, since only the owner adds members;
+    - forms it submits are refused before anything saves;
+    - it ends that session afterwards.
+
+    Anything the walk-through cannot reach is named in the report.
 11. After building, run the full automated suite: unit, RLS, smoke, build, and the live walk-through with test-prefixed accounts, deleted after, plus the owner's one-time session for View as. Keenan does not run checklists or review preview links.
 12. If anything fails, do not merge. Stop and report what failed.
 13. If everything is green, merge the branch into main, push, wait for production to redeploy, and verify it. The report's first line is the production link, followed by a short list of what changed and where to see it.
