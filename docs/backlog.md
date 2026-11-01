@@ -14,6 +14,8 @@ Ideas and removed features that are not in the current milestone. Say which vers
 - A line on the setter's pay screen showing how booking pay and commission are calculated, in plain words.
 - View as history: a record of when the owner viewed the app as whom.
 - Follow-up reminders as notifications. The follow-up date and the Home list cover it inside the app for now. V1.5, with notifications.
+- Notify Keenan on his phone when a booking for today is made, moved or cancelled (Keenan, 2026-11-01). V1.5, with notifications.
+- Supabase Realtime instead of polling for the schedule board, if the few-second poll ever feels slow or costly.
 - Paging on Leads. The list shows the newest 200 and says so; search reaches older ones. Add "Show more" once the team has that many.
 
 ## Infrastructure

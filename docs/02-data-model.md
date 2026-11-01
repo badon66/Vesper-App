@@ -14,9 +14,10 @@ photo_slot:      front | left_corner | right_corner | soffit
 christmas_lights_now: hires | diy | none
 roofline_areas:  front | front_and_sides | full_wrap | not_sure
 install_timing:  before_christmas | new_year | no_rush
-meeting_status:  booked | confirmed | qualified | not_qualified | no_show | cancelled   -- qualified and not_qualified both mean the meeting was held
+meeting_status:  booked | confirmed | qualified | not_qualified | no_show | cancelled | moved   -- qualified and not_qualified both mean the meeting was held; moved means it was replaced by a meeting at another time; confirmed is unused for now
+map_position_source: picked | device               -- picked from the address suggestions, or the phone's own position at the door
 quote_status:    draft | presented | accepted | declined | expired
-event_type:      created | note | status_change | call | text | meeting_booked | meeting_outcome | quote_created | quote_presented | quote_accepted | quote_declined | photo_added | edited
+event_type:      created | note | status_change | call | text | meeting_booked | meeting_outcome | quote_created | quote_presented | quote_accepted | quote_declined | photo_added | edited | meeting_moved | meeting_cancelled   -- the last two added in M3
 run_level:       lower | upper
 earning_type:    booking | commission
 earning_status:  pending | paid | void
@@ -33,6 +34,7 @@ full_name text not null
 phone text
 role role not null default 'sales'
 active boolean not null default true
+hosts_meetings boolean not null default false   -- may run meetings; Keenan for now (M3). Set by the database, never from the app yet
 created_at, updated_at
 unique index on (true) where role = 'owner'     -- exactly one owner
 ```
@@ -55,12 +57,16 @@ booking_pay numeric(10,2) not null default 20.00      -- flat pay per qualified 
 commission_rate numeric(5,4) not null default 0.0500  -- share of the accepted quote total before GST
 lost_reasons text[] not null default '{price, other company, not now, could not reach, other}'
 door_guide text not null                        -- the Door guide on New lead, owner edited; starts as the four steps in the product spec
-not_qualified_reasons text[] not null default '{Not the homeowner, Decision maker missing, Did not want a price, Roofline we cannot do, Other}'   -- added in M3
+not_qualified_reasons text[] not null default '{Not the homeowner, Decision maker missing, Didn''t want a price, Roofline we can''t do, Other}'   -- Other asks for text
 meeting_days int[] not null default '{1,2,3,4,5,6}'   -- 0 = Sunday
 meeting_start time not null default '18:00'
 meeting_slot_minutes int not null default 45
 meeting_slot_count int not null default 4
 distance_warning_km numeric(5,1) not null default 10
+booking_cutoff_minutes int not null default 30  -- setters can hold, book or move into a time until this long before it starts; the owner until it starts
+hold_grace_minutes int not null default 2       -- a hold whose screen stops checking in lets go after this long
+booking_window_days int not null default 14     -- bookings open tonight and this many evenings ahead
+meeting_host_id uuid references profiles        -- who runs meetings booked from the app: Keenan; empty means the owner
 company jsonb not null               -- name, phone, email, address for PDFs
 updated_at
 ```
@@ -103,6 +109,8 @@ neighbourhood text                              -- from Places or typed
 lat double precision
 lng double precision
 place_id text
+position_source map_position_source             -- picked from the suggestions, or device: the phone's GPS at the door
+position_accuracy_m numeric(6,1)                -- for device positions: how accurate the phone said it was, 50 m or better
 house_type house_type
 soffit_colour soffit_colour                     -- Find out: White, Off-white or cream, Other (with soffit_note), Not sure
 soffit_note text
@@ -131,7 +139,7 @@ Rules enforced in the database:
 - A setter may change status only when both the old and new status are `new`, `follow_up` or `lost`. Setters can never change `created_by` or `assigned_to`. M3's booking sets `meeting_booked` inside a database function the guard trusts; the owner can set any status.
 - `lost` requires `lost_reason`, from `settings.lost_reasons`. `lost_at`, `sold_at` and `installed_at` are stamped automatically, and reopening a lost lead clears `lost_at` and `lost_reason`.
 - `follow_up` requires `follow_up_on`. Leaving `follow_up` clears it. A signed-in person cannot set a follow-up date earlier than today in Calgary; moving the date on a lead that stays in `follow_up` is an edit. The status change into `follow_up` records the date in its event payload, and a date change alone logs an `edited` event naming the field.
-- `lat` and `lng` are both set or both empty. A typed address with no map position is allowed to save; booking requires one (M3), with a fallback for brand-new streets Google doesn't have yet.
+- `lat` and `lng` are both set or both empty, and `position_source` is set exactly when they are. A typed address with no map position is allowed to save; booking requires one. For a brand-new street Google doesn't have yet, the phone's own position at the door counts, stored as `device` with its accuracy, which must be 50 m or better and inside the Calgary area. A position saved without a source is taken as picked.
 - `phone` is stored in E.164 or not at all.
 - The track colour is set by the owner only: a signed-in non-owner cannot set or change `track_colour_id` or `track_ral_code`. At most one of the two is set. A newly chosen `track_colour_id` must be an active colour; a lead keeps a colour that is later retired.
 - Deleting a profile that still owns leads or knock sessions is refused; deactivate people instead.
@@ -179,36 +187,74 @@ created_at, updated_at
 One open session per person, enforced by a partial unique index. Counters change only through `bump_knock_session(session, doors, conversations)`, one atomic update that never goes below zero, so fast taps never lose counts. A session still open from an earlier Calgary day is closed the next time its owner opens the app, with `ended_at` set to its last update. Leads saved while a session is open link to it.
 
 ### time_blocks
-Owner-blocked time (no meetings), for example a late install day.
+Times the owner blocks so nothing can be booked, for example a late install day. Removing a block stamps it; rows are never erased.
 ```
 id uuid pk
-owner_id uuid not null references profiles
+host_id uuid not null references profiles       -- whose evenings it blocks
 starts_at timestamptz not null
-ends_at timestamptz not null
+ends_at timestamptz not null                    -- after starts_at
 reason text
+created_by uuid not null references profiles
+removed_at timestamptz                          -- set when the owner removes the block
+removed_by uuid references profiles
 created_at
 ```
 
+### slot_holds
+A time someone has started booking (Keenan, 2026-11-01: no double booking is a hard rule). Rows are never erased: a hold that ends is stamped.
+```
+id uuid pk
+host_id uuid not null references profiles
+starts_at timestamptz not null
+holder_id uuid not null references profiles
+lead_id uuid references leads                   -- the lead being booked, once known
+meeting_id uuid references meetings             -- set when the hold is for moving this meeting
+renewed_at timestamptz not null default now()   -- the holder's screen checks in to keep it alive
+released_at timestamptz                         -- set when the hold ends
+release_reason text                             -- booked, moved, released, switched or lapsed
+created_at
+unique (host_id, starts_at) where released_at is null
+unique (holder_id) where released_at is null    -- one hold per person
+```
+A hold is active while `released_at` is empty and `renewed_at` is within `settings.hold_grace_minutes` of now. One that has gone quiet longer has lapsed: the next claim on that time stamps it `lapsed` and takes over, and the holder's next check-in takes the time back only if it is still free. Holds are written only by the booking functions below.
+
 ### meetings
-Open slots are computed from settings (days, start, slot length, count) minus `meetings` minus `time_blocks`. There is no slots table. The unique index is what prevents double booking. After each slot the owner sets the outcome: `qualified`, `not_qualified`, `no_show` or `cancelled`. Sales users can read every meeting, so `outcome_note` must never contain a price.
+Open times are computed from settings (days, start, slot length, count) minus live meetings, active holds and time blocks, within the booking window and before the cutoff. There is no slots table. After each slot the owner sets the outcome: `qualified`, `not_qualified`, `no_show` or `cancelled`. Sales users can read every meeting, so `outcome_note` must never contain a price.
 ```
 id uuid pk
 lead_id uuid not null references leads
-owner_id uuid not null references profiles      -- who runs the meeting (Keenan)
-booked_by uuid not null references profiles
+host_id uuid not null references profiles        -- who runs the meeting: Keenan for now; not tied to the owner role
+setter_id uuid not null references profiles      -- the lead's assigned setter when it was booked; earns the booking fee
+booked_by uuid not null references profiles      -- who picked the time
 starts_at timestamptz not null
-ends_at timestamptz not null
+ends_at timestamptz not null                     -- starts_at plus the slot length
 status meeting_status not null default 'booked'
-everyone_deciding_present boolean not null      -- the setter's confirmation that everyone who decides on the house will be there; must be true to book
-photos_skipped text                             -- set when the Front, Left corner or Right corner photo is missing at booking: 'homeowner_said_no' or 'other'; shown to the owner on Schedule
+everyone_deciding_present boolean not null      -- the setter's confirmation that everyone who decides on the house will be there; must be true
+photos_skipped text                             -- 'homeowner_said_no' or 'other' when the Front, Left corner or Right corner photo is missing at booking; shown to the owner on Schedule
 photos_skip_note text                           -- required when photos_skipped is 'other'
-outcome_reason text                             -- required when status is not_qualified; from settings.not_qualified_reasons, free text when Other
+outcome_reason text                             -- required when not_qualified: from settings.not_qualified_reasons, or the text typed for Other
 outcome_note text                               -- optional for no_show and cancelled, never a price
-outcome_at timestamptz
-rebooked_as uuid references meetings            -- set on a no_show or cancelled meeting when the lead is booked again
+outcome_at timestamptz                          -- when the status left booked: an outcome, a cancel or a move
+outcome_by uuid references profiles
+rebooked_as uuid references meetings            -- on a no_show, cancelled or moved meeting: the meeting that replaced it
 created_at, updated_at
-unique (owner_id, starts_at) where status in ('booked','confirmed','qualified','not_qualified')
+unique (host_id, starts_at) where status in ('booked','confirmed','qualified','not_qualified')
+unique (lead_id) where status in ('booked','confirmed')   -- one live booking per lead
 ```
+Rules, all enforced in the database:
+- **No double booking** (a hard rule). Tapping an open time places a hold; booking takes the caller's own active hold or a free time, never a time someone else holds. Holds and bookings take the same transaction lock, one per host and Calgary evening, and the unique indexes are the last line.
+- **Who may book.** The lead's setter or the owner, for a lead in New or Follow up that passes Before you book, into a time on the template, inside the window and before the cutoff (setters: `booking_cutoff_minutes` before it starts; the owner: until it starts), not blocked.
+- **Move and cancel.** A move creates a new meeting at the new time (held first, like a booking) and marks the old one `moved` with `rebooked_as` pointing to the new one. A cancel marks it `cancelled` and sends the lead to Follow up for the next Calgary day. Setters may do either on their own upcoming bookings until the time starts; the owner on any.
+- **Outcomes** are the owner's: from the slot's start for Qualified, Not qualified and No-show, and any time for Cancelled. Qualified and Not qualified set the lead to Met; No-show and Cancelled set it to Follow up for the next day. An outcome can be corrected until the booking fee is paid.
+- `lead_events` records `meeting_booked`, `meeting_moved`, `meeting_cancelled` and `meeting_outcome` with the meeting ids, times, outcome and reason, never an amount.
+
+### Booking functions
+Every write to `slot_holds`, `meetings` and `earnings` goes through these SECURITY DEFINER functions; no policy lets anyone write those tables directly. Each takes the evening lock (a move takes both evenings, in a fixed order). The server actions call them with the signed-in person's own session.
+- `schedule_board(host, as_sales, viewer)`: every time in the window with its state (open, held, booked, blocked or closed), the holder's name and initials, and a booked time's neighbourhood and setter. Read only; the screens poll it.
+- `hold_slot(starts_at, lead, meeting, host)`, `renew_hold()`, `release_hold()`.
+- `book_meeting(lead, starts_at, everyone_deciding_present, photos_skipped, photos_skip_note, host)`.
+- `move_meeting(meeting, new_starts_at)` and `cancel_meeting(meeting, note)`.
+- `set_meeting_outcome(meeting, outcome, reason, note)` and `mark_earnings_paid(ids)`: the owner's (the service role may call them too, for the test suite).
 
 ### quotes
 ```
@@ -244,7 +290,7 @@ A quote can't be marked ready until the lead's track colour is set; the quote st
 What setters are owed and what they have been paid. One row per earning. Rows are created by server actions, never by the client directly.
 ```
 id uuid pk
-profile_id uuid not null references profiles      -- the setter who earned it
+profile_id uuid not null references profiles      -- the setter who earned it: the lead's assigned setter
 lead_id uuid not null references leads
 meeting_id uuid references meetings               -- set for type 'booking'
 quote_id uuid references quotes                   -- set for type 'commission'
@@ -262,11 +308,12 @@ unique (lead_id) where type = 'booking'          -- one booking fee per lead, ev
 unique (quote_id) where type = 'commission'
 ```
 Rules:
-- A booking earning is created when the owner marks a meeting `qualified`, for `meetings.booked_by`, at `settings.booking_pay`, with `payable_at = now()`, unless the lead already has a booking earning. Not qualified, no-show and cancelled earn nothing.
+- A booking earning is created when the owner marks a meeting `qualified`, for `meetings.setter_id` (the lead's assigned setter when it was booked, whoever picked the time), at `settings.booking_pay`, with `payable_at = now()`, unless the lead already has a booking earning. Not qualified, no-show and cancelled earn nothing.
+- An outcome can be corrected until the booking earning is paid: moving away from Qualified voids an unpaid booking earning (`status = 'void'`, reason in `note`), and moving back to Qualified restores it.
 - A commission earning is created when a quote is accepted, for `leads.assigned_to` at that moment, at `settings.commission_rate` on `quotes.subtotal` (the total as actually priced, before GST), with `payable_at` null. Earlier no-shows on the lead do not change it. Marking the lead `installed` sets `payable_at`. Marking the lead `lost` while the commission is unpaid sets `status = 'void'` with the reason in `note`.
-- No earning is created when the profile that would receive it has role `owner`.
+- No earning is created when the profile that would receive it has role `owner`: leads assigned to the owner earn nothing.
 - "Owed now" everywhere means `status = 'pending' and payable_at is not null`. "Pending install" means `status = 'pending' and payable_at is null`.
-- Marking paid is a batch update: `status = 'paid'`, `paid_at = now()`, `paid_by = auth.uid()` on the selected rows. Paid rows are never edited again.
+- Marking paid is a batch: `status = 'paid'`, `paid_at = now()`, `paid_by` = the owner, on the selected rows. Paid rows are never edited again, and the amount, rate, type, setter and lead of any earning never change.
 
 ## Planned for V2 (not created in V1)
 `jobs` (lead_id, install_date, crew lead, status, materials jsonb, box_location, zones jsonb, photos, checklist, completed_at), `job_assignments` (job_id, profile_id, role), `timesheets` (profile_id, job_id, clock_in, clock_out, minutes, approved), `crew_profiles` (pay_rate, height_authorized, driver_authorized, test_passed_at), `warranty_records`. Leave the `crew` role and `lead_status.installed` in place so these slot in without migrations to existing columns.
@@ -280,15 +327,16 @@ Sales users collaborate, so they can read the team's leads, meetings and knock s
 | profiles | all | read own row; read `id`, `full_name` and `role` of active profiles through a view `profiles_public` (for pickers and the schedule); read `id` and `full_name` of every profile, deactivated ones included, through a view `profile_names` (so old leads and timelines still show who did what) |
 | track_colours | select, insert, update; never delete | select all (active and retired) |
 | ral_classic_colours | select | select |
-| settings | all | read only the fields the client needs: slot template, `distance_warning_km`, `lost_reasons` and `door_guide`, through a view `settings_public` that exposes nothing else |
+| settings | all | read only the fields the client needs: slot template, `distance_warning_km`, `lost_reasons`, `door_guide`, `booking_cutoff_minutes`, `hold_grace_minutes` and `booking_window_days`, through a view `settings_public` that exposes nothing else |
 | leads | all | insert as themselves; select all; update where `created_by = auth.uid()` or `assigned_to = auth.uid()`; change status only among `new`, `follow_up`, `lost`; no delete |
 | lead_photos | all | select all; insert for their own leads, with the file inside their own storage folder |
 | lead_events | select and insert; never update or delete | select all; insert `note` events on their own leads |
 | knock_sessions | all | select all; insert and update own rows |
-| time_blocks | all | select |
-| meetings | all | select all; insert where `booked_by = auth.uid()` and the lead is theirs |
+| time_blocks | select, insert, update (removing stamps the row) | select |
+| slot_holds | select; writes only through the booking functions | select all; writes only through the booking functions |
+| meetings | select; writes only through the booking functions | select all; book, move and cancel their own leads' meetings through the booking functions |
 | quotes | all | none |
-| earnings | all | select where `profile_id = auth.uid()`; no insert, update or delete |
+| earnings | select; writes only through the booking functions | select where `profile_id = auth.uid()`; no writes |
 
 Views on Supabase run with the privileges of the view's owner and bypass RLS, which is what lets sales read `settings_public`, `profiles_public` and `profile_names`. All three views return rows only when the caller has an active profile, so a signed-in account without a profile sees nothing. That is safe only while each view exposes nothing but the safe columns. Never add a column to a public view without checking this table. Supabase's security advisor reports these views as a finding; that is expected and accepted.
 

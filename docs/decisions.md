@@ -390,3 +390,41 @@ Judgment calls made while building it, for Keenan to look over.
 - The owner's screens load the whole RAL Classic list (216 names) for the as-you-type name; setters' screens load only the names they are shown.
 
 **What the tests can't reach.** The owner test session only looks, so two owner actions are walked up to the save but never saved from the screen: setting a lead's track colour, and managing the colour list. The RLS tests prove the database side of both, with the service role standing in for the owner. One test-prefixed colour is added and removed by the RLS run to prove the retired-colour rule; Keenan's own five colours are only read.
+
+## 2026-11-01: M3 approved (Keenan)
+
+**His answers to the six plan questions.**
+1. Map position fallback: the phone's GPS only ("Use where I'm standing").
+2. Tonight shows straight-line km between meetings, plus a Navigate link.
+3. Outcome corrections are allowed until the fee is paid; the earning is voided or restored automatically.
+4. Bookings open 14 days ahead.
+5. Keenan's own leads follow the same Before you book rules.
+6. The owner test session stays view-only.
+
+**His changes.**
+- **No double booking is a hard rule**, his top priority for M3. A time is claimed the moment someone starts booking it: a hold, shown to everyone else with the holder's initials within a few seconds, that ends on book, back out or another pick, and lets go after a grace period (2 minutes, in Settings) when the holder's screen stops checking in. One hold per person. Booking takes the caller's own hold or a free time, never someone else's. Enforced in the database under the same lock as booking, tested hard, and written into CLAUDE.md.
+- **Time picker** opens on tonight, or on the next evening with an opening when tonight is full; any evening in the window is one tap away.
+- **Setter Home rebuilt for the door**: tonight's open times, my bookings, the knock session, follow-ups due; no role line under the greeting. The owner's Home keeps its greeting.
+- **New lead**: "Hold a time" near the top, and "Save and book" books the held time.
+- **The booking fee goes to the lead's assigned setter**, recorded on the meeting at booking, whoever picked the time. Leads assigned to the owner earn nothing. M5 commission follows the same rule.
+- **Move and cancel**: setters on their own upcoming bookings until the time starts, the owner on any. Cancelling sends the lead to Follow up for the next day.
+- **Cutoff**: setters can hold, book or move into a time until 30 minutes before it starts (in Settings); the owner until it starts.
+- **Meeting host** is its own column, Keenan for now, not tied to the owner role.
+- **Backlog**: notify Keenan on his phone when a booking for today is made, moved or cancelled.
+- **Door guide wording stays.** The 45-minute slot includes the drive, so "a half-hour meeting" is right.
+
+**Build design calls.**
+- **The database is the single authority for times.** One SQL function computes the schedule board (every time in the window with its state: open, held, booked, blocked or closed), and the hold, book, move and cancel functions check the same rules again under the lock. The screens only display what it returns. Postgres's `America/Edmonton` rules handle daylight saving, and the tests check both change days.
+- **Holds are rows stamped when they end** (`released_at` and a reason), never erased. Partial unique indexes on the active ones make "one hold per time" and "one hold per person" hard limits, and no migration or function needs destructive SQL.
+- **The lock** is a transaction lock per host and Calgary evening, taken by every hold, booking, move and cancel; a move takes both evenings in a fixed order.
+- **Live updates by polling.** Screens showing the board read it every 3 seconds while visible and at once when the phone wakes; the holder's screen checks in every 20 seconds. Supabase Realtime could replace the polling later (backlog).
+- **Writes only through server actions, holds included**, so View as stays read only. The board is a read, straight from the database. Opening a page never places a hold; only a tap does.
+- **A move creates a new meeting** at the new time and marks the old one Moved, linked by `rebooked_as`, so Schedule and Tonight can show what changed.
+- **"Own bookings"** for move and cancel means bookings on leads the setter may edit, the same rule as booking.
+- **The booking window** is tonight plus the next 14 evenings, kept in Settings next to the cutoff and the grace period.
+- **Meeting host.** `settings.meeting_host_id` names the host (Keenan; empty means the owner), and `profiles.hosts_meetings` marks who may host. The database tests book against a throwaway test host of their own, so their races never touch Keenan's real evenings. The live walk-through has to use Keenan's board; it holds and books only on the last evening of the window, under test names, and cleans up.
+- **GPS fallback.** `leads.position_source` (picked or device) and `position_accuracy_m`. A device position must be accurate to 50 m or better and inside the Calgary area. The app warns when another lead is within 25 m, so two setters don't add the same new house twice.
+- **Not qualified reasons** use the spec's wording, with Other asking for text.
+- **Meetings have no write policies.** Sales and the owner write them only through the booking functions, so Before you book and the hold rules cannot be skipped. This tightens the data model's earlier direct-insert rule.
+- **Outcome corrections** change the lead's status only when the meeting is the lead's latest and the lead has not moved past Met. A restored fee keeps the rate it was first calculated at.
+- **What the walk-through cannot reach.** The owner test session is view-only, so Keenan's outcome buttons, Mark paid, time blocks and a booking he makes for a setter's lead are walked up to the save and proven in the database tests, with the service role standing in for him.

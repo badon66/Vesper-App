@@ -2,7 +2,7 @@
 
 One milestone per build session. A milestone is done when every criterion passes in the full automated suite, including the live walk-through on a phone-sized screen against the real database. Anything the suite cannot reach is named in the report. Keep the current milestone marked.
 
-**Current milestone: M3** (planning: the plan is with Keenan for approval; nothing built yet)
+**Current milestone: M3** (approved by Keenan on 2026-11-01; building)
 
 ## M0: Foundation
 Repo, Next.js App Router with TypeScript, Tailwind, shadcn/ui, Supabase client and server helpers, environment setup, PWA manifest and icons, base layout with the brand, light and dark themes, a protected `/app` route group with a working email and password login (accounts are created by the owner in the Supabase dashboard until M1), Vercel preview deploy.
@@ -67,10 +67,13 @@ Asked for by Keenan on 2026-10-31, between M2.5 and M3. Nothing here is required
 
 All seven proved on 2026-11-01 by the unit, RLS and live suites on a phone-sized screen against the real database, with View as compared screen by screen through the approved one-time owner session. That session only looks, so two owner actions are proved up to the save but never saved from the screen: setting a lead's track colour, and adding, renaming, reordering or retiring a colour. Their database rules are proved by the RLS tests, with the service role standing in for the owner.
 
-## M3: Scheduling and booking pay (phone)
-Open slots from the template, time blocks, booking, distance warning, tonight's meetings, outcomes, qualified bookings, the `earnings` table, booking pay, the Schedule and My pay tabs, and Pay in Admin.
-- [ ] The Schedule tab appears for the owner and setters, in the tab bar and the side rail: pick a day and see its open and booked slots; booking starts there, from New lead or from the lead page
-- [ ] Open slots for any day come from settings minus meetings minus time blocks, in Calgary time, DST safe
+## M3: Scheduling, holds and booking pay (phone)
+Approved by Keenan on 2026-11-01 with his answers and changes (see `decisions.md`). His top priority: two people can never take the same time.
+- [ ] No double booking, a hard rule: tapping an open time holds it; everyone else sees the holder's initials on it within a few seconds, without a refresh, and cannot pick it ("[Name] is booking this time."); the hold ends when the holder books, backs out or picks another time, and lets go after the grace period in Settings (2 minutes) when the holder's screen stops checking in; one hold per person; booking takes the caller's own hold or a free time, never someone else's; all of it enforced in the database under the same lock as booking
+- [ ] Database tests, with each race repeated many times per run: two setters grabbing the same time at the same instant, two booking it at the same instant, grabbing or booking a time someone else holds, a hold lapsing after the grace period, and one hold per person
+- [ ] Live test with two setters in two browsers: the second sees the first one's icon appear, cannot pick that time, sees it open again when the first backs out, and sees it grey out when the first books
+- [ ] The Schedule tab appears for the owner and setters, in the tab bar and the side rail. The time picker opens on tonight, or says tonight has nothing left and opens the next evening with an opening; every evening in the 14-day window is one tap away; booked times are greyed out with the neighbourhood and setter
+- [ ] Open times come from Settings minus live meetings, active holds and time blocks, in Calgary time and DST safe; setters can hold, book or move into a time until 30 minutes before it starts (in Settings), the owner until it starts
 - [ ] Before you book passes only when:
   - a phone number is saved;
   - Owns the home is Yes;
@@ -78,21 +81,23 @@ Open slots from the template, time blocks, booking, distance warning, tonight's 
   - Soffit colour is answered (Not sure is fine);
   - the Front, Left corner and Right corner photos exist, or the setter picks a skip reason (Homeowner said no, or Other with a note);
   - the setter confirms everyone who decides on the house will be at the meeting, stored on the booking;
-  - the lead has a map position: an address picked from the suggestions, or the fallback for a brand-new street Google doesn't have yet.
+  - the lead has a map position: an address picked from the suggestions, or the phone's GPS at the door ("Use where I'm standing"), accurate to 50 m or better.
 
-  Otherwise the book button is disabled with each missing item shown.
-- [ ] The owner sees any photo skip, with its reason and note, on Schedule
-- [ ] Two setters booking the same slot at the same moment: exactly one succeeds, the other sees "that slot was just taken" and the refreshed list
-- [ ] Distance warning appears when the address is more than the configured km from the previous or next meeting, with the distance shown, and booking can still proceed
-- [ ] Booked slots show time, neighbourhood and setter to every sales user
-- [ ] Tonight's meetings sit at the top of the owner's Home and in Schedule, in order with address, phone, navigate link, photos and notes; outcomes update lead status (Qualified and Not qualified set `met`, No-show and Cancelled set `follow_up` with the next day as the follow-up date and a note); a no-show or cancelled lead can be rebooked and the old meeting links to the new one
+  Otherwise the book button is disabled with each missing item shown. The owner's own leads follow the same rules.
+- [ ] The owner sees any photo skip, with its reason and note, and how the map position was set, on Schedule and Tonight
+- [ ] Setter Home, top to bottom: tonight's open times, big, with holders' initials (tapping one starts a booking; the next evening's times when tonight has nothing left); my bookings, tonight and upcoming, with outcomes; the knock session; follow-ups due. No role line under the greeting
+- [ ] New lead has "Hold a time" near the top; "Save and book" books the held time, or opens the time picker for the new lead when nothing is held. Booking also starts from Schedule, Home and the lead page
+- [ ] Move and cancel: setters move or cancel their own upcoming bookings until the time starts, the owner any booking; the new time is held first; cancelling sends the lead to Follow up for the next day; both are logged in the timeline and shown on Schedule and Tonight
+- [ ] Distance warning appears when the address is more than the configured km in a straight line from the meeting before or after it, with the distance shown, and booking can still go ahead
+- [ ] Tonight's meetings sit at the top of the owner's Home and in Schedule, in order with the straight-line distance from the one before, address, phone, a Navigate link, photos and notes. Outcomes: Qualified and Not qualified (a reason from Settings, or Other with text) set `met`; No-show and Cancelled (optional note) set `follow_up` with the next day as the follow-up date. A no-show or cancelled lead can be rebooked and the old meeting links to the new one. Outcomes can be corrected until the fee is paid
+- [ ] Booking pay: only Qualified creates a `booking` earning, for the setter whose lead it is (recorded on the meeting when it is booked, so a lead Keenan books for a setter still pays that setter), at the current booking pay, never a second one for the same lead; leads assigned to the owner earn nothing; a corrected outcome voids or restores the earning
+- [ ] The meeting host is its own column (Keenan for now), not tied to the owner role
 - [ ] Leads Active lists booked meetings after the follow-ups and new leads, soonest meeting first
-- [ ] Owner can add and remove time blocks
-- [ ] After each slot the owner marks the booking Qualified, Not qualified (reason from the settings list, Other with text), No-show or Cancelled (optional note); only Qualified creates a `booking` earning for the setter who booked it, at the current booking pay, and never a second one for the same lead
-- [ ] My pay tab (setter): owed now, pending install and paid totals with line items, each booking showing its outcome and reason; the RLS test proves a setter cannot read another setter's earnings
-- [ ] Pay in Admin (owner): earnings grouped by setter, select owed lines and mark them paid in one batch, stamping `paid_at` and `paid_by`
-- [ ] Every new setter screen (Schedule, booking, My pay) supports View as and is in the View as comparison test
-- [ ] Unit tests cover slot generation, DST, the distance check and booking pay creation
+- [ ] The owner can add and remove time blocks
+- [ ] My pay tab (setter): owed now, pending install and paid totals, with every booking's outcome, reason and fee; the RLS test proves a setter cannot read another setter's earnings
+- [ ] Pay in Admin (owner): earnings grouped by setter; select owed lines and mark them paid in one batch, stamping `paid_at` and `paid_by`
+- [ ] Every new setter screen (Home, Schedule, booking, My pay) supports View as and is in the View as comparison test
+- [ ] Unit tests cover the distance check, the Before you book list, pay totals and the time picker's choice of evening; database tests cover slot times on both DST change days, the cutoff and window, and every booking rule
 
 ## M4: Pipeline board and lead detail (iPad and desktop)
 - [ ] The board is a Board view inside Leads for the owner on iPad and desktop; phones keep the list
@@ -109,7 +114,7 @@ Open slots from the template, time blocks, booking, distance warning, tonight's 
 - [ ] A quote can't be marked ready until the lead's track colour is set; the quote stores the colour name and RAL code it used and prints them, and a Custom colour shows as needing powder coating
 - [ ] Save draft, mark presented, accepted or declined; each writes a lead event and moves the lead status to `quoted` or `sold`
 - [ ] PDF export: breakdown, subtotal, GST as a dollar amount, total and the GST number when GST is on, warranty text, "No payment until your install is complete," company contact, no em dashes anywhere; always white regardless of theme; opens in a share sheet on iPad
-- [ ] Accepting a quote creates one pending `commission` earning for the lead's setter at the current commission rate on the total as actually priced before GST; marking the lead `installed` makes it payable; marking it `lost` voids it; unit tests cover the amount and rounding
+- [ ] Accepting a quote creates one pending `commission` earning for the lead's assigned setter (none when the lead is assigned to the owner) at the current commission rate on the total as actually priced before GST; marking the lead `installed` makes it payable; marking it `lost` voids it; unit tests cover the amount and rounding
 
 ## M6: Dashboard on the owner's Home (desktop and iPad)
 - [ ] The tiles sit on the owner's Home, below tonight's meetings and today's team; there is no separate dashboard page or tab
