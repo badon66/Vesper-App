@@ -190,8 +190,17 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
           <Field name="meeting_slot_count" label="Slots per evening" errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="numeric" min="1" max="12" defaultValue={defaults.meeting_slot_count} />}
           </Field>
-          <Field name="distance_warning_km" label="Distance warning (km)" hint="Warn when a booking is further than this from the meeting before or after it." errors={errors}>
+          <Field name="distance_warning_km" label="Distance warning (km)" hint="Warn when a booking is further than this, in a straight line, from the meeting before or after it." errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.1" min="0" defaultValue={defaults.distance_warning_km} />}
+          </Field>
+          <Field name="booking_cutoff_minutes" label="Booking cutoff (minutes)" hint="Setters can hold, book or move into a time until this long before it starts. You can until it starts." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="numeric" min="0" max="240" step="5" defaultValue={defaults.booking_cutoff_minutes} />}
+          </Field>
+          <Field name="hold_grace_minutes" label="Hold grace period (minutes)" hint="A held time lets go after this long when the setter's phone stops checking in." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="numeric" min="1" max="30" defaultValue={defaults.hold_grace_minutes} />}
+          </Field>
+          <Field name="booking_window_days" label="Booking window (days ahead)" hint="Tonight plus this many evenings can be booked." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="numeric" min="1" max="60" defaultValue={defaults.booking_window_days} />}
           </Field>
         </CardContent>
       </Card>
@@ -206,6 +215,21 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
         <CardContent>
           <Field name="lost_reasons" label="Reasons" errors={errors}>
             {(p) => <Textarea {...p} rows={5} defaultValue={defaults.lost_reasons} />}
+          </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Not qualified reasons</CardTitle>
+          <CardDescription>
+            The choices offered when you mark a meeting Not qualified. One per
+            line. Other always asks for a few words.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Field name="not_qualified_reasons" label="Reasons" errors={errors}>
+            {(p) => <Textarea {...p} rows={5} defaultValue={defaults.not_qualified_reasons} />}
           </Field>
         </CardContent>
       </Card>

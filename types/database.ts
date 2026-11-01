@@ -14,6 +14,120 @@ export type Database = {
   }
   public: {
     Tables: {
+      earnings: {
+        Row: {
+          amount: number
+          base_amount: number | null
+          created_at: string
+          id: string
+          lead_id: string
+          meeting_id: string | null
+          note: string | null
+          paid_at: string | null
+          paid_by: string | null
+          payable_at: string | null
+          profile_id: string
+          quote_id: string | null
+          rate: number
+          status: Database["public"]["Enums"]["earning_status"]
+          type: Database["public"]["Enums"]["earning_type"]
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          base_amount?: number | null
+          created_at?: string
+          id?: string
+          lead_id: string
+          meeting_id?: string | null
+          note?: string | null
+          paid_at?: string | null
+          paid_by?: string | null
+          payable_at?: string | null
+          profile_id: string
+          quote_id?: string | null
+          rate: number
+          status?: Database["public"]["Enums"]["earning_status"]
+          type: Database["public"]["Enums"]["earning_type"]
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          base_amount?: number | null
+          created_at?: string
+          id?: string
+          lead_id?: string
+          meeting_id?: string | null
+          note?: string | null
+          paid_at?: string | null
+          paid_by?: string | null
+          payable_at?: string | null
+          profile_id?: string
+          quote_id?: string | null
+          rate?: number
+          status?: Database["public"]["Enums"]["earning_status"]
+          type?: Database["public"]["Enums"]["earning_type"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "earnings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "earnings_meeting_id_fkey"
+            columns: ["meeting_id"]
+            isOneToOne: false
+            referencedRelation: "meetings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "earnings_paid_by_fkey"
+            columns: ["paid_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "earnings_paid_by_fkey"
+            columns: ["paid_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "earnings_paid_by_fkey"
+            columns: ["paid_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "earnings_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "earnings_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "earnings_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knock_sessions: {
         Row: {
           conversations: number
@@ -228,6 +342,10 @@ export type Database = {
           owns_home: boolean | null
           phone: string | null
           place_id: string | null
+          position_accuracy_m: number | null
+          position_source:
+            | Database["public"]["Enums"]["map_position_source"]
+            | null
           postal_code: string | null
           soffit_colour: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_note: string | null
@@ -270,6 +388,10 @@ export type Database = {
           owns_home?: boolean | null
           phone?: string | null
           place_id?: string | null
+          position_accuracy_m?: number | null
+          position_source?:
+            | Database["public"]["Enums"]["map_position_source"]
+            | null
           postal_code?: string | null
           soffit_colour?: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_note?: string | null
@@ -312,6 +434,10 @@ export type Database = {
           owns_home?: boolean | null
           phone?: string | null
           place_id?: string | null
+          position_accuracy_m?: number | null
+          position_source?:
+            | Database["public"]["Enums"]["map_position_source"]
+            | null
           postal_code?: string | null
           soffit_colour?: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_note?: string | null
@@ -389,12 +515,175 @@ export type Database = {
           },
         ]
       }
+      meetings: {
+        Row: {
+          booked_by: string
+          created_at: string
+          ends_at: string
+          everyone_deciding_present: boolean
+          host_id: string
+          id: string
+          lead_id: string
+          outcome_at: string | null
+          outcome_by: string | null
+          outcome_note: string | null
+          outcome_reason: string | null
+          photos_skip_note: string | null
+          photos_skipped: string | null
+          rebooked_as: string | null
+          setter_id: string
+          starts_at: string
+          status: Database["public"]["Enums"]["meeting_status"]
+          updated_at: string
+        }
+        Insert: {
+          booked_by: string
+          created_at?: string
+          ends_at: string
+          everyone_deciding_present: boolean
+          host_id: string
+          id?: string
+          lead_id: string
+          outcome_at?: string | null
+          outcome_by?: string | null
+          outcome_note?: string | null
+          outcome_reason?: string | null
+          photos_skip_note?: string | null
+          photos_skipped?: string | null
+          rebooked_as?: string | null
+          setter_id: string
+          starts_at: string
+          status?: Database["public"]["Enums"]["meeting_status"]
+          updated_at?: string
+        }
+        Update: {
+          booked_by?: string
+          created_at?: string
+          ends_at?: string
+          everyone_deciding_present?: boolean
+          host_id?: string
+          id?: string
+          lead_id?: string
+          outcome_at?: string | null
+          outcome_by?: string | null
+          outcome_note?: string | null
+          outcome_reason?: string | null
+          photos_skip_note?: string | null
+          photos_skipped?: string | null
+          rebooked_as?: string | null
+          setter_id?: string
+          starts_at?: string
+          status?: Database["public"]["Enums"]["meeting_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meetings_booked_by_fkey"
+            columns: ["booked_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meetings_booked_by_fkey"
+            columns: ["booked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meetings_booked_by_fkey"
+            columns: ["booked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meetings_host_id_fkey"
+            columns: ["host_id"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meetings_host_id_fkey"
+            columns: ["host_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meetings_host_id_fkey"
+            columns: ["host_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meetings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meetings_outcome_by_fkey"
+            columns: ["outcome_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meetings_outcome_by_fkey"
+            columns: ["outcome_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meetings_outcome_by_fkey"
+            columns: ["outcome_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meetings_rebooked_as_fkey"
+            columns: ["rebooked_as"]
+            isOneToOne: false
+            referencedRelation: "meetings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meetings_setter_id_fkey"
+            columns: ["setter_id"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meetings_setter_id_fkey"
+            columns: ["setter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meetings_setter_id_fkey"
+            columns: ["setter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           active: boolean
           created_at: string
           email: string
           full_name: string
+          hosts_meetings: boolean
           id: string
           phone: string | null
           role: Database["public"]["Enums"]["user_role"]
@@ -405,6 +694,7 @@ export type Database = {
           created_at?: string
           email: string
           full_name: string
+          hosts_meetings?: boolean
           id: string
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
@@ -415,6 +705,7 @@ export type Database = {
           created_at?: string
           email?: string
           full_name?: string
+          hosts_meetings?: boolean
           id?: string
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
@@ -439,7 +730,9 @@ export type Database = {
       }
       settings: {
         Row: {
+          booking_cutoff_minutes: number
           booking_pay: number
+          booking_window_days: number
           box_price: number
           commission_rate: number
           company: Json
@@ -448,13 +741,16 @@ export type Database = {
           gst_enabled: boolean
           gst_number: string | null
           gst_rate: number
+          hold_grace_minutes: number
           id: number
           lost_reasons: string[]
           meeting_days: number[]
+          meeting_host_id: string | null
           meeting_slot_count: number
           meeting_slot_minutes: number
           meeting_start: string
           neighbour_discount: number
+          not_qualified_reasons: string[]
           presentation: Json
           price_per_ft: number
           referral_credit: number
@@ -462,7 +758,9 @@ export type Database = {
           warranty_text: string
         }
         Insert: {
+          booking_cutoff_minutes?: number
           booking_pay?: number
+          booking_window_days?: number
           box_price?: number
           commission_rate?: number
           company: Json
@@ -471,13 +769,16 @@ export type Database = {
           gst_enabled?: boolean
           gst_number?: string | null
           gst_rate?: number
+          hold_grace_minutes?: number
           id: number
           lost_reasons?: string[]
           meeting_days?: number[]
+          meeting_host_id?: string | null
           meeting_slot_count?: number
           meeting_slot_minutes?: number
           meeting_start?: string
           neighbour_discount?: number
+          not_qualified_reasons?: string[]
           presentation: Json
           price_per_ft?: number
           referral_credit?: number
@@ -485,7 +786,9 @@ export type Database = {
           warranty_text: string
         }
         Update: {
+          booking_cutoff_minutes?: number
           booking_pay?: number
+          booking_window_days?: number
           box_price?: number
           commission_rate?: number
           company?: Json
@@ -494,20 +797,241 @@ export type Database = {
           gst_enabled?: boolean
           gst_number?: string | null
           gst_rate?: number
+          hold_grace_minutes?: number
           id?: number
           lost_reasons?: string[]
           meeting_days?: number[]
+          meeting_host_id?: string | null
           meeting_slot_count?: number
           meeting_slot_minutes?: number
           meeting_start?: string
           neighbour_discount?: number
+          not_qualified_reasons?: string[]
           presentation?: Json
           price_per_ft?: number
           referral_credit?: number
           updated_at?: string
           warranty_text?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "settings_meeting_host_id_fkey"
+            columns: ["meeting_host_id"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "settings_meeting_host_id_fkey"
+            columns: ["meeting_host_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "settings_meeting_host_id_fkey"
+            columns: ["meeting_host_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      slot_holds: {
+        Row: {
+          created_at: string
+          holder_id: string
+          host_id: string
+          id: string
+          lead_id: string | null
+          meeting_id: string | null
+          release_reason: string | null
+          released_at: string | null
+          renewed_at: string
+          starts_at: string
+        }
+        Insert: {
+          created_at?: string
+          holder_id: string
+          host_id: string
+          id?: string
+          lead_id?: string | null
+          meeting_id?: string | null
+          release_reason?: string | null
+          released_at?: string | null
+          renewed_at?: string
+          starts_at: string
+        }
+        Update: {
+          created_at?: string
+          holder_id?: string
+          host_id?: string
+          id?: string
+          lead_id?: string | null
+          meeting_id?: string | null
+          release_reason?: string | null
+          released_at?: string | null
+          renewed_at?: string
+          starts_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "slot_holds_holder_id_fkey"
+            columns: ["holder_id"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_holds_holder_id_fkey"
+            columns: ["holder_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_holds_holder_id_fkey"
+            columns: ["holder_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_holds_host_id_fkey"
+            columns: ["host_id"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_holds_host_id_fkey"
+            columns: ["host_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_holds_host_id_fkey"
+            columns: ["host_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_holds_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slot_holds_meeting_id_fkey"
+            columns: ["meeting_id"]
+            isOneToOne: false
+            referencedRelation: "meetings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      time_blocks: {
+        Row: {
+          created_at: string
+          created_by: string
+          ends_at: string
+          host_id: string
+          id: string
+          reason: string | null
+          removed_at: string | null
+          removed_by: string | null
+          starts_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          ends_at: string
+          host_id: string
+          id?: string
+          reason?: string | null
+          removed_at?: string | null
+          removed_by?: string | null
+          starts_at: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          ends_at?: string
+          host_id?: string
+          id?: string
+          reason?: string | null
+          removed_at?: string | null
+          removed_by?: string | null
+          starts_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "time_blocks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_blocks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_blocks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_blocks_host_id_fkey"
+            columns: ["host_id"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_blocks_host_id_fkey"
+            columns: ["host_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_blocks_host_id_fkey"
+            columns: ["host_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_blocks_removed_by_fkey"
+            columns: ["removed_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_blocks_removed_by_fkey"
+            columns: ["removed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_blocks_removed_by_fkey"
+            columns: ["removed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       track_colours: {
         Row: {
@@ -584,8 +1108,11 @@ export type Database = {
       }
       settings_public: {
         Row: {
+          booking_cutoff_minutes: number | null
+          booking_window_days: number | null
           distance_warning_km: number | null
           door_guide: string | null
+          hold_grace_minutes: number | null
           lost_reasons: string[] | null
           meeting_days: number[] | null
           meeting_slot_count: number | null
@@ -593,8 +1120,11 @@ export type Database = {
           meeting_start: string | null
         }
         Insert: {
+          booking_cutoff_minutes?: number | null
+          booking_window_days?: number | null
           distance_warning_km?: number | null
           door_guide?: string | null
+          hold_grace_minutes?: number | null
           lost_reasons?: string[] | null
           meeting_days?: number[] | null
           meeting_slot_count?: number | null
@@ -602,8 +1132,11 @@ export type Database = {
           meeting_start?: string | null
         }
         Update: {
+          booking_cutoff_minutes?: number | null
+          booking_window_days?: number | null
           distance_warning_km?: number | null
           door_guide?: string | null
+          hold_grace_minutes?: number | null
           lost_reasons?: string[] | null
           meeting_days?: number[] | null
           meeting_slot_count?: number | null
@@ -614,6 +1147,36 @@ export type Database = {
       }
     }
     Functions: {
+      acts_as_owner: { Args: never; Returns: boolean }
+      add_time_block: {
+        Args: {
+          p_ends_at: string
+          p_host?: string
+          p_reason?: string
+          p_starts_at: string
+        }
+        Returns: string
+      }
+      book_meeting: {
+        Args: {
+          p_everyone_deciding_present: boolean
+          p_host?: string
+          p_lead_id: string
+          p_photos_skip_note?: string
+          p_photos_skipped?: string
+          p_starts_at: string
+        }
+        Returns: string
+      }
+      booking_problems: {
+        Args: {
+          p_everyone_deciding_present: boolean
+          p_lead_id: string
+          p_photos_skip_note: string
+          p_photos_skipped: string
+        }
+        Returns: string[]
+      }
       bump_knock_session: {
         Args: { p_conversations?: number; p_doors?: number; p_session: string }
         Returns: {
@@ -635,17 +1198,98 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      calgary_tomorrow: { Args: never; Returns: string }
+      cancel_meeting: {
+        Args: { p_meeting_id: string; p_note?: string }
+        Returns: undefined
+      }
+      check_slot_free: {
+        Args: {
+          p_host: string
+          p_me: string
+          p_owner: boolean
+          p_starts_at: string
+        }
+        Returns: undefined
+      }
       close_my_stale_knock_sessions: { Args: never; Returns: number }
       current_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
+      default_meeting_host: { Args: never; Returns: string }
       end_user_sessions: { Args: { target_user: string }; Returns: number }
+      hold_grace: { Args: never; Returns: string }
+      hold_slot: {
+        Args: {
+          p_host?: string
+          p_lead_id?: string
+          p_meeting_id?: string
+          p_starts_at: string
+        }
+        Returns: Json
+      }
       is_owner: { Args: never; Returns: boolean }
       is_sales_side: { Args: never; Returns: boolean }
+      is_template_slot: { Args: { p_starts_at: string }; Returns: boolean }
+      lock_evening: {
+        Args: { p_at: string; p_host: string }
+        Returns: undefined
+      }
+      lock_evenings: {
+        Args: { p_a: string; p_b: string; p_host: string }
+        Returns: undefined
+      }
+      mark_earnings_paid: { Args: { p_ids: string[] }; Returns: number }
+      move_meeting: {
+        Args: { p_meeting_id: string; p_new_starts_at: string }
+        Returns: string
+      }
+      release_hold: { Args: never; Returns: undefined }
+      release_lapsed_holds: {
+        Args: { p_host: string; p_starts_at: string }
+        Returns: undefined
+      }
+      remove_time_block: { Args: { p_block_id: string }; Returns: undefined }
+      renew_hold: { Args: never; Returns: Json }
+      resolve_meeting_host: { Args: { p_host: string }; Returns: string }
+      schedule_board: {
+        Args: { p_as_sales?: boolean; p_host?: string; p_viewer?: string }
+        Returns: {
+          day: string
+          ends_at: string
+          held_by_viewer: boolean
+          holder_id: string
+          holder_name: string
+          lead_id: string
+          meeting_id: string
+          neighbourhood: string
+          setter_id: string
+          setter_is_viewer: boolean
+          setter_name: string
+          starts_at: string
+          state: string
+        }[]
+      }
+      set_meeting_outcome: {
+        Args: {
+          p_meeting_id: string
+          p_note?: string
+          p_outcome: Database["public"]["Enums"]["meeting_status"]
+          p_reason?: string
+        }
+        Returns: undefined
+      }
+      slot_starts_on: { Args: { p_day: string }; Returns: string[] }
+      slot_time_problem: {
+        Args: { p_now: string; p_owner: boolean; p_starts_at: string }
+        Returns: string
+      }
     }
     Enums: {
       christmas_lights_now: "hires" | "diy" | "none"
+      earning_status: "pending" | "paid" | "void"
+      earning_type: "booking" | "commission"
       event_type:
         | "created"
         | "note"
@@ -660,6 +1304,8 @@ export type Database = {
         | "quote_declined"
         | "photo_added"
         | "edited"
+        | "meeting_moved"
+        | "meeting_cancelled"
       house_type: "bungalow" | "bi_level" | "two_storey" | "other"
       install_timing: "before_christmas" | "new_year" | "no_rush"
       lead_source: "door" | "referral" | "neighbour_card" | "website" | "other"
@@ -672,6 +1318,15 @@ export type Database = {
         | "sold"
         | "installed"
         | "lost"
+      map_position_source: "picked" | "device"
+      meeting_status:
+        | "booked"
+        | "confirmed"
+        | "qualified"
+        | "not_qualified"
+        | "no_show"
+        | "cancelled"
+        | "moved"
       photo_slot: "front" | "left_corner" | "right_corner" | "soffit"
       roofline_areas: "front" | "front_and_sides" | "full_wrap" | "not_sure"
       soffit_colour:
@@ -810,6 +1465,8 @@ export const Constants = {
   public: {
     Enums: {
       christmas_lights_now: ["hires", "diy", "none"],
+      earning_status: ["pending", "paid", "void"],
+      earning_type: ["booking", "commission"],
       event_type: [
         "created",
         "note",
@@ -824,6 +1481,8 @@ export const Constants = {
         "quote_declined",
         "photo_added",
         "edited",
+        "meeting_moved",
+        "meeting_cancelled",
       ],
       house_type: ["bungalow", "bi_level", "two_storey", "other"],
       install_timing: ["before_christmas", "new_year", "no_rush"],
@@ -837,6 +1496,16 @@ export const Constants = {
         "sold",
         "installed",
         "lost",
+      ],
+      map_position_source: ["picked", "device"],
+      meeting_status: [
+        "booked",
+        "confirmed",
+        "qualified",
+        "not_qualified",
+        "no_show",
+        "cancelled",
+        "moved",
       ],
       photo_slot: ["front", "left_corner", "right_corner", "soffit"],
       roofline_areas: ["front", "front_and_sides", "full_wrap", "not_sure"],
