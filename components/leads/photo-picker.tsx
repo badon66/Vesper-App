@@ -16,19 +16,21 @@ type Item = {
   path?: string;
 };
 
-// Takes photos with the phone camera, shrinks each one in the browser and
-// uploads it straight away into the setter's own folder. In a lead form the
-// uploaded paths travel with the form; on a lead page each photo is attached
-// to the lead as soon as it is up.
+// Takes extra photos, beyond the four guided ones, with the phone camera,
+// shrinks each one in the browser and uploads it straight away into the
+// setter's own folder. In a lead form the uploaded paths travel with the
+// form; on a lead page each photo is attached to the lead as soon as it is up.
 export function PhotoPicker({
   userId,
   mode,
   leadId,
+  buttonLabel,
   onBusyChange,
 }: {
   userId: string;
   mode: "form" | "attach";
   leadId?: string;
+  buttonLabel?: string;
   onBusyChange?: (busy: boolean) => void;
 }) {
   const router = useRouter();
@@ -105,7 +107,8 @@ export function PhotoPicker({
   }
 
   const label =
-    items.length > 0 ? "Add another photo" : mode === "attach" ? "Add photo" : "Take photo";
+    buttonLabel ??
+    (items.length > 0 ? "Add another photo" : mode === "attach" ? "Add photo" : "Take photo");
 
   return (
     <div className="flex flex-col gap-3">

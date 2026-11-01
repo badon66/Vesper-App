@@ -5,6 +5,7 @@ import { LeadForm } from "@/components/leads/lead-form";
 import { NotForYourRole } from "@/components/not-for-your-role";
 import { requireProfile } from "@/lib/auth/profile";
 import { getPublicEnv } from "@/lib/env";
+import { findOutChoices } from "@/lib/leads/door";
 import { formatPhone } from "@/lib/phone";
 import { createClient } from "@/lib/supabase/server";
 import { updateLead } from "../../actions";
@@ -43,7 +44,7 @@ export default async function EditLeadPage({ params }: { params: Promise<{ id: s
           email: lead.email ?? "",
           neighbourhood: lead.neighbourhood ?? "",
           house_type: lead.house_type,
-          soffit_colour: lead.soffit_colour,
+          find_out: findOutChoices(lead),
           soffit_note: lead.soffit_note ?? "",
           notes: lead.notes ?? "",
           source: lead.source,

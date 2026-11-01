@@ -2,7 +2,7 @@
 
 One milestone per build session. A milestone is done when every criterion passes in the full automated suite, including the live walk-through on a phone-sized screen against the real database. Anything the suite cannot reach is named in the report. Keep the current milestone marked.
 
-**Current milestone: M2.6** (M3 next: plan only, not started)
+**Current milestone: M3** (planning: the plan is with Keenan for approval; nothing built yet)
 
 ## M0: Foundation
 Repo, Next.js App Router with TypeScript, Tailwind, shadcn/ui, Supabase client and server helpers, environment setup, PWA manifest and icons, base layout with the brand, light and dark themes, a protected `/app` route group with a working email and password login (accounts are created by the owner in the Supabase dashboard until M1), Vercel preview deploy.
@@ -57,13 +57,15 @@ All nine proved on 2026-10-28 by the unit, RLS and live suites, the live ones al
 
 ## M2.6: The door process (phone)
 Asked for by Keenan on 2026-10-31, between M2.5 and M3. Nothing here is required to save a lead.
-- [ ] A collapsible Door guide card at the top of New lead shows the text Keenan sets in Settings; setters read it through `settings_public`, as they read the lost reasons
-- [ ] Four labelled photo slots (Front, Left corner, Right corner, Soffit close-up): each opens the camera, shows the photo once taken and allows a retake; More photos takes extras; the hint shows under the slots; each photo stores its slot; resizing, metadata stripping and background upload work as before
-- [ ] Six optional one-tap Find out questions on New lead and Edit lead (Owns the home, Wants a price, Soffit colour, Christmas lights now, Which areas, Timing), each stored in its own column and empty until answered, shown on the lead page and in View as, with changes in the timeline
-- [ ] Soffit colour offers White, Off-white or cream, Other and Not sure; the database change is additive, with black and brown kept but unused
-- [ ] Settings has a Track colours list Keenan manages, each with a name and an optional RAL code: add, rename, reorder and retire, never delete; it starts with White, Off-white, Brown, Black and Grey
-- [ ] On the lead page only the owner can set the track colour, enforced in the database (the RLS test proves a setter cannot): one of the active colours, or Custom with a four-digit RAL Classic code shown by name from the RAL Classic list; names only, no swatch; setters see it
-- [ ] The M2 walk-through and the View as comparison cover the guide, the photo slots and the questions
+- [x] A collapsible Door guide card at the top of New lead shows the text Keenan sets in Settings; setters read it through `settings_public`, as they read the lost reasons
+- [x] Four labelled photo slots (Front, Left corner, Right corner, Soffit close-up): each opens the camera, shows the photo once taken and allows a retake; More photos takes extras; the hint shows under the slots; each photo stores its slot; resizing, metadata stripping and background upload work as before
+- [x] Six optional one-tap Find out questions on New lead and Edit lead (Owns the home, Wants a price, Soffit colour, Christmas lights now, Which areas, Timing), each stored in its own column and empty until answered, shown on the lead page and in View as, with changes in the timeline
+- [x] Soffit colour offers White, Off-white or cream, Other and Not sure; the database change is additive, with black and brown kept but unused
+- [x] Settings has a Track colours list Keenan manages, each with a name and an optional RAL code: add, rename, reorder and retire, never delete; it starts with White, Off-white, Brown, Black and Grey
+- [x] On the lead page only the owner can set the track colour, enforced in the database (the RLS test proves a setter cannot): one of the active colours, or Custom with a four-digit RAL Classic code shown by name from the RAL Classic list; names only, no swatch; setters see it
+- [x] The M2 walk-through and the View as comparison cover the guide, the photo slots and the questions
+
+All seven proved on 2026-11-01 by the unit, RLS and live suites on a phone-sized screen against the real database, with View as compared screen by screen through the approved one-time owner session. That session only looks, so two owner actions are proved up to the save but never saved from the screen: setting a lead's track colour, and adding, renaming, reordering or retiring a colour. Their database rules are proved by the RLS tests, with the service role standing in for the owner.
 
 ## M3: Scheduling and booking pay (phone)
 Open slots from the template, time blocks, booking, distance warning, tonight's meetings, outcomes, qualified bookings, the `earnings` table, booking pay, the Schedule and My pay tabs, and Pay in Admin.

@@ -2,24 +2,33 @@ import { ChevronLeft } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Fragment } from "react";
 import { z } from "zod";
 import { NoteForm } from "@/components/leads/note-form";
 import { PhotoPicker } from "@/components/leads/photo-picker";
+import { PhotoSlots } from "@/components/leads/photo-slots";
 import { StatusBadge } from "@/components/leads/status-badge";
 import { StatusControl } from "@/components/leads/status-control";
+import { TrackColourForm } from "@/components/leads/track-colour-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth/profile";
+import { findOutAnswerList, type PhotoSlot } from "@/lib/leads/door";
 import { lostReasons, namesById } from "@/lib/leads/queries";
 import {
   HOUSE_TYPE_OPTIONS,
   labelFor,
   leadName,
-  SOFFIT_OPTIONS,
   SOURCE_OPTIONS,
   STATUS_LABELS,
   statusChoices,
 } from "@/lib/leads/status";
+import {
+  leadTrackColour,
+  needsPowderCoating,
+  sortTrackColours,
+  trackColourText,
+} from "@/lib/leads/track-colour";
 import { describeEvent } from "@/lib/leads/timeline";
 import { formatPhone } from "@/lib/phone";
 import { PHOTO_BUCKET } from "@/lib/photos";
@@ -48,9 +57,10 @@ export default async function LeadPage({
   const { data: lead } = await supabase.from("leads").select("*").eq("id", id).maybeSingle();
   if (!lead) notFound();
 
-  const canEdit = me.role === "owner" || lead.created_by === me.id || lead.assigned_to === me.id;
-  const [{ data: photoRows }, { data: events }, reasons, sessionResult] = await Promise.all([
-    supabase.from("lead_photos").select("id, storage_path").eq("lead_id", id).order("created_at"),
+  const isOwner = me.role === "owner";
+  const canEdit = isOwner || lead.created_by === me.id || lead.assigned_to === me.id;
+  const [{ data: photoRows }, { data: events }, reasons, sessionResult, { data: colourRows }] = await Promise.all([
+    supabase.from("lead_photos").select("id, storage_path, slot").eq("lead_id", id).order("created_at"),
     supabase
       .from("lead_events")
       .select("id, type, from_status, to_status, payload, actor_id, created_at")
@@ -61,14 +71,43 @@ export default async function LeadPage({
     lead.knock_session_id
       ? supabase.from("knock_sessions").select("neighbourhood").eq("id", lead.knock_session_id).maybeSingle()
       : Promise.resolve({ data: null }),
+    supabase.from("track_colours").select("id, name, ral_code, sort_order, active"),
   ]);
+
+  // Track colour. The owner gets the whole RAL Classic list, to name a
+  // custom number as he types it; everyone else only the names shown.
+  const colours = sortTrackColours(colourRows ?? []);
+  const colourById = new Map(colours.map((colour) => [colour.id, colour]));
+  const listColour = lead.track_colour_id ? colourById.get(lead.track_colour_id) : undefined;
+  const ralCodes = [lead.track_ral_code, listColour?.ral_code].filter((code): code is string => Boolean(code));
+  const ralQuery = supabase.from("ral_classic_colours").select("code, name");
+  const { data: ralRows } = isOwner
+    ? await ralQuery
+    : ralCodes.length > 0
+      ? await ralQuery.in("code", ralCodes)
+      : { data: [] };
+  const ralNames = new Map((ralRows ?? []).map((row) => [row.code, row.name]));
+  const trackColour = leadTrackColour(lead, colourById, ralNames);
+  const trackOptions = colours
+    .filter((colour) => colour.active || colour.id === lead.track_colour_id)
+    .map((colour) => ({ value: colour.id, label: colour.active ? colour.name : `${colour.name} (retired)` }));
 
   const paths = (photoRows ?? []).map((photo) => photo.storage_path);
   const signed =
     paths.length > 0
       ? ((await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600)).data ?? [])
       : [];
-  const photoUrls = signed.flatMap((item) => (item.signedUrl ? [item.signedUrl] : []));
+  const urlByPath = new Map(
+    signed.flatMap((item) => (item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : [])),
+  );
+  const slotUrls: Partial<Record<PhotoSlot, string>> = {};
+  const extraUrls: string[] = [];
+  for (const photo of photoRows ?? []) {
+    const url = urlByPath.get(photo.storage_path);
+    if (!url) continue;
+    if (photo.slot) slotUrls[photo.slot] = url;
+    else extraUrls.push(url);
+  }
   const names = await namesById(supabase, [
     lead.created_by,
     lead.assigned_to,
@@ -171,17 +210,57 @@ export default async function LeadPage({
 
       <Card>
         <CardHeader>
+          <CardTitle>Find out</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm" data-testid="find-out-answers">
+            {findOutAnswerList(lead).map((item) => (
+              <Fragment key={item.field}>
+                <dt className="text-muted-foreground">{item.question}</dt>
+                <dd className={item.answer ? "font-semibold" : "text-muted-foreground"}>
+                  {item.answer ?? "Not answered"}
+                </dd>
+              </Fragment>
+            ))}
+          </dl>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Photos</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-5">
+          <PhotoSlots userId={me.id} mode="attach" leadId={lead.id} saved={slotUrls} canTake={canEdit} />
+          {extraUrls.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-semibold">More photos</h3>
+              <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="More photos">
+                {extraUrls.map((url, index) => (
+                  <li key={url} className="overflow-hidden rounded-md border">
+                    <a href={url} target="_blank" rel="noopener noreferrer" className="block outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- private photos behind short-lived signed links must not go through the image cache */}
+                      <img src={url} alt={`Extra photo ${index + 1} of the house`} className="aspect-square w-full object-cover" />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {canEdit ? (
+            <PhotoPicker userId={me.id} mode="attach" leadId={lead.id} buttonLabel="More photos" />
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>House</CardTitle>
         </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
             <dt className="text-muted-foreground">House type</dt>
             <dd>{labelFor(HOUSE_TYPE_OPTIONS, lead.house_type) || "Not noted"}</dd>
-            <dt className="text-muted-foreground">Soffit colour</dt>
-            <dd>
-              {labelFor(SOFFIT_OPTIONS, lead.soffit_colour) || "Not noted"}
-              {lead.soffit_note ? `: ${lead.soffit_note}` : ""}
-            </dd>
             <dt className="text-muted-foreground">Came from</dt>
             <dd>{labelFor(SOURCE_OPTIONS, lead.source)}</dd>
           </dl>
@@ -191,24 +270,32 @@ export default async function LeadPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Photos</CardTitle>
+          <CardTitle>Track colour</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {photoUrls.length > 0 ? (
-            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {photoUrls.map((url, index) => (
-                <li key={url} className="overflow-hidden rounded-md border">
-                  <a href={url} target="_blank" rel="noopener noreferrer" className="block outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    {/* eslint-disable-next-line @next/next/no-img-element -- private photos behind short-lived signed links must not go through the image cache */}
-                    <img src={url} alt={`Photo ${index + 1} of the house`} className="aspect-square w-full object-cover" />
-                  </a>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">No photos yet.</p>
-          )}
-          {canEdit ? <PhotoPicker userId={me.id} mode="attach" leadId={lead.id} /> : null}
+        <CardContent className="flex flex-col gap-4 text-sm">
+          <div data-testid="track-colour">
+            <p className={trackColour.kind === "none" ? "text-muted-foreground" : "text-base font-semibold"}>
+              {trackColourText(trackColour)}
+              {trackColour.kind === "list" && trackColour.retired ? " (retired from the list)" : ""}
+            </p>
+            {needsPowderCoating(trackColour) ? (
+              <p className="font-semibold">Needs powder coating.</p>
+            ) : null}
+            <p className="text-muted-foreground">
+              White is the only stock track colour.{isOwner ? "" : " Keenan sets the track colour."}
+            </p>
+          </div>
+          {isOwner ? (
+            <TrackColourForm
+              leadId={lead.id}
+              options={trackOptions}
+              current={{
+                choice: lead.track_ral_code ? "custom" : lead.track_colour_id,
+                ralCode: lead.track_ral_code,
+              }}
+              ralNames={Object.fromEntries(ralNames)}
+            />
+          ) : null}
         </CardContent>
       </Card>
 

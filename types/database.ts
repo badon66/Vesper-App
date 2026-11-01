@@ -1,5 +1,3 @@
-// Generated from the Supabase project with the connector's type generator
-// after migration m2_leads_knock_sessions. Regenerate after every migration.
 export type Json =
   | string
   | number
@@ -146,6 +144,7 @@ export type Database = {
           created_by: string | null
           id: string
           lead_id: string
+          slot: Database["public"]["Enums"]["photo_slot"] | null
           storage_path: string
         }
         Insert: {
@@ -154,6 +153,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           lead_id: string
+          slot?: Database["public"]["Enums"]["photo_slot"] | null
           storage_path: string
         }
         Update: {
@@ -162,6 +162,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           lead_id?: string
+          slot?: Database["public"]["Enums"]["photo_slot"] | null
           storage_path?: string
         }
         Relationships: [
@@ -198,8 +199,12 @@ export type Database = {
       leads: {
         Row: {
           address_line: string
+          areas_wanted: Database["public"]["Enums"]["roofline_areas"] | null
           assigned_to: string | null
           both_decision_makers: boolean | null
+          christmas_lights_now:
+            | Database["public"]["Enums"]["christmas_lights_now"]
+            | null
           city: string
           consent_text: boolean
           created_at: string
@@ -210,6 +215,7 @@ export type Database = {
           follow_up_on: string | null
           house_type: Database["public"]["Enums"]["house_type"] | null
           id: string
+          install_timing: Database["public"]["Enums"]["install_timing"] | null
           installed_at: string | null
           knock_session_id: string | null
           last_name: string | null
@@ -219,6 +225,7 @@ export type Database = {
           lost_reason: string | null
           neighbourhood: string | null
           notes: string | null
+          owns_home: boolean | null
           phone: string | null
           place_id: string | null
           postal_code: string | null
@@ -227,12 +234,19 @@ export type Database = {
           sold_at: string | null
           source: Database["public"]["Enums"]["lead_source"]
           status: Database["public"]["Enums"]["lead_status"]
+          track_colour_id: string | null
+          track_ral_code: string | null
           updated_at: string
+          wants_price: boolean | null
         }
         Insert: {
           address_line: string
+          areas_wanted?: Database["public"]["Enums"]["roofline_areas"] | null
           assigned_to?: string | null
           both_decision_makers?: boolean | null
+          christmas_lights_now?:
+            | Database["public"]["Enums"]["christmas_lights_now"]
+            | null
           city?: string
           consent_text?: boolean
           created_at?: string
@@ -243,6 +257,7 @@ export type Database = {
           follow_up_on?: string | null
           house_type?: Database["public"]["Enums"]["house_type"] | null
           id?: string
+          install_timing?: Database["public"]["Enums"]["install_timing"] | null
           installed_at?: string | null
           knock_session_id?: string | null
           last_name?: string | null
@@ -252,6 +267,7 @@ export type Database = {
           lost_reason?: string | null
           neighbourhood?: string | null
           notes?: string | null
+          owns_home?: boolean | null
           phone?: string | null
           place_id?: string | null
           postal_code?: string | null
@@ -260,12 +276,19 @@ export type Database = {
           sold_at?: string | null
           source?: Database["public"]["Enums"]["lead_source"]
           status?: Database["public"]["Enums"]["lead_status"]
+          track_colour_id?: string | null
+          track_ral_code?: string | null
           updated_at?: string
+          wants_price?: boolean | null
         }
         Update: {
           address_line?: string
+          areas_wanted?: Database["public"]["Enums"]["roofline_areas"] | null
           assigned_to?: string | null
           both_decision_makers?: boolean | null
+          christmas_lights_now?:
+            | Database["public"]["Enums"]["christmas_lights_now"]
+            | null
           city?: string
           consent_text?: boolean
           created_at?: string
@@ -276,6 +299,7 @@ export type Database = {
           follow_up_on?: string | null
           house_type?: Database["public"]["Enums"]["house_type"] | null
           id?: string
+          install_timing?: Database["public"]["Enums"]["install_timing"] | null
           installed_at?: string | null
           knock_session_id?: string | null
           last_name?: string | null
@@ -285,6 +309,7 @@ export type Database = {
           lost_reason?: string | null
           neighbourhood?: string | null
           notes?: string | null
+          owns_home?: boolean | null
           phone?: string | null
           place_id?: string | null
           postal_code?: string | null
@@ -293,7 +318,10 @@ export type Database = {
           sold_at?: string | null
           source?: Database["public"]["Enums"]["lead_source"]
           status?: Database["public"]["Enums"]["lead_status"]
+          track_colour_id?: string | null
+          track_ral_code?: string | null
           updated_at?: string
+          wants_price?: boolean | null
         }
         Relationships: [
           {
@@ -345,6 +373,20 @@ export type Database = {
             referencedRelation: "knock_sessions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "leads_track_colour_id_fkey"
+            columns: ["track_colour_id"]
+            isOneToOne: false
+            referencedRelation: "track_colours"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_track_ral_code_fkey"
+            columns: ["track_ral_code"]
+            isOneToOne: false
+            referencedRelation: "ral_classic_colours"
+            referencedColumns: ["code"]
+          },
         ]
       }
       profiles: {
@@ -380,6 +422,21 @@ export type Database = {
         }
         Relationships: []
       }
+      ral_classic_colours: {
+        Row: {
+          code: string
+          name: string
+        }
+        Insert: {
+          code: string
+          name: string
+        }
+        Update: {
+          code?: string
+          name?: string
+        }
+        Relationships: []
+      }
       settings: {
         Row: {
           booking_pay: number
@@ -387,6 +444,7 @@ export type Database = {
           commission_rate: number
           company: Json
           distance_warning_km: number
+          door_guide: string
           gst_enabled: boolean
           gst_number: string | null
           gst_rate: number
@@ -409,6 +467,7 @@ export type Database = {
           commission_rate?: number
           company: Json
           distance_warning_km?: number
+          door_guide?: string
           gst_enabled?: boolean
           gst_number?: string | null
           gst_rate?: number
@@ -431,6 +490,7 @@ export type Database = {
           commission_rate?: number
           company?: Json
           distance_warning_km?: number
+          door_guide?: string
           gst_enabled?: boolean
           gst_number?: string | null
           gst_rate?: number
@@ -448,6 +508,44 @@ export type Database = {
           warranty_text?: string
         }
         Relationships: []
+      }
+      track_colours: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+          ral_code: string | null
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          ral_code?: string | null
+          sort_order: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          ral_code?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "track_colours_ral_code_fkey"
+            columns: ["ral_code"]
+            isOneToOne: false
+            referencedRelation: "ral_classic_colours"
+            referencedColumns: ["code"]
+          },
+        ]
       }
     }
     Views: {
@@ -487,6 +585,7 @@ export type Database = {
       settings_public: {
         Row: {
           distance_warning_km: number | null
+          door_guide: string | null
           lost_reasons: string[] | null
           meeting_days: number[] | null
           meeting_slot_count: number | null
@@ -495,6 +594,7 @@ export type Database = {
         }
         Insert: {
           distance_warning_km?: number | null
+          door_guide?: string | null
           lost_reasons?: string[] | null
           meeting_days?: number[] | null
           meeting_slot_count?: number | null
@@ -503,6 +603,7 @@ export type Database = {
         }
         Update: {
           distance_warning_km?: number | null
+          door_guide?: string | null
           lost_reasons?: string[] | null
           meeting_days?: number[] | null
           meeting_slot_count?: number | null
@@ -544,6 +645,7 @@ export type Database = {
       is_sales_side: { Args: never; Returns: boolean }
     }
     Enums: {
+      christmas_lights_now: "hires" | "diy" | "none"
       event_type:
         | "created"
         | "note"
@@ -559,6 +661,7 @@ export type Database = {
         | "photo_added"
         | "edited"
       house_type: "bungalow" | "bi_level" | "two_storey" | "other"
+      install_timing: "before_christmas" | "new_year" | "no_rush"
       lead_source: "door" | "referral" | "neighbour_card" | "website" | "other"
       lead_status:
         | "new"
@@ -569,7 +672,15 @@ export type Database = {
         | "sold"
         | "installed"
         | "lost"
-      soffit_colour: "white" | "black" | "brown" | "other"
+      photo_slot: "front" | "left_corner" | "right_corner" | "soffit"
+      roofline_areas: "front" | "front_and_sides" | "full_wrap" | "not_sure"
+      soffit_colour:
+        | "white"
+        | "off_white"
+        | "black"
+        | "brown"
+        | "other"
+        | "not_sure"
       user_role: "owner" | "sales" | "crew"
     }
     CompositeTypes: {
@@ -698,6 +809,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      christmas_lights_now: ["hires", "diy", "none"],
       event_type: [
         "created",
         "note",
@@ -714,6 +826,7 @@ export const Constants = {
         "edited",
       ],
       house_type: ["bungalow", "bi_level", "two_storey", "other"],
+      install_timing: ["before_christmas", "new_year", "no_rush"],
       lead_source: ["door", "referral", "neighbour_card", "website", "other"],
       lead_status: [
         "new",
@@ -725,7 +838,16 @@ export const Constants = {
         "installed",
         "lost",
       ],
-      soffit_colour: ["white", "black", "brown", "other"],
+      photo_slot: ["front", "left_corner", "right_corner", "soffit"],
+      roofline_areas: ["front", "front_and_sides", "full_wrap", "not_sure"],
+      soffit_colour: [
+        "white",
+        "off_white",
+        "black",
+        "brown",
+        "other",
+        "not_sure",
+      ],
       user_role: ["owner", "sales", "crew"],
     },
   },

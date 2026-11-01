@@ -360,3 +360,33 @@ They match exactly, with nothing extra and nothing missing. Row Level Security i
 Keenan can check any name against his K7 book.
 
 **Booking needs a map position (Keenan).** The Before you book check requires a map position: an address picked from the suggestions, or a fallback for brand-new streets Google doesn't have yet. The fallback is designed in the M3 plan.
+
+## 2026-11-01: The door process, as built (M2.6)
+
+Judgment calls made while building it, for Keenan to look over.
+
+**New lead, top to bottom.** Door guide, address, neighbourhood, names, phone, Find out, Photos (the four slots, the hint, then More photos), house type, notes, email, source, with Save fixed at the bottom. Address and first name are still the only required fields. Soffit colour moved into Find out, since it is one of the six questions.
+
+**The Door guide** is closed until tapped, so it never pushes the form down at the door. Its line breaks show as written. It is Keenan's text word for word; it says "a half-hour meeting" while slots are 45 minutes, which is his to change in Settings if he wants.
+
+**Find out.**
+- Every answer is one tap, and tapping it again clears it, since every question is optional.
+- The lead page shows the six answers in their own card, with "Not answered" for an empty one.
+- Edit lead has the same questions, already filled in.
+- The timeline reads "Updated Find out: owns the home and timing." It names the questions that changed, never the answers, like every other edit.
+
+**Guided photos.**
+- Slot hints: Front "Straight on, whole house in frame"; Left corner "Angled so the left side's roofline shows"; Right corner "Angled so the right side's roofline shows"; Soffit close-up "Close enough to see its colour".
+- Edit lead has no photo slots. Slots and retakes live on the lead page, where photos were added before, for anyone who may edit the lead.
+- A retake takes the slot and the earlier photo stays as an extra under More photos, because only Keenan removes photos.
+- The timeline says "Added the front photo." for a slot photo and "Added a photo." for an extra.
+
+**Track colours.**
+- Settings: each colour row has move up, move down, Edit (name and RAL code) and Retire or Restore, and saves on its own, apart from Save settings. A retired colour stays in the list, marked Retired, in its place. No control removes a colour.
+- Typing a RAL number names the colour as soon as four digits are in, in Settings and on the lead, so a mistyped number is caught at once.
+- The lead page has a Track colour card for everyone. It reads "Not set yet", a colour name (with its RAL code when the colour has one), or "Custom, RAL 7016 Anthracite grey" with "Needs powder coating." under it. Keenan asked for the powder coating note on the quote; it shows on the lead too, so it is seen before the quote.
+- Setters read "Keenan sets the track colour." and get no controls. The owner picks from the active colours or Custom, and tapping the chosen colour again clears it.
+- A lead whose colour was later retired shows it as retired. The owner's choices keep that colour on that lead only, so saving again never clears it by accident.
+- The owner's screens load the whole RAL Classic list (216 names) for the as-you-type name; setters' screens load only the names they are shown.
+
+**What the tests can't reach.** The owner test session only looks, so two owner actions are walked up to the save but never saved from the screen: setting a lead's track colour, and managing the colour list. The RLS tests prove the database side of both, with the service role standing in for the owner. One test-prefixed colour is added and removed by the RLS run to prove the retired-colour rule; Keenan's own five colours are only read.

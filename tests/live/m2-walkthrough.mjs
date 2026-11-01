@@ -1,7 +1,9 @@
 // Live walk-through of M2 on a phone-sized screen against a running
 // production build: the knock session counters, a new lead with a typed
-// address, phone and photo, search, the Everyone view, the status rules and
-// the timeline, tap-target sizes, and the Google address path with the
+// address and phone, the door process (the Door guide, the six Find out
+// questions, the four guided photos with a retake and More photos), search,
+// the Everyone view, the status rules and the timeline, the track colour as
+// a setter sees it, tap-target sizes, and the Google address path with the
 // duplicate warning. Two throwaway setters do the work. Their leads are named
 // "TEST LEAD (automated)" so a real setter who sees one knows to ignore it,
 // and everything they create is deleted at the end of the run.
@@ -38,6 +40,7 @@ const check = (name, ok, extra = "") =>
 const note = (text) => results.push(`NOTE ${text}`);
 const stamp = Date.now().toString(36);
 const digits = String(Date.now() % 10000).padStart(4, "0");
+const SLOT_HINT = "Hold the phone sideways and get the whole roofline in. At night, hold still while night mode finishes.";
 const people = {
   a: { email: `m2-live-a-${stamp}@example.com`, password: `maple-river-stone-${digits}`, name: "Live Test A", id: null },
   b: { email: `m2-live-b-${stamp}@example.com`, password: `cedar-brook-pearl-${digits}`, name: "Live Test B", id: null },
@@ -71,6 +74,18 @@ function tapTargetsTooSmall(page) {
 async function checkTapTargets(page, screen) {
   const small = await tapTargetsTooSmall(page);
   check(`tap targets on ${screen} are at least 44 px`, small.length === 0, small.join("; "));
+}
+
+// A Find out question, found by its legend.
+const question = (page, legend) =>
+  page.locator("fieldset").filter({ has: page.locator("legend", { hasText: new RegExp(`^${legend}$`) }) });
+
+async function answer(page, legend, choice) {
+  await question(page, legend).getByText(choice, { exact: true }).click();
+}
+
+async function checkedValue(page, legend) {
+  return question(page, legend).locator("input:checked").evaluateAll((inputs) => inputs.map((input) => input.value).join(","));
 }
 
 // Tabs show a loading screen the moment they are tapped, so the address
@@ -169,23 +184,69 @@ try {
   await checkTapTargets(page, "Home with a session running");
   await page.screenshot({ path: `${out}/m2-home-session.png`, fullPage: true });
 
-  // 3. New lead with a typed address, phone and photo.
+  // 3. New lead: the Door guide, a typed address and phone, the Find out
+  // questions and the guided photos.
+  const { data: guideRow } = await admin.from("settings").select("door_guide").eq("id", 1).single();
   const started = Date.now();
   await page.getByRole("link", { name: "New lead" }).first().click();
   await page.waitForURL("**/app/leads/new", { timeout: 20000 });
   await settle(page);
   check("there is no Book a meeting button before M3", (await page.getByText(/book a meeting/i).count()) === 0);
+  const guide = page.getByTestId("door-guide");
+  const guideBox = await guide.boundingBox();
+  const addressBox = await page.locator("#lead-address").boundingBox();
+  check("the Door guide card sits at the top of New lead, above the address", guideBox !== null && addressBox !== null && guideBox.y < addressBox.y);
+  check("the Door guide starts closed", (await guide.evaluate((element) => element.open)) === false);
+  await guide.locator("summary").click();
+  const guideText = (await guide.locator("p").innerText()).trim();
+  check("tapping it opens Keenan's Door guide from Settings", (await guide.evaluate((element) => element.open)) && guideText === guideRow?.door_guide?.trim(), guideText.slice(0, 60));
+  await page.screenshot({ path: `${out}/m26-door-guide.png`, fullPage: false });
+  await guide.locator("summary").click();
   await page.fill("#lead-address", TYPED_ADDRESS);
   await page.keyboard.press("Escape");
   await page.fill("#lead-first_name", TEST_LEAD);
   await page.fill("#lead-phone", "403 555 0199");
   await page.locator("#lead-phone").blur();
   check("the phone shows in the local format as soon as it is typed", (await page.inputValue("#lead-phone")) === "(403) 555-0199", await page.inputValue("#lead-phone"));
+
+  const legends = (await page.getByTestId("find-out").locator("legend").allTextContents()).map((t) => t.trim());
+  check("Find out asks the six questions in order", JSON.stringify(legends) === JSON.stringify(["Owns the home", "Wants a price", "Soffit colour", "Christmas lights now", "Which areas", "Timing"]), legends.join(", "));
+  const offeredSoffit = (await question(page, "Soffit colour").locator("label").allTextContents()).map((t) => t.trim());
+  check("the soffit question offers White, Off-white or cream, Other and Not sure", JSON.stringify(offeredSoffit) === JSON.stringify(["White", "Off-white or cream", "Other", "Not sure"]), offeredSoffit.join(", "));
+  await answer(page, "Owns the home", "Yes");
+  await answer(page, "Wants a price", "Yes");
+  await answer(page, "Soffit colour", "Off-white or cream");
+  await answer(page, "Christmas lights now", "Hires someone");
+  await answer(page, "Which areas", "Front and sides");
+  await answer(page, "Timing", "Before Christmas");
+  check("each answer takes one tap", (await checkedValue(page, "Christmas lights now")) === "hires" && (await checkedValue(page, "Owns the home")) === "yes");
+  await answer(page, "Christmas lights now", "Hires someone");
+  check("tapping an answer again clears it", (await checkedValue(page, "Christmas lights now")) === "");
+
+  const slotLabels = await page.getByRole("list", { name: "Guided photos" }).locator("li").evaluateAll((items) => items.map((item) => item.querySelector("p").textContent.trim()));
+  check("the photos are four labelled slots: Front, Left corner, Right corner, Soffit close-up", JSON.stringify(slotLabels) === JSON.stringify(["Front", "Left corner", "Right corner", "Soffit close-up"]), slotLabels.join(", "));
+  check("the hint sits under the slots", (await page.getByText(SLOT_HINT, { exact: true }).count()) === 1);
+  const slotPath = (slot) => page.locator(`input[name="photo_slot_${slot}"]`).inputValue({ timeout: 30000 });
+  await page.setInputFiles('[data-testid="slot-input-front"]', fixture);
+  const firstFront = await slotPath("front");
+  await page.locator('img[alt="Front photo of the house"]').waitFor({ timeout: 20000 });
+  check("a slot shows its photo once taken and offers a retake", (await page.getByRole("button", { name: "Retake, Front" }).count()) === 1);
+  await page.getByRole("button", { name: "Retake, Front" }).click({ trial: true });
+  await page.setInputFiles('[data-testid="slot-input-front"]', fixture);
+  await page.waitForFunction((first) => {
+    const input = document.querySelector('input[name="photo_slot_front"]');
+    return input && input.value && input.value !== first;
+  }, firstFront, { timeout: 30000 });
+  check("a retake replaces the slot's photo", (await page.locator('input[name="photo_slot_front"]').count()) === 1);
+  await page.setInputFiles('[data-testid="slot-input-left_corner"]', fixture);
+  await slotPath("left_corner");
+  await page.setInputFiles('[data-testid="slot-input-right_corner"]', fixture);
+  await slotPath("right_corner");
+  check("More photos is still there for extras", (await page.getByRole("button", { name: "More photos" }).count()) === 1);
   await page.setInputFiles('[data-testid="photo-input"]', fixture);
   await page.waitForFunction(() => document.querySelectorAll('input[name="photo_paths"]').length === 1, null, { timeout: 30000 });
-  check("the photo uploads while the form is still open", true);
+  check("the photos upload while the form is still open", true);
   await page.locator("fieldset", { hasText: "House type" }).getByText("Bungalow", { exact: true }).click();
-  await page.locator("fieldset", { hasText: "Soffit colour" }).getByText("White", { exact: true }).click();
   await checkTapTargets(page, "New lead");
   const save = page.getByRole("button", { name: "Save lead" });
   const saveBox = await save.boundingBox();
@@ -201,7 +262,7 @@ try {
 
   const { data: typedLead } = await admin
     .from("leads")
-    .select("id, created_by, knock_session_id, phone, lat, lng, place_id, neighbourhood, address_line, status, house_type, soffit_colour")
+    .select("id, created_by, knock_session_id, phone, lat, lng, place_id, neighbourhood, address_line, status, house_type, soffit_colour, owns_home, wants_price, christmas_lights_now, areas_wanted, install_timing, track_colour_id, track_ral_code")
     .eq("created_by", people.a.id)
     .eq("address_line", TYPED_ADDRESS)
     .single();
@@ -210,15 +271,32 @@ try {
   check("the phone is stored as E.164 with Canada as the default", typedLead?.phone === "+14035550199", typedLead?.phone);
   check("a typed address saves without a map position", typedLead?.lat === null && typedLead?.lng === null && typedLead?.place_id === null);
   check("the neighbourhood comes from the knock session", typedLead?.neighbourhood === TEST_PLACE, typedLead?.neighbourhood);
-  check("house type and soffit colour are saved", typedLead?.house_type === "bungalow" && typedLead?.soffit_colour === "white");
-  const { data: photoRows } = await admin.from("lead_photos").select("storage_path").eq("lead_id", typedLead.id);
-  check("one photo is attached to the lead", photoRows?.length === 1);
-  if (photoRows?.length === 1) {
-    const { data: file } = await admin.storage.from(BUCKET).download(photoRows[0].storage_path);
+  check("the house type is saved", typedLead?.house_type === "bungalow");
+  const savedAnswers = {
+    owns_home: typedLead?.owns_home,
+    wants_price: typedLead?.wants_price,
+    soffit_colour: typedLead?.soffit_colour,
+    christmas_lights_now: typedLead?.christmas_lights_now,
+    areas_wanted: typedLead?.areas_wanted,
+    install_timing: typedLead?.install_timing,
+  };
+  check(
+    "the Find out answers are saved, and the cleared one is left empty",
+    JSON.stringify(savedAnswers) === JSON.stringify({ owns_home: true, wants_price: true, soffit_colour: "off_white", christmas_lights_now: null, areas_wanted: "front_and_sides", install_timing: "before_christmas" }),
+    JSON.stringify(savedAnswers),
+  );
+  check("a setter's new lead has no track colour", typedLead?.track_colour_id === null && typedLead?.track_ral_code === null);
+  const { data: photoRows } = await admin.from("lead_photos").select("storage_path, slot").eq("lead_id", typedLead.id).order("created_at");
+  const slotsSaved = (photoRows ?? []).map((photo) => photo.slot ?? "extra").sort();
+  check("the three slot photos and one extra are attached, each with its slot", JSON.stringify(slotsSaved) === JSON.stringify(["extra", "front", "left_corner", "right_corner"]), slotsSaved.join(", "));
+  const frontRow = (photoRows ?? []).find((photo) => photo.slot === "front");
+  check("the front slot holds the retake, not the first try", Boolean(frontRow) && frontRow.storage_path !== firstFront);
+  if (frontRow) {
+    const { data: file } = await admin.storage.from(BUCKET).download(frontRow.storage_path);
     const meta = await sharp(Buffer.from(await file.arrayBuffer())).metadata();
     check("the photo was shrunk to 1600 px on its long edge", meta.width === 1600 && meta.height === 1200, `${meta.width}x${meta.height} from ${fixtureMeta.width}x${fixtureMeta.height}`);
     check("the photo's metadata, such as location, was removed", Boolean(fixtureMeta.exif) && !meta.exif);
-    check("the photo sits in the uploader's own folder", photoRows[0].storage_path.startsWith(`${people.a.id}/`));
+    check("the photos sit in the uploader's own folder", photoRows.every((photo) => photo.storage_path.startsWith(`${people.a.id}/`)));
   }
 
   // 4. Leads: grouping, search, Everyone.
@@ -244,7 +322,7 @@ try {
   await settle(page);
   await page.getByText("Read only. This is Live Test B's lead.").waitFor({ timeout: 20000 }).catch(() => {});
   check("another setter's lead opens read only", (await page.getByText("Read only. This is Live Test B's lead.").count()) === 1);
-  check("a read-only lead offers no edit, status or note controls", (await page.getByRole("link", { name: "Edit lead" }).count()) + (await page.getByRole("button", { name: /Save status|Add note|Add photo/ }).count()) === 0);
+  check("a read-only lead offers no edit, status, note or photo controls", (await page.getByRole("link", { name: "Edit lead" }).count()) + (await page.getByRole("button", { name: /Save status|Add note|Add photo|Take photo|Retake|More photos|Save track colour/ }).count()) === 0);
   await checkTapTargets(page, "another setter's lead, read only");
   await page.screenshot({ path: `${out}/m2-read-only.png`, fullPage: true });
 
@@ -254,10 +332,25 @@ try {
   await page.getByRole("heading", { name: TEST_LEAD }).waitFor({ timeout: 20000 });
   check("the call button shows the formatted phone", (await page.getByRole("link", { name: "Call (403) 555-0199" }).count()) === 1);
   check("a lead with a typed address says it has no map position yet", (await page.getByText("No map position yet.").count()) === 1);
-  const image = page.locator('img[alt="Photo 1 of the house"]');
+  const image = page.locator('img[alt="Front photo of the house"]');
   await image.waitFor({ timeout: 20000 });
   const loaded = await image.evaluate((el) => new Promise((resolve) => (el.complete ? resolve(el.naturalWidth) : el.addEventListener("load", () => resolve(el.naturalWidth)))));
-  check("the photo shows on the lead page", loaded > 0, `${loaded} px wide`);
+  check("the front photo shows in its slot on the lead page", loaded > 0, `${loaded} px wide`);
+  check("the extra photo shows under More photos", (await page.locator('img[alt="Extra photo 1 of the house"]').count()) === 1);
+  const answersShown = (await page.getByTestId("find-out-answers").innerText()).replace(/\s+/g, " ").trim();
+  check(
+    "the lead page shows the Find out answers, and Not answered for the cleared one",
+    answersShown === "Owns the home Yes Wants a price Yes Soffit colour Off-white or cream Christmas lights now Not answered Which areas Front and sides Timing Before Christmas",
+    answersShown,
+  );
+  const trackShown = (await page.getByTestId("track-colour").innerText()).replace(/\s+/g, " ").trim();
+  check("a setter sees the track colour is not set, and that Keenan sets it", trackShown.startsWith("Not set yet") && trackShown.includes("Keenan sets the track colour."), trackShown);
+  check("a setter gets no track colour controls", (await page.getByTestId("track-colour-form").count()) === 0 && (await page.getByRole("button", { name: "Save track colour" }).count()) === 0);
+  check("the soffit slot is empty and offers Take photo", (await page.getByRole("button", { name: "Take photo, Soffit close-up" }).count()) === 1);
+  await page.setInputFiles('[data-testid="slot-input-soffit"]', fixture);
+  await page.getByText("Added the soffit close-up photo.").waitFor({ timeout: 30000 });
+  const { data: soffitPhoto } = await admin.from("lead_photos").select("id").eq("lead_id", typedLead.id).eq("slot", "soffit");
+  check("a slot photo taken on the lead page goes into its slot, and the timeline names it", soffitPhoto?.length === 1);
   const statusGroup = page.locator("fieldset").filter({ has: page.locator("legend", { hasText: /^Status$/ }) });
   const offered = (await statusGroup.locator("label").allTextContents()).map((t) => t.trim());
   check("a setter is offered only New, Follow up and Lost", JSON.stringify(offered) === JSON.stringify(["New", "Follow up", "Lost"]), offered.join(", "));
@@ -290,11 +383,47 @@ try {
     .eq("lead_id", typedLead.id)
     .order("created_at");
   check(
-    "the database timeline holds created, photo, two status changes and the note, all by the setter",
-    JSON.stringify(events?.map((e) => e.type).sort()) === JSON.stringify(["created", "note", "photo_added", "status_change", "status_change"]) &&
+    "the database timeline holds created, five photos, two status changes and the note, all by the setter",
+    JSON.stringify(events?.map((e) => e.type).sort()) ===
+      JSON.stringify(["created", "note", "photo_added", "photo_added", "photo_added", "photo_added", "photo_added", "status_change", "status_change"]) &&
       events.every((e) => e.actor_id === people.a.id),
     events?.map((e) => e.type).join(","),
   );
+
+  // 5b. Edit lead keeps the answers and changes them.
+  await page.goto(`${base}/app/leads/${typedLead.id}/edit`);
+  await settle(page);
+  await page.getByRole("heading", { name: "Edit lead" }).waitFor({ timeout: 20000 });
+  const prefilled = [
+    await checkedValue(page, "Owns the home"),
+    await checkedValue(page, "Wants a price"),
+    await checkedValue(page, "Soffit colour"),
+    await checkedValue(page, "Christmas lights now"),
+    await checkedValue(page, "Which areas"),
+    await checkedValue(page, "Timing"),
+  ];
+  check("Edit lead opens with the saved answers", JSON.stringify(prefilled) === JSON.stringify(["yes", "yes", "off_white", "", "front_and_sides", "before_christmas"]), prefilled.join(", "));
+  check("Edit lead has no photo slots; photos are added on the lead page", (await page.getByRole("list", { name: "Guided photos" }).count()) === 0);
+  await answer(page, "Christmas lights now", "None");
+  await answer(page, "Timing", "Before Christmas");
+  await checkTapTargets(page, "Edit lead with Find out");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.waitForURL(`**/app/leads/${typedLead.id}`, { timeout: 30000 });
+  await settle(page);
+  await page.getByText("Updated Find out: Christmas lights now and timing.").waitFor({ timeout: 20000 }).catch(() => {});
+  check("the timeline names the changed questions, not the answers", (await page.getByText("Updated Find out: Christmas lights now and timing.").count()) === 1);
+  const { data: edited } = await admin.from("leads").select("christmas_lights_now, install_timing, owns_home").eq("id", typedLead.id).single();
+  check("the changed answers are saved and the cleared one is emptied", edited?.christmas_lights_now === "none" && edited?.install_timing === null && edited?.owns_home === true, JSON.stringify(edited));
+
+  // 5c. Once Keenan sets a custom track colour, the setter sees it by name.
+  // The service role stands in for him here; the walk-through never signs in as him.
+  await admin.from("leads").update({ track_ral_code: "7016" }).eq("id", typedLead.id);
+  await page.reload();
+  await settle(page);
+  const customShown = (await page.getByTestId("track-colour").innerText()).replace(/\s+/g, " ").trim();
+  check("a setter sees a custom track colour by its RAL name, as needing powder coating", customShown.startsWith("Custom, RAL 7016 Anthracite grey Needs powder coating."), customShown);
+  check("no colour swatch is shown", (await page.locator('[data-testid="track-colour"] [style*="background"]').count()) === 0);
+  await page.screenshot({ path: `${out}/m26-lead-page.png`, fullPage: true });
 
   // 6. Google address path and the duplicate warning.
   if (!mapsKey) {

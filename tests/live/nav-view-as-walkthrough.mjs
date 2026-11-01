@@ -1,8 +1,11 @@
-// Live walk-through of M2.5 against a running build: the tab bar and side
-// rail, both Homes, Leads in attention order with All and search, the
-// follow-up day, sign-in keeping the email, Settings and Add a Vesper member
-// keeping what was typed, the old addresses, and View as compared screen by
-// screen with what a real test setter sees.
+// Live walk-through of M2.5 and the door process against a running build:
+// the tab bar and side rail, both Homes, Leads in attention order with All
+// and search, the follow-up day, sign-in keeping the email, Settings and Add
+// a Vesper member keeping what was typed, the old addresses, the owner's
+// Door guide, Track colours list and track colour card (looked at, never
+// saved), and View as compared screen by screen with what a real test
+// setter sees, including a lead with Find out answers, guided photos and a
+// track colour.
 //
 // Two throwaway setters do the setter side; their leads are named
 // "TEST LEAD (automated)" and everything they make is deleted at the end.
@@ -13,6 +16,7 @@
 import { mkdir } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
 import { chromium, devices } from "playwright";
+import sharp from "sharp";
 import { OWNER_EMAIL, openOwnerSession } from "./owner-session.mjs";
 
 const base = process.env.BASE ?? "http://localhost:3300";
@@ -28,6 +32,7 @@ if (!url || !anonKey || !serviceKey) {
 const TEST_LEAD = "TEST LEAD (automated)";
 const TEST_PLACE = "TEST (automated)";
 const VIEW_AS_COOKIE = "vesper_view_as";
+const BUCKET = "lead-photos";
 const noSession = { auth: { persistSession: false, autoRefreshToken: false } };
 const admin = createClient(url, serviceKey, noSession);
 const results = [];
@@ -78,7 +83,8 @@ function capture(page) {
         label: (el.getAttribute("aria-label") || el.textContent || el.getAttribute("name") || el.id || "").replace(/\s+/g, " ").trim(),
         disabled: el.matches(":disabled"),
       }));
-    return { text, tabs, controls };
+    const images = [...(main?.querySelectorAll("img") ?? [])].map((img) => img.getAttribute("alt") ?? "");
+    return { text, tabs, controls, images };
   });
 }
 
@@ -88,12 +94,13 @@ function firstDifference(a, b) {
   return i >= a.length && i >= b.length ? "" : `at ${i}: "${a.slice(Math.max(0, i - 30), i + 50)}" vs "${b.slice(Math.max(0, i - 30), i + 50)}"`;
 }
 
-function tapTargetsTooSmall(page) {
-  return page.evaluate(() => {
+function tapTargetsTooSmall(page, root) {
+  return page.evaluate((rootSelector) => {
     const offenders = [];
     const selector =
       'a[href], button, input:not([type="hidden"]), select, textarea, [role="option"], label:has(input[type="radio"])';
-    for (const element of document.querySelectorAll(selector)) {
+    const scope = rootSelector ? document.querySelector(rootSelector) : document;
+    for (const element of scope?.querySelectorAll(selector) ?? []) {
       if (element.matches('input[type="radio"]')) continue;
       if (element.closest('[aria-hidden="true"]')) continue;
       const style = getComputedStyle(element);
@@ -106,22 +113,23 @@ function tapTargetsTooSmall(page) {
       }
     }
     return offenders;
-  });
+  }, root ?? null);
 }
 
-async function checkTapTargets(page, screen) {
-  const small = await tapTargetsTooSmall(page);
+async function checkTapTargets(page, screen, root) {
+  const small = await tapTargetsTooSmall(page, root);
   check(`tap targets on ${screen} are at least 44 px`, small.length === 0, small.join("; "));
 }
 
 // Everything of the owner's that this run must leave exactly as it was.
 async function ownerFootprint(ownerId) {
-  const [profile, sessions, leads, events, settings] = await Promise.all([
+  const [profile, sessions, leads, events, settings, colours] = await Promise.all([
     admin.from("profiles").select("*").eq("id", ownerId).single(),
     admin.from("knock_sessions").select("*").eq("user_id", ownerId).order("id"),
     admin.from("leads").select("id, updated_at").eq("created_by", ownerId).order("id"),
     admin.from("lead_events").select("id").eq("actor_id", ownerId).order("id"),
     admin.from("settings").select("*").eq("id", 1).single(),
+    admin.from("track_colours").select("*").order("id"),
   ]);
   return JSON.stringify({
     profile: profile.data,
@@ -129,6 +137,7 @@ async function ownerFootprint(ownerId) {
     leads: leads.data,
     events: events.data,
     settings: settings.data,
+    colours: colours.data,
   });
 }
 
@@ -140,6 +149,10 @@ async function accountEmails() {
 async function removeEverythingOf(id) {
   await admin.from("leads").delete().eq("created_by", id);
   await admin.from("knock_sessions").delete().eq("user_id", id);
+  const { data: files } = await admin.storage.from(BUCKET).list(id, { limit: 1000 });
+  if (files && files.length > 0) {
+    await admin.storage.from(BUCKET).remove(files.map((file) => `${id}/${file.name}`));
+  }
   await admin.auth.admin.deleteUser(id);
 }
 
@@ -197,6 +210,29 @@ try {
     .single();
   if (knockError) throw new Error(`knock session: ${knockError.message}`);
   await a.client.rpc("bump_knock_session", { p_session: knock.id, p_doors: 7, p_conversations: 3 });
+
+  // The door process on two of the leads: A's lead due today has Find out
+  // answers, three guided photos and a custom track colour; B's lead has a
+  // colour from Keenan's list. Only the owner sets a track colour, so the
+  // service role stands in for him; Keenan's list is only read.
+  const jpeg = await sharp({ create: { width: 64, height: 48, channels: 3, background: "#132e3f" } }).jpeg().toBuffer();
+  const answered = await a.client
+    .from("leads")
+    .update({ owns_home: true, wants_price: false, soffit_colour: "not_sure", areas_wanted: "full_wrap", install_timing: "new_year" })
+    .eq("id", leads.dueToday);
+  if (answered.error) throw new Error(`answers: ${answered.error.message}`);
+  for (const slot of ["front", "left_corner", "right_corner"]) {
+    const path = `${a.id}/${crypto.randomUUID()}.jpg`;
+    const uploaded = await a.client.storage.from(BUCKET).upload(path, jpeg, { contentType: "image/jpeg" });
+    if (uploaded.error) throw new Error(`upload ${slot}: ${uploaded.error.message}`);
+    const linked = await a.client.from("lead_photos").insert({ lead_id: leads.dueToday, storage_path: path, slot });
+    if (linked.error) throw new Error(`photo ${slot}: ${linked.error.message}`);
+  }
+  const custom = await admin.from("leads").update({ track_ral_code: "7016" }).eq("id", leads.dueToday);
+  if (custom.error) throw new Error(`custom colour: ${custom.error.message}`);
+  const { data: firstColour } = await admin.from("track_colours").select("id, name").eq("active", true).order("sort_order").limit(1).single();
+  const listed = await admin.from("leads").update({ track_colour_id: firstColour.id }).eq("id", leads.other);
+  if (listed.error) throw new Error(`list colour: ${listed.error.message}`);
 
   // 1. A failed sign-in keeps the email and clears only the password.
   await page.goto(`${base}/login`);
@@ -369,6 +405,47 @@ try {
   await op.locator("#member-email-error").filter({ hasText: /./ }).waitFor({ timeout: 20000 });
   check("Add a Vesper member keeps what was typed after an error", (await op.inputValue("#member-full_name")) === "TEST (automated) never created" && (await op.inputValue("#member-email")) === "not-an-email");
 
+  // The Door guide and the Track colours list, looked at and never saved.
+  await op.goto(`${base}/app/admin/settings`);
+  await settle(op);
+  const { data: liveSettings } = await admin.from("settings").select("door_guide").eq("id", 1).single();
+  check("Settings shows the Door guide to edit", (await op.inputValue("#settings-door_guide")) === liveSettings?.door_guide);
+  const { data: liveColours } = await admin.from("track_colours").select("name, active").order("sort_order");
+  const rows = await op.getByTestId("track-colour-row").evaluateAll((items) => items.map((item) => item.querySelector("p").textContent.trim()));
+  const expectedRows = (liveColours ?? []).map((colour) => `${colour.name}${colour.active ? "" : "Retired"}`);
+  check("Settings lists Keenan's track colours in his order", JSON.stringify(rows) === JSON.stringify(expectedRows), rows.join(", "));
+  const firstRow = op.getByTestId("track-colour-row").first();
+  const rowButtons = (await firstRow.getByRole("button").allInnerTexts()).map((t) => t.replace(/\s+/g, " ").trim());
+  check("each colour can be moved, edited and retired, and nothing removes one", rowButtons.length === 4 && (await op.getByRole("button", { name: /delete|remove/i }).count()) === 0, rowButtons.join(" | "));
+  check("the colour list shows names only, no swatches", (await op.locator('[data-testid="track-colour-row"] [style*="background"]').count()) === 0);
+  await op.fill("#track-colour-new-name", "TEST (automated) never saved");
+  await op.fill("#track-colour-new-ral", "7016");
+  check("typing a RAL number names the colour at once", (await op.getByTestId("track-colour-new-ral-name").innerText()).trim() === "RAL 7016 Anthracite grey");
+  await op.fill("#track-colour-new-ral", "12");
+  await op.getByRole("button", { name: "Add colour" }).click();
+  await op.locator("#track-colour-new-ral-error").waitFor({ timeout: 20000 });
+  check("a colour with a wrong RAL number is refused and what was typed stays", (await op.inputValue("#track-colour-new-name")) === "TEST (automated) never saved" && (await op.inputValue("#track-colour-new-ral")) === "12");
+  await checkTapTargets(op, "the Track colours card", '[data-testid="track-colours"]');
+  await op.getByTestId("track-colour-row").first().screenshot({ path: `${out}/m26-track-colour-row.png` }).catch(() => {});
+
+  // The owner's track colour card on a lead, looked at and never saved.
+  await op.goto(`${base}/app/leads/${leads.newOld}`);
+  await settle(op);
+  const trackForm = op.getByTestId("track-colour-form");
+  const choices = (await trackForm.locator("label").allTextContents()).map((t) => t.trim());
+  const activeNames = (liveColours ?? []).filter((colour) => colour.active).map((colour) => colour.name);
+  check("the owner picks a track colour from the active list or Custom", JSON.stringify(choices) === JSON.stringify([...activeNames, "Custom"]), choices.join(", "));
+  await trackForm.getByText("Custom", { exact: true }).click();
+  await op.fill("#lead-track-ral", "1015");
+  check("Custom names the RAL Classic colour as it is typed", (await op.getByTestId("lead-track-ral-name").innerText()).trim() === "RAL 1015 Light ivory");
+  await op.fill("#lead-track-ral", "12");
+  await op.getByRole("button", { name: "Save track colour" }).click();
+  await op.locator("#lead-track-ral-error").waitFor({ timeout: 20000 });
+  const { data: untouched } = await admin.from("leads").select("track_colour_id, track_ral_code").eq("id", leads.newOld).single();
+  check("a custom colour that is not four digits is refused and nothing is saved", untouched?.track_colour_id === null && untouched?.track_ral_code === null && (await op.inputValue("#lead-track-ral")) === "12");
+  await checkTapTargets(op, "the owner's track colour card");
+  await op.screenshot({ path: `${out}/m26-owner-track-colour.png`, fullPage: true });
+
   // View as A.
   await op.goto(`${base}/app/admin/people`);
   await settle(op);
@@ -400,11 +477,34 @@ try {
     await settle(op);
     const viewed = await capture(op);
     const sameControls = JSON.stringify(real.controls.map((c) => c.label)) === JSON.stringify(viewed.controls.map((c) => c.label));
+    const sameImages = JSON.stringify(real.images) === JSON.stringify(viewed.images);
     check(
       `View as shows ${label} exactly as the setter sees it`,
-      real.text === viewed.text && JSON.stringify(real.tabs) === JSON.stringify(viewed.tabs) && sameControls,
-      real.text === viewed.text ? (sameControls ? "" : "controls differ") : firstDifference(real.text, viewed.text),
+      real.text === viewed.text && JSON.stringify(real.tabs) === JSON.stringify(viewed.tabs) && sameControls && sameImages,
+      real.text === viewed.text ? (sameControls ? (sameImages ? "" : "photos differ") : "controls differ") : firstDifference(real.text, viewed.text),
     );
+    if (label === "their own lead") {
+      check(
+        "View as shows the lead's Find out answers, its three slot photos and its track colour",
+        viewed.text.includes("Owns the home Yes Wants a price Not yet Soffit colour Not sure Christmas lights now Not answered Which areas Full wrap Timing New year") &&
+          ["Front photo of the house", "Left corner photo of the house", "Right corner photo of the house"].every((alt) => viewed.images.includes(alt)) &&
+          viewed.text.includes("Custom, RAL 7016 Anthracite grey Needs powder coating.") &&
+          viewed.text.includes("Keenan sets the track colour."),
+        viewed.text.slice(viewed.text.indexOf("Find out"), viewed.text.indexOf("Find out") + 200),
+      );
+      check("View as gives the setter's lead no track colour controls", !viewed.controls.some((c) => /track colour/i.test(c.label)) && (await op.getByTestId("track-colour-form").count()) === 0);
+    }
+    if (label === "another setter's lead") {
+      check("View as shows another setter's track colour from the list", viewed.text.includes(`Track colour ${firstColour.name}`), firstColour.name);
+    }
+    if (label === "New lead") {
+      check(
+        "View as shows New lead with the Door guide, the six questions and the four photo slots",
+        (await op.getByTestId("door-guide").count()) === 1 &&
+          (await op.getByTestId("find-out").locator("legend").count()) === 6 &&
+          (await op.getByRole("list", { name: "Guided photos" }).locator("li").count()) === 4,
+      );
+    }
     check(`every control on ${label} is disabled while viewing`, viewed.controls.every((c) => c.disabled), viewed.controls.filter((c) => !c.disabled).map((c) => c.label).join(", "));
     check(`View as shows no prices or settings on ${label}`, !/\$|Price per foot|Booking pay|Commission/.test(viewed.text));
   }

@@ -24,6 +24,7 @@ const valid = {
   meeting_slot_count: "4",
   distance_warning_km: "10",
   lost_reasons: "price\nother company\nnot now",
+  door_guide: "1. Open.\r\n2. Find out.\r\n",
   company_name: "Vesper Lighting, Inc.",
   company_phone: "",
   company_email: "info@vesperlighting.ca",
@@ -90,6 +91,20 @@ describe("parseSettingsForm", () => {
     if (withNumber.ok) expect(settingsUpdateFromValues(withNumber.values).gst_number).toBe("123456789 RT0001");
   });
 
+  it("keeps the Door guide's line breaks, trims it, and refuses it empty or too long", () => {
+    const result = parseSettingsForm(valid);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.values.door_guide).toBe("1. Open.\n2. Find out.");
+      expect(settingsUpdateFromValues(result.values).door_guide).toBe("1. Open.\n2. Find out.");
+    }
+    const empty = parseSettingsForm({ ...valid, door_guide: "  \n " });
+    expect(empty.ok).toBe(false);
+    if (!empty.ok) expect(empty.errors.door_guide).toBe("cannot be empty");
+    expect(parseSettingsForm({ ...valid, door_guide: "x".repeat(4001) }).ok).toBe(false);
+    expect(parseSettingsForm({ ...valid, door_guide: "x".repeat(4000) }).ok).toBe(true);
+  });
+
   it("allows an empty company email but not a malformed one", () => {
     expect(parseSettingsForm({ ...valid, company_email: "" }).ok).toBe(true);
     expect(parseSettingsForm({ ...valid, company_email: "info@" }).ok).toBe(false);
@@ -130,6 +145,7 @@ describe("settingsRowToFormDefaults", () => {
       warranty_text: "w",
       presentation: [],
       lost_reasons: ["price", "other"],
+      door_guide: "1. Open.\n2. Find out.",
       meeting_days: [1, 2, 3, 4, 5, 6],
       meeting_start: "18:00:00",
       meeting_slot_minutes: 45,
@@ -144,13 +160,14 @@ describe("settingsRowToFormDefaults", () => {
     expect(defaults.commission_rate_percent).toBe("12.5");
     expect(defaults.meeting_start).toBe("18:00");
     expect(defaults.lost_reasons).toBe("price\nother");
+    expect(defaults.door_guide).toBe("1. Open.\n2. Find out.");
     expect(defaults.company_name).toBe("Vesper");
   });
 
   it("survives a company value that is not an object", () => {
     const defaults = settingsRowToFormDefaults({
       id: 1, price_per_ft: 1, box_price: 1, neighbour_discount: 0, referral_credit: 0, gst_rate: 0, gst_enabled: false, gst_number: null,
-      booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], meeting_days: [1],
+      booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], door_guide: "g", meeting_days: [1],
       meeting_start: "18:00:00", meeting_slot_minutes: 45, meeting_slot_count: 4, distance_warning_km: 10,
       company: "nonsense", updated_at: "2026-10-26T00:00:00Z",
     });

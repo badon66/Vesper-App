@@ -5,10 +5,13 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import {
   NotAllowedError,
+  NotOwnerError,
   ReadOnlyError,
+  requireOwnerForAction,
   requireSalesSideForAction,
   type SessionProfile,
 } from "@/lib/auth/profile";
+import type { PhotoSlot } from "@/lib/leads/door";
 import { lostReasons, namesById, openKnockSession } from "@/lib/leads/queries";
 import {
   leadColumnsFromValues,
@@ -18,6 +21,7 @@ import {
 } from "@/lib/leads/schema";
 import { followUpDateFor } from "@/lib/leads/attention";
 import { canChangeStatus, leadName, STATUS_LABELS } from "@/lib/leads/status";
+import { trackColourChoiceSchema } from "@/lib/leads/track-colour";
 import { isOwnPhotoPath, MAX_PHOTOS_PER_FORM } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/server";
 import { calgaryToday, formatDate } from "@/lib/time";
@@ -60,7 +64,11 @@ export async function createLead(
   const parsed = parseLeadForm(leadFormDataToInput(formData));
   if (!parsed.ok) return { error: "Some fields need a look.", errors: parsed.errors };
   const { values } = parsed;
-  if (values.photo_paths.some((path) => !isOwnPhotoPath(path, me.id))) {
+  const photos = [
+    ...values.slot_photos.map(({ slot, path }) => ({ storage_path: path, slot })),
+    ...values.photo_paths.map((path) => ({ storage_path: path, slot: null })),
+  ];
+  if (photos.some((photo) => !isOwnPhotoPath(photo.storage_path, me.id))) {
     return { error: "A photo did not upload properly. Remove it and take it again." };
   }
 
@@ -83,10 +91,10 @@ export async function createLead(
   }
 
   let photosFailed = false;
-  if (values.photo_paths.length > 0) {
+  if (photos.length > 0) {
     const { error: photoError } = await supabase
       .from("lead_photos")
-      .insert(values.photo_paths.map((storage_path) => ({ lead_id: lead.id, storage_path })));
+      .insert(photos.map((photo) => ({ lead_id: lead.id, ...photo })));
     photosFailed = Boolean(photoError);
   }
 
@@ -246,17 +254,22 @@ export async function addLeadNote(
   return { ok: true };
 }
 
+// Adds photos already uploaded from the lead page. With a slot, one photo
+// goes into that slot, and any photo already there stays as an extra.
 export async function attachLeadPhotos(
   leadId: string,
   paths: string[],
+  slot: PhotoSlot | null = null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const me = await salesSide();
   if (typeof me === "string") return { ok: false, error: me };
   const id = z.uuid().safeParse(leadId);
   if (!id.success) return { ok: false, error: "That lead was not found." };
+  const slotChoice = z.enum(Constants.public.Enums.photo_slot).nullable().safeParse(slot);
+  if (!slotChoice.success) return { ok: false, error: "That photo slot was not found." };
   if (
     paths.length === 0 ||
-    paths.length > MAX_PHOTOS_PER_FORM ||
+    paths.length > (slotChoice.data ? 1 : MAX_PHOTOS_PER_FORM) ||
     paths.some((path) => !isOwnPhotoPath(path, me.id))
   ) {
     return { ok: false, error: "A photo did not upload properly. Take it again." };
@@ -265,7 +278,7 @@ export async function attachLeadPhotos(
   const supabase = await createClient();
   const { error } = await supabase
     .from("lead_photos")
-    .insert(paths.map((storage_path) => ({ lead_id: id.data, storage_path })));
+    .insert(paths.map((storage_path) => ({ lead_id: id.data, storage_path, slot: slotChoice.data })));
   if (error) {
     return {
       ok: false,
@@ -303,4 +316,57 @@ export async function findLeadsAtPlace(
     addedBy: names.get(lead.created_by) ?? "Someone",
     addedOn: formatDate(lead.created_at),
   }));
+}
+
+export type TrackColourState = { ok?: boolean; error?: string; errors?: { choice?: string; ral_code?: string } };
+
+// The owner sets a lead's track colour: a colour from the list, or Custom
+// with a RAL Classic code. The database refuses anyone else, a retired
+// colour and a code that is not on the RAL Classic list.
+export async function setTrackColour(
+  _previous: TrackColourState,
+  formData: FormData,
+): Promise<TrackColourState> {
+  try {
+    await requireOwnerForAction();
+  } catch (e) {
+    if (e instanceof ReadOnlyError) return { error: VIEW_AS_READ_ONLY };
+    if (e instanceof NotOwnerError) return { error: "Only Keenan sets the track colour." };
+    throw e;
+  }
+  const id = z.uuid().safeParse(formData.get("id"));
+  if (!id.success) return { error: "That lead was not found." };
+  const parsed = trackColourChoiceSchema.safeParse({
+    choice: String(formData.get("choice") ?? ""),
+    ral_code: String(formData.get("ral_code") ?? ""),
+  });
+  if (!parsed.success) {
+    const errors: TrackColourState["errors"] = {};
+    for (const issue of parsed.error.issues) {
+      const field = issue.path[0] === "ral_code" ? "ral_code" : "choice";
+      errors[field] ??= issue.message;
+    }
+    return { error: "The track colour needs a look.", errors };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("leads")
+    .update(parsed.data)
+    .eq("id", id.data)
+    .select("id");
+  if (error) {
+    if (error.code === "23503") {
+      return {
+        error: "The track colour needs a look.",
+        errors: { ral_code: "That number isn't on the RAL Classic list. Check it in the RAL K7 book." },
+      };
+    }
+    if (error.code === "22023") return { error: "That colour has been retired. Pick another." };
+    return { error: "The track colour could not be saved. Try again." };
+  }
+  if (!data || data.length === 0) return { error: "That lead was not found." };
+
+  revalidatePath(`/app/leads/${id.data}`);
+  return { ok: true };
 }
