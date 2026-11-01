@@ -40,7 +40,7 @@ export function TrackColours({
   }
 
   return (
-    <Card>
+    <Card data-testid="track-colours">
       <CardHeader>
         <CardTitle>Track colours</CardTitle>
         <CardDescription>

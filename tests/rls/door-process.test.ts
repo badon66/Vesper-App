@@ -51,10 +51,10 @@ async function signedIn(email: string, password: string): Promise<Client> {
   return client;
 }
 
-async function newLead(client: Client, extra: Partial<Database["public"]["Tables"]["leads"]["Insert"]> = {}) {
-  const { data, error } = await client
+async function newLead(user: TestUser, extra: Partial<Database["public"]["Tables"]["leads"]["Insert"]> = {}) {
+  const { data, error } = await user.client
     .from("leads")
-    .insert({ first_name: TEST_LEAD, address_line: "1 Test Street NW", ...extra })
+    .insert({ first_name: TEST_LEAD, address_line: "1 Test Street NW", created_by: user.id, ...extra })
     .select("*")
     .single();
   return { lead: data, error };
@@ -106,7 +106,7 @@ beforeAll(async () => {
     u.id = data.user.id;
     u.client = await signedIn(u.email, u.password);
   }
-  const { lead, error } = await newLead(users.a.client);
+  const { lead, error } = await newLead(users.a);
   if (error || !lead) throw new Error(`could not add the test lead: ${error?.message}`);
   leadA = lead.id;
 });
@@ -122,7 +122,7 @@ describe("the Door guide", () => {
   it("an active setter reads it; an account with no profile and a signed-out visitor do not", async () => {
     const { data, error } = await users.a.client.from("settings_public").select("door_guide").single();
     expect(error).toBeNull();
-    expect(data?.door_guide.length ?? 0).toBeGreaterThan(0);
+    expect((data?.door_guide ?? "").length).toBeGreaterThan(0);
     const { data: nobody } = await users.nobody.client.from("settings_public").select("door_guide");
     expect(nobody ?? []).toEqual([]);
     const { data: stranger } = await anon.from("settings_public").select("door_guide");
@@ -328,10 +328,10 @@ describe("a lead's track colour", () => {
   });
 
   it("a setter cannot set it when adding a lead", async () => {
-    const withColour = await newLead(users.a.client, { track_colour_id: activeColour });
+    const withColour = await newLead(users.a, { track_colour_id: activeColour });
     expect(withColour.error?.code).toBe("42501");
     expect(withColour.error?.message).toMatch(/only the admin sets the track colour/i);
-    const custom = await newLead(users.a.client, { track_ral_code: "7016" });
+    const custom = await newLead(users.a, { track_ral_code: "7016" });
     expect(custom.error?.code).toBe("42501");
   });
 
@@ -378,7 +378,7 @@ describe("a lead's track colour", () => {
     expect(error).toBeNull();
     testColourId = colour!.id;
 
-    const { lead: other } = await newLead(users.a.client);
+    const { lead: other } = await newLead(users.a);
     const kept = await admin.from("leads").update({ track_ral_code: null, track_colour_id: testColourId }).eq("id", leadA);
     expect(kept.error).toBeNull();
 

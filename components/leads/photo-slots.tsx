@@ -152,11 +152,11 @@ export function PhotoSlots({
                     variant="outline"
                     size="lg"
                     className="w-full"
+                    aria-label={`${src ? "Retake" : "Take photo"}, ${label}`}
                     onClick={() => inputs.current[slot]?.click()}
                   >
                     <Camera aria-hidden="true" />
                     {src ? "Retake" : "Take photo"}
-                    <span className="sr-only">, {label}</span>
                   </Button>
                   <input
                     ref={(element) => {
