@@ -212,6 +212,21 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
 
       <Card>
         <CardHeader>
+          <CardTitle>Door guide</CardTitle>
+          <CardDescription>
+            Shown to setters in a card they can open at the top of New lead.
+            Line breaks show as written.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Field name="door_guide" label="Door guide" errors={errors}>
+            {(p) => <Textarea {...p} rows={9} defaultValue={defaults.door_guide} />}
+          </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Company</CardTitle>
           <CardDescription>Printed on quotes. Fill in anything that is blank.</CardDescription>
         </CardHeader>

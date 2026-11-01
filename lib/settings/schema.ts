@@ -96,6 +96,15 @@ export const settingsFormSchema = z.object({
   lost_reasons: lines.pipe(
     z.array(z.string()).min(1, { error: "add at least one reason" }),
   ),
+  door_guide: z
+    .string()
+    .transform((text) => text.replace(/\r\n?/g, "\n").trim())
+    .pipe(
+      z
+        .string()
+        .min(1, { error: "cannot be empty" })
+        .max(4000, { error: "must be under 4,000 characters" }),
+    ),
   company_name: z.string().trim().min(1, { error: "cannot be empty" }),
   company_phone: z.string().trim().max(40, { error: "is too long" }),
   company_email: z.union([
@@ -147,6 +156,7 @@ export function settingsFormDataToInput(
     meeting_slot_count: text("meeting_slot_count"),
     distance_warning_km: text("distance_warning_km"),
     lost_reasons: text("lost_reasons"),
+    door_guide: text("door_guide"),
     company_name: text("company_name"),
     company_phone: text("company_phone"),
     company_email: text("company_email"),
@@ -173,6 +183,7 @@ export function settingsUpdateFromValues(v: SettingsFormValues): SettingsUpdate 
     meeting_slot_count: v.meeting_slot_count,
     distance_warning_km: v.distance_warning_km,
     lost_reasons: v.lost_reasons,
+    door_guide: v.door_guide,
     company: {
       name: v.company_name,
       phone: v.company_phone,
@@ -203,6 +214,7 @@ export type SettingsFormDefaults = {
   meeting_slot_count: string;
   distance_warning_km: string;
   lost_reasons: string;
+  door_guide: string;
   company_name: string;
   company_phone: string;
   company_email: string;
@@ -234,6 +246,7 @@ export function settingsRowToFormDefaults(row: SettingsRow): SettingsFormDefault
     meeting_slot_count: String(row.meeting_slot_count),
     distance_warning_km: String(row.distance_warning_km),
     lost_reasons: row.lost_reasons.join("\n"),
+    door_guide: row.door_guide,
     company_name: companyField("name"),
     company_phone: companyField("phone"),
     company_email: companyField("email"),
