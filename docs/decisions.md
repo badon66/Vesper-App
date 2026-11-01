@@ -438,3 +438,23 @@ Judgment calls made while building it, for Keenan to look over.
 **The call.** The app's time helpers (`lib/time.ts`) use the `America/Edmonton` rules for moments before 2026-11-01 08:00 UTC and a fixed UTC-6 zone from then on. That agrees with the database and with any up-to-date device, whatever data the device has. The unit tests check both sides of the change, and the database tests check the meeting times the database works out. If Alberta ever changes again, this is the one place to update.
 
 **Found while building M3.** A database test expecting the old fall-back caught it. The earlier unit tests encoded the old rule and are corrected.
+
+## 2026-11-01: M3 as built
+
+**Holds on screen.**
+- The time picker re-reads the board from the database every 3 seconds while the screen is visible, and at once when the phone wakes or comes back online. In the two-browser walk-through the other phone showed a hold in 0.3 to 1.5 seconds and a released or booked time in up to 2.3 seconds.
+- The hold keeper in the app layout checks in every 20 seconds and lets the hold go when the person leaves the booking screens (Book a meeting and New lead). It learns about a hold from the booking screen itself, after the move there, so a hold made on Schedule or Home is never let go on the way.
+- Opening a page never places a hold; only a tap does. View as turns the keeper off.
+
+**Booking screens.**
+- Booking starts from a tapped time or from a lead. With a time and no lead it lists the person's New and Follow up leads, plus "Add a new lead and book it".
+- The booking screen says whether the person holds the time, with Pick another time and Let go. If the hold lapsed, it offers Hold this time again.
+- On New lead, the Cancel button became an X so Save lead and Save and book fit side by side on a phone.
+
+**What shows where.**
+- Setter Home's My bookings shows live bookings and tonight's results; moved and cancelled ones drop off there but stay on My pay as "No fee" lines, and on Keenan's Tonight and Schedule, muted.
+- Keenan's Schedule follows the evening he picks (`?day=`) and lists that evening's bookings in full, with outcomes, Move, Cancel and time blocks (one time, or the whole evening).
+
+**GPS fallback.** "Use where I'm standing" shows on New lead and Edit lead whenever the address isn't picked from the suggestions, and on a lead page with no map position. A phone position isn't dropped by editing the typed address; picking a suggestion replaces it. The app warns when another lead is within 25 m.
+
+**Keenan's template.** His live Settings say a 5:00 pm start with six 35-minute slots, not the 6:00 pm, 45-minute defaults. The app follows Settings; flagged in the report in case the 35 minutes isn't meant (his note said 45 minutes, drive included).
