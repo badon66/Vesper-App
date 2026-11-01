@@ -1,4 +1,5 @@
 import { photoSlotLabel, type PhotoSlot } from "@/lib/leads/door";
+import { formatMeetingTime, MEETING_STATUS_LABELS, type MeetingStatus } from "@/lib/schedule/meetings";
 import { STATUS_LABELS, type LeadStatus } from "@/lib/leads/status";
 import { formatDay } from "@/lib/time";
 import type { Database, Json } from "@/types/database";
@@ -54,6 +55,12 @@ function joinList(items: string[]): string {
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
+// Times end in "p.m.", so a sentence ending in one needs no extra full stop.
+const sentence = (text: string) => (text.endsWith(".") ? text : `${text}.`);
+
+const instantOf = (value: Json | undefined): string | null =>
+  typeof value === "string" && !Number.isNaN(Date.parse(value)) ? new Date(value).toISOString() : null;
+
 // One plain sentence per timeline entry. Notes are returned as written.
 export function describeEvent(event: TimelineEvent): string {
   const payload = payloadObject(event.payload);
@@ -97,6 +104,26 @@ export function describeEvent(event: TimelineEvent): string {
         answered.length > 0 ? `Updated Find out: ${joinList(answered)}.` : null,
       ].filter(Boolean);
       return sentences.length > 0 ? sentences.join(" ") : "Edited the lead.";
+    }
+    case "meeting_booked": {
+      const at = instantOf(payload.starts_at);
+      return at ? sentence(`Booked a meeting for ${formatMeetingTime(at)}`) : "Booked a meeting.";
+    }
+    case "meeting_moved": {
+      const from = instantOf(payload.from_starts_at);
+      const to = instantOf(payload.starts_at);
+      return from && to ? sentence(`Moved the meeting from ${formatMeetingTime(from)} to ${formatMeetingTime(to)}`) : "Moved the meeting.";
+    }
+    case "meeting_cancelled": {
+      const at = instantOf(payload.starts_at);
+      return at ? `${sentence(`Cancelled the meeting on ${formatMeetingTime(at)}`)} Follow up tomorrow.` : "Cancelled the meeting.";
+    }
+    case "meeting_outcome": {
+      const outcome = typeof payload.outcome === "string" && payload.outcome in MEETING_STATUS_LABELS
+        ? MEETING_STATUS_LABELS[payload.outcome as MeetingStatus]
+        : null;
+      const reason = typeof payload.reason === "string" && payload.reason ? `: ${payload.reason}` : "";
+      return outcome ? `Marked the meeting ${outcome}${reason}.` : "Marked the meeting.";
     }
     default: {
       const words = event.type.replace(/_/g, " ");

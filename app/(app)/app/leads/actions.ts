@@ -22,7 +22,9 @@ import {
 import { followUpDateFor } from "@/lib/leads/attention";
 import { canChangeStatus, leadName, STATUS_LABELS } from "@/lib/leads/status";
 import { trackColourChoiceSchema } from "@/lib/leads/track-colour";
+import { GPS_MAX_ACCURACY_M, inCalgaryArea, NEARBY_LEAD_M } from "@/lib/geo";
 import { isOwnPhotoPath, MAX_PHOTOS_PER_FORM } from "@/lib/photos";
+import { kmBetween } from "@/lib/schedule/distance";
 import { createClient } from "@/lib/supabase/server";
 import { calgaryToday, formatDate } from "@/lib/time";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
@@ -99,6 +101,29 @@ export async function createLead(
   }
 
   revalidatePath("/app/leads");
+
+  // Save and book (Keenan, 2026-11-01): book the time this person holds,
+  // or open the time picker for the new lead. When the lead isn't ready, the
+  // booking screen shows what is missing, and the hold stays alive.
+  if (formData.get("intent") === "book") {
+    const held = z.iso.datetime({ offset: true }).safeParse(formData.get("held_start"));
+    if (!held.success) redirect(`/app/schedule/book?lead=${lead.id}`);
+    const skip = String(formData.get("photos_skipped") ?? "");
+    const note = String(formData.get("photos_skip_note") ?? "").trim().slice(0, 300);
+    const { data: meetingId, error: bookError } = await supabase.rpc("book_meeting", {
+      p_lead_id: lead.id,
+      p_starts_at: held.data,
+      p_everyone_deciding_present: formData.get("everyone") === "yes",
+      ...(skip === "homeowner_said_no" || skip === "other" ? { p_photos_skipped: skip } : {}),
+      ...(note ? { p_photos_skip_note: note } : {}),
+    });
+    if (!bookError && meetingId) {
+      revalidatePath("/app");
+      revalidatePath("/app/schedule");
+      redirect(`/app/leads/${lead.id}?booked=${meetingId}${photosFailed ? "&photos=failed" : ""}`);
+    }
+    redirect(`/app/schedule/book?start=${encodeURIComponent(held.data)}&lead=${lead.id}`);
+  }
   redirect(photosFailed ? `/app/leads/${lead.id}?photos=failed` : `/app/leads?added=${lead.id}`);
 }
 
@@ -367,6 +392,67 @@ export async function setTrackColour(
   }
   if (!data || data.length === 0) return { error: "That lead was not found." };
 
+  revalidatePath(`/app/leads/${id.data}`);
+  return { ok: true };
+}
+
+// Leads within 25 m of a phone position, so two setters don't add the same
+// new house twice (Keenan, 2026-11-01).
+export async function findLeadsNear(
+  lat: number,
+  lng: number,
+  excludeLeadId: string | null,
+): Promise<(DuplicateLead & { metres: number })[]> {
+  const me = await salesSide();
+  if (typeof me === "string") return [];
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !inCalgaryArea(lat, lng)) return [];
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("leads")
+    .select("id, first_name, last_name, status, created_by, created_at, lat, lng")
+    .gte("lat", lat - 0.0005)
+    .lte("lat", lat + 0.0005)
+    .gte("lng", lng - 0.0008)
+    .lte("lng", lng + 0.0008)
+    .limit(20);
+  const near = (data ?? [])
+    .filter((lead) => lead.id !== excludeLeadId && lead.lat !== null && lead.lng !== null)
+    .map((lead) => ({ lead, metres: kmBetween({ lat, lng }, { lat: lead.lat as number, lng: lead.lng as number }) * 1000 }))
+    .filter((item) => item.metres <= NEARBY_LEAD_M)
+    .sort((a, b) => a.metres - b.metres)
+    .slice(0, 3);
+  const names = await namesById(supabase, near.map((item) => item.lead.created_by));
+  return near.map(({ lead, metres }) => ({
+    id: lead.id,
+    name: leadName(lead),
+    status: STATUS_LABELS[lead.status],
+    addedBy: names.get(lead.created_by) ?? "Someone",
+    addedOn: formatDate(lead.created_at),
+    metres: Math.round(metres),
+  }));
+}
+
+// A lead's map position from the phone at the door, for a brand-new street.
+export async function setLeadPosition(
+  leadId: string,
+  position: { lat: number; lng: number; accuracy: number },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const me = await salesSide();
+  if (typeof me === "string") return { ok: false, error: me };
+  const id = z.uuid().safeParse(leadId);
+  if (!id.success) return { ok: false, error: "That lead was not found." };
+  const { lat, lng, accuracy } = position;
+  if (![lat, lng, accuracy].every(Number.isFinite) || accuracy > GPS_MAX_ACCURACY_M || accuracy < 0 || !inCalgaryArea(lat, lng)) {
+    return { ok: false, error: "That position isn't accurate enough. Try again at the door." };
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("leads")
+    .update({ lat, lng, place_id: null, position_source: "device", position_accuracy_m: Math.round(accuracy * 10) / 10 })
+    .eq("id", id.data)
+    .select("id");
+  if (error) return { ok: false, error: error.code === "42501" ? NOT_YOURS : "The position could not be saved. Try again." };
+  if (!data || data.length === 0) return { ok: false, error: NOT_YOURS };
   revalidatePath(`/app/leads/${id.data}`);
   return { ok: true };
 }

@@ -16,6 +16,8 @@ const blank = {
   lat: "",
   lng: "",
   place_id: "",
+  position_source: "",
+  position_accuracy_m: "",
   house_type: "",
   soffit_colour: "",
   soffit_note: "",

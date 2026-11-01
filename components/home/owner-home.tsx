@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { KnockCard } from "@/components/knock/knock-card";
 import { StatusBadge } from "@/components/leads/status-badge";
+import { TonightMeetings } from "@/components/schedule/tonight";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { SessionProfile } from "@/lib/auth/profile";
 import { summariseToday } from "@/lib/home/today";
@@ -16,11 +17,11 @@ import { calgaryDayStart, calgaryToday, formatLongDay, formatTime } from "@/lib/
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
-// The owner's Home is the dashboard. For now it shows today across the team,
-// Keenan's own knock session (he knocks too), and today's leads. M3 adds
-// tonight's meetings at the top and M6 the sales dashboard below. Every
-// number says what it counts: knock sessions started today and leads added
-// today, in Calgary time.
+// The owner's Home is the dashboard: tonight's meetings at the top, then
+// today across the team, Keenan's own knock session (he knocks too), and
+// today's leads. M6 adds the sales dashboard below. Every number says what
+// it counts: knock sessions started today and leads added today, in Calgary
+// time.
 export async function OwnerHome({ profile }: { profile: SessionProfile }) {
   const supabase = await createClient();
   const today = calgaryToday();
@@ -59,6 +60,8 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
           started today; leads are the ones added today.
         </p>
       </div>
+
+      <TonightMeetings />
 
       <Card>
         <CardHeader>

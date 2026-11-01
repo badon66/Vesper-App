@@ -55,6 +55,8 @@ export default async function EditLeadPage({ params }: { params: Promise<{ id: s
             lat: lead.lat,
             lng: lead.lng,
             placeId: lead.place_id,
+            positionSource: lead.position_source,
+            accuracy: lead.position_accuracy_m,
           },
         }}
       />

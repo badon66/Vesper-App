@@ -1,11 +1,10 @@
 import type { UserRole } from "@/lib/roles";
 
 // The tabs each role sees, in order. The same items show in the bottom tab
-// bar on phone and iPad and in the side rail from 1024 px. A tab that belongs
-// to a later milestone is left out until it is built: Schedule and My pay in
-// M3, and Pay inside Admin (CLAUDE.md, Navigation).
+// bar on phone and iPad and in the side rail from 1024 px (CLAUDE.md,
+// Navigation). Pay lives inside Admin for the owner.
 
-export type TabIcon = "home" | "plus" | "list" | "admin";
+export type TabIcon = "home" | "plus" | "list" | "admin" | "schedule" | "pay";
 
 export type Tab = {
   href: string;
@@ -19,10 +18,12 @@ const HOME: Tab = { href: "/app", label: "Home", icon: "home" };
 const NEW_LEAD: Tab = { href: "/app/leads/new", label: "New lead", icon: "plus", prominent: true };
 const LEADS: Tab = { href: "/app/leads", label: "Leads", icon: "list" };
 const ADMIN: Tab = { href: "/app/admin", label: "Admin", icon: "admin" };
+const SCHEDULE: Tab = { href: "/app/schedule", label: "Schedule", icon: "schedule" };
+const MY_PAY: Tab = { href: "/app/pay", label: "My pay", icon: "pay" };
 
 export function tabsFor(role: UserRole): Tab[] {
-  if (role === "owner") return [HOME, NEW_LEAD, LEADS, ADMIN];
-  if (role === "sales") return [HOME, NEW_LEAD, LEADS];
+  if (role === "owner") return [HOME, SCHEDULE, NEW_LEAD, LEADS, ADMIN];
+  if (role === "sales") return [HOME, SCHEDULE, NEW_LEAD, LEADS, MY_PAY];
   // Crew has no screens until V2, so no tabs.
   return [];
 }

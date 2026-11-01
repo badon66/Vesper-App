@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { requireProfile } from "@/lib/auth/profile";
 import { ACTIVE_STATUSES, followUpLabel, groupByAttention } from "@/lib/leads/attention";
+import { formatMeetingTime } from "@/lib/schedule/meetings";
 import { namesById } from "@/lib/leads/queries";
 import { cleanSearch, searchFilter } from "@/lib/leads/search";
 import { groupByStatus, leadName, STATUS_LABELS, type LeadStatus } from "@/lib/leads/status";
@@ -82,8 +83,14 @@ export default async function LeadsPage({
 
   const leads: Row[] = data ?? [];
   const names = everyone ? await namesById(supabase, leads.map((lead) => lead.created_by)) : new Map<string, string>();
+  const bookedIds = leads.filter((lead) => lead.status === "meeting_booked").map((lead) => lead.id);
+  const { data: live } =
+    bookedIds.length > 0
+      ? await supabase.from("meetings").select("lead_id, starts_at").in("lead_id", bookedIds).in("status", ["booked", "confirmed"])
+      : { data: [] };
+  const meetingAt = new Map((live ?? []).map((meeting) => [meeting.lead_id, new Date(meeting.starts_at).toISOString()]));
   const sections: Section[] = showActive
-    ? groupByAttention(leads, today)
+    ? groupByAttention(leads, today, meetingAt)
     : groupByStatus(leads).map((group) => ({ key: group.status, title: STATUS_LABELS[group.status], leads: group.leads }));
   const addedLead = addedResult?.data ?? undefined;
 
@@ -179,7 +186,11 @@ export default async function LeadsPage({
               {section.leads.map((lead) => {
                 const mine = lead.created_by === me.id || lead.assigned_to === me.id;
                 const followUp =
-                  lead.status === "follow_up" && lead.follow_up_on ? `${followUpLabel(lead.follow_up_on, today)}. ` : "";
+                  lead.status === "follow_up" && lead.follow_up_on
+                    ? `${followUpLabel(lead.follow_up_on, today)}. `
+                    : meetingAt.has(lead.id)
+                      ? `Meeting ${formatMeetingTime(meetingAt.get(lead.id) as string)}. `
+                      : "";
                 return (
                   <li key={lead.id}>
                     <Link

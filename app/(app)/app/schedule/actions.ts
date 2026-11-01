@@ -1,0 +1,269 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { z } from "zod";
+import {
+  NotAllowedError,
+  NotOwnerError,
+  ReadOnlyError,
+  requireOwnerForAction,
+  requireSalesSideForAction,
+  type SessionProfile,
+} from "@/lib/auth/profile";
+import { bookingMessage, errorCode } from "@/lib/schedule/messages";
+import { OUTCOMES } from "@/lib/schedule/meetings";
+import { createClient } from "@/lib/supabase/server";
+import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
+
+// Every hold, booking, move, cancel, outcome, block and payout goes through
+// the database's booking functions, called with the signed-in person's own
+// session. The database decides; these actions turn its answer into words.
+// While the owner views the app as someone, every one of them is refused.
+
+export type ActionResult = { ok: true } | { ok: false; code: string; message: string };
+
+const instant = z.iso.datetime({ offset: true });
+const id = z.uuid();
+
+async function salesSide(): Promise<SessionProfile | ActionResult> {
+  try {
+    return await requireSalesSideForAction();
+  } catch (e) {
+    if (e instanceof ReadOnlyError) return { ok: false, code: "read_only", message: VIEW_AS_READ_ONLY };
+    if (e instanceof NotAllowedError) return { ok: false, code: "not_allowed", message: "Not for your role." };
+    throw e;
+  }
+}
+
+async function owner(): Promise<SessionProfile | ActionResult> {
+  try {
+    return await requireOwnerForAction();
+  } catch (e) {
+    if (e instanceof ReadOnlyError) return { ok: false, code: "read_only", message: VIEW_AS_READ_ONLY };
+    if (e instanceof NotOwnerError) return { ok: false, code: "not_allowed", message: "Only Keenan can do that." };
+    throw e;
+  }
+}
+
+const isResult = (value: unknown): value is ActionResult =>
+  typeof value === "object" && value !== null && "ok" in value;
+
+function failed(error: { message?: string; hint?: string | null; details?: string | null }): ActionResult {
+  return { ok: false, code: errorCode(error), message: bookingMessage(error) };
+}
+
+function refreshSchedule(leadId?: string | null) {
+  revalidatePath("/app");
+  revalidatePath("/app/schedule");
+  revalidatePath("/app/leads");
+  revalidatePath("/app/pay");
+  if (leadId) revalidatePath(`/app/leads/${leadId}`);
+}
+
+// ---------------------------------------------------------------- holds
+
+// Tapping an open time holds it, for booking a lead or moving a booking.
+export async function holdTime(
+  startsAt: string,
+  opts: { leadId?: string | null; meetingId?: string | null } = {},
+): Promise<ActionResult> {
+  const me = await salesSide();
+  if (isResult(me)) return me;
+  const at = instant.safeParse(startsAt);
+  const lead = opts.leadId ? id.safeParse(opts.leadId) : null;
+  const meeting = opts.meetingId ? id.safeParse(opts.meetingId) : null;
+  if (!at.success || (lead && !lead.success) || (meeting && !meeting.success)) {
+    return { ok: false, code: "not_a_slot", message: "That isn't one of the meeting times." };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("hold_slot", {
+    p_starts_at: at.data,
+    ...(lead?.success ? { p_lead_id: lead.data } : {}),
+    ...(meeting?.success ? { p_meeting_id: meeting.data } : {}),
+  });
+  return error ? failed(error) : { ok: true };
+}
+
+export type RenewResult = { status: "held" | "lost" | "none"; startsAt?: string };
+
+// The holder's screen checks in to keep the hold alive.
+export async function renewMyHold(): Promise<RenewResult> {
+  const me = await salesSide();
+  if (isResult(me)) return { status: "none" };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("renew_hold");
+  if (error || !data || typeof data !== "object" || Array.isArray(data)) return { status: "none" };
+  const status = (data as { status?: string }).status;
+  const startsAt = (data as { starts_at?: string }).starts_at;
+  return {
+    status: status === "held" || status === "lost" ? status : "none",
+    ...(startsAt ? { startsAt: new Date(startsAt).toISOString() } : {}),
+  };
+}
+
+// Backing out lets the hold go at once.
+export async function releaseMyHold(): Promise<void> {
+  const me = await salesSide();
+  if (isResult(me)) return;
+  const supabase = await createClient();
+  await supabase.rpc("release_hold");
+}
+
+// ---------------------------------------------------------------- booking
+
+export type BookState = { ok?: false; code?: string; message?: string; problems?: string[] };
+
+const bookSchema = z.object({
+  lead_id: id,
+  starts_at: instant,
+  everyone: z.literal("yes", { error: "Confirm everyone who decides will be at the meeting." }).or(z.literal("")),
+  photos_skipped: z.enum(["", "homeowner_said_no", "other"]),
+  photos_skip_note: z.string().trim().max(300),
+});
+
+export async function bookMeeting(_previous: BookState, formData: FormData): Promise<BookState> {
+  const me = await salesSide();
+  if (isResult(me)) return me.ok ? {} : { ok: false, code: me.code, message: me.message };
+  const parsed = bookSchema.safeParse({
+    lead_id: formData.get("lead_id"),
+    starts_at: formData.get("starts_at"),
+    everyone: String(formData.get("everyone") ?? ""),
+    photos_skipped: String(formData.get("photos_skipped") ?? ""),
+    photos_skip_note: String(formData.get("photos_skip_note") ?? ""),
+  });
+  if (!parsed.success) return { ok: false, code: "invalid", message: "Pick a time and a lead first." };
+  const values = parsed.data;
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("book_meeting", {
+    p_lead_id: values.lead_id,
+    p_starts_at: values.starts_at,
+    p_everyone_deciding_present: values.everyone === "yes",
+    ...(values.photos_skipped ? { p_photos_skipped: values.photos_skipped } : {}),
+    ...(values.photos_skip_note ? { p_photos_skip_note: values.photos_skip_note } : {}),
+  });
+  if (error) {
+    return {
+      ok: false,
+      code: errorCode(error),
+      message: bookingMessage(error),
+      problems: errorCode(error) === "not_ready" ? (error.details ?? "").split(",").filter(Boolean) : undefined,
+    };
+  }
+  refreshSchedule(values.lead_id);
+  redirect(`/app/leads/${values.lead_id}?booked=${data}`);
+}
+
+// Moving a booking to a time the person already holds.
+export async function moveBooking(meetingId: string, startsAt: string): Promise<ActionResult> {
+  const me = await salesSide();
+  if (isResult(me)) return me;
+  const meeting = id.safeParse(meetingId);
+  const at = instant.safeParse(startsAt);
+  if (!meeting.success || !at.success) return { ok: false, code: "no_meeting", message: "That booking was not found." };
+  const supabase = await createClient();
+  const { data: before } = await supabase.from("meetings").select("lead_id").eq("id", meeting.data).maybeSingle();
+  const { error } = await supabase.rpc("move_meeting", { p_meeting_id: meeting.data, p_new_starts_at: at.data });
+  if (error) return failed(error);
+  refreshSchedule(before?.lead_id);
+  return { ok: true };
+}
+
+export async function cancelBooking(meetingId: string, note: string): Promise<ActionResult> {
+  const me = await salesSide();
+  if (isResult(me)) return me;
+  const meeting = id.safeParse(meetingId);
+  if (!meeting.success) return { ok: false, code: "no_meeting", message: "That booking was not found." };
+  const supabase = await createClient();
+  const { data: before } = await supabase.from("meetings").select("lead_id").eq("id", meeting.data).maybeSingle();
+  const { error } = await supabase.rpc("cancel_meeting", {
+    p_meeting_id: meeting.data,
+    ...(note.trim() ? { p_note: note.trim().slice(0, 500) } : {}),
+  });
+  if (error) return failed(error);
+  refreshSchedule(before?.lead_id);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------- the owner's
+
+const outcomeSchema = z.object({
+  meeting_id: id,
+  outcome: z.enum(OUTCOMES),
+  reason: z.string().trim().max(200),
+  other_reason: z.string().trim().max(200),
+  note: z.string().trim().max(500),
+});
+
+export async function setOutcome(_previous: ActionResult | null, formData: FormData): Promise<ActionResult | null> {
+  const me = await owner();
+  if (isResult(me)) return me;
+  const parsed = outcomeSchema.safeParse({
+    meeting_id: formData.get("meeting_id"),
+    outcome: formData.get("outcome"),
+    reason: String(formData.get("reason") ?? ""),
+    other_reason: String(formData.get("other_reason") ?? ""),
+    note: String(formData.get("note") ?? ""),
+  });
+  if (!parsed.success) return { ok: false, code: "bad_outcome", message: "Pick an outcome." };
+  const { meeting_id, outcome, reason, other_reason, note } = parsed.data;
+  const finalReason = reason === "Other" ? other_reason : reason;
+  if (outcome === "not_qualified" && !finalReason) {
+    return { ok: false, code: "reason_needed", message: reason === "Other" ? "Say why, in a few words." : "Pick a reason." };
+  }
+  const supabase = await createClient();
+  const { data: before } = await supabase.from("meetings").select("lead_id").eq("id", meeting_id).maybeSingle();
+  const { error } = await supabase.rpc("set_meeting_outcome", {
+    p_meeting_id: meeting_id,
+    p_outcome: outcome,
+    ...(outcome === "not_qualified" ? { p_reason: finalReason } : {}),
+    ...(note && (outcome === "no_show" || outcome === "cancelled") ? { p_note: note } : {}),
+  });
+  if (error) return failed(error);
+  refreshSchedule(before?.lead_id);
+  revalidatePath("/app/admin/pay");
+  return { ok: true };
+}
+
+export async function addTimeBlock(startsAt: string, endsAt: string, reason: string): Promise<ActionResult> {
+  const me = await owner();
+  if (isResult(me)) return me;
+  const from = instant.safeParse(startsAt);
+  const to = instant.safeParse(endsAt);
+  if (!from.success || !to.success) return { ok: false, code: "bad_block", message: "Pick the times to block." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("add_time_block", {
+    p_starts_at: from.data,
+    p_ends_at: to.data,
+    ...(reason.trim() ? { p_reason: reason.trim().slice(0, 200) } : {}),
+  });
+  if (error) return failed(error);
+  refreshSchedule();
+  return { ok: true };
+}
+
+export async function removeTimeBlock(blockId: string): Promise<ActionResult> {
+  const me = await owner();
+  if (isResult(me)) return me;
+  const block = id.safeParse(blockId);
+  if (!block.success) return { ok: false, code: "bad_block", message: "That block was not found." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("remove_time_block", { p_block_id: block.data });
+  if (error) return failed(error);
+  refreshSchedule();
+  return { ok: true };
+}
+
+export async function markPaid(_previous: ActionResult | null, formData: FormData): Promise<ActionResult | null> {
+  const me = await owner();
+  if (isResult(me)) return me;
+  const ids = formData.getAll("earning_id").map(String);
+  const parsed = z.array(id).min(1).safeParse(ids);
+  if (!parsed.success) return { ok: false, code: "none_picked", message: "Tick the lines you've paid first." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("mark_earnings_paid", { p_ids: parsed.data });
+  if (error) return failed(error);
+  revalidatePath("/app/admin/pay");
+  revalidatePath("/app/pay");
+  return { ok: true };
+}

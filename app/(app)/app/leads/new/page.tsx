@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { DoorGuide } from "@/components/leads/door-guide";
 import { LeadForm } from "@/components/leads/lead-form";
-import { requireProfile } from "@/lib/auth/profile";
+import { getViewer } from "@/lib/auth/profile";
 import { getPublicEnv } from "@/lib/env";
 import { doorGuide, openKnockSession } from "@/lib/leads/queries";
+import { activeHoldOf, bookingSettings, fetchBoard } from "@/lib/schedule/queries";
+import { calgaryToday } from "@/lib/time";
 import { createClient } from "@/lib/supabase/server";
 import { createLead } from "../actions";
 
@@ -12,12 +14,15 @@ export const metadata: Metadata = {
 };
 
 export default async function NewLeadPage() {
-  const me = await requireProfile();
+  const { profile: me, real } = await getViewer();
   const supabase = await createClient();
-  const [session, guide] = await Promise.all([
+  const [session, guide, settings, board] = await Promise.all([
     openKnockSession(supabase, me.id),
     doorGuide(supabase),
+    bookingSettings(supabase),
+    fetchBoard(supabase, me, real.role),
   ]);
+  const hold = await activeHoldOf(supabase, me.id, settings.graceMinutes);
 
   return (
     <div className="flex flex-col gap-5">
@@ -37,6 +42,14 @@ export default async function NewLeadPage() {
         mapsKey={getPublicEnv().NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null}
         sessionNeighbourhood={session?.neighbourhood ?? null}
         cancelHref="/app/leads"
+        booking={{
+          board,
+          today: calgaryToday(),
+          windowDays: settings.windowDays,
+          asSales: me.role !== "owner",
+          viewerId: real.id !== me.id ? me.id : null,
+          heldAt: hold?.startsAt ?? null,
+        }}
       />
     </div>
   );

@@ -93,3 +93,9 @@ const longDay = new Intl.DateTimeFormat("en-CA", {
 // no time of day, so it is formatted as is, with no time zone shift.
 export const formatDay = (day: string) => weekdayDate.format(new Date(`${day}T12:00:00Z`));
 export const formatLongDay = (day: string) => longDay.format(new Date(`${day}T12:00:00Z`));
+
+// The moment of the request. Server Components render once per request, so
+// "has this meeting started" is asked once, against this.
+export function requestTime(): number {
+  return Date.now();
+}

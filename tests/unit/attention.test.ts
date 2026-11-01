@@ -31,6 +31,20 @@ describe("groupByAttention", () => {
     ]);
   });
 
+  it("orders booked meetings soonest first, whenever the leads were added", () => {
+    const booked = [
+      lead("booked-late", "meeting_booked", "2026-10-01T10:00:00Z"),
+      lead("booked-soon", "meeting_booked", "2026-10-27T10:00:00Z"),
+      lead("booked-unknown", "meeting_booked", "2026-10-02T10:00:00Z"),
+    ];
+    const meetingAt = new Map([
+      ["booked-late", "2026-11-05T01:00:00.000Z"],
+      ["booked-soon", "2026-10-29T00:00:00.000Z"],
+    ]);
+    const groups = groupByAttention(booked, today, meetingAt);
+    expect(groups[0].leads.map((l) => l.id)).toEqual(["booked-soon", "booked-late", "booked-unknown"]);
+  });
+
   it("leaves out lost and closed leads and empty groups", () => {
     const groups = groupByAttention([lead("lost", "lost", "2026-10-26T10:00:00Z"), lead("n", "new", "2026-10-26T10:00:00Z")], today);
     expect(groups.map((group) => group.key)).toEqual(["new"]);

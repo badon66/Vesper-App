@@ -13,9 +13,9 @@ export const metadata: Metadata = {
 // knock session and follow-ups, or a placeholder for crew until V2. While
 // the owner views the app as someone, this is that person's Home, read only.
 export default async function HomePage() {
-  const { profile, viewingAs } = await getViewer();
+  const { profile, real, viewingAs } = await getViewer();
   if (profile.role === "owner") return <OwnerHome profile={profile} />;
-  if (profile.role === "sales") return <SalesHome profile={profile} readOnly={viewingAs} />;
+  if (profile.role === "sales") return <SalesHome profile={profile} readOnly={viewingAs} realRole={real.role} />;
 
   const firstName = profile.full_name.split(" ")[0] || profile.full_name;
   return (
