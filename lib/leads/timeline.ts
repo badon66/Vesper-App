@@ -1,3 +1,4 @@
+import { photoSlotLabel, type PhotoSlot } from "@/lib/leads/door";
 import { STATUS_LABELS, type LeadStatus } from "@/lib/leads/status";
 import { formatDay } from "@/lib/time";
 import type { Database, Json } from "@/types/database";
@@ -22,14 +23,27 @@ const FIELD_LABELS: Record<string, string> = {
   lng: "map position",
   place_id: "map position",
   house_type: "house type",
-  soffit_colour: "soffit colour",
-  soffit_note: "soffit colour",
   est_feet: "estimated feet",
   notes: "notes",
   source: "source",
   assigned_to: "setter",
   follow_up_on: "follow-up day",
+  track_colour_id: "track colour",
+  track_ral_code: "track colour",
 };
+
+// The Find out questions, named the way the form asks them.
+const FIND_OUT_LABELS: Record<string, string> = {
+  owns_home: "owns the home",
+  wants_price: "wants a price",
+  soffit_colour: "soffit colour",
+  soffit_note: "soffit colour",
+  christmas_lights_now: "Christmas lights now",
+  areas_wanted: "which areas",
+  install_timing: "timing",
+};
+
+const PHOTO_SLOT_VALUES: readonly string[] = ["front", "left_corner", "right_corner", "soffit"];
 
 function payloadObject(payload: Json | null): { [key: string]: Json | undefined } {
   return payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};
@@ -59,14 +73,30 @@ export function describeEvent(event: TimelineEvent): string {
     }
     case "note":
       return typeof payload.text === "string" ? payload.text : "Added a note.";
-    case "photo_added":
-      return "Added a photo.";
+    case "photo_added": {
+      const slot = typeof payload.slot === "string" && PHOTO_SLOT_VALUES.includes(payload.slot)
+        ? (payload.slot as PhotoSlot)
+        : null;
+      return slot ? `Added the ${photoSlotLabel(slot).toLowerCase()} photo.` : "Added a photo.";
+    }
     case "edited": {
       const fields = Array.isArray(payload.fields)
         ? payload.fields.filter((field): field is string => typeof field === "string")
         : [];
-      const labels = Array.from(new Set(fields.map((field) => FIELD_LABELS[field] ?? field.replace(/_/g, " "))));
-      return labels.length > 0 ? `Changed the ${joinList(labels)}.` : "Edited the lead.";
+      const unique = (labels: string[]) => Array.from(new Set(labels));
+      const changed = unique(
+        fields
+          .filter((field) => !Object.hasOwn(FIND_OUT_LABELS, field))
+          .map((field) => FIELD_LABELS[field] ?? field.replace(/_/g, " ")),
+      );
+      const answered = unique(
+        fields.filter((field) => Object.hasOwn(FIND_OUT_LABELS, field)).map((field) => FIND_OUT_LABELS[field]),
+      );
+      const sentences = [
+        changed.length > 0 ? `Changed the ${joinList(changed)}.` : null,
+        answered.length > 0 ? `Updated Find out: ${joinList(answered)}.` : null,
+      ].filter(Boolean);
+      return sentences.length > 0 ? sentences.join(" ") : "Edited the lead.";
     }
     default: {
       const words = event.type.replace(/_/g, " ");

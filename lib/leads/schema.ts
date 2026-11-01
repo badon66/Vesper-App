@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { PHOTO_SLOTS, slotFieldName, type PhotoSlot } from "@/lib/leads/door";
+import { OFFERED_SOFFIT_COLOURS } from "@/lib/leads/status";
 import { normalizePhone } from "@/lib/phone";
 import { MAX_PHOTOS_PER_FORM, PHOTO_PATH_PATTERN } from "@/lib/photos";
 import { Constants, type Database } from "@/types/database";
@@ -39,6 +41,20 @@ const optionalEnum = <T extends readonly [string, ...string[]]>(values: T) =>
     .transform(blankToNull)
     .pipe(z.enum(values, { error: "Pick one of the choices." }).nullable());
 
+// A yes or no question: the yes word, the no word, or nothing when it was
+// not asked.
+const optionalYesNo = (no: string) =>
+  z
+    .string()
+    .transform(blankToNull)
+    .pipe(z.enum(["yes", no], { error: "Pick one of the choices." }).nullable())
+    .transform((value) => (value === null ? null : value === "yes"));
+
+const photoPathField = z
+  .string()
+  .transform(blankToNull)
+  .pipe(z.string().regex(PHOTO_PATH_PATTERN, { error: "A photo did not upload properly." }).nullable());
+
 export const leadFormSchema = z
   .object({
     first_name: z
@@ -77,24 +93,50 @@ export const leadFormSchema = z
     lng: coordinate(-180, 180),
     place_id: optionalText(300, "Place"),
     house_type: optionalEnum(Constants.public.Enums.house_type),
-    soffit_colour: optionalEnum(Constants.public.Enums.soffit_colour),
+    soffit_colour: optionalEnum(OFFERED_SOFFIT_COLOURS),
     soffit_note: optionalText(200, "Soffit note"),
+    owns_home: optionalYesNo("no"),
+    wants_price: optionalYesNo("not_yet"),
+    christmas_lights_now: optionalEnum(Constants.public.Enums.christmas_lights_now),
+    areas_wanted: optionalEnum(Constants.public.Enums.roofline_areas),
+    install_timing: optionalEnum(Constants.public.Enums.install_timing),
     notes: optionalText(4000, "Notes"),
     source: z.enum(Constants.public.Enums.lead_source, { error: "Pick where the lead came from." }),
     photo_paths: z
       .array(z.string().regex(PHOTO_PATH_PATTERN, { error: "A photo did not upload properly." }))
       .max(MAX_PHOTOS_PER_FORM, { error: `At most ${MAX_PHOTOS_PER_FORM} photos at a time.` }),
+    photo_slot_front: photoPathField,
+    photo_slot_left_corner: photoPathField,
+    photo_slot_right_corner: photoPathField,
+    photo_slot_soffit: photoPathField,
   })
   .transform((values) => {
     // A map position is all or nothing, and a place id without a position
     // means nothing, so drop both rather than save half a position.
     const hasPosition = values.lat !== null && values.lng !== null;
+    const {
+      photo_slot_front,
+      photo_slot_left_corner,
+      photo_slot_right_corner,
+      photo_slot_soffit,
+      ...rest
+    } = values;
+    const slotPaths: Record<PhotoSlot, string | null> = {
+      front: photo_slot_front,
+      left_corner: photo_slot_left_corner,
+      right_corner: photo_slot_right_corner,
+      soffit: photo_slot_soffit,
+    };
     return {
-      ...values,
+      ...rest,
       lat: hasPosition ? values.lat : null,
       lng: hasPosition ? values.lng : null,
       place_id: hasPosition ? values.place_id : null,
       soffit_note: values.soffit_colour === "other" ? values.soffit_note : null,
+      slot_photos: PHOTO_SLOTS.flatMap(({ slot }) => {
+        const path = slotPaths[slot];
+        return path ? [{ slot, path }] : [];
+      }),
     };
   });
 
@@ -110,7 +152,12 @@ export function parseLeadForm(
   const errors: LeadFormErrors = {};
   for (const issue of result.error.issues) {
     const field = issue.path[0] as LeadFormField | undefined;
-    const key: LeadFormField = field === "lat" || field === "lng" || field === "place_id" ? "address_line" : (field ?? "first_name");
+    const key: LeadFormField =
+      field === "lat" || field === "lng" || field === "place_id"
+        ? "address_line"
+        : typeof field === "string" && field.startsWith("photo_slot_")
+          ? "photo_paths"
+          : (field ?? "first_name");
     errors[key] ??= issue.message;
   }
   return { ok: false, errors };
@@ -133,16 +180,22 @@ export function leadFormDataToInput(formData: FormData): Record<string, unknown>
     house_type: text("house_type"),
     soffit_colour: text("soffit_colour"),
     soffit_note: text("soffit_note"),
+    owns_home: text("owns_home"),
+    wants_price: text("wants_price"),
+    christmas_lights_now: text("christmas_lights_now"),
+    areas_wanted: text("areas_wanted"),
+    install_timing: text("install_timing"),
     notes: text("notes"),
     source: text("source") || "door",
     photo_paths: formData.getAll("photo_paths").map(String),
+    ...Object.fromEntries(PHOTO_SLOTS.map(({ slot }) => [slotFieldName(slot), text(slotFieldName(slot))])),
   };
 }
 
 type LeadUpdate = Database["public"]["Tables"]["leads"]["Update"];
 
-// The columns a form save writes. Status, owner and session are never set
-// from the form.
+// The columns a form save writes. Status, owner, session and track colour
+// are never set from the form.
 export function leadColumnsFromValues(values: LeadFormValues): LeadUpdate {
   return {
     first_name: values.first_name,
@@ -159,6 +212,11 @@ export function leadColumnsFromValues(values: LeadFormValues): LeadUpdate {
     house_type: values.house_type,
     soffit_colour: values.soffit_colour,
     soffit_note: values.soffit_note,
+    owns_home: values.owns_home,
+    wants_price: values.wants_price,
+    christmas_lights_now: values.christmas_lights_now,
+    areas_wanted: values.areas_wanted,
+    install_timing: values.install_timing,
     notes: values.notes,
     source: values.source,
   };

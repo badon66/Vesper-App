@@ -10,18 +10,19 @@ import {
 import { FieldError } from "@/components/field-error";
 import { AddressField, type AddressDefaults } from "@/components/leads/address-field";
 import { ChoiceGroup } from "@/components/leads/choice-group";
+import { FindOutFields } from "@/components/leads/find-out-fields";
 import { PhotoPicker } from "@/components/leads/photo-picker";
+import { PhotoSlots } from "@/components/leads/photo-slots";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import type { FindOutField } from "@/lib/leads/door";
 import {
   HOUSE_TYPE_OPTIONS,
-  SOFFIT_OPTIONS,
   SOURCE_OPTIONS,
   type HouseType,
   type LeadSource,
-  type SoffitColour,
 } from "@/lib/leads/status";
 import { formatPhone, normalizePhone } from "@/lib/phone";
 import type { PickedAddress } from "@/lib/places";
@@ -33,7 +34,8 @@ export type LeadFormDefaults = {
   email: string;
   neighbourhood: string;
   house_type: HouseType | null;
-  soffit_colour: SoffitColour | null;
+  // The Find out answers as the form holds them.
+  find_out: Record<FindOutField, string | null>;
   soffit_note: string;
   notes: string;
   source: LeadSource;
@@ -42,9 +44,19 @@ export type LeadFormDefaults = {
 
 const initialState: LeadFormState = {};
 
+const NOTHING_FOUND_OUT: Record<FindOutField, string | null> = {
+  owns_home: null,
+  wants_price: null,
+  soffit_colour: null,
+  christmas_lights_now: null,
+  areas_wanted: null,
+  install_timing: null,
+};
+
 // One screen for a new lead at the door, and the same form for editing.
-// Address and first name are the only required fields. Save sits at the
-// bottom of the screen, within reach of a thumb.
+// Address and first name are the only required fields; the Find out
+// questions and the photos follow the door process and are all optional.
+// Save sits at the bottom of the screen, within reach of a thumb.
 export function LeadForm({
   mode,
   action,
@@ -70,8 +82,9 @@ export function LeadForm({
     defaults?.neighbourhood ?? sessionNeighbourhood ?? "",
   );
   const [neighbourhoodEdited, setNeighbourhoodEdited] = useState(Boolean(defaults?.neighbourhood));
-  const [soffit, setSoffit] = useState<SoffitColour | null>(defaults?.soffit_colour ?? null);
-  const [photosBusy, setPhotosBusy] = useState(false);
+  const [slotsBusy, setSlotsBusy] = useState(false);
+  const [extrasBusy, setExtrasBusy] = useState(false);
+  const photosBusy = slotsBusy || extrasBusy;
   const [duplicates, setDuplicates] = useState<DuplicateLead[]>([]);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const errors = state.errors ?? {};
@@ -200,11 +213,26 @@ export function LeadForm({
         <FieldError id="lead-phone-error" message={phoneError ?? errors.phone} />
       </div>
 
+      <FindOutFields
+        defaults={defaults?.find_out ?? NOTHING_FOUND_OUT}
+        soffitNote={defaults?.soffit_note ?? ""}
+        errors={errors}
+      />
+
       {mode === "create" ? (
-        <div className="flex flex-col gap-2">
-          <span className="text-sm font-semibold">Photos</span>
-          <PhotoPicker userId={userId} mode="form" onBusyChange={setPhotosBusy} />
-        </div>
+        <section aria-labelledby="photos-heading" className="flex flex-col gap-3">
+          <h2 id="photos-heading" className="text-lg font-bold">
+            Photos
+          </h2>
+          <PhotoSlots userId={userId} mode="form" onBusyChange={setSlotsBusy} />
+          <PhotoPicker
+            userId={userId}
+            mode="form"
+            buttonLabel="More photos"
+            onBusyChange={setExtrasBusy}
+          />
+          <FieldError id="lead-photo_paths-error" message={errors.photo_paths} />
+        </section>
       ) : null}
 
       <ChoiceGroup
@@ -214,23 +242,6 @@ export function LeadForm({
         defaultValue={defaults?.house_type}
         error={errors.house_type}
       />
-
-      <ChoiceGroup
-        name="soffit_colour"
-        legend="Soffit colour"
-        options={SOFFIT_OPTIONS}
-        defaultValue={defaults?.soffit_colour}
-        columns={4}
-        error={errors.soffit_colour}
-        onChange={setSoffit}
-      />
-      {soffit === "other" ? (
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="lead-soffit_note">Soffit colour note</Label>
-          <Input id="lead-soffit_note" name="soffit_note" defaultValue={defaults?.soffit_note} />
-          <FieldError id="lead-soffit_note-error" message={errors.soffit_note} />
-        </div>
-      ) : null}
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="lead-notes">Notes</Label>

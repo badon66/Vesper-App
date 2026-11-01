@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { DoorGuide } from "@/components/leads/door-guide";
 import { LeadForm } from "@/components/leads/lead-form";
 import { requireProfile } from "@/lib/auth/profile";
 import { getPublicEnv } from "@/lib/env";
-import { openKnockSession } from "@/lib/leads/queries";
+import { doorGuide, openKnockSession } from "@/lib/leads/queries";
 import { createClient } from "@/lib/supabase/server";
 import { createLead } from "../actions";
 
@@ -13,7 +14,10 @@ export const metadata: Metadata = {
 export default async function NewLeadPage() {
   const me = await requireProfile();
   const supabase = await createClient();
-  const session = await openKnockSession(supabase, me.id);
+  const [session, guide] = await Promise.all([
+    openKnockSession(supabase, me.id),
+    doorGuide(supabase),
+  ]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -25,6 +29,7 @@ export default async function NewLeadPage() {
             : "Only the address and first name are needed to save."}
         </p>
       </div>
+      {guide ? <DoorGuide text={guide} /> : null}
       <LeadForm
         mode="create"
         action={createLead}

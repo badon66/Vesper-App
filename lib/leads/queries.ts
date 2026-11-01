@@ -25,6 +25,12 @@ export async function lostReasons(supabase: Client): Promise<string[]> {
   return data?.lost_reasons ?? [];
 }
 
+// Keenan's Door guide, which setters read the same way as the lost reasons.
+export async function doorGuide(supabase: Client): Promise<string | null> {
+  const { data } = await supabase.from("settings_public").select("door_guide").maybeSingle();
+  return data?.door_guide?.trim() || null;
+}
+
 export type OpenKnockSession = {
   id: string;
   neighbourhood: string;

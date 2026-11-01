@@ -47,12 +47,23 @@ export const HOUSE_TYPE_OPTIONS: { value: HouseType; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
-export const SOFFIT_OPTIONS: { value: SoffitColour; label: string }[] = [
-  { value: "white", label: "White" },
-  { value: "black", label: "Black" },
-  { value: "brown", label: "Brown" },
-  { value: "other", label: "Other" },
-];
+// Every soffit value the database holds, for showing what a lead has.
+export const SOFFIT_LABELS: Record<SoffitColour, string> = {
+  white: "White",
+  off_white: "Off-white or cream",
+  other: "Other",
+  not_sure: "Not sure",
+  black: "Black",
+  brown: "Brown",
+};
+
+// The choices offered at the door. Black and Brown stay in the database
+// type, unused; the app never offers them (Keenan, 2026-11-01).
+export const OFFERED_SOFFIT_COLOURS = ["white", "off_white", "other", "not_sure"] as const satisfies readonly SoffitColour[];
+
+export const SOFFIT_OPTIONS: { value: SoffitColour; label: string }[] = OFFERED_SOFFIT_COLOURS.map(
+  (value) => ({ value, label: SOFFIT_LABELS[value] }),
+);
 
 export function labelFor<T extends string>(
   options: { value: T; label: string }[],
