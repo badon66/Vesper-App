@@ -234,3 +234,129 @@ Nothing on screen changed until the new screen arrived.
 **Real use has begun.** Production now holds one knock session of Keenan's (ended, no taps) and no real leads. The walk-throughs only read it, and the View as run checks that nothing of the owner's changed. The backlog's separate test database should be set up before setters log real leads.
 
 **M2.5 complete, M3 current.** All nine M2.5 criteria pass. M3 has not been started.
+
+## 2026-10-31
+
+**No separate test database (Keenan).** Keenan has decided against it. The backlog item is removed and the app no longer recommends it. Tests keep using test-prefixed accounts and data on production and clean up after themselves.
+
+**Only the owner adds members (Keenan).** The owner's test session stays view only. It never creates, changes or deletes anything, members included. The four M1 owner-screen items stay unticked until Keenan says to tick them, and they are no longer raised as open questions.
+
+**Soffit and track colour on quotes (Keenan, for M5).** A quote can't be marked ready until Keenan has confirmed the soffit colour in person against the colour book and set the track colour; both print on the quote. The data model gains `quotes.soffit_colour_confirmed`, `soffit_confirmed_at` and `track_colour`. "Ready" is read as leaving draft: being presented, accepted or exported as a PDF. To confirm when M5 is planned.
+
+**The door process (Keenan), built as M2.6.** A setter's visit is a short conversation with a structure: open, find out, photos, book. The app follows it with:
+- a Door guide, its text owner-edited in Settings and read by setters through `settings_public`;
+- four guided photo slots plus More photos, each photo storing its slot;
+- six optional one-tap Find out questions, each in its own column.
+
+Nothing in it is required to save a lead. Soffit colour becomes White, Off-white or cream, Other or Not sure, because white is the only stock track and a recent install found an off-white soffit too late.
+
+**Before you book (Keenan, for M3).** Booking passes only when all of these hold:
+- a phone number is saved;
+- Owns the home is Yes;
+- Wants a price is Yes;
+- Soffit colour is answered (Not sure is fine);
+- the Front, Left corner and Right corner photos exist, or the setter picks a skip reason (Homeowner said no, or Other with a note), which the owner sees on Schedule;
+- the setter confirms everyone who decides on the house will be at the meeting, stored on the booking.
+
+The list does not mention the map position that the earlier rule required for the distance warning and the navigate link. That stays open and is asked in the M3 plan; the docs say so where it matters.
+
+**Door process build calls.**
+- **Door guide display.** The guide starts closed, so New lead stays quick. Its text is plain text shown line by line, so Keenan edits it like any other setting.
+- **Answers clear on a second tap.** Tapping a chosen Find out answer again clears it, since every question is optional and a mistaken tap needs undoing.
+- **Column names.**
+  - Booleans: `owns_home` (No is false) and `wants_price` (Not yet is false).
+  - Enums: `christmas_lights_now` (hires, diy, none), `areas_wanted` (front, front_and_sides, full_wrap, not_sure) and `install_timing` (before_christmas, new_year, no_rush).
+- **Soffit enum rebuilt.** The `soffit_colour` enum is recreated as white, off_white, other, not_sure. No lead used black or brown; the migration maps any to other. `soffit_note` stays for Other.
+- **Retakes on the lead page.** A retake on the lead page makes the new photo the slot's photo and keeps the earlier one as an extra, because only the owner deletes photos. On New lead, a retake simply replaces the upload before saving.
+- **Soffit slot hint.** The soffit slot's hint reads "Close enough to see its colour", in line with why the slot exists.
+- **Form order.** On the form, Find out sits after the phone number and before the photos, in the order of the visit.
+
+## 2026-11-01
+
+**A second Supabase project: not now, but always possible (Keenan).** There is no second database for now, and nobody recommends one; tests keep using test-prefixed data on production and clean up after themselves. The app stays ready to add one whenever Keenan asks. The backlog has it again as a someday item, his call. "Ready" means:
+- every database change is a migration in the repository;
+- the migration history replays cleanly on a fresh project;
+- the settings that live only in the dashboard are written down;
+- nothing hard-codes this project.
+
+`docs/05-supabase-setup.md` has the settings and the setup steps, owner account included.
+
+**Every database change is a migration (Keenan).** Nothing is changed by hand in the Supabase dashboard or with ad hoc SQL. CLAUDE.md rule 4 now says so and adds the naming rule: a file carries the version the database recorded, so a fresh project reaches the same schema by running the files in order.
+
+**Migration history fixed.** Six files carried versions picked by hand rather than the ones the database recorded. They are renamed, with their contents untouched:
+
+| Old file name | Recorded version |
+|---|---|
+| `20261026000100_m1_profiles_settings` | `20261025235414` |
+| `20261026000200_m1_function_privileges` | `20261026013558` |
+| `20261027000100_m1_followups` | `20261026100819` |
+| `20261027000200_m1_role_from_app_metadata` | `20261026105551` |
+| `20261027000300_m1_profile_on_app_metadata` | `20261026110320` |
+| `20261028000100_m2_leads_knock_sessions` | `20261028075646` |
+
+`20261028103944_lead_follow_up_date` already matched.
+
+Every file was then checked against the SQL the database actually ran:
+- Two match exactly.
+- Four carry only a note added after they were applied ("Applied through the Supabase connector..."). With the note removed, each is byte for byte what ran, by checksum.
+- The M2 file gained explanatory comments afterwards. A line-by-line comparison shows every SQL line matches what ran.
+
+Comments do not change what runs, so the files replay to the same schema.
+
+**Dashboard settings written down.** `docs/05-supabase-setup.md` lists everything the app relies on that no migration can hold:
+- the region;
+- the email provider with sign-up off;
+- the minimum password length of 10, tied to `PASSWORD_MIN_LENGTH`;
+- password requirements that accept the generated passwords;
+- leaked password protection, off on the current plan;
+- the Site URL, JWT signing keys and the Data API;
+- no SMTP.
+
+Sign-up off and the length of 10 come from M1; the rest are Supabase defaults. Auth settings cannot be read from a build session, so they are checked by eye when a copy is set up.
+
+**No hard-coded project.** A search of the app, the tests and the scripts found no project URL, ref or key. They read `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_SERVICE_ROLE_KEY`. The only matches are placeholders: `.env.example`, the example in `lib/env.ts`'s error message, and a unit test's fake values. CLAUDE.md rule 6 now says so. The owner's email, info@vesperlighting.ca, is a business rule written into the profile trigger, not a project detail, so a second project's owner account uses the same email.
+
+**The Supabase connector asks before risky-looking SQL.** It stops for a confirmation when the text of a query contains destructive statements, even inside a read-only check that only quotes them. A question nobody answers times out after about four minutes. Checks therefore compare checksums instead of quoting migration text, and anything that does change data waits until Keenan is there to confirm.
+
+**Live database check: clean.** The live database was compared with everything the migration files create:
+- 6 enum types, 6 tables and 3 views;
+- 15 functions;
+- 14 triggers, three of them on `auth.users`;
+- 16 indexes;
+- 19 policies, three of them on storage;
+- 5 named constraints;
+- every column of every table.
+
+They match exactly, with nothing extra and nothing missing. Row Level Security is on for all six tables. The only extensions are Supabase's defaults. Keenan has never changed the database by hand, and the check agrees. `second-project-ready` is merged.
+
+**Door process database change: additive (Keenan).** The soffit colour list gains `off_white` and `not_sure`; `black` and `brown` stay in the database unused, and the app never offers them. This replaces the 2026-10-31 build call to rebuild the type, which would have needed a drop.
+
+**The organization is on the Pro plan (Keenan).** WorkBase has no project cap, and a second project would add roughly $10 USD a month; the setup doc no longer warns about a cap. Leaked password protection is available on Pro. Turning it on is Keenan's call, and the setup doc says what changes if he does.
+
+**Additive database changes, and no destructive text through the connector (Keenan).** CLAUDE.md rule 4 now says:
+- prefer additive changes; an unused enum value is fine;
+- never put destructive SQL text (drop, delete, truncate) in a Supabase connector call, even quoted inside a read-only query;
+- if a migration truly has to drop or delete something, stop before applying it and tell Keenan, so he can be at the screen.
+
+**Track colours (Keenan), built with the door process.**
+- **The list.** Settings gains a Track colours list, each with a name and an optional RAL code. Colours are added, renamed, reordered and retired, never deleted. It starts with White, Off-white, Brown, Black and Grey.
+- **On the lead.** Only the owner sets a lead's track colour, enforced in the database: one of the active colours, or Custom with a four-digit RAL Classic code checked against the RAL Classic list and shown by name. There are no swatches, because screen colours aren't accurate. Setters see the colour; their soffit question at the door is unchanged.
+- **The M5 rule.** A quote can't be marked ready until the track colour is set; the quote stores the colour name and RAL code it used, and a Custom colour shows as needing powder coating.
+- **What it replaced.** The soffit confirmation fields planned for quotes on 2026-10-31 are replaced by `track_colour_name`, `track_ral_code` and `track_custom`.
+
+**Track colour design calls.**
+- **Two tables.**
+  - `track_colours` gives each colour an id, so renaming one never breaks old leads.
+  - `ral_classic_colours`, seeded by a migration and read only, lets the database itself refuse a code that isn't RAL Classic.
+- **No delete path.** Nobody has a policy to delete a colour. Leads point at colours with a foreign key, so a colour in use could not go anyway.
+- **Choosing a colour.** Only an active colour can be newly chosen for a lead; a lead keeps a colour that is retired later.
+- **Owner-only enforcement.** It lives in the leads guard trigger, next to the other who-may-change-what rules.
+
+**The RAL Classic list.** It has 216 colours and was cross-checked against an independent published list: the npm package `ral-colors` 1.0.1, which draws on Wikipedia.
+- 214 codes and names are identical.
+- 1021 uses RAL's current name, Colza yellow; older lists say Rape yellow.
+- 6039 Fibrous green, added to RAL Classic in 2017, is included although that package predates it.
+
+Keenan can check any name against his K7 book.
+
+**Booking needs a map position (Keenan).** The Before you book check requires a map position: an address picked from the suggestions, or a fallback for brand-new streets Google doesn't have yet. The fallback is designed in the M3 plan.

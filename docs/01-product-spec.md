@@ -26,11 +26,15 @@ Setters book meetings only for solid leads. A lead is solid when all of these ar
 
 1. They own the home (or are the decision maker for it).
 2. They want a price, not just a chat.
-3. Both decision makers can be there for the meeting.
+3. Everyone who decides on the house can be there for the meeting.
 4. The address and a working phone number are captured.
 5. The roofline is something we can do (if the setter is unsure, they note it and book anyway; Keenan decides).
 
-Anything else is `new` or `follow_up`, with a note about when to come back.
+Anything else is `new` or `follow_up`, with a follow-up day and a note about why.
+
+## The door process
+
+A setter's visit is a short conversation with a structure, not a single yes or no: open, find out, photos, book. The app follows it with the Door guide at the top of New lead, six one-tap Find out questions and four guided photos. Nothing in it is required to save a lead, so a quick follow-up lead stays quick. Booking (M3) requires some of it: see Before you book.
 
 ## Sales users
 
@@ -65,11 +69,55 @@ The app is built around the evening schedule, not a list of people.
 
 **Knock session.** Start a session with the neighbourhood name. Two big counters: doors knocked and conversations. Leads created during the session attach to it automatically. End the session. This is what feeds the funnel on the dashboard, so it has to be effortless or nobody will do it.
 
-**New lead.** The centre tab. One screen, under 30 seconds. Address with Google Places autocomplete (saves lat/lng), first name, last name, phone, email (optional), house type (bungalow, bi-level, two storey, other), soffit colour (white, black, brown, other with a note), one or more photos from the camera, notes, and the source (door, referral, neighbour card, website, other). Status defaults to `new`. If Google is unavailable, for example on preview sites or without signal, the address field takes typed text and the lead saves without a map position; picking the address from the suggestions later adds it. When a picked address already has a lead, the form shows who has it and links to it, so two setters don't knock the same door. Phone numbers are Canadian by default: a number typed without a country code is saved as +1, and a number typed with + and a country code is kept as typed. From M3, a "book a meeting" button sits at the bottom and goes straight into booking with this lead. It stays hidden until booking exists.
+**New lead.** The centre tab. One screen, under 30 seconds. The Door guide at the top, then address with Google Places autocomplete (saves lat/lng), first name, last name, phone, the Find out questions, the guided photos, house type (bungalow, bi-level, two storey, other), notes, email (optional) and the source (door, referral, neighbour card, website, other). Status defaults to `new`. If Google is unavailable, for example on preview sites or without signal, the address field takes typed text and the lead saves without a map position; picking the address from the suggestions later adds it. When a picked address already has a lead, the form shows who has it and links to it, so two setters don't knock the same door. Phone numbers are Canadian by default: a number typed without a country code is saved as +1, and a number typed with + and a country code is kept as typed. From M3, a "book a meeting" button sits at the bottom and goes straight into booking with this lead. It stays hidden until booking exists.
+
+**Door guide.** A collapsible card at the top of New lead, closed until tapped. Keenan sets its text in Settings; setters read it the same way they read the lost reasons. It starts as:
+
+1. Open. Who you are, that you're with Vesper Lighting, and why you're on their street.
+2. Find out. Work the questions below into the chat. It's a conversation, not a survey.
+3. Photos. "Mind if I grab a few quick photos? Our lighting specialist will show you a mockup of your house with the lights on."
+4. Book. A half-hour meeting with our lighting specialist, tonight or this week: a free mockup and a clear price, no obligation. If it's not the right time, set a follow-up day.
+
+**Find out.** Six optional one-tap questions on New lead and Edit lead:
+
+| Question | Answers |
+|---|---|
+| Owns the home | Yes / No |
+| Wants a price | Yes / Not yet |
+| Soffit colour | White / Off-white or cream / Other (with a note) / Not sure |
+| Christmas lights now | Hires someone / Does it themselves / None |
+| Which areas | Front only / Front and sides / Full wrap / Not sure |
+| Timing | Before Christmas / New year / No rush |
+
+Tapping a chosen answer again clears it. Each answer is stored in its own column, empty until answered, so M3 and the dashboard can use them. Answers show on the lead page and in View as, and a change shows in the timeline like any other edit. White is the only stock track colour, and a recent install found an off-white soffit too late, which is why the soffit question separates white from off-white.
+
+**Guided photos.** Four labelled slots instead of a single photo button:
+- Front: straight on, whole house in frame.
+- Left corner and Right corner: angled so each side's roofline shows.
+- Soffit close-up.
+
+Each slot opens the camera, shows the photo once taken and allows a retake. More photos takes any extras. Under the slots: "Hold the phone sideways and get the whole roofline in. At night, hold still while night mode finishes." Photos are resized, stripped of metadata and uploaded in the background as before, and each one records its slot. The lead page shows the same slots. Retaking a slot there keeps the earlier photo as an extra, because only Keenan deletes photos.
+
+**Track colour.** On the lead page, Keenan sets the track colour after checking it in person against his RAL K7 colour book. There are two kinds of choice:
+- one of the active colours from the Track colours list in Settings;
+- Custom, where he types a four-digit RAL Classic code and the app shows that colour's name from the RAL Classic list.
+
+Only names show, never an on-screen swatch, because screen colours aren't accurate. Only Keenan can set it, and the database enforces that. Setters see it on the lead page and in View as but cannot change it; their soffit question at the door stays as it is. White is the only stock track colour; a Custom colour needs powder coating.
 
 **Leads.** Opens to Active: New, Follow up and Meeting booked, ordered by what needs attention first. Follow-ups due today or overdue come first (oldest date first), then New leads (oldest first), then follow-ups for later days (soonest first), then booked meetings (soonest first, from M3). An All switch shows every lead, lost and closed ones included, grouped by status, newest first. Search always covers every status. Mine and Everyone stay: Everyone shows all leads read only, so a setter can check an address before knocking. Tap to open. Edit anything on your own lead. Add a note. Change status within what a setter can do: `new`, `follow_up` and `lost`. Choosing Follow up asks when: Tomorrow, In 3 days, Next week, or a date, and the date can be moved later. `meeting_booked` is set by booking a meeting, never by hand.
 
-**Book a meeting.** In the Schedule tab, and from New lead and the lead page. Pick a day, see the open slots for that evening. Booked slots show the time, the neighbourhood and who booked it so the setter can cluster. Pick a slot, confirm "both decision makers will be there," confirm the phone number, book. If the address is more than 10 km from the neighbouring meeting, show a warning with the distance and let them choose. The setter confirms the time with the customer at the door. The app does not send or prefill texts in V1.
+**Book a meeting.** In the Schedule tab, and from New lead and the lead page. Pick a day, see the open slots for that evening. Booked slots show the time, the neighbourhood and who booked it so the setter can cluster. Pick a slot, pass Before you book, book.
+
+**Before you book.** Booking is possible only when all of these hold:
+- a phone number is saved;
+- Owns the home is Yes;
+- Wants a price is Yes;
+- Soffit colour is answered (Not sure is fine);
+- the Front, Left corner and Right corner photos exist, or the setter picks a skip reason (Homeowner said no, or Other with a note), which Keenan sees on Schedule;
+- the setter confirms that everyone who decides on the house will be at the meeting, stored on the booking;
+- the lead has a map position: an address picked from the suggestions or, for a brand-new street Google doesn't have yet, the fallback in the M3 plan.
+
+Until then the book button stays disabled, with each missing item listed. If the address is more than 10 km from the neighbouring meeting, show a warning with the distance and let them choose. The setter confirms the time with the customer at the door. The app does not send or prefill texts in V1.
 
 **Tonight (Keenan).** At the top of Keenan's Home and in Schedule. The evening's meetings in order with the drive between them, each with the lead's name, address, phone, notes, photos and a "navigate" link. After each slot, mark the booking Qualified, Not qualified, No-show or Cancelled. Not qualified needs a reason from the list in settings (Not the homeowner, Decision maker missing, Didn't want a price, Roofline we can't do, Other with text). No-show and Cancelled take an optional note. Only Qualified creates the setter's booking pay, and never a second one for the same lead. No-show and Cancelled move the lead back to Follow up with the next day as its follow-up date. A no-show or cancelled lead can be rebooked into a later slot. From a held meeting, open Meeting mode on the iPad (same lead, picks up where the phone left off).
 
@@ -90,11 +138,11 @@ The app is built around the evening schedule, not a list of people.
 8. The neighbour discount and the referral credit.
 Pages are plain, large type, navy and white with gold accents, no animations beyond a simple page transition. Content is editable in settings so Keenan can change wording without a deploy.
 
-**Quote builder.** Runs: name (front eave, left gable, garage, etc.), feet, level (lower, upper). Boxes (default 1). Adders: height, complexity, custom, each with a label and amount. Discounts: neighbour, referral, custom. Financing offered: yes or no. Settings supplies the defaults, and Keenan can change every price on the quote itself: price per foot, control box, each adder, each discount, and a custom line. Changes apply to that quote only, and the quote stores the prices it actually used, so later changes to Settings never alter it. The breakdown updates live. On screen the total reads "$3,450 + GST" with no GST dollar figure. Save as draft, mark presented, mark accepted or declined. Accepting creates the setter's commission earning on the total as actually priced, before GST. Export a PDF with the breakdown, subtotal, GST as a dollar amount, total and the GST number, the warranty text, the "no payment until complete" line, and the company contact. When GST is off, the PDF and every screen show the price alone with no mention of GST. The PDF is always white, whatever theme the app is in. Email it to the customer from the app (V1: generate the PDF and open a share sheet; email sending is V1.5).
+**Quote builder.** Runs: name (front eave, left gable, garage, etc.), feet, level (lower, upper). Boxes (default 1). Adders: height, complexity, custom, each with a label and amount. Discounts: neighbour, referral, custom. Financing offered: yes or no. Settings supplies the defaults, and Keenan can change every price on the quote itself: price per foot, control box, each adder, each discount, and a custom line. Changes apply to that quote only, and the quote stores the prices it actually used, so later changes to Settings never alter it. The breakdown updates live. On screen the total reads "$3,450 + GST" with no GST dollar figure. A quote can't be marked ready until the lead's track colour is set. The quote stores the colour name and RAL code it used and prints them, and a Custom colour shows as needing powder coating. Save as draft, mark presented, mark accepted or declined. Accepting creates the setter's commission earning on the total as actually priced, before GST. Export a PDF with the breakdown, subtotal, GST as a dollar amount, total and the GST number, the warranty text, the "no payment until complete" line, and the company contact. When GST is off, the PDF and every screen show the price alone with no mention of GST. The PDF is always white, whatever theme the app is in. Email it to the customer from the app (V1: generate the PDF and open a share sheet; email sending is V1.5).
 
 **Pipeline board.** A Board view inside Leads for Keenan on iPad and desktop; phones keep the list. Columns by status, cards with name, address, neighbourhood, setter, feet (if quoted), total (if quoted), and age. Drag between columns on iPad and desktop. Tap to open lead detail.
 
-**Lead detail.** Everything about the lead: contact, address with a small map, photos, notes, the timeline of events (who did what, when), the meetings, the quotes, the earnings. Owner can edit anything and change to any status. The owner marks `installed` by hand in V1 (jobs come in V2); that makes the commission payable. `lost` asks for a reason (price, went with another company, not now, could not reach, other).
+**Lead detail.** Everything about the lead: contact, address with a small map, photos by slot, the Find out answers, notes, the timeline of events (who did what, when), the meetings, the quotes, the earnings. Owner can edit anything and change to any status. The owner marks `installed` by hand in V1 (jobs come in V2); that makes the commission payable. `lost` asks for a reason (price, went with another company, not now, could not reach, other).
 
 ### Desktop and iPad (Keenan)
 
@@ -106,7 +154,7 @@ Pages are plain, large type, navy and white with gold accents, no animations bey
 - Upcoming jobs: sold leads not yet installed, oldest first, with sold date and total feet.
 - Every number shows its date range and what it counts. Empty states explain what will show up.
 
-**Settings.** In Admin. Pricing defaults, GST on or off and the GST number, booking pay and commission rate, warranty text, presentation text, meeting slot template (days, start, slot length, count) and blocked times, the lost reasons list.
+**Settings.** In Admin. The Door guide text; the Track colours list (each with a name and an optional RAL code, added, renamed, reordered and retired, never deleted, starting with White, Off-white, Brown, Black and Grey); pricing defaults, GST on or off and the GST number, booking pay and commission rate, warranty text, presentation text, meeting slot template (days, start, slot length, count) and blocked times, the lost reasons list.
 
 **People.** In Admin. Current members are the main content: name, role, active or deactivated, with View as, Reset password and Deactivate or Reactivate on each row. View as, on active non-owner members, opens the app exactly as that person sees it, every screen included, under a gold bar across the top: "Viewing as [name]. Read only. Exit." Nothing can be changed while viewing, the server refuses every write, and it only ever shows what that person's role can see. At the bottom, a button labelled "Add a Vesper member" opens the form: name, email, phone and a role picker that offers only Sales associate for now and is built so a new role (Crew in V2) appears by adding it to the list, never by rebuilding the screen. Owner is never a choice. The app generates the password (three lowercase common words and four digits, like maple-river-stone-4821), shows it once in the gold box, and the admin texts it. That password is permanent until the admin resets it: Reset password generates a new one, shows it once, and ends the person's open sessions. Non-owners have no way to change or reset their own password and get no emails of any kind; the sign-in screen says "Forgot your password? Ask Keenan." A deactivated person cannot sign in and is hidden from pickers. There is exactly one admin and People cannot hand out that role.
 
