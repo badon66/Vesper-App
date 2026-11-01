@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { submitKeepingValues } from "@/lib/forms/submit";
+import { formatTime } from "@/lib/time";
 import {
   DAY_OPTIONS,
   type SettingsFormDefaults,
@@ -64,11 +65,7 @@ function Field({ name, label, hint, errors, children }: FieldProps) {
 }
 
 function formatSavedAt(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-CA", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "America/Edmonton",
-  });
+  return formatTime(iso);
 }
 
 export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {

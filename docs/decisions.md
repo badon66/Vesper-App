@@ -428,3 +428,13 @@ Judgment calls made while building it, for Keenan to look over.
 - **Meetings have no write policies.** Sales and the owner write them only through the booking functions, so Before you book and the hold rules cannot be skipped. This tightens the data model's earlier direct-insert rule.
 - **Outcome corrections** change the lead's status only when the meeting is the lead's latest and the lead has not moved past Met. A restored fee keeps the rate it was first calculated at.
 - **What the walk-through cannot reach.** The owner test session is view-only, so Keenan's outcome buttons, Mark paid, time blocks and a booking he makes for a setter's lead are walked up to the save and proven in the database tests, with the service role standing in for him.
+
+## 2026-11-01: Alberta Time (UTC-6 all year)
+
+**What changed.** Alberta stopped changing its clocks on November 1, 2026 at 2:00 am: it stays on UTC-6 year-round. It became law on June 18, 2026 and is in the IANA time zone data from release 2026c, where `America/Edmonton` keeps UTC-6 from that moment on.
+
+**Why it matters here.** Supabase's Postgres (17.11) already has 2026c, so the database works out meeting times correctly. Node's built-in time zone data in this build environment is 2025b, which still falls back to UTC-7. Any server or phone with data that old would show every time from today an hour early, including meeting times, and would roll "today" over an hour late.
+
+**The call.** The app's time helpers (`lib/time.ts`) use the `America/Edmonton` rules for moments before 2026-11-01 08:00 UTC and a fixed UTC-6 zone from then on. That agrees with the database and with any up-to-date device, whatever data the device has. The unit tests check both sides of the change, and the database tests check the meeting times the database works out. If Alberta ever changes again, this is the one place to update.
+
+**Found while building M3.** A database test expecting the old fall-back caught it. The earlier unit tests encoded the old rule and are corrected.

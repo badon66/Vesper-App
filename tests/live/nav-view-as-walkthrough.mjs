@@ -47,7 +47,11 @@ const people = {
 };
 
 // Calgary dates, worked out the way the app does.
-const calendarDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton", year: "numeric", month: "2-digit", day: "2-digit" });
+// Alberta has stayed on UTC-6 since November 1, 2026 (lib/time.ts).
+const calgaryZone = (moment) => (moment.getTime() >= Date.UTC(2026, 10, 1, 8) ? "Etc/GMT+6" : "America/Edmonton");
+const calendarDay = {
+  format: (moment) => new Intl.DateTimeFormat("en-CA", { timeZone: calgaryZone(moment), year: "numeric", month: "2-digit", day: "2-digit" }).format(moment),
+};
 const shortDay = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" });
 const today = calendarDay.format(new Date());
 const addDays = (day, n) => {

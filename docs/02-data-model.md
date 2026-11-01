@@ -1,6 +1,6 @@
 # Data model
 
-Postgres on Supabase. Every table has RLS enabled. `id` columns are `uuid default gen_random_uuid()`. Every table has `created_at timestamptz default now()` and, where rows change, `updated_at` kept current by a trigger. Money is `numeric(10,2)`. Feet are integers. Times are `timestamptz` and the app displays them in `America/Edmonton`.
+Postgres on Supabase. Every table has RLS enabled. `id` columns are `uuid default gen_random_uuid()`. Every table has `created_at timestamptz default now()` and, where rows change, `updated_at` kept current by a trigger. Money is `numeric(10,2)`. Feet are integers. Times are `timestamptz` and the app displays them in Calgary time. Alberta has stayed on UTC-6 all year since November 1, 2026 ("Alberta Time", time zone data 2026c); the database's `America/Edmonton` already knows, and the app pins UTC-6 from that moment so phones with older time zone data show the same times.
 
 ## Enums
 
