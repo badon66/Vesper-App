@@ -458,3 +458,5 @@ Judgment calls made while building it, for Keenan to look over.
 **GPS fallback.** "Use where I'm standing" shows on New lead and Edit lead whenever the address isn't picked from the suggestions, and on a lead page with no map position. A phone position isn't dropped by editing the typed address; picking a suggestion replaces it. The app warns when another lead is within 25 m.
 
 **Keenan's template.** His live Settings say a 5:00 pm start with six 35-minute slots, not the 6:00 pm, 45-minute defaults. The app follows Settings; flagged in the report in case the 35 minutes isn't meant (his note said 45 minutes, drive included).
+
+**Supabase's security advisor after M3.** It lists the thirteen booking functions (holds, booking, move, cancel, outcomes, pay, time blocks, the board and the two read-only time checks) as callable by signed-in users. That is the design: each one checks who is calling, and they are the only way to write holds, meetings, earnings and time blocks. The internal helpers they use are not callable. Accepted, like the role helpers and public views before them.
