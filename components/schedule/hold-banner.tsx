@@ -6,7 +6,7 @@ import { useTransition } from "react";
 import { holdTime, releaseMyHold } from "@/app/(app)/app/schedule/actions";
 import { Button } from "@/components/ui/button";
 import { holdStore } from "@/lib/schedule/hold-store";
-import { formatMeetingTime } from "@/lib/schedule/meetings";
+import { formatMeetingTime, sentence } from "@/lib/schedule/meetings";
 
 // What the booking screen says about the chosen time: held for this person,
 // or why not, with a way to hold it, pick another or let it go.
@@ -56,13 +56,13 @@ export function HoldBanner({
     >
       {held ? (
         <>
-          <p className="text-lg font-bold">You&apos;re holding {when}.</p>
+          <p className="text-lg font-bold">{sentence(`You're holding ${when}`)}</p>
           <p className="text-sm">Nobody else can pick it while you book. It lets go if you leave or close the app.</p>
         </>
       ) : slotState === "held" ? (
         <p className="text-lg font-bold">{holderName ?? "Someone"} is booking this time.</p>
       ) : slotState === "booked" ? (
-        <p className="text-lg font-bold">{when} has just been booked.</p>
+        <p className="text-lg font-bold">{sentence(`${when} has just been booked`)}</p>
       ) : slotState === "open" ? (
         <p className="text-lg font-bold">{when} is open, but not held for you yet.</p>
       ) : (

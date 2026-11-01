@@ -9,6 +9,7 @@ import {
   MEETING_STATUS_LABELS,
   PHOTO_SKIP_LABELS,
   positionSourceText,
+  sentence,
 } from "@/lib/schedule/meetings";
 import type { MeetingWithLead } from "@/lib/schedule/queries";
 import { leadName } from "@/lib/leads/status";
@@ -141,13 +142,13 @@ export function MeetingCard({
       ) : null}
 
       {meeting.status === "moved" ? (
-        <p className="text-sm">Moved by {who(meeting.outcome_by)}{meeting.outcome_at ? ` at ${formatDateTime(meeting.outcome_at)}` : ""}.</p>
+        <p className="text-sm">{sentence(`Moved by ${who(meeting.outcome_by)}${meeting.outcome_at ? ` at ${formatDateTime(meeting.outcome_at)}` : ""}`)}</p>
       ) : null}
       {meeting.status === "cancelled" ? (
         <p className="text-sm">
           Cancelled by {who(meeting.outcome_by)}
           {meeting.outcome_at ? ` at ${formatDateTime(meeting.outcome_at)}` : ""}
-          {meeting.outcome_note ? `: ${meeting.outcome_note}` : "."}
+          {meeting.outcome_note ? `: ${meeting.outcome_note}` : meeting.outcome_at ? "" : "."}
         </p>
       ) : null}
       {meeting.status === "not_qualified" && meeting.outcome_reason ? (

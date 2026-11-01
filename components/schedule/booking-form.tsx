@@ -66,7 +66,7 @@ export function BookingForm({
               {!item.ok && item.key !== "photos" ? (
                 <p className="text-muted-foreground">
                   {item.fix}{" "}
-                  <Link href={`/app/leads/${leadId}/edit`} className="font-semibold underline underline-offset-4">
+                  <Link href={`/app/leads/${leadId}/edit`} className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4">
                     Edit lead
                   </Link>
                 </p>
@@ -74,7 +74,7 @@ export function BookingForm({
               {!item.ok && item.key === "photos" ? (
                 <p className="text-muted-foreground">
                   {item.fix}{" "}
-                  <Link href={`/app/leads/${leadId}`} className="font-semibold underline underline-offset-4">
+                  <Link href={`/app/leads/${leadId}`} className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4">
                     Take photos
                   </Link>
                 </p>

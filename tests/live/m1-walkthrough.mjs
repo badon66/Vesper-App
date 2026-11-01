@@ -70,7 +70,7 @@ try {
   const hello = await page.getByRole("heading", { name: /Hello, Live/ }).count();
   const tabs = await page.getByRole("link", { name: /^(People|Settings|Dashboard|Admin)$/ }).count();
   check("c. dark theme by default", /\bdark\b/.test(htmlClass), htmlClass);
-  check("c. home shows Hello, Live and Sales associate with no owner tabs", hello === 1 && (await page.getByText("Sales associate").count()) >= 1 && tabs === 0, `tabs=${tabs}`);
+  check("c. home shows Hello, Live with no role line and no owner tabs", hello === 1 && (await page.getByText("Signed in as").count()) === 0 && tabs === 0, `tabs=${tabs}`);
   await page.screenshot({ path: `${out}/sales-home-dark.png`, fullPage: true });
 
   // d. light stays available and is remembered

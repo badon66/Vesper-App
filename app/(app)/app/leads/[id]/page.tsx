@@ -17,7 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth/profile";
 import { findOutAnswerList, type PhotoSlot } from "@/lib/leads/door";
 import { lostReasons, namesById } from "@/lib/leads/queries";
-import { formatMeetingTime, isLive, positionSourceText } from "@/lib/schedule/meetings";
+import { formatMeetingTime, isLive, positionSourceText, sentence } from "@/lib/schedule/meetings";
 import { meetingsForLead } from "@/lib/schedule/queries";
 import {
   HOUSE_TYPE_OPTIONS,
@@ -162,12 +162,12 @@ export default async function LeadPage({
         ) : null}
         {justBooked ? (
           <p role="status" className="rounded-md border border-primary px-3 py-2 text-sm font-semibold" data-testid="booked-notice">
-            Booked for {formatMeetingTime(justBooked.starts_at)}. Confirm the time with the homeowner before you leave.
+            {sentence(`Booked for ${formatMeetingTime(justBooked.starts_at)}`)} Confirm the time with the homeowner before you leave.
           </p>
         ) : null}
         {movedParam === "1" && liveMeeting ? (
           <p role="status" className="rounded-md border border-primary px-3 py-2 text-sm font-semibold">
-            Moved to {formatMeetingTime(liveMeeting.starts_at)}.
+            {sentence(`Moved to ${formatMeetingTime(liveMeeting.starts_at)}`)}
           </p>
         ) : null}
         {photosParam === "failed" ? (

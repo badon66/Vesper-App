@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { eveningLabel, eveningsOf, initials, isBookable, pickEvening, toBoardSlots, type BoardSlot } from "@/lib/schedule/board";
 import { distanceWarnings, formatKm, kmBetween, legs, navigateUrl } from "@/lib/schedule/distance";
 import { bookingMessage } from "@/lib/schedule/messages";
-import { formatMeetingTime, hasOutcome, isLive, positionSourceText } from "@/lib/schedule/meetings";
+import { formatMeetingTime, hasOutcome, isLive, positionSourceText, sentence } from "@/lib/schedule/meetings";
 import { bookingProblems, leadReadiness, type ReadinessLead } from "@/lib/schedule/readiness";
 
 const slot = (day: string, time: string, state: BoardSlot["state"], extra: Partial<BoardSlot> = {}): BoardSlot => ({
@@ -177,5 +177,7 @@ describe("booking words", () => {
     expect(isLive("booked") && !isLive("moved") && hasOutcome("no_show") && !hasOutcome("booked")).toBe(true);
     expect(positionSourceText("device", 8.4)).toBe("Placed from the phone at the door, accurate to about 8 m");
     expect(positionSourceText(null, null)).toBeNull();
+    expect(sentence("You're holding Sat, Nov 14 at 5:00 p.m.")).toBe("You're holding Sat, Nov 14 at 5:00 p.m.");
+    expect(sentence("Booked")).toBe("Booked.");
   });
 });

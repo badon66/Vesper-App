@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { moveBooking } from "@/app/(app)/app/schedule/actions";
 import { Button } from "@/components/ui/button";
 import { holdStore } from "@/lib/schedule/hold-store";
-import { formatMeetingTime } from "@/lib/schedule/meetings";
+import { formatMeetingTime, sentence } from "@/lib/schedule/meetings";
 
 // Moving a booking to the time the person now holds.
 export function MoveConfirm({
@@ -42,7 +42,7 @@ export function MoveConfirm({
     <div className="flex flex-col gap-3" data-testid="move-confirm">
       <p className="text-base">
         From <span className="font-semibold">{formatMeetingTime(from)}</span> to{" "}
-        <span className="font-semibold">{formatMeetingTime(to)}</span>.
+        <span className="font-semibold">{sentence(formatMeetingTime(to))}</span>
       </p>
       {message ? (
         <p role="alert" className="text-sm font-semibold text-destructive">

@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { BoardSlot } from "@/lib/schedule/board";
 import { holdStore } from "@/lib/schedule/hold-store";
-import { formatMeetingTime } from "@/lib/schedule/meetings";
+import { formatMeetingTime, sentence } from "@/lib/schedule/meetings";
 import { PHOTO_SKIP_OPTIONS, type PhotoSkip } from "@/lib/schedule/readiness";
 
 export type NewLeadBooking = {
@@ -47,7 +47,7 @@ export function HoldOnNewLead({ booking, guidedPhotos }: { booking: NewLeadBooki
         <>
           <input type="hidden" name="held_start" value={held} />
           <div role="status" className="flex flex-col gap-3 rounded-md border border-primary p-4" data-testid="held-time">
-            <p className="text-lg font-bold">Holding {formatMeetingTime(held)}.</p>
+            <p className="text-lg font-bold">{sentence(`Holding ${formatMeetingTime(held)}`)}</p>
             <p className="text-sm">Nobody else can pick it. Save and book to confirm it.</p>
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" className="min-h-11" onClick={() => setPicking((open) => !open)}>

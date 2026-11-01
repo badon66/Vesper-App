@@ -104,7 +104,7 @@ export default async function MyPayPage() {
                   <li key={meeting.id} className="flex flex-col gap-0.5 px-4 py-3 text-sm">
                     <span className="font-semibold">{formatMeetingTime(meeting.starts_at)}</span>
                     {lead ? (
-                      <Link href={`/app/leads/${lead.id}`} className="w-fit underline underline-offset-4">
+                      <Link href={`/app/leads/${lead.id}`} className="inline-flex min-h-11 w-fit items-center underline underline-offset-4">
                         {leadName(lead)}, {lead.address_line}
                       </Link>
                     ) : null}

@@ -31,6 +31,11 @@ export function formatMeetingTime(startsAt: string): string {
   return `${formatDay(calgaryDateOf(startsAt))} at ${formatTime(startsAt)}`;
 }
 
+// Ends a sentence once: times already end in "p.m."
+export function sentence(text: string): string {
+  return text.endsWith(".") ? text : `${text}.`;
+}
+
 export const PHOTO_SKIP_LABELS: Record<string, string> = {
   homeowner_said_no: "Homeowner said no",
   other: "Other",

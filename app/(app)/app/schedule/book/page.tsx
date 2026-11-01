@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { getViewer } from "@/lib/auth/profile";
 import { leadName, STATUS_LABELS } from "@/lib/leads/status";
 import { distanceWarnings, formatKm } from "@/lib/schedule/distance";
-import { formatMeetingTime, isLive } from "@/lib/schedule/meetings";
+import { formatMeetingTime, isLive, sentence } from "@/lib/schedule/meetings";
 import {
   activeHoldOf,
   bookingSettings,
@@ -77,7 +77,7 @@ export default async function BookPage({ searchParams }: { searchParams: Promise
         <HoldSync startsAt={hold?.startsAt ?? null} />
         <div>
           <h1 className="text-2xl font-bold">Move {leadName(lead)}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Booked for {formatMeetingTime(meeting.starts_at)}. Pick the new time.</p>
+          <p className="mt-1 text-sm text-muted-foreground">{sentence(`Booked for ${formatMeetingTime(meeting.starts_at)}`)} Pick the new time.</p>
         </div>
         {startsAt ? (
           <>

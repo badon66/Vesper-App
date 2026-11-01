@@ -120,9 +120,11 @@ export function TimePicker({
       void read();
       return;
     }
-    holdStore.set({ startsAt: slot.startsAt });
     void read();
+    // The hold keeper lets a hold go when the screen isn't a booking screen,
+    // so the booking screen tells it about the hold after the move there.
     if (mode === "hold") {
+      holdStore.set({ startsAt: slot.startsAt });
       onHeld?.(slot.startsAt);
     } else if (mode === "move" && meetingId) {
       router.push(`/app/schedule/book?move=${meetingId}&start=${encodeURIComponent(slot.startsAt)}`);
@@ -133,7 +135,7 @@ export function TimePicker({
 
   const evening = evenings.find((item) => item.day === day) ?? evenings[0];
   const daySlots = evening?.slots ?? [];
-  const tonightFullNote = opening.tonightFull && day === opening.day && day !== today;
+  const tonightFullNote = !tonightOnly && opening.tonightFull && day === opening.day && day !== today;
 
   return (
     <div className="flex flex-col gap-4" data-testid="time-picker">
@@ -173,6 +175,11 @@ export function TimePicker({
         ) : null}
       </div>
 
+      {message ? (
+        <p role="alert" className="text-sm font-semibold text-destructive" data-testid="picker-message">
+          {message}
+        </p>
+      ) : null}
       {daySlots.length === 0 ? (
         <p className="text-sm text-muted-foreground">No meetings this evening.</p>
       ) : (
@@ -190,11 +197,6 @@ export function TimePicker({
         </ul>
       )}
 
-      {message ? (
-        <p role="alert" className="text-sm font-semibold text-destructive" data-testid="picker-message">
-          {message}
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -242,7 +244,7 @@ function SlotButton({
       type="button"
       onClick={onTap}
       disabled={disabled || greyed}
-      data-slot={slot.startsAt}
+      data-time={slot.startsAt}
       data-state={mine ? "mine" : slot.state}
       aria-label={`${time}, ${detail}`}
       className={cn(
