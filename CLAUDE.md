@@ -60,12 +60,16 @@ Design each screen for the device it will actually be used on, then make it tole
   - Wants a price is Yes;
   - Soffit colour is answered (Not sure is fine);
   - the Front, Left corner and Right corner photos exist, or the setter picks a skip reason (Homeowner said no, or Other with a note), which the owner sees on Schedule;
-  - the setter confirms everyone who decides on the house will be at the meeting, stored on the booking.
-
-  Whether a map position (an address picked from the suggestions) is still required, as it was before this list, is open until Keenan answers the M3 plan.
+  - the setter confirms everyone who decides on the house will be at the meeting, stored on the booking;
+  - the lead has a map position: an address picked from the suggestions, or, for a brand-new street Google doesn't have yet, the fallback in the M3 plan (Keenan, 2026-11-01).
 - The door process: a setter's visit is a short conversation with a structure: open, find out, photos, book. The app follows it with the Door guide, six Find out questions and four guided photos. Nothing in it is required to save a lead, so a quick follow-up lead stays quick; only booking requires some of it.
 - Lead statuses: `new`, `follow_up`, `meeting_booked`, `met`, `quoted`, `sold`, `installed`, `lost`. Every status change writes a `lead_events` row with who and when. `lost` requires a reason. `follow_up` requires a follow-up date, the day to come back, and leaving `follow_up` clears it; both are enforced in the database. Setters change status only between `new`, `follow_up` and `lost`; booking a meeting sets `meeting_booked`, and the owner sets everything after it. In V1 the owner sets `installed` by hand after the crew is done; jobs arrive in V2.
-- Soffit and track colour: white is the only stock track colour. A quote can't be marked ready until the owner has confirmed the soffit colour in person against the colour book and set the track colour (M5). Both print on the quote.
+- Track colour: white is the only stock track colour.
+  - Keenan manages the Track colours list in Settings: a name and an optional RAL code each. Colours can be added, renamed, reordered and retired, never deleted, so old leads keep theirs. It starts with White, Off-white, Brown, Black and Grey.
+  - Only the owner sets a lead's track colour, enforced in the database: one of the active colours, or Custom with a RAL Classic code (the system in Keenan's RAL K7 colour book), checked against the RAL Classic list and shown by name.
+  - No on-screen colour swatches anywhere, since screen colours aren't accurate.
+  - Setters can see the track colour but not set it. Their soffit question at the door stays as it is.
+  - A quote can't be marked ready until the track colour is set (M5). The quote stores the colour name and RAL code it used, and a Custom colour shows as needing powder coating.
 - Every customer facing string (quote PDF, presentation) is written in plain language with no em dashes, no buzzwords, and no promises the business cannot keep. Use the exact warranty wording from `settings.warranty_text`.
 
 ## How to work in this repo
@@ -77,6 +81,8 @@ Design each screen for the device it will actually be used on, then make it tole
     - this covers tables, policies, functions, triggers, views, grants, seed rows and storage buckets alike;
     - never make a database change by hand in the Supabase dashboard or with ad hoc SQL;
     - never edit a migration that has already been applied; add a new one;
+    - prefer additive changes: add columns, enum values and tables rather than replacing or removing them. An unused enum value is fine;
+    - never put destructive SQL text (drop, delete, truncate) in a Supabase connector call, not even quoted inside a read-only query: the connector waits for a human to confirm and times out. If a migration truly has to drop or delete something, stop before applying it and tell Keenan, so he can be at the screen to approve it;
     - name each file `<version>_<name>.sql` with the version the database recorded for it. The Supabase connector picks the version when it applies a file, so rename the file to match `supabase_migrations.schema_migrations`. A fresh, empty Supabase project then reaches the same schema by running the files in order;
     - regenerate types after schema changes.
 

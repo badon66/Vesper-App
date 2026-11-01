@@ -318,4 +318,45 @@ Sign-up off and the length of 10 come from M1; the rest are Supabase defaults. A
 
 **The Supabase connector asks before risky-looking SQL.** It stops for a confirmation when the text of a query contains destructive statements, even inside a read-only check that only quotes them. A question nobody answers times out after about four minutes. Checks therefore compare checksums instead of quoting migration text, and anything that does change data waits until Keenan is there to confirm.
 
-**Still to check: nothing made by hand in the live database.** The remaining check compares the live database's objects (tables, columns, policies, functions, triggers, views, indexes) against what the migrations create. It waits on the connector.
+**Live database check: clean.** The live database was compared with everything the migration files create:
+- 6 enum types, 6 tables and 3 views;
+- 15 functions;
+- 14 triggers, three of them on `auth.users`;
+- 16 indexes;
+- 19 policies, three of them on storage;
+- 5 named constraints;
+- every column of every table.
+
+They match exactly, with nothing extra and nothing missing. Row Level Security is on for all six tables. The only extensions are Supabase's defaults. Keenan has never changed the database by hand, and the check agrees. `second-project-ready` is merged.
+
+**Door process database change: additive (Keenan).** The soffit colour list gains `off_white` and `not_sure`; `black` and `brown` stay in the database unused, and the app never offers them. This replaces the 2026-10-31 build call to rebuild the type, which would have needed a drop.
+
+**The organization is on the Pro plan (Keenan).** WorkBase has no project cap, and a second project would add roughly $10 USD a month; the setup doc no longer warns about a cap. Leaked password protection is available on Pro. Turning it on is Keenan's call, and the setup doc says what changes if he does.
+
+**Additive database changes, and no destructive text through the connector (Keenan).** CLAUDE.md rule 4 now says:
+- prefer additive changes; an unused enum value is fine;
+- never put destructive SQL text (drop, delete, truncate) in a Supabase connector call, even quoted inside a read-only query;
+- if a migration truly has to drop or delete something, stop before applying it and tell Keenan, so he can be at the screen.
+
+**Track colours (Keenan), built with the door process.**
+- **The list.** Settings gains a Track colours list, each with a name and an optional RAL code. Colours are added, renamed, reordered and retired, never deleted. It starts with White, Off-white, Brown, Black and Grey.
+- **On the lead.** Only the owner sets a lead's track colour, enforced in the database: one of the active colours, or Custom with a four-digit RAL Classic code checked against the RAL Classic list and shown by name. There are no swatches, because screen colours aren't accurate. Setters see the colour; their soffit question at the door is unchanged.
+- **The M5 rule.** A quote can't be marked ready until the track colour is set; the quote stores the colour name and RAL code it used, and a Custom colour shows as needing powder coating.
+- **What it replaced.** The soffit confirmation fields planned for quotes on 2026-10-31 are replaced by `track_colour_name`, `track_ral_code` and `track_custom`.
+
+**Track colour design calls.**
+- **Two tables.**
+  - `track_colours` gives each colour an id, so renaming one never breaks old leads.
+  - `ral_classic_colours`, seeded by a migration and read only, lets the database itself refuse a code that isn't RAL Classic.
+- **No delete path.** Nobody has a policy to delete a colour. Leads point at colours with a foreign key, so a colour in use could not go anyway.
+- **Choosing a colour.** Only an active colour can be newly chosen for a lead; a lead keeps a colour that is retired later.
+- **Owner-only enforcement.** It lives in the leads guard trigger, next to the other who-may-change-what rules.
+
+**The RAL Classic list.** It has 216 colours and was cross-checked against an independent published list: the npm package `ral-colors` 1.0.1, which draws on Wikipedia.
+- 214 codes and names are identical.
+- 1021 uses RAL's current name, Colza yellow; older lists say Rape yellow.
+- 6039 Fibrous green, added to RAL Classic in 2017, is included although that package predates it.
+
+Keenan can check any name against his K7 book.
+
+**Booking needs a map position (Keenan).** The Before you book check requires a map position: an address picked from the suggestions, or a fallback for brand-new streets Google doesn't have yet. The fallback is designed in the M3 plan.
