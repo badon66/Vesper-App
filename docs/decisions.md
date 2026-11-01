@@ -270,3 +270,52 @@ The list does not mention the map position that the earlier rule required for th
 - **Retakes on the lead page.** A retake on the lead page makes the new photo the slot's photo and keeps the earlier one as an extra, because only the owner deletes photos. On New lead, a retake simply replaces the upload before saving.
 - **Soffit slot hint.** The soffit slot's hint reads "Close enough to see its colour", in line with why the slot exists.
 - **Form order.** On the form, Find out sits after the phone number and before the photos, in the order of the visit.
+
+## 2026-11-01
+
+**A second Supabase project: not now, but always possible (Keenan).** There is no second database for now, and nobody recommends one; tests keep using test-prefixed data on production and clean up after themselves. The app stays ready to add one whenever Keenan asks. The backlog has it again as a someday item, his call. "Ready" means:
+- every database change is a migration in the repository;
+- the migration history replays cleanly on a fresh project;
+- the settings that live only in the dashboard are written down;
+- nothing hard-codes this project.
+
+`docs/05-supabase-setup.md` has the settings and the setup steps, owner account included.
+
+**Every database change is a migration (Keenan).** Nothing is changed by hand in the Supabase dashboard or with ad hoc SQL. CLAUDE.md rule 4 now says so and adds the naming rule: a file carries the version the database recorded, so a fresh project reaches the same schema by running the files in order.
+
+**Migration history fixed.** Six files carried versions picked by hand rather than the ones the database recorded. They are renamed, with their contents untouched:
+
+| Old file name | Recorded version |
+|---|---|
+| `20261026000100_m1_profiles_settings` | `20261025235414` |
+| `20261026000200_m1_function_privileges` | `20261026013558` |
+| `20261027000100_m1_followups` | `20261026100819` |
+| `20261027000200_m1_role_from_app_metadata` | `20261026105551` |
+| `20261027000300_m1_profile_on_app_metadata` | `20261026110320` |
+| `20261028000100_m2_leads_knock_sessions` | `20261028075646` |
+
+`20261028103944_lead_follow_up_date` already matched.
+
+Every file was then checked against the SQL the database actually ran:
+- Two match exactly.
+- Four carry only a note added after they were applied ("Applied through the Supabase connector..."). With the note removed, each is byte for byte what ran, by checksum.
+- The M2 file gained explanatory comments afterwards. A line-by-line comparison shows every SQL line matches what ran.
+
+Comments do not change what runs, so the files replay to the same schema.
+
+**Dashboard settings written down.** `docs/05-supabase-setup.md` lists everything the app relies on that no migration can hold:
+- the region;
+- the email provider with sign-up off;
+- the minimum password length of 10, tied to `PASSWORD_MIN_LENGTH`;
+- password requirements that accept the generated passwords;
+- leaked password protection, off on the current plan;
+- the Site URL, JWT signing keys and the Data API;
+- no SMTP.
+
+Sign-up off and the length of 10 come from M1; the rest are Supabase defaults. Auth settings cannot be read from a build session, so they are checked by eye when a copy is set up.
+
+**No hard-coded project.** A search of the app, the tests and the scripts found no project URL, ref or key. They read `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and `SUPABASE_SERVICE_ROLE_KEY`. The only matches are placeholders: `.env.example`, the example in `lib/env.ts`'s error message, and a unit test's fake values. CLAUDE.md rule 6 now says so. The owner's email, info@vesperlighting.ca, is a business rule written into the profile trigger, not a project detail, so a second project's owner account uses the same email.
+
+**The Supabase connector asks before risky-looking SQL.** It stops for a confirmation when the text of a query contains destructive statements, even inside a read-only check that only quotes them. A question nobody answers times out after about four minutes. Checks therefore compare checksums instead of quoting migration text, and anything that does change data waits until Keenan is there to confirm.
+
+**Still to check: nothing made by hand in the live database.** The remaining check compares the live database's objects (tables, columns, policies, functions, triggers, views, indexes) against what the migrations create. It waits on the connector.

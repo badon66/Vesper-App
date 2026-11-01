@@ -6,7 +6,7 @@ Internal sales and operations app for Vesper Lighting, Inc. (Calgary). Read this
 
 Vesper installs permanent exterior roofline lighting (24V RGBW nodes in an aluminum track under the soffit, app controlled, 10-year warranty). Sales are door to door. Appointment setters knock doors in the late afternoon and book evening meetings for the owner (Keenan), who meets the homeowner at dusk, presents on an iPad, prices the job, and closes. Installs are done by small crews. The app is the system of record for leads, meetings, quotes, and (later) jobs, crews and timesheets.
 
-V1 is the sales side only. See `docs/01-product-spec.md` for scope, `docs/02-data-model.md` for the schema, `docs/03-roadmap.md` for milestones and acceptance criteria, `docs/04-session-prompts.md` for how each build session is run.
+V1 is the sales side only. See `docs/01-product-spec.md` for scope, `docs/02-data-model.md` for the schema, `docs/03-roadmap.md` for milestones and acceptance criteria, `docs/04-session-prompts.md` for how each build session is run, and `docs/05-supabase-setup.md` for the Supabase settings that live outside the code and how to set up a second project.
 
 ## Stack
 
@@ -73,13 +73,20 @@ Design each screen for the device it will actually be used on, then make it tole
 1. Start every session by reading this file, the current milestone in `docs/03-roadmap.md`, and the relevant parts of the spec and data model.
 2. Plan before building. Post a short plan (files, schema changes, risks) and wait for approval on anything that touches the schema, RLS, auth, or pricing.
 3. Small, complete slices. A milestone is done when every acceptance criterion in the roadmap passes, the app builds with no TypeScript errors, `npm run lint` and `npm test` pass, and the flow works on a phone-sized viewport.
-4. Schema changes go in `supabase/migrations/` as SQL files with a short comment on what and why. Never edit a migration that has already been applied; add a new one. Regenerate types after schema changes.
+4. Every database change goes in a migration file in `supabase/migrations/`, with a short comment on what and why:
+    - this covers tables, policies, functions, triggers, views, grants, seed rows and storage buckets alike;
+    - never make a database change by hand in the Supabase dashboard or with ad hoc SQL;
+    - never edit a migration that has already been applied; add a new one;
+    - name each file `<version>_<name>.sql` with the version the database recorded for it. The Supabase connector picks the version when it applies a file, so rename the file to match `supabase_migrations.schema_migrations`. A fresh, empty Supabase project then reaches the same schema by running the files in order;
+    - regenerate types after schema changes.
+
+    Settings that can only live in the dashboard are listed in `docs/05-supabase-setup.md`; update that list whenever one of them changes.
 5. Commit in small logical commits with plain messages. One branch per milestone, merged when done.
-6. Never commit secrets. All keys go in `.env.local` and Vercel environment variables. `.env.example` lists every variable with a comment.
+6. Never commit secrets. All keys go in `.env.local` and Vercel environment variables. `.env.example` lists every variable with a comment. Nothing in the app, the tests or the scripts hard-codes a Supabase project's URL, ref or keys; they come from environment variables, so pointing anything at another project is a configuration change.
 7. When something in the docs is unclear or wrong, stop and ask instead of guessing. When you make a judgment call, write it down in `docs/decisions.md` with the date.
 8. Keep the dashboard honest: every number shows what it counts and the date range. No invented or placeholder numbers in production views. Empty states say what will appear and how to make it appear.
 9. Do not add features that are not in the current milestone. Put ideas in `docs/backlog.md`.
-10. Test on the real thing: the live walk-through drives the app in a phone-sized browser against the real database. There is no separate test database (Keenan, 2026-10-31): tests create test-prefixed accounts and data on production and clean up after themselves. The View as test signs in as the owner through a one-time server-side session (approved by Keenan on 2026-10-28). It follows these rules:
+10. Test on the real thing: the live walk-through drives the app in a phone-sized browser against the real database. No second Supabase project for now, and don't recommend one (Keenan): tests create test-prefixed accounts and data on production and clean up after themselves. The app stays ready to add a second project whenever Keenan asks: migrations only (rule 4), no hard-coded project details (rule 6), and the setup steps in `docs/05-supabase-setup.md`. The View as test signs in as the owner through a one-time server-side session (approved by Keenan on 2026-10-28). It follows these rules:
     - no password is used or changed, and no email is sent;
     - it only views; it never creates, changes or deletes anything, members included, since only the owner adds members;
     - forms it submits are refused before anything saves;
