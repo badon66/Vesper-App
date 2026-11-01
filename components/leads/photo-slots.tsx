@@ -29,6 +29,7 @@ export function PhotoSlots({
   saved = {},
   canTake = true,
   onBusyChange,
+  onTakenChange,
 }: {
   userId: string;
   mode: "form" | "attach";
@@ -37,6 +38,8 @@ export function PhotoSlots({
   saved?: Partial<Record<PhotoSlot, string>>;
   canTake?: boolean;
   onBusyChange?: (busy: boolean) => void;
+  // Which slots have a photo ready to save, for Before you book on New lead.
+  onTakenChange?: (slots: PhotoSlot[]) => void;
 }) {
   const router = useRouter();
   const [taken, setTaken] = useState<Partial<Record<PhotoSlot, Taken>>>({});
@@ -49,6 +52,13 @@ export function PhotoSlots({
     const urls = previews.current;
     return () => urls.forEach((url) => URL.revokeObjectURL(url));
   }, []);
+
+  const doneKey = PHOTO_SLOTS.filter(({ slot }) => taken[slot]?.status === "done" && taken[slot]?.path)
+    .map(({ slot }) => slot)
+    .join(",");
+  useEffect(() => {
+    onTakenChange?.(doneKey ? (doneKey.split(",") as PhotoSlot[]) : []);
+  }, [doneKey, onTakenChange]);
 
   function preview(blob: Blob): string {
     const url = URL.createObjectURL(blob);

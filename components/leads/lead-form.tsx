@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { X } from "lucide-react";
 import { useActionState, useState, useTransition } from "react";
 import {
   findLeadsAtPlace,
@@ -13,11 +14,12 @@ import { ChoiceGroup } from "@/components/leads/choice-group";
 import { FindOutFields } from "@/components/leads/find-out-fields";
 import { PhotoPicker } from "@/components/leads/photo-picker";
 import { PhotoSlots } from "@/components/leads/photo-slots";
+import { HoldOnNewLead, type NewLeadBooking } from "@/components/schedule/hold-on-new-lead";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { FindOutField } from "@/lib/leads/door";
+import type { FindOutField, PhotoSlot } from "@/lib/leads/door";
 import {
   HOUSE_TYPE_OPTIONS,
   SOURCE_OPTIONS,
@@ -66,6 +68,7 @@ export function LeadForm({
   sessionNeighbourhood,
   defaults,
   cancelHref,
+  booking,
 }: {
   mode: "create" | "edit";
   action: (state: LeadFormState, formData: FormData) => Promise<LeadFormState>;
@@ -75,6 +78,8 @@ export function LeadForm({
   sessionNeighbourhood: string | null;
   defaults?: LeadFormDefaults;
   cancelHref: string;
+  // On New lead: the time picker and any time this person already holds.
+  booking?: NewLeadBooking;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
   const [, startTransition] = useTransition();
@@ -83,6 +88,7 @@ export function LeadForm({
   );
   const [neighbourhoodEdited, setNeighbourhoodEdited] = useState(Boolean(defaults?.neighbourhood));
   const [slotsBusy, setSlotsBusy] = useState(false);
+  const [takenSlots, setTakenSlots] = useState<PhotoSlot[]>([]);
   const [extrasBusy, setExtrasBusy] = useState(false);
   const photosBusy = slotsBusy || extrasBusy;
   const [duplicates, setDuplicates] = useState<DuplicateLead[]>([]);
@@ -102,7 +108,8 @@ export function LeadForm({
   // sends back a correction.
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
+    const submitter = (event.nativeEvent as SubmitEvent).submitter;
+    const formData = new FormData(event.currentTarget, submitter);
     startTransition(() => formAction(formData));
   }
 
@@ -120,12 +127,20 @@ export function LeadForm({
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6 pb-36">
       {leadId ? <input type="hidden" name="id" value={leadId} /> : null}
 
+      {booking ? (
+        <HoldOnNewLead
+          booking={booking}
+          guidedPhotos={takenSlots.filter((slot) => slot !== "soffit").length}
+        />
+      ) : null}
+
       <AddressField
         apiKey={mapsKey}
         defaults={defaults?.address}
         fallbackNeighbourhood={sessionNeighbourhood}
         error={errors.address_line}
         onPicked={onPicked}
+        leadId={leadId ?? null}
       />
 
       {duplicates.length > 0 ? (
@@ -224,7 +239,7 @@ export function LeadForm({
           <h2 id="photos-heading" className="text-lg font-bold">
             Photos
           </h2>
-          <PhotoSlots userId={userId} mode="form" onBusyChange={setSlotsBusy} />
+          <PhotoSlots userId={userId} mode="form" onBusyChange={setSlotsBusy} onTakenChange={setTakenSlots} />
           <PhotoPicker
             userId={userId}
             mode="form"
@@ -279,20 +294,45 @@ export function LeadForm({
               {state.error}
             </p>
           ) : null}
-          <div className="flex gap-3">
-            <Button asChild variant="outline" size="lg" className="flex-1">
-              <Link href={cancelHref}>Cancel</Link>
-            </Button>
-            <Button type="submit" size="lg" className="flex-[2]" disabled={pending || photosBusy}>
-              {pending
-                ? "Saving"
-                : photosBusy
-                  ? "Uploading photo"
-                  : mode === "create"
-                    ? "Save lead"
-                    : "Save changes"}
-            </Button>
-          </div>
+          {mode === "create" ? (
+            <div className="flex gap-2">
+              <Button asChild variant="outline" size="lg" className="w-12 shrink-0 px-0">
+                <Link href={cancelHref} aria-label="Cancel">
+                  <X aria-hidden="true" />
+                </Link>
+              </Button>
+              <Button
+                type="submit"
+                name="intent"
+                value="save"
+                variant="outline"
+                size="lg"
+                className="flex-1 px-3"
+                disabled={pending || photosBusy}
+              >
+                {pending ? "Saving" : photosBusy ? "Uploading" : "Save lead"}
+              </Button>
+              <Button
+                type="submit"
+                name="intent"
+                value="book"
+                size="lg"
+                className="flex-1 px-3"
+                disabled={pending || photosBusy}
+              >
+                Save and book
+              </Button>
+            </div>
+          ) : (
+            <div className="flex gap-3">
+              <Button asChild variant="outline" size="lg" className="flex-1">
+                <Link href={cancelHref}>Cancel</Link>
+              </Button>
+              <Button type="submit" size="lg" className="flex-[2]" disabled={pending || photosBusy}>
+                {pending ? "Saving" : photosBusy ? "Uploading photo" : "Save changes"}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </form>

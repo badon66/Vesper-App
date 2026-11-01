@@ -47,7 +47,11 @@ const people = {
 };
 
 // Calgary dates, worked out the way the app does.
-const calendarDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Edmonton", year: "numeric", month: "2-digit", day: "2-digit" });
+// Alberta has stayed on UTC-6 since November 1, 2026 (lib/time.ts).
+const calgaryZone = (moment) => (moment.getTime() >= Date.UTC(2026, 10, 1, 8) ? "Etc/GMT+6" : "America/Edmonton");
+const calendarDay = {
+  format: (moment) => new Intl.DateTimeFormat("en-CA", { timeZone: calgaryZone(moment), year: "numeric", month: "2-digit", day: "2-digit" }).format(moment),
+};
 const shortDay = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" });
 const today = calendarDay.format(new Date());
 const addDays = (day, n) => {
@@ -147,6 +151,18 @@ async function accountEmails() {
 }
 
 async function removeEverythingOf(id) {
+  const { data: owned } = await admin.from("leads").select("id").eq("created_by", id);
+  const leadIds = (owned ?? []).map((lead) => lead.id);
+  await admin.from("earnings").delete().eq("profile_id", id);
+  await admin.from("slot_holds").delete().eq("holder_id", id);
+  if (leadIds.length > 0) {
+    await admin.from("earnings").delete().in("lead_id", leadIds);
+    await admin.from("slot_holds").delete().in("lead_id", leadIds);
+    await admin.from("meetings").update({ rebooked_as: null }).in("lead_id", leadIds);
+    await admin.from("meetings").delete().in("lead_id", leadIds);
+  }
+  await admin.from("meetings").update({ rebooked_as: null }).eq("host_id", id);
+  await admin.from("meetings").delete().eq("host_id", id);
   await admin.from("leads").delete().eq("created_by", id);
   await admin.from("knock_sessions").delete().eq("user_id", id);
   const { data: files } = await admin.storage.from(BUCKET).list(id, { limit: 1000 });
@@ -234,6 +250,27 @@ try {
   const listed = await admin.from("leads").update({ track_colour_id: firstColour.id }).eq("id", leads.other);
   if (listed.error) throw new Error(`list colour: ${listed.error.message}`);
 
+  // A held, Qualified booking for A, so My pay has a fee to show. It sits on
+  // B's evenings as a stand-in host, never on Keenan's board; the service
+  // role stands in for Keenan marking it Qualified.
+  const heldAt = new Date(Date.now() - 3 * 3600_000);
+  const { data: paidMeeting, error: paidMeetingError } = await admin
+    .from("meetings")
+    .insert({
+      lead_id: leads.newOld,
+      host_id: people.b.id,
+      setter_id: a.id,
+      booked_by: a.id,
+      starts_at: heldAt.toISOString(),
+      ends_at: new Date(heldAt.getTime() + 35 * 60_000).toISOString(),
+      everyone_deciding_present: true,
+    })
+    .select("id")
+    .single();
+  if (paidMeetingError) throw new Error(`meeting: ${paidMeetingError.message}`);
+  const qualified = await admin.rpc("set_meeting_outcome", { p_meeting_id: paidMeeting.id, p_outcome: "qualified" });
+  if (qualified.error) throw new Error(`outcome: ${qualified.error.message}`);
+
   // 1. A failed sign-in keeps the email and clears only the password.
   await page.goto(`${base}/login`);
   await page.fill("#email", a.email);
@@ -248,7 +285,7 @@ try {
   await settle(page);
 
   // 2. Tabs on a phone: a bottom bar with the setter's three tabs, nothing at the top.
-  check("a setter's tabs are Home, New lead and Leads", JSON.stringify(await visibleTabs(page)) === JSON.stringify(["Home", "New lead", "Leads"]), (await visibleTabs(page)).join(", "));
+  check("a setter's tabs are Home, Schedule, New lead, Leads and My pay", JSON.stringify(await visibleTabs(page)) === JSON.stringify(["Home", "Schedule", "New lead", "Leads", "My pay"]), (await visibleTabs(page)).join(", "));
   const bar = await page.locator('nav[aria-label="Tabs"]:visible').boundingBox();
   const viewport = page.viewportSize();
   check("on a phone the tabs sit in a bar at the bottom", bar !== null && Math.abs(bar.y + bar.height - viewport.height) <= 2 && bar.width >= viewport.width - 2, bar ? `${Math.round(bar.y)}+${Math.round(bar.height)} of ${viewport.height}` : "missing");
@@ -331,7 +368,7 @@ try {
   await page.waitForTimeout(300);
   const rail = await page.locator('nav[aria-label="Tabs"]:visible').boundingBox();
   check("at 1024 px and wider the tabs move to a slim rail on the left", rail !== null && rail.x === 0 && rail.width <= 96 && rail.height >= 790, rail ? `${Math.round(rail.x)},${Math.round(rail.y)} ${Math.round(rail.width)}x${Math.round(rail.height)}` : "missing");
-  check("the rail holds the same tabs", JSON.stringify(await visibleTabs(page)) === JSON.stringify(["Home", "New lead", "Leads"]));
+  check("the rail holds the same tabs", JSON.stringify(await visibleTabs(page)) === JSON.stringify(["Home", "Schedule", "New lead", "Leads", "My pay"]));
   await page.screenshot({ path: `${out}/m25-desktop-rail.png`, fullPage: false });
   await page.setViewportSize(viewport);
 
@@ -373,7 +410,7 @@ try {
     const bText = (await op.getByRole("list", { name: "The team today" }).locator("li", { hasText: "Nav Test B" }).innerText()).replace(/\s+/g, " ");
     check("someone who only added a lead today shows too", /Leads 1\b/.test(bText) && bText.includes("No knock session today"), bText);
     check("today's leads are listed", (await op.getByRole("list", { name: "Today's leads" }).locator(`a[href="/app/leads/${leads.other}"]`).count()) === 1);
-    check("the owner's tabs are Home, New lead, Leads and Admin", JSON.stringify(await visibleTabs(op)) === JSON.stringify(["Home", "New lead", "Leads", "Admin"]), (await visibleTabs(op)).join(", "));
+    check("the owner's tabs are Home, Schedule, New lead, Leads and Admin", JSON.stringify(await visibleTabs(op)) === JSON.stringify(["Home", "Schedule", "New lead", "Leads", "Admin"]), (await visibleTabs(op)).join(", "));
     await checkTapTargets(op, "the owner's Home");
     await op.screenshot({ path: `${out}/m25-owner-home.png`, fullPage: true });
   }
@@ -466,6 +503,9 @@ try {
     ["another setter's lead", `/app/leads/${leads.other}`],
     ["New lead", "/app/leads/new"],
     ["Edit lead", `/app/leads/${leads.newOld}/edit`],
+    ["Schedule", "/app/schedule"],
+    ["booking a lead", `/app/schedule/book?lead=${leads.later}`],
+    ["My pay", "/app/pay"],
     ["Admin", "/app/admin"],
     ["Settings", "/app/admin/settings"],
   ];
@@ -506,7 +546,11 @@ try {
       );
     }
     check(`every control on ${label} is disabled while viewing`, viewed.controls.every((c) => c.disabled), viewed.controls.filter((c) => !c.disabled).map((c) => c.label).join(", "));
-    check(`View as shows no prices or settings on ${label}`, !/\$|Price per foot|Booking pay|Commission/.test(viewed.text));
+    if (label === "My pay") {
+      check("View as shows the setter's own pay and nobody else's", viewed.text.includes("Owed now $") && !viewed.text.includes("Nav Test B") && !/Price per foot|Booking pay/.test(viewed.text));
+    } else {
+      check(`View as shows no prices or settings on ${label}`, !/\$|Price per foot|Booking pay|Commission/.test(viewed.text));
+    }
   }
   check("View as keeps owner screens from the setter's view", (await op.getByRole("heading", { name: "Not for your role" }).count()) === 1);
 

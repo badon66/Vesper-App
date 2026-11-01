@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AppTabs } from "@/components/app-tabs";
+import { HoldKeeper } from "@/components/schedule/hold-keeper";
 import { Wordmark } from "@/components/brand/wordmark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -62,6 +63,7 @@ export default async function AppLayout({
         )}
       </main>
       <AppTabs role={profile.role} />
+      <HoldKeeper enabled={!viewingAs && !viewAsEnded} />
     </div>
   );
 }

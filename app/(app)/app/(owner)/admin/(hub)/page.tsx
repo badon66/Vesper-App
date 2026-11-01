@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: "Admin",
 };
 
-// The owner's Admin tab. Pay joins People and Settings here in M3.
+// The owner's Admin tab: People, Settings and Pay.
 const sections = [
   {
     href: "/app/admin/people",
@@ -16,7 +16,12 @@ const sections = [
   {
     href: "/app/admin/settings",
     title: "Settings",
-    text: "Pricing, GST, setter pay, warranty wording, meeting slots, lost reasons and company details. Change your own password here too.",
+    text: "Pricing, GST, setter pay, warranty wording, meeting slots, booking rules, reasons lists and company details. Change your own password here too.",
+  },
+  {
+    href: "/app/admin/pay",
+    title: "Pay",
+    text: "What each setter is owed, pending install and paid. Mark owed lines paid in one batch.",
   },
 ];
 

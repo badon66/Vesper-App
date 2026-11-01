@@ -44,18 +44,18 @@ Setters are a team. Each setter has their own profile, their own leads and their
 
 Setters earn two ways. Both rates live in settings. A rate change applies to new earnings only, and each earning stores the rate it was calculated at.
 
-- Booking pay: a flat amount per qualified booking, starting at $20. After each meeting slot Keenan marks the booking Qualified, Not qualified, No-show or Cancelled. Only Qualified earns the fee. One booking fee per lead, maximum: a no-show or cancelled lead can be rebooked, and if that meeting is held and marked Qualified the fee is paid then.
-- Commission: a percentage of the sale, starting at 5%, calculated on the accepted quote total as actually priced (after any per-quote price changes), before GST. It is created when the quote is accepted and becomes payable when the lead is marked installed, since no customer pays until the install is complete. If the sale falls through before install, the commission is voided. Earlier no-shows on the same lead do not affect it.
+- Booking pay: a flat amount per qualified booking, starting at $20. After each meeting slot Keenan marks the booking Qualified, Not qualified, No-show or Cancelled. Only Qualified earns the fee. One booking fee per lead, maximum: a no-show or cancelled lead can be rebooked, and if that meeting is held and marked Qualified the fee is paid then. The fee goes to the setter whose lead it is: the lead's assigned setter, recorded on the meeting when it is booked, whoever picked the time. If Keenan books a setter's lead himself, that setter still earns the fee when it is marked Qualified. Keenan can correct an outcome until the fee is paid, and the fee follows: it is voided when a booking stops being Qualified and restored when it becomes Qualified again.
+- Commission: a percentage of the sale, starting at 5%, calculated on the accepted quote total as actually priced (after any per-quote price changes), before GST. It is created when the quote is accepted and becomes payable when the lead is marked installed, since no customer pays until the install is complete. If the sale falls through before install, the commission is voided. Earlier no-shows on the same lead do not affect it. Like the booking fee, it goes to the lead's assigned setter.
 
-Keenan marks earnings paid in batches. Only sales users earn; leads Keenan knocks himself create no earnings. No money moves through the app. It records what is owed and what has been paid, and the e-transfer happens outside it.
+Keenan marks earnings paid in batches. Only sales users earn; leads assigned to Keenan create no earnings. No money moves through the app. It records what is owed and what has been paid, and the e-transfer happens outside it.
 
 ## Navigation
 
 The app is built around the evening schedule, not a list of people.
 
 - Phone and iPad: a bottom tab bar. Screens 1024 px and wider: a slim left side rail with the same items. No top tabs anywhere.
-- Keenan's tabs: Home, Schedule (from M3), New lead (the prominent centre button), Leads, Admin. Admin holds People and Settings, and Pay from M3. There is no separate Dashboard tab: Keenan's Home is the dashboard.
-- Setter tabs: Home, Schedule (from M3), New lead, Leads, My pay (from M3).
+- Keenan's tabs: Home, Schedule, New lead (the prominent centre button), Leads, Admin. Admin holds People, Settings and Pay. There is no separate Dashboard tab: Keenan's Home is the dashboard.
+- Setter tabs: Home, Schedule, New lead, Leads, My pay.
 - A tab that belongs to a later milestone does not show until that milestone is built.
 - A tap on a tab answers at once with a loading screen, and the screen fills in as its data arrives.
 
@@ -63,13 +63,19 @@ The app is built around the evening schedule, not a list of people.
 
 ### Phone (setters and Keenan in the field)
 
-**Home (setter).** Their knock session (start, the two counters, end) and their follow-ups due: their Follow up leads whose date is today or earlier, the oldest date first, each saying how late it is, with a tap through to the lead.
+**Home (setter).** Built for the door, top to bottom:
+1. Tonight's open times, big and easy to read at dusk, with the holder's initials on any time someone is booking. Tapping an open time starts a booking from it, the same as on Schedule. If tonight has nothing left, it says so and shows the next evening's open times.
+2. My bookings: tonight and upcoming, each with Move and Cancel until it starts, and the outcome once Keenan marks it.
+3. The knock session.
+4. Follow-ups due: their Follow up leads whose date is today or earlier, the oldest date first, each saying how late it is, with a tap through to the lead.
 
-**Home (Keenan).** The dashboard. For now it shows today across the team: one row per person who knocked or logged a lead today, showing whether their knock session is open now, the neighbourhood, doors, conversations and leads logged today, with team totals. Below that, Keenan's own knock session, since he knocks too, and the list of today's leads. Every number says what it counts and that it covers today in Calgary time. M3 adds tonight's meetings at the top. M6 adds the sales dashboard below.
+The greeting has no role line under it.
+
+**Home (Keenan).** The dashboard. For now it shows today across the team: one row per person who knocked or logged a lead today, showing whether their knock session is open now, the neighbourhood, doors, conversations and leads logged today, with team totals. Below that, Keenan's own knock session, since he knocks too, and the list of today's leads. Every number says what it counts and that it covers today in Calgary time. Tonight's meetings sit at the top (see Tonight). M6 adds the sales dashboard below.
 
 **Knock session.** Start a session with the neighbourhood name. Two big counters: doors knocked and conversations. Leads created during the session attach to it automatically. End the session. This is what feeds the funnel on the dashboard, so it has to be effortless or nobody will do it.
 
-**New lead.** The centre tab. One screen, under 30 seconds. The Door guide at the top, then address with Google Places autocomplete (saves lat/lng), first name, last name, phone, the Find out questions, the guided photos, house type (bungalow, bi-level, two storey, other), notes, email (optional) and the source (door, referral, neighbour card, website, other). Status defaults to `new`. If Google is unavailable, for example on preview sites or without signal, the address field takes typed text and the lead saves without a map position; picking the address from the suggestions later adds it. When a picked address already has a lead, the form shows who has it and links to it, so two setters don't knock the same door. Phone numbers are Canadian by default: a number typed without a country code is saved as +1, and a number typed with + and a country code is kept as typed. From M3, a "book a meeting" button sits at the bottom and goes straight into booking with this lead. It stays hidden until booking exists.
+**New lead.** The centre tab. One screen, under 30 seconds. The Door guide at the top, then address with Google Places autocomplete (saves lat/lng), first name, last name, phone, the Find out questions, the guided photos, house type (bungalow, bi-level, two storey, other), notes, email (optional) and the source (door, referral, neighbour card, website, other). Status defaults to `new`. If Google is unavailable, for example on preview sites or without signal, the address field takes typed text and the lead saves without a map position; picking the address from the suggestions later adds it. When a picked address already has a lead, the form shows who has it and links to it, so two setters don't knock the same door. Phone numbers are Canadian by default: a number typed without a country code is saved as +1, and a number typed with + and a country code is kept as typed. Near the top, "Hold a time" opens the time picker, so the setter can hold a time the moment the customer agrees and finish the form while holding it. At the bottom, "Save and book" saves the lead and books the held time; with no time held, it saves and opens the time picker for this lead. While a time is held, the form also asks the decision-makers question and, if a guided photo is missing, the skip reason, so one tap books.
 
 **Door guide.** A collapsible card at the top of New lead, closed until tapped. Keenan sets its text in Settings; setters read it the same way they read the lost reasons. It starts as:
 
@@ -106,7 +112,19 @@ Only names show, never an on-screen swatch, because screen colours aren't accura
 
 **Leads.** Opens to Active: New, Follow up and Meeting booked, ordered by what needs attention first. Follow-ups due today or overdue come first (oldest date first), then New leads (oldest first), then follow-ups for later days (soonest first), then booked meetings (soonest first, from M3). An All switch shows every lead, lost and closed ones included, grouped by status, newest first. Search always covers every status. Mine and Everyone stay: Everyone shows all leads read only, so a setter can check an address before knocking. Tap to open. Edit anything on your own lead. Add a note. Change status within what a setter can do: `new`, `follow_up` and `lost`. Choosing Follow up asks when: Tomorrow, In 3 days, Next week, or a date, and the date can be moved later. `meeting_booked` is set by booking a meeting, never by hand.
 
-**Book a meeting.** In the Schedule tab, and from New lead and the lead page. Pick a day, see the open slots for that evening. Booked slots show the time, the neighbourhood and who booked it so the setter can cluster. Pick a slot, pass Before you book, book.
+**Book a meeting.** In the Schedule tab, from setter Home, from New lead and from the lead page. The time picker opens on tonight. If tonight has no open time left, it says so and opens the next evening with an opening. Any evening in the 14-day booking window stays one tap away. Booked times are greyed out and show the neighbourhood and who booked it, so setters can cluster. Times past the cutoff show as closed. Pick a time, pass Before you book, book.
+
+**Holds: no double booking.** This is a hard rule (Keenan, 2026-11-01): two people can never take the same time, and a time is claimed the moment someone starts booking it, not at the end.
+- Tapping an open time holds it for as long as the person stays in that booking. The hold ends when they book, back out or pick another time.
+- While it is held, everyone else sees a small icon with the holder's initials on that time and cannot pick it. Tapping it says "[Name] is booking this time." Once booked, the time is greyed out and off the board. Both show on other phones within a few seconds, without a refresh.
+- The holder's screen checks in to keep the hold alive. If it stops checking in (app closed, phone locked, no signal, or the camera open for photos), the hold lets go after the grace period in Settings, 2 minutes to start.
+- One hold per person at a time.
+- Booking takes the person's own hold or a free time, never a time someone else is holding.
+- The database enforces all of it, under the same lock as booking.
+
+**Cutoff and window.** Setters can hold, book or move into a time until 30 minutes before it starts (in Settings); Keenan until it starts. Bookings open 14 days ahead: tonight and the next 14 evenings.
+
+**Move and cancel.** Setters can move their own upcoming bookings to another open time, or cancel them, until the time starts. Keenan can move or cancel any booking. Picking the new time places a hold, the same as booking. Cancelling sends the lead to Follow up for the next day, the same as the Cancelled outcome. Both are logged in the lead's timeline and show on Schedule and Tonight. After the time starts, outcomes are Keenan's alone.
 
 **Before you book.** Booking is possible only when all of these hold:
 - a phone number is saved;
@@ -115,15 +133,15 @@ Only names show, never an on-screen swatch, because screen colours aren't accura
 - Soffit colour is answered (Not sure is fine);
 - the Front, Left corner and Right corner photos exist, or the setter picks a skip reason (Homeowner said no, or Other with a note), which Keenan sees on Schedule;
 - the setter confirms that everyone who decides on the house will be at the meeting, stored on the booking;
-- the lead has a map position: an address picked from the suggestions or, for a brand-new street Google doesn't have yet, the fallback in the M3 plan.
+- the lead has a map position: an address picked from the suggestions or, for a brand-new street Google doesn't have yet, the phone's own position taken at the door with "Use where I'm standing", accurate to 50 m or better. Keenan sees which kind it is on the lead and on Schedule, and the app warns when another lead is within 25 m.
 
-Until then the book button stays disabled, with each missing item listed. If the address is more than 10 km from the neighbouring meeting, show a warning with the distance and let them choose. The setter confirms the time with the customer at the door. The app does not send or prefill texts in V1.
+Until then the book button stays disabled, with each missing item listed. If the address is more than 10 km in a straight line from the meeting before or after it, show a warning with the distance and let them choose. The setter confirms the time with the customer at the door. The app does not send or prefill texts in V1.
 
-**Tonight (Keenan).** At the top of Keenan's Home and in Schedule. The evening's meetings in order with the drive between them, each with the lead's name, address, phone, notes, photos and a "navigate" link. After each slot, mark the booking Qualified, Not qualified, No-show or Cancelled. Not qualified needs a reason from the list in settings (Not the homeowner, Decision maker missing, Didn't want a price, Roofline we can't do, Other with text). No-show and Cancelled take an optional note. Only Qualified creates the setter's booking pay, and never a second one for the same lead. No-show and Cancelled move the lead back to Follow up with the next day as its follow-up date. A no-show or cancelled lead can be rebooked into a later slot. From a held meeting, open Meeting mode on the iPad (same lead, picks up where the phone left off).
+**Tonight (Keenan).** At the top of Keenan's Home and in Schedule. The evening's meetings in order, each with the straight-line distance from the one before, the lead's name, address, phone, notes and photos, any photo skip, how the map position was set, and a Navigate link. Moved and cancelled bookings stay listed, muted, with who changed them and when. After each slot, mark the booking Qualified, Not qualified, No-show or Cancelled. Not qualified needs a reason from the list in settings (Not the homeowner, Decision maker missing, Didn't want a price, Roofline we can't do, Other with text). No-show and Cancelled take an optional note. Only Qualified creates the booking fee, for the lead's setter, and never a second one for the same lead. Qualified and Not qualified move the lead to Met. No-show and Cancelled move it back to Follow up with the next day as its follow-up date, and it can be rebooked into a later time. An outcome can be corrected until the fee is paid; the fee is voided or restored to match. From a held meeting, open Meeting mode on the iPad (same lead, picks up where the phone left off).
 
 **My numbers (setter).** This week: doors, conversations, leads, meetings booked, meetings that happened. Nothing about money or other people.
 
-**My pay (setter).** Its own tab. Three totals: owed now, pending install, paid. Under them, every line item with date, lead, type (booking or commission), amount and status, and for each booking its outcome and, when not qualified, the reason. Nothing about other people.
+**My pay (setter).** Its own tab. Three totals: owed now, pending install (commission, from M5), paid. Under them, every booking on their leads with its date, lead, outcome (and, when not qualified, the reason) and its fee or "No fee", then each commission from M5, each with its amount and status. Nothing about other people.
 
 ### iPad (Keenan at the meeting)
 
@@ -154,11 +172,11 @@ Pages are plain, large type, navy and white with gold accents, no animations bey
 - Upcoming jobs: sold leads not yet installed, oldest first, with sold date and total feet.
 - Every number shows its date range and what it counts. Empty states explain what will show up.
 
-**Settings.** In Admin. The Door guide text; the Track colours list (each with a name and an optional RAL code, added, renamed, reordered and retired, never deleted, starting with White, Off-white, Brown, Black and Grey); pricing defaults, GST on or off and the GST number, booking pay and commission rate, warranty text, presentation text, meeting slot template (days, start, slot length, count) and blocked times, the lost reasons list.
+**Settings.** In Admin. The Door guide text; the Track colours list (each with a name and an optional RAL code, added, renamed, reordered and retired, never deleted, starting with White, Off-white, Brown, Black and Grey); pricing defaults, GST on or off and the GST number, booking pay and commission rate, warranty text, presentation text, meeting slot template (days, start, slot length, count), the booking cutoff (30 minutes), the hold grace period (2 minutes) and the booking window (14 days), the lost reasons and Not qualified reasons lists. Blocked times are added and removed on Schedule.
 
 **People.** In Admin. Current members are the main content: name, role, active or deactivated, with View as, Reset password and Deactivate or Reactivate on each row. View as, on active non-owner members, opens the app exactly as that person sees it, every screen included, under a gold bar across the top: "Viewing as [name]. Read only. Exit." Nothing can be changed while viewing, the server refuses every write, and it only ever shows what that person's role can see. At the bottom, a button labelled "Add a Vesper member" opens the form: name, email, phone and a role picker that offers only Sales associate for now and is built so a new role (Crew in V2) appears by adding it to the list, never by rebuilding the screen. Owner is never a choice. The app generates the password (three lowercase common words and four digits, like maple-river-stone-4821), shows it once in the gold box, and the admin texts it. That password is permanent until the admin resets it: Reset password generates a new one, shows it once, and ends the person's open sessions. Non-owners have no way to change or reset their own password and get no emails of any kind; the sign-in screen says "Forgot your password? Ask Keenan." A deactivated person cannot sign in and is hidden from pickers. There is exactly one admin and People cannot hand out that role.
 
-**Pay.** Owner only, in Admin. Earnings grouped by setter: owed now, pending install, paid. Select the owed lines and mark them paid in one batch. Each line shows the lead, the type, the rate it was calculated at and the amount.
+**Pay.** Owner only, in Admin. Earnings grouped by setter: owed now, pending install, paid. Select the owed lines and mark them paid in one batch, which stamps when and by whom. Each line shows the lead, the type, the rate it was calculated at and the amount. Paid lines never change.
 
 ## Design
 

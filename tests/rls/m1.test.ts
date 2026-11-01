@@ -113,13 +113,22 @@ describe("settings", () => {
     expect(data).toEqual([]);
   });
 
-  it("a sales user reads the slot template, lost reasons and Door guide through settings_public, nothing more", async () => {
+  it("a sales user reads the slot template, booking rules, lost reasons and Door guide through settings_public, nothing more", async () => {
     const { data, error } = await users.a.client.from("settings_public").select("*");
     expect(error).toBeNull();
     expect(data).toHaveLength(1);
-    expect(Object.keys(data![0]).sort()).toEqual(
-      ["distance_warning_km", "door_guide", "lost_reasons", "meeting_days", "meeting_slot_count", "meeting_slot_minutes", "meeting_start"],
-    );
+    expect(Object.keys(data![0]).sort()).toEqual([
+      "booking_cutoff_minutes",
+      "booking_window_days",
+      "distance_warning_km",
+      "door_guide",
+      "hold_grace_minutes",
+      "lost_reasons",
+      "meeting_days",
+      "meeting_slot_count",
+      "meeting_slot_minutes",
+      "meeting_start",
+    ]);
   });
 
   it("a sales user cannot change settings", async () => {

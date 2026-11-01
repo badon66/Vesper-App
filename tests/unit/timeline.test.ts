@@ -90,6 +90,27 @@ describe("describeEvent", () => {
   });
 
   it("copes with event types from later milestones", () => {
-    expect(describeEvent({ ...base, type: "meeting_booked" })).toBe("Meeting booked.");
+    expect(describeEvent({ ...base, type: "quote_created" })).toBe("Quote created.");
+  });
+
+  it("says when a meeting was booked, moved, cancelled or marked, never an amount", () => {
+    expect(describeEvent({ ...base, type: "meeting_booked", payload: { meeting_id: "m", starts_at: "2026-11-02T23:35:00+00:00" } })).toBe(
+      "Booked a meeting for Mon, Nov 2 at 5:35 p.m.",
+    );
+    expect(
+      describeEvent({
+        ...base,
+        type: "meeting_moved",
+        payload: { from_starts_at: "2026-11-02T23:35:00Z", starts_at: "2026-11-04T00:10:00Z" },
+      }),
+    ).toBe("Moved the meeting from Mon, Nov 2 at 5:35 p.m. to Tue, Nov 3 at 6:10 p.m.");
+    expect(describeEvent({ ...base, type: "meeting_cancelled", payload: { starts_at: "2026-11-02T23:35:00Z" } })).toBe(
+      "Cancelled the meeting on Mon, Nov 2 at 5:35 p.m. Follow up tomorrow.",
+    );
+    expect(describeEvent({ ...base, type: "meeting_outcome", payload: { outcome: "not_qualified", reason: "Decision maker missing" } })).toBe(
+      "Marked the meeting Not qualified: Decision maker missing.",
+    );
+    expect(describeEvent({ ...base, type: "meeting_outcome", payload: { outcome: "qualified" } })).toBe("Marked the meeting Qualified.");
+    expect(describeEvent({ ...base, type: "meeting_booked" })).toBe("Booked a meeting.");
   });
 });

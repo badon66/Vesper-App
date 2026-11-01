@@ -22,9 +22,13 @@ const valid = {
   meeting_start: "18:00",
   meeting_slot_minutes: "45",
   meeting_slot_count: "4",
+  booking_cutoff_minutes: "30",
+  hold_grace_minutes: "2",
+  booking_window_days: "14",
   distance_warning_km: "10",
   lost_reasons: "price\nother company\nnot now",
   door_guide: "1. Open.\r\n2. Find out.\r\n",
+  not_qualified_reasons: "Not the homeowner\nDecision maker missing\nOther",
   company_name: "Vesper Lighting, Inc.",
   company_phone: "",
   company_email: "info@vesperlighting.ca",
@@ -105,6 +109,16 @@ describe("parseSettingsForm", () => {
     expect(parseSettingsForm({ ...valid, door_guide: "x".repeat(4000) }).ok).toBe(true);
   });
 
+  it("keeps the booking cutoff, hold grace period and window within sensible bounds", () => {
+    const result = parseSettingsForm(valid);
+    expect(result.ok && [result.values.booking_cutoff_minutes, result.values.hold_grace_minutes, result.values.booking_window_days]).toEqual([30, 2, 14]);
+    expect(parseSettingsForm({ ...valid, hold_grace_minutes: "0" }).ok).toBe(false);
+    expect(parseSettingsForm({ ...valid, booking_cutoff_minutes: "-5" }).ok).toBe(false);
+    expect(parseSettingsForm({ ...valid, booking_window_days: "61" }).ok).toBe(false);
+    const reasons = parseSettingsForm({ ...valid, not_qualified_reasons: "  " });
+    expect(reasons.ok).toBe(false);
+  });
+
   it("allows an empty company email but not a malformed one", () => {
     expect(parseSettingsForm({ ...valid, company_email: "" }).ok).toBe(true);
     expect(parseSettingsForm({ ...valid, company_email: "info@" }).ok).toBe(false);
@@ -146,6 +160,11 @@ describe("settingsRowToFormDefaults", () => {
       presentation: [],
       lost_reasons: ["price", "other"],
       door_guide: "1. Open.\n2. Find out.",
+      not_qualified_reasons: ["Not the homeowner", "Other"],
+      booking_cutoff_minutes: 30,
+      hold_grace_minutes: 2,
+      booking_window_days: 14,
+      meeting_host_id: null,
       meeting_days: [1, 2, 3, 4, 5, 6],
       meeting_start: "18:00:00",
       meeting_slot_minutes: 45,
@@ -161,13 +180,15 @@ describe("settingsRowToFormDefaults", () => {
     expect(defaults.meeting_start).toBe("18:00");
     expect(defaults.lost_reasons).toBe("price\nother");
     expect(defaults.door_guide).toBe("1. Open.\n2. Find out.");
+    expect(defaults.not_qualified_reasons).toBe("Not the homeowner\nOther");
+    expect([defaults.booking_cutoff_minutes, defaults.hold_grace_minutes, defaults.booking_window_days]).toEqual(["30", "2", "14"]);
     expect(defaults.company_name).toBe("Vesper");
   });
 
   it("survives a company value that is not an object", () => {
     const defaults = settingsRowToFormDefaults({
       id: 1, price_per_ft: 1, box_price: 1, neighbour_discount: 0, referral_credit: 0, gst_rate: 0, gst_enabled: false, gst_number: null,
-      booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], door_guide: "g", meeting_days: [1],
+      booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], door_guide: "g", not_qualified_reasons: ["Other"], booking_cutoff_minutes: 30, hold_grace_minutes: 2, booking_window_days: 14, meeting_host_id: null, meeting_days: [1],
       meeting_start: "18:00:00", meeting_slot_minutes: 45, meeting_slot_count: 4, distance_warning_km: 10,
       company: "nonsense", updated_at: "2026-10-26T00:00:00Z",
     });

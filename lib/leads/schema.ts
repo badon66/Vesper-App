@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PHOTO_SLOTS, slotFieldName, type PhotoSlot } from "@/lib/leads/door";
+import { GPS_MAX_ACCURACY_M, inCalgaryArea } from "@/lib/geo";
 import { OFFERED_SOFFIT_COLOURS } from "@/lib/leads/status";
 import { normalizePhone } from "@/lib/phone";
 import { MAX_PHOTOS_PER_FORM, PHOTO_PATH_PATTERN } from "@/lib/photos";
@@ -92,6 +93,19 @@ export const leadFormSchema = z
     lat: coordinate(-90, 90),
     lng: coordinate(-180, 180),
     place_id: optionalText(300, "Place"),
+    position_source: z.enum(["", "picked", "device"]),
+    position_accuracy_m: z
+      .string()
+      .trim()
+      .transform((value, ctx) => {
+        if (value === "") return null;
+        const number = Number(value);
+        if (!Number.isFinite(number) || number < 0 || number > GPS_MAX_ACCURACY_M) {
+          ctx.addIssue({ code: "custom", message: "The phone's position wasn't accurate enough. Take it again at the door." });
+          return z.NEVER;
+        }
+        return number;
+      }),
     house_type: optionalEnum(Constants.public.Enums.house_type),
     soffit_colour: optionalEnum(OFFERED_SOFFIT_COLOURS),
     soffit_note: optionalText(200, "Soffit note"),
@@ -110,10 +124,16 @@ export const leadFormSchema = z
     photo_slot_right_corner: photoPathField,
     photo_slot_soffit: photoPathField,
   })
-  .transform((values) => {
+  .transform((values, ctx) => {
     // A map position is all or nothing, and a place id without a position
-    // means nothing, so drop both rather than save half a position.
+    // means nothing, so drop both rather than save half a position. A
+    // phone position must be accurate enough and inside the Calgary area.
     const hasPosition = values.lat !== null && values.lng !== null;
+    const device = hasPosition && values.position_source === "device";
+    if (device && (values.position_accuracy_m === null || !inCalgaryArea(values.lat as number, values.lng as number))) {
+      ctx.addIssue({ code: "custom", path: ["lat"], message: "The phone's position wasn't usable. Take it again at the door." });
+      return z.NEVER;
+    }
     const {
       photo_slot_front,
       photo_slot_left_corner,
@@ -131,7 +151,9 @@ export const leadFormSchema = z
       ...rest,
       lat: hasPosition ? values.lat : null,
       lng: hasPosition ? values.lng : null,
-      place_id: hasPosition ? values.place_id : null,
+      place_id: hasPosition && !device ? values.place_id : null,
+      position_source: hasPosition ? (device ? ("device" as const) : ("picked" as const)) : null,
+      position_accuracy_m: device ? values.position_accuracy_m : null,
       soffit_note: values.soffit_colour === "other" ? values.soffit_note : null,
       slot_photos: PHOTO_SLOTS.flatMap(({ slot }) => {
         const path = slotPaths[slot];
@@ -177,6 +199,8 @@ export function leadFormDataToInput(formData: FormData): Record<string, unknown>
     lat: text("lat"),
     lng: text("lng"),
     place_id: text("place_id"),
+    position_source: text("position_source"),
+    position_accuracy_m: text("position_accuracy_m"),
     house_type: text("house_type"),
     soffit_colour: text("soffit_colour"),
     soffit_note: text("soffit_note"),
@@ -209,6 +233,8 @@ export function leadColumnsFromValues(values: LeadFormValues): LeadUpdate {
     lat: values.lat,
     lng: values.lng,
     place_id: values.place_id,
+    position_source: values.position_source,
+    position_accuracy_m: values.position_accuracy_m,
     house_type: values.house_type,
     soffit_colour: values.soffit_colour,
     soffit_note: values.soffit_note,

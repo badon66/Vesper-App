@@ -4,7 +4,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Fragment } from "react";
 import { z } from "zod";
+import { LeadPosition } from "@/components/leads/lead-position";
 import { NoteForm } from "@/components/leads/note-form";
+import { MeetingCard } from "@/components/schedule/meeting-card";
 import { PhotoPicker } from "@/components/leads/photo-picker";
 import { PhotoSlots } from "@/components/leads/photo-slots";
 import { StatusBadge } from "@/components/leads/status-badge";
@@ -15,6 +17,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth/profile";
 import { findOutAnswerList, type PhotoSlot } from "@/lib/leads/door";
 import { lostReasons, namesById } from "@/lib/leads/queries";
+import { formatMeetingTime, isLive, positionSourceText, sentence } from "@/lib/schedule/meetings";
+import { meetingsForLead } from "@/lib/schedule/queries";
 import {
   HOUSE_TYPE_OPTIONS,
   labelFor,
@@ -35,7 +39,7 @@ import { PHOTO_BUCKET } from "@/lib/photos";
 import { mapsLink } from "@/lib/places";
 import { createClient } from "@/lib/supabase/server";
 import { followUpSentence } from "@/lib/leads/attention";
-import { calgaryToday, formatDate, formatDateTime } from "@/lib/time";
+import { calgaryToday, formatDate, formatDateTime, requestTime } from "@/lib/time";
 
 export const metadata: Metadata = {
   title: "Lead",
@@ -46,11 +50,11 @@ export default async function LeadPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ photos?: string | string[] }>;
+  searchParams: Promise<{ photos?: string | string[]; booked?: string; moved?: string }>;
 }) {
   const me = await requireProfile();
   const { id } = await params;
-  const { photos: photosParam } = await searchParams;
+  const { photos: photosParam, booked: bookedParam, moved: movedParam } = await searchParams;
   if (!z.uuid().safeParse(id).success) notFound();
 
   const supabase = await createClient();
@@ -59,7 +63,7 @@ export default async function LeadPage({
 
   const isOwner = me.role === "owner";
   const canEdit = isOwner || lead.created_by === me.id || lead.assigned_to === me.id;
-  const [{ data: photoRows }, { data: events }, reasons, sessionResult, { data: colourRows }] = await Promise.all([
+  const [{ data: photoRows }, { data: events }, reasons, sessionResult, { data: colourRows }, meetingRows, { data: outcomeSettings }] = await Promise.all([
     supabase.from("lead_photos").select("id, storage_path, slot").eq("lead_id", id).order("created_at"),
     supabase
       .from("lead_events")
@@ -72,7 +76,15 @@ export default async function LeadPage({
       ? supabase.from("knock_sessions").select("neighbourhood").eq("id", lead.knock_session_id).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from("track_colours").select("id, name, ral_code, sort_order, active"),
+    meetingsForLead(supabase, id),
+    isOwner
+      ? supabase.from("settings").select("not_qualified_reasons").eq("id", 1).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
+  const meetings = meetingRows.map((meeting) => ({ ...meeting, lead }));
+  const liveMeeting = meetings.find((meeting) => isLive(meeting.status));
+  const canBook = canEdit && (lead.status === "new" || lead.status === "follow_up") && !liveMeeting;
+  const justBooked = bookedParam ? meetings.find((meeting) => meeting.id === bookedParam) : undefined;
 
   // Track colour. The owner gets the whole RAL Classic list, to name a
   // custom number as he types it; everyone else only the names shown.
@@ -112,6 +124,7 @@ export default async function LeadPage({
     lead.created_by,
     lead.assigned_to,
     ...(events ?? []).map((event) => event.actor_id),
+    ...meetings.flatMap((meeting) => [meeting.setter_id, meeting.booked_by, meeting.outcome_by]),
   ]);
   const owner = names.get(lead.created_by) ?? "someone";
   const choices = canEdit ? statusChoices(me.role, lead.status) : [];
@@ -147,15 +160,32 @@ export default async function LeadPage({
             Read only. This is {owner}&apos;s lead.
           </p>
         ) : null}
+        {justBooked ? (
+          <p role="status" className="rounded-md border border-primary px-3 py-2 text-sm font-semibold" data-testid="booked-notice">
+            {sentence(`Booked for ${formatMeetingTime(justBooked.starts_at)}`)} Confirm the time with the homeowner before you leave.
+          </p>
+        ) : null}
+        {movedParam === "1" && liveMeeting ? (
+          <p role="status" className="rounded-md border border-primary px-3 py-2 text-sm font-semibold">
+            {sentence(`Moved to ${formatMeetingTime(liveMeeting.starts_at)}`)}
+          </p>
+        ) : null}
         {photosParam === "failed" ? (
           <p role="alert" className="text-sm font-medium text-destructive">
             The lead saved, but its photos didn&apos;t attach. Add them again below.
           </p>
         ) : null}
         {canEdit ? (
-          <Button asChild variant="outline" className="w-fit">
-            <Link href={`/app/leads/${lead.id}/edit`}>Edit lead</Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {canBook ? (
+              <Button asChild className="w-fit">
+                <Link href={`/app/schedule/book?lead=${lead.id}`}>Book a meeting</Link>
+              </Button>
+            ) : null}
+            <Button asChild variant="outline" className="w-fit">
+              <Link href={`/app/leads/${lead.id}/edit`}>Edit lead</Link>
+            </Button>
+          </div>
         ) : null}
       </div>
 
@@ -201,10 +231,41 @@ export default async function LeadPage({
           </a>
           {lead.lat === null ? (
             <p className="text-muted-foreground">
-              No map position yet.
+              No map position yet. Booking needs one.
               {canEdit ? " Edit the lead and pick the address from the suggestions to add one." : ""}
             </p>
-          ) : null}
+          ) : (
+            <p className="text-muted-foreground" data-testid="position-source">
+              Map position: {positionSourceText(lead.position_source, lead.position_accuracy_m)}.
+            </p>
+          )}
+          {lead.lat === null && canEdit ? <LeadPosition leadId={lead.id} /> : null}
+        </CardContent>
+      </Card>
+
+      <Card data-testid="lead-meetings">
+        <CardHeader>
+          <CardTitle>Meetings</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {meetings.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No meetings yet.{canBook ? " Book one once Before you book is ready." : ""}
+            </p>
+          ) : (
+            meetings.map((meeting) => (
+              <MeetingCard
+                key={meeting.id}
+                meeting={meeting}
+                names={names}
+                now={requestTime()}
+                canChange={canEdit}
+                isOwner={isOwner}
+                reasons={outcomeSettings?.not_qualified_reasons ?? []}
+                showLead={false}
+              />
+            ))
+          )}
         </CardContent>
       </Card>
 

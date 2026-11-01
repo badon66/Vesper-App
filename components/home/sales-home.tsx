@@ -1,42 +1,114 @@
 import Link from "next/link";
 import { KnockCard } from "@/components/knock/knock-card";
+import { MeetingCard } from "@/components/schedule/meeting-card";
+import { ScheduleView } from "@/components/schedule/schedule-view";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { SessionProfile } from "@/lib/auth/profile";
 import { followUpLabel } from "@/lib/leads/attention";
+import { eveningLabel, eveningsOf, pickEvening } from "@/lib/schedule/board";
+import { bookingSettings, fetchBoard, meetingsBetween } from "@/lib/schedule/queries";
 import {
   closeMyStaleKnockSessions,
   followUpsDue,
   lastNeighbourhood,
+  namesById,
   openKnockSession,
 } from "@/lib/leads/queries";
 import { leadName } from "@/lib/leads/status";
-import { roleLabel } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
-import { calgaryToday } from "@/lib/time";
+import { addDays, calgaryDayStart, calgaryToday, requestTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
-// A setter's Home: their knock session and their follow-ups due. Every query
-// is scoped to this person, so View as shows exactly what they would see,
-// and nothing is written while viewing (CLAUDE.md, View as).
-export async function SalesHome({ profile, readOnly }: { profile: SessionProfile; readOnly: boolean }) {
+// A setter's Home, built for the door (Keenan, 2026-11-01), top to bottom:
+// tonight's open times, their bookings, the knock session and follow-ups
+// due. Every query is scoped to this person, so View as shows exactly what
+// they would see, and nothing is written while viewing (CLAUDE.md, View as).
+export async function SalesHome({
+  profile,
+  readOnly,
+  realRole,
+}: {
+  profile: SessionProfile;
+  readOnly: boolean;
+  realRole: string;
+}) {
   const supabase = await createClient();
   const today = calgaryToday();
-  const [session, last, due] = await Promise.all([
+  const settings = await bookingSettings(supabase);
+  const [session, last, due, board, bookings] = await Promise.all([
     openKnockSession(supabase, profile.id),
     lastNeighbourhood(supabase, profile.id),
     followUpsDue(supabase, profile.id, today),
+    fetchBoard(supabase, profile, realRole),
+    meetingsBetween(supabase, calgaryDayStart(today), calgaryDayStart(addDays(today, settings.windowDays + 1)), {
+      setterId: profile.id,
+    }),
     readOnly ? null : closeMyStaleKnockSessions(supabase),
   ]);
   const firstName = profile.full_name.split(" ")[0] || profile.full_name;
+  const opening = pickEvening(eveningsOf(board, today, settings.windowDays), today);
+  const mine = bookings.filter((meeting) => meeting.status !== "moved" && meeting.status !== "cancelled");
+  const names = await namesById(supabase, mine.flatMap((meeting) => [meeting.setter_id, meeting.booked_by]));
+  const now = requestTime();
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold">Hello, {firstName}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {roleLabel(profile.role)}. Signed in as {profile.email}
-        </p>
-      </div>
+      <h1 className="text-2xl font-bold">Hello, {firstName}</h1>
+
+      <Card data-testid="tonight-times">
+        <CardHeader>
+          <CardTitle>{opening.tonightFull ? "Nothing left tonight" : "Tonight's open times"}</CardTitle>
+          <CardDescription>
+            {opening.tonightFull
+              ? opening.day === today
+                ? "No open times in the next two weeks right now."
+                : `${eveningLabel(opening.day, today)} has the next open times. Tap one to start booking it.`
+              : "Tap a time to start booking it. It's held for you while you book."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <ScheduleView
+            board={board}
+            today={today}
+            windowDays={settings.windowDays}
+            asSales
+            viewerId={readOnly ? profile.id : null}
+            initialDay={opening.day}
+            followDay={false}
+            tonightOnly
+          />
+          <Link href="/app/schedule" className="inline-flex min-h-11 w-fit items-center text-sm font-semibold underline underline-offset-4">
+            See every evening
+          </Link>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="my-bookings">
+        <CardHeader>
+          <CardTitle>My bookings</CardTitle>
+          <CardDescription>Tonight and upcoming, with how each went once Keenan marks it.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {mine.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No bookings yet. Tap an open time above, or book from a lead, and it shows here.
+            </p>
+          ) : (
+            mine.map((meeting) => (
+              <MeetingCard
+                key={meeting.id}
+                meeting={meeting}
+                names={names}
+                now={now}
+                canChange
+                isOwner={false}
+                reasons={[]}
+                showLead
+              />
+            ))
+          )}
+        </CardContent>
+      </Card>
 
       <KnockCard key={session?.id ?? "none"} session={session} lastNeighbourhood={last} />
 

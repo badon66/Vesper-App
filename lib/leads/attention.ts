@@ -6,8 +6,7 @@ import type { LeadStatus } from "@/lib/leads/status";
 //   1. follow-ups due today or overdue, oldest date first
 //   2. new leads, oldest first
 //   3. follow-ups for later days, soonest first
-//   4. booked meetings, soonest first (by meeting time from M3; until then,
-//      oldest lead first)
+//   4. booked meetings, soonest meeting first
 
 export const ACTIVE_STATUSES = ["new", "follow_up", "meeting_booked"] as const satisfies readonly LeadStatus[];
 
@@ -38,7 +37,13 @@ export function isDue(lead: AttentionLead, today: string): boolean {
   return lead.status === "follow_up" && (lead.follow_up_on === null || lead.follow_up_on <= today);
 }
 
-export function groupByAttention<T extends AttentionLead>(leads: T[], today: string): AttentionGroup<T>[] {
+// meetingAt gives each booked lead's meeting time, so booked leads sort by
+// the soonest meeting; a booked lead without one sorts by when it was added.
+export function groupByAttention<T extends AttentionLead>(
+  leads: T[],
+  today: string,
+  meetingAt: Map<string, string> = new Map(),
+): AttentionGroup<T>[] {
   const groups: Record<AttentionGroupKey, T[]> = { due: [], new: [], later: [], booked: [] };
   for (const lead of leads) {
     if (lead.status === "follow_up") groups[isDue(lead, today) ? "due" : "later"].push(lead);
@@ -48,7 +53,15 @@ export function groupByAttention<T extends AttentionLead>(leads: T[], today: str
   groups.due.sort(byFollowUp);
   groups.new.sort(byCreated);
   groups.later.sort(byFollowUp);
-  groups.booked.sort(byCreated);
+  const meetingOf = (lead: T) => ("id" in lead && typeof lead.id === "string" ? meetingAt.get(lead.id) : undefined);
+  groups.booked.sort((a, b) => {
+    const at = meetingOf(a);
+    const bt = meetingOf(b);
+    if (at && bt) return at.localeCompare(bt) || byCreated(a, b);
+    if (at) return -1;
+    if (bt) return 1;
+    return byCreated(a, b);
+  });
   return (Object.keys(groups) as AttentionGroupKey[])
     .filter((key) => groups[key].length > 0)
     .map((key) => ({ key, title: TITLES[key], leads: groups[key] }));
