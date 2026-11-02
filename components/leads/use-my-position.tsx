@@ -10,17 +10,21 @@ import { GPS_MAX_ACCURACY_M, inCalgaryArea, type DevicePosition } from "@/lib/ge
 export function UseMyPosition({
   onPosition,
   label = "Use where I'm standing",
+  place = "door",
 }: {
   onPosition: (position: DevicePosition) => void;
   label?: string;
+  // A setter's phone at the door, or Keenan's device at the house.
+  place?: "door" | "house";
 }) {
   const [locating, setLocating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const device = place === "house" ? "this device" : "the phone";
 
   function locate() {
     setMessage(null);
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
-      setMessage("This phone can't share its position.");
+      setMessage(place === "house" ? "This device can't share its position." : "This phone can't share its position.");
       return;
     }
     setLocating(true);
@@ -30,7 +34,9 @@ export function UseMyPosition({
         const { latitude, longitude, accuracy } = found.coords;
         if (accuracy > GPS_MAX_ACCURACY_M) {
           setMessage(
-            `The phone's position is only accurate to about ${Math.round(accuracy)} m. Step away from the house, wait a few seconds and try again.`,
+            place === "house"
+              ? `The position is only accurate to about ${Math.round(accuracy)} m. Wait a few seconds and try again, outside if you can.`
+              : `The phone's position is only accurate to about ${Math.round(accuracy)} m. Step away from the house, wait a few seconds and try again.`,
           );
           return;
         }
@@ -44,8 +50,8 @@ export function UseMyPosition({
         setLocating(false);
         setMessage(
           problem.code === problem.PERMISSION_DENIED
-            ? "Location is off for Vesper. Allow it in the phone's settings, then try again."
-            : "The phone couldn't find its position. Try again in a moment.",
+            ? `Location is off for Vesper. Allow it in ${device === "the phone" ? "the phone's" : "this device's"} settings, then try again.`
+            : `${device === "the phone" ? "The phone" : "This device"} couldn't find its position. Try again in a moment.`,
         );
       },
       { enableHighAccuracy: true, timeout: 20_000, maximumAge: 0 },

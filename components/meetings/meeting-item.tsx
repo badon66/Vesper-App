@@ -25,16 +25,30 @@ export type MeetingItemData = {
   changedAt: string;
 };
 
-export function MeetingItem({ item, children }: { item: MeetingItemData; children?: React.ReactNode }) {
+// Upcoming meetings are reference, not tonight: a compact card, a
+// normal-height Start.
+export function MeetingItem({
+  item,
+  compact = false,
+  children,
+}: {
+  item: MeetingItemData;
+  compact?: boolean;
+  children?: React.ReactNode;
+}) {
   return (
     <li
-      className={cn("flex flex-col gap-4 rounded-xl border p-4 sm:flex-row sm:items-center sm:gap-6 sm:p-5", item.outcome && "opacity-70")}
+      className={cn(
+        "flex flex-col rounded-xl border sm:flex-row sm:items-center",
+        compact ? "gap-2 p-3 sm:gap-5 sm:px-4" : "gap-4 p-4 sm:gap-6 sm:p-5",
+        item.outcome && "opacity-70",
+      )}
       data-testid="meeting-item"
       data-lead={item.leadId}
     >
-      <p className="shrink-0 text-2xl font-bold tabular-nums sm:w-32">{item.time}</p>
+      <p className={cn("shrink-0 font-bold tabular-nums", compact ? "text-lg sm:w-28" : "text-2xl sm:w-32")}>{item.time}</p>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <p className="text-lg font-semibold text-pretty">{item.name}</p>
+        <p className={cn("font-semibold text-pretty", compact ? "text-base" : "text-lg")}>{item.name}</p>
         <p className="text-pretty text-muted-foreground">{item.address}</p>
         {item.host ? <p className="text-sm text-muted-foreground">Host: {item.host}</p> : null}
         {item.outcome ? <p className="text-sm font-semibold">{item.outcome}</p> : null}
@@ -68,7 +82,12 @@ export function MeetingItem({ item, children }: { item: MeetingItemData; childre
         ) : null}
         {children}
       </div>
-      <Button asChild size="lg" variant={item.next ? "default" : "outline"} className="h-14 shrink-0 px-10 text-lg">
+      <Button
+        asChild
+        size="lg"
+        variant={item.next ? "default" : "outline"}
+        className={cn("shrink-0", compact ? "h-11 px-6 text-base" : "h-14 px-10 text-lg")}
+      >
         {/* A full page load on purpose: it lets the service worker keep the
             meeting page for a reload without signal. */}
         <a href={`/meeting/${item.leadId}#start`} aria-label={`Start the meeting with ${item.name}`}>

@@ -232,6 +232,23 @@ try {
   check("upcoming meetings sit under their evening", upcomingDayHeadings.length >= 1, upcomingDayHeadings.join(" | "));
   await page.screenshot({ path: `${out}/m5p-ipad-meetings.png`, fullPage: true });
 
+  // A flag's link lands on the card that fixes it.
+  await upcomingItem.getByRole("link", { name: "Set it on the lead page" }).click();
+  await page.waitForURL(`**/app/leads/${laterLead}#track-colour`, { timeout: 30000 }).catch(() => {});
+  await page.locator("#track-colour").waitFor({ timeout: 30000 }).catch(() => {});
+  await page.waitForTimeout(1200);
+  const landing = await page.evaluate(() => {
+    const card = document.getElementById("track-colour")?.getBoundingClientRect();
+    return card ? { top: Math.round(card.top), height: window.innerHeight, scrolled: Math.round(window.scrollY) } : null;
+  });
+  check(
+    "a flag's link opens the lead page at the card that fixes it",
+    Boolean(landing && landing.top >= 0 && landing.top < landing.height && landing.scrolled > 0),
+    JSON.stringify(landing),
+  );
+  await page.goto(`${base}/app/meetings`);
+  await settle(page);
+
   // ---------------------------------------------------------------- start a meeting
   await page.getByRole("button", { name: "Start a meeting" }).click();
   const panel = page.getByTestId("start-a-meeting");
@@ -318,6 +335,8 @@ try {
   } catch {}
   for (let i = 0; i < 30 && (await serverAnswers(offlineBase)); i += 1) await sleep(500);
   const gone = !(await serverAnswers(offlineBase));
+  // And the browser itself without a network, as in a dead spot.
+  await ownerContext.setOffline(true);
   await ready.goto(`${offlineBase}/app`).catch(() => {});
   await ready.getByTestId("meetings-tonight").waitFor({ timeout: 30000 }).catch(() => {});
   const landedOnMeetings = new URL(ready.url()).pathname === "/app/meetings";
@@ -325,6 +344,12 @@ try {
     "without signal, opening the app's start page lands on the saved Meetings page",
     gone && landedOnMeetings && (await ready.locator(`[data-testid="meeting-item"][data-lead="${tonightLead}"]`).count()) === 1,
     ready.url(),
+  );
+  const notice = (await ready.getByTestId("no-signal").innerText().catch(() => "")).trim();
+  check(
+    "it says there is no signal and when tonight was saved",
+    /^No signal\. This is tonight as saved at \d{1,2}:\d{2} [ap]\.m\. Other pages need signal\.$/.test(notice),
+    notice,
   );
   await ready.getByRole("link", { name: `Start the meeting with ${TEST_LEAD} Tonight` }).click().catch(() => {});
   await ready.locator('ol[aria-label="Where you are"]').waitFor({ timeout: 30000 }).catch(() => {});
@@ -341,6 +366,7 @@ try {
     gone ? "" : "the second server did not stop",
   );
   await ready.screenshot({ path: `${out}/m5p-offline-meeting.png` });
+  await ownerContext.setOffline(false);
   await ready.close();
   offlineServer = null;
 

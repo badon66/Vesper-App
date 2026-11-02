@@ -58,6 +58,10 @@ function StartPanel({ mapsKey }: { mapsKey: string | null }) {
   const [neighbourhood, setNeighbourhood] = useState("");
   // New lead's own check: a house that already has a lead.
   const [sameHouse, setSameHouse] = useState<DuplicateLead[]>([]);
+  // The gold goes to the next step: a found lead's Start, until a new
+  // person's name is typed.
+  const [hasName, setHasName] = useState(false);
+  const foundSome = Boolean(results && results.length > 0);
   const [state, formAction, pending] = useActionState(async (previous: NewPersonState, formData: FormData) => {
     try {
       return await startMeetingForNewPerson(previous, formData);
@@ -155,6 +159,7 @@ function StartPanel({ mapsKey }: { mapsKey: string | null }) {
               id="start-first-name"
               name="first_name"
               autoComplete="off"
+              onChange={(event) => setHasName(event.target.value.trim() !== "")}
               aria-invalid={state.errors?.first_name ? true : undefined}
               aria-describedby={state.errors?.first_name ? "start-first-name-error" : undefined}
             />
@@ -201,7 +206,13 @@ function StartPanel({ mapsKey }: { mapsKey: string | null }) {
             {state.error}
           </p>
         ) : null}
-        <Button type="submit" size="lg" className="self-start" disabled={pending || Boolean(state.leadId)}>
+        <Button
+          type="submit"
+          size="lg"
+          variant={foundSome && !hasName ? "outline" : "default"}
+          className="self-start sm:self-end"
+          disabled={pending || Boolean(state.leadId)}
+        >
           {pending || state.leadId ? "Opening meeting mode" : "Add them and start"}
         </Button>
       </form>

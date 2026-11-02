@@ -88,7 +88,7 @@ export default async function MeetingsPage() {
   // standing beside the iPad, and other customers stay off the screen.
   return (
     <StartMeeting mapsKey={getPublicEnv().NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null}>
-      <TonightList items={tonight.map(toItem)} />
+      <TonightList items={tonight.map(toItem)} renderedAt={new Date(now).toISOString()} />
 
       <section aria-labelledby="upcoming-heading" className="flex flex-col gap-4" data-testid="meetings-upcoming">
         <div>
@@ -106,7 +106,7 @@ export default async function MeetingsPage() {
             <h3 className="text-base font-semibold">{formatLongDay(day)}</h3>
             <ul className="flex flex-col gap-3">
               {items.map((item) => (
-                <MeetingItem key={item.meetingId} item={item} />
+                <MeetingItem key={item.meetingId} item={item} compact />
               ))}
             </ul>
           </div>

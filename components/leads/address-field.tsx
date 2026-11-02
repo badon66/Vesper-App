@@ -268,6 +268,7 @@ export function AddressField({
           <UseMyPosition
             onPosition={useDevicePosition}
             label={position ? "Take the position again" : "Use where I'm standing"}
+            place={place}
           />
         </div>
       ) : null}
