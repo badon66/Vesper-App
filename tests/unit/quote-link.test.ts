@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  choiceInSentence,
+  choiceLabel,
   cleanSelection,
   customerTotal,
   optionName,
@@ -119,6 +121,15 @@ describe("what they switched on", () => {
     expect(optionName(quote.runs, [0, 1, 2, 3])).toBe("Recommended package");
     expect(optionName(quote.runs, [2, 0])).toBe("Start smaller: Front, Garage");
     expect(optionName(quote.runs, [3])).toBe("Start smaller: Run 4");
+  });
+
+  it("writes the choice the way people say it", () => {
+    expect(choiceLabel("Recommended package")).toBe("Recommended package");
+    expect(choiceLabel("Start smaller: Garage")).toBe("Garage only");
+    expect(choiceLabel("Start smaller: Front, Garage")).toBe("Front and Garage");
+    expect(choiceLabel("Start smaller: Front, Front upper, Garage")).toBe("Front, Front upper and Garage");
+    expect(choiceInSentence("Recommended package")).toBe("the Recommended package");
+    expect(choiceInSentence("Start smaller: Front, Garage")).toBe("Front and Garage");
   });
 
   it("describes a run with its feet and level", () => {

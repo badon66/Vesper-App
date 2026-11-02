@@ -1,13 +1,21 @@
 "use client";
 
-import { Check, X } from "lucide-react";
+import { Check, Loader2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { bookInstall, recordVisit, saveSelection } from "@/app/q/[token]/actions";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
 import { ContactButtons, ExpiredQuote } from "@/components/quote-link/quote-shell";
 import { DialogPanel } from "@/components/ui/dialog-panel";
 import { formatMoney, screenTotal, type QuoteLine } from "@/lib/pricing";
-import { optionName, priceSelection, runDetail, runName, type CustomerQuote } from "@/lib/quote-link/view";
+import {
+  choiceInSentence,
+  choiceLabel,
+  optionName,
+  priceSelection,
+  runDetail,
+  runName,
+  type CustomerQuote,
+} from "@/lib/quote-link/view";
 import { calgaryDateOf, formatLongDay } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -54,7 +62,7 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
   const option = optionName(quote.runs, positions);
   const total = screenTotal(current.subtotal, quote.gstEnabled);
   const minimum = quote.minJobTotal && quote.minJobTotal > 0 ? quote.minJobTotal : null;
-  const atMinimum = current.lines.some((line) => line.label === "Minimum job total");
+  const atMinimum = current.minimumApplied;
 
   const [phase, setPhase] = useState<"quote" | "confirm" | "sending" | "thanks" | "expired">("quote");
   const [thanks, setThanks] = useState<{ option: string; total: string; preview: boolean } | null>(null);
@@ -70,18 +78,22 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
   }, [token]);
 
   // Their choice, saved a moment after they stop switching (for Keenan's
-  // card; the page itself opens at the Recommended package).
+  // card; the page itself opens at the Recommended package). After they've
+  // asked to book, only a new booking changes it, so a return visit opens
+  // at what they booked.
   const firstChoice = useRef(true);
+  const hasBooked = booked !== null;
   useEffect(() => {
     if (firstChoice.current) {
       firstChoice.current = false;
       return;
     }
+    if (hasBooked) return;
     const timer = window.setTimeout(() => {
       void saveSelection(token, positions ?? []).catch(() => undefined);
     }, 1200);
     return () => window.clearTimeout(timer);
-  }, [token, positions]);
+  }, [token, positions, hasBooked]);
 
   // A send that takes long says so, instead of a silent "Sending".
   useEffect(() => {
@@ -167,8 +179,8 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
 
         {booked ? (
           <p role="status" className="mt-6 rounded-md border border-input px-4 py-3 text-base text-pretty" data-testid="quote-booked-before">
-            On {formatLongDay(calgaryDateOf(booked.at))} you asked us to book your install: {booked.option}. Keenan will be
-            in touch to set the date.
+            On {formatLongDay(calgaryDateOf(booked.at))} you asked us to book your install:{" "}
+            {choiceInSentence(booked.option)}. Keenan will be in touch to set the date.
           </p>
         ) : null}
 
@@ -312,12 +324,13 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
       </main>
 
       <BookBar
-        label={allOn ? "Recommended package" : option}
+        label={allOn ? "Recommended package" : `Start smaller: ${on.size} of ${parts.length} parts`}
         total={total}
-        booked={matchesBooked ? booked : null}
+        booked={matchesBooked}
         update={booked !== null && !matchesBooked}
         sending={sending}
-        message={slow ? SLOW : error}
+        slow={slow}
+        error={error}
         onBook={() => {
           setError(null);
           setPhase("confirm");
@@ -353,7 +366,7 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
             <div className="flex flex-col gap-0.5 px-4 py-3">
               <dt className="text-sm font-semibold text-muted-foreground">Your choice</dt>
               <dd className="font-semibold text-pretty" data-testid="confirm-option">
-                {option}
+                {choiceLabel(option)}
               </dd>
             </div>
             <div className="flex flex-col gap-0.5 px-4 py-3">
@@ -430,35 +443,41 @@ function BookBar({
   booked,
   update,
   sending,
-  message,
+  slow,
+  error,
   onBook,
 }: {
   label: string;
   total: string;
-  booked: Booked | null;
+  booked: boolean;
   update: boolean;
   sending: boolean;
-  message: string | null;
+  slow: boolean;
+  error: string | null;
   onBook: () => void;
 }) {
   return (
     <aside aria-label="Book your install" className="fixed inset-x-0 bottom-0 z-20 border-t bg-background pb-[env(safe-area-inset-bottom)]">
-      {message ? (
+      {error ? (
         <p role="alert" className="mx-auto max-w-xl px-4 pt-3 text-sm font-semibold text-pretty text-destructive">
-          {message}
+          {error}
+        </p>
+      ) : slow ? (
+        <p role="status" className="mx-auto max-w-xl px-4 pt-3 text-sm font-semibold text-pretty">
+          {SLOW}
         </p>
       ) : null}
       <div className="mx-auto flex max-w-xl items-center gap-4 px-4 py-3">
         <div className="min-w-0 flex-1" aria-live="polite">
-          <p className="line-clamp-2 text-sm leading-snug font-semibold" data-testid="bar-label">
-            {booked ? `Install requested: ${booked.option}` : label}
+          <p className="truncate text-sm font-semibold" data-testid="bar-label">
+            {booked ? "Install requested" : label}
           </p>
-          <p className="text-xl font-bold tabular-nums" data-testid="bar-total">
+          <p className="text-lg font-bold whitespace-nowrap tabular-nums sm:text-xl" data-testid="bar-total">
             {total}
           </p>
         </div>
         {booked ? (
-          <p className="shrink-0 text-sm font-semibold text-pretty text-muted-foreground" data-testid="bar-requested">
+          <p className="max-w-[9rem] shrink-0 text-right text-sm font-semibold text-pretty text-muted-foreground" data-testid="bar-requested">
             Keenan will be in touch.
           </p>
         ) : (
@@ -474,7 +493,16 @@ function BookBar({
               sending && "cursor-progress",
             )}
           >
-            {sending ? "Sending" : update ? "Update my choice" : "Book my install"}
+            {sending ? (
+              <>
+                <Loader2 aria-hidden="true" className="mr-2 size-4 animate-spin" />
+                Sending
+              </>
+            ) : update ? (
+              "Update my choice"
+            ) : (
+              "Book my install"
+            )}
           </button>
         )}
       </div>
@@ -520,7 +548,7 @@ function ThankYou({
         <div className="flex flex-col gap-0.5 px-4 py-3">
           <dt className="text-sm font-semibold text-muted-foreground">Your choice</dt>
           <dd className="font-semibold text-pretty" data-testid="thanks-option">
-            {thanks.option}
+            {choiceLabel(thanks.option)}
           </dd>
         </div>
         {thanks.total ? (
@@ -553,9 +581,16 @@ function Mockup({ url }: { url: string }) {
   const [open, setOpen] = useState(false);
   const [broken, setBroken] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
+  const picture = useRef<HTMLImageElement>(null);
   const close = useCallback(() => {
     setOpen(false);
     opener.current?.focus();
+  }, []);
+  // A picture that failed before the page came alive never fires onError
+  // here; check once on arrival.
+  useEffect(() => {
+    const image = picture.current;
+    if (image && image.complete && image.naturalWidth === 0) setBroken(true);
   }, []);
   if (broken) return <PictureNeedsRefresh className="-mx-4 mt-7 sm:mx-0 sm:rounded-md" />;
   return (
@@ -565,10 +600,11 @@ function Mockup({ url }: { url: string }) {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Open the picture of your house full screen"
-        className="block aspect-[3/2] w-full overflow-hidden bg-navy outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:rounded-md"
+        className="block aspect-[3/2] w-full overflow-hidden bg-navy outline-none focus-visible:outline-3 focus-visible:-outline-offset-4 focus-visible:outline-white sm:rounded-md"
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- a private photo behind a ten-minute signed link */}
         <img
+          ref={picture}
           src={url}
           alt="Your house with Vesper lights on, as a mockup"
           className="block size-full object-contain"

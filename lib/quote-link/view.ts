@@ -218,6 +218,26 @@ export function optionName(runs: QuoteRun[], positions: readonly number[] | null
   return `Start smaller: ${kept.map((p) => runName(runs[p], p)).join(", ")}`;
 }
 
+// The option the way people say it: "Recommended package", "Garage only",
+// "Front and Garage", "Front, Front upper and Garage". The database keeps
+// the plain form ("Start smaller: Front, Garage"); this is for reading.
+export function choiceLabel(option: string): string {
+  if (option === "Recommended package") return option;
+  const names = option
+    .replace(/^Start smaller:\s*/, "")
+    .split(/,\s*/)
+    .map((name) => name.trim())
+    .filter(Boolean);
+  if (names.length === 0) return option;
+  if (names.length === 1) return `${names[0]} only`;
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+// The same inside a sentence: "the Recommended package", or the parts.
+export function choiceInSentence(option: string): string {
+  return option === "Recommended package" ? "the Recommended package" : choiceLabel(option);
+}
+
 // "64 ft, upper level"
 export function runDetail(run: QuoteRun): string {
   return `${Math.max(0, Math.round(run.feet))} ft, ${run.level === "upper" ? "upper" : "lower"} level`;

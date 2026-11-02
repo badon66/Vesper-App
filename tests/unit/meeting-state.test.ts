@@ -144,7 +144,8 @@ describe("a saved draft back on screen", () => {
     const pricing = { ...payload().pricing, minJobTotal: 2500 };
     const priced = priceQuote(quoteInputs(state, pricing));
     expect(priced.subtotal).toBe(2500);
-    expect(priced.lines.map((line) => line.label)).toContain("Minimum job total");
+    expect(priced.minimumApplied).toBe(true);
+    expect(priced.lines.map((line) => line.label)).toContain("To reach our $2,500 minimum");
   });
 
   it("names unnamed extra work plainly on the bill", () => {

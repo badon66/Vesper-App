@@ -278,7 +278,11 @@ try {
   const minLines = (await page.getByTestId("smaller-lines").innerText()).replace(/\s+/g, " ");
   check(
     "below the minimum job total, the total rises to it with a line saying so",
-    minLines.includes("Minimum job total") && (await page.getByTestId("smaller-total").innerText()).trim() === "$2,500" && (await page.getByTestId("bar-total").innerText()).trim() === "$2,500",
+    minLines.includes("To reach our $2,500 minimum") &&
+      (await page.getByTestId("smaller-total").innerText()).trim() === "$2,500" &&
+      (await page.getByTestId("bar-total").innerText()).trim() === "$2,500" &&
+      (await page.getByTestId("bar-label").innerText()).trim() === "Start smaller: 1 of 4 parts" &&
+      (await page.getByTestId("smaller-minimum-note").isVisible()),
     minLines,
   );
   // The last part is marked disabled; a tap on it anyway changes nothing.
@@ -306,7 +310,7 @@ try {
   const confirmText = (await confirm.innerText().catch(() => "")).replace(/\s+/g, " ");
   check(
     "Book my install asks first, with the choice, the total and nothing to sign or pay",
-    (await page.getByTestId("confirm-option").innerText()).trim() === "Start smaller: Garage" &&
+    (await page.getByTestId("confirm-option").innerText()).trim() === "Garage only" &&
       (await page.getByTestId("confirm-total").innerText()).trim() === "$2,500" &&
       confirmText.includes("There's nothing to sign or pay today.") &&
       (await confirm.getByRole("button", { name: "Not yet" }).count()) === 1,
@@ -322,7 +326,7 @@ try {
     "Book my install shows the thank-you: Keenan in touch within a day, nothing to sign or pay",
     thanks.includes("Keenan will be in touch within a day to set your install date and go through the agreement.") &&
       thanks.includes("There's nothing to sign or pay today.") &&
-      (await page.getByTestId("thanks-option").innerText()).trim() === "Start smaller: Garage" &&
+      (await page.getByTestId("thanks-option").innerText()).trim() === "Garage only" &&
       (await page.getByTestId("thanks-total").innerText()).trim() === "$2,500",
     thanks.slice(0, 240),
   );
@@ -347,8 +351,8 @@ try {
   await settle(page);
   check(
     "coming back, the page says they asked to book, and the bar no longer offers it again",
-    (await page.getByTestId("quote-booked-before").innerText().catch(() => "")).includes("you asked us to book your install: Start smaller: Garage") &&
-      (await page.getByTestId("bar-label").innerText()).trim() === "Install requested: Start smaller: Garage" &&
+    (await page.getByTestId("quote-booked-before").innerText().catch(() => "")).includes("you asked us to book your install: Garage only.") &&
+      (await page.getByTestId("bar-label").innerText()).trim() === "Install requested" &&
       (await page.getByRole("button", { name: "Book my install" }).count()) === 0,
   );
   await page.screenshot({ path: `${out}/ql-phone-return.png` });
@@ -364,12 +368,10 @@ try {
   const cardText = (await card.innerText().catch(() => "")).replace(/\s+/g, " ");
   check(
     "the lead's Quote card leads with the booking, then the total, opens and last visit",
-    (await card.getByTestId("quote-card-booked").innerText().catch(() => "")).includes(`${TEST_LEAD} asked to book: Start smaller: Garage, $2,500.`) &&
+    (await card.getByTestId("quote-card-booked").innerText().catch(() => "")).includes(`${TEST_LEAD} asked to book Garage only, $2,500.`) &&
       cardText.includes("Quoted total, all parts") &&
       cardText.includes("$4,393") &&
       cardText.includes("Opened 2 times, last") &&
-      cardText.includes("Tapped Book my install") &&
-      cardText.includes("Start smaller: Garage, $2,500") &&
       !cardText.includes(".."),
     cardText.slice(0, 300),
   );
@@ -389,7 +391,7 @@ try {
   const timeline = (await owner.getByRole("list", { name: "Timeline" }).innerText()).replace(/\s+/g, " ");
   check(
     "the timeline: opened and Book my install, by the customer, never with a price",
-    timeline.includes("Opened the quote link.") && timeline.includes("Tapped Book my install: Start smaller: Garage.") && !/\$\d/.test(timeline),
+    timeline.includes("Opened the quote link.") && timeline.includes("Tapped Book my install: Garage only.") && !/\$\d/.test(timeline),
     timeline.slice(0, 300),
   );
   await owner.screenshot({ path: `${out}/ql-ipad-lead.png`, fullPage: true });

@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { phoneHref, quoteLinkMessage } from "@/lib/quote-link/view";
+import { choiceInSentence, phoneHref, quoteLinkMessage } from "@/lib/quote-link/view";
 import { formatDateTime, formatLongDay } from "@/lib/time";
 
 // Times end in "p.m.", so a sentence ending in one gets no second full stop.
@@ -122,7 +122,7 @@ export function QuoteCard({ leadId, firstName, phone, customerPhone, quote, link
           {bookedNow ? (
             <div className="flex flex-col gap-0.5 rounded-md border border-input px-4 py-3" data-testid="quote-card-booked">
               <p className="text-lg font-bold text-pretty">
-                {who === "them" ? "They" : who} asked to book: {bookedNow.option}
+                {who === "them" ? "They" : who} asked to book {choiceInSentence(bookedNow.option)}
                 {bookedNow.total ? `, ${bookedNow.total}` : ""}.
               </p>
               <p className="text-muted-foreground">{sentence(formatDateTime(bookedNow.at))}</p>
@@ -168,13 +168,7 @@ export function QuoteCard({ leadId, firstName, phone, customerPhone, quote, link
                 </p>
                 {link.looking ? (
                   <p data-testid="quote-link-looking">
-                    Looking at {link.looking.option}, {link.looking.total}.
-                  </p>
-                ) : null}
-                {link.booked ? (
-                  <p className="font-semibold" data-testid="quote-link-booked">
-                    Tapped Book my install {formatDateTime(link.booked.at)}: {link.booked.option}
-                    {link.booked.total ? `, ${link.booked.total}` : ""}.
+                    Looking at {choiceInSentence(link.looking.option)}, {link.looking.total}.
                   </p>
                 ) : null}
               </>
@@ -190,7 +184,7 @@ export function QuoteCard({ leadId, firstName, phone, customerPhone, quote, link
                 </a>
               </Button>
             ) : null}
-            <Button type="button" variant={bookedNow && customerPhone ? "outline" : "default"} onClick={() => void openSheet()} disabled={busy}>
+            <Button type="button" variant={bookedNow ? "outline" : "default"} onClick={() => void openSheet()} disabled={busy}>
               <Send aria-hidden="true" />
               Send quote link
             </Button>

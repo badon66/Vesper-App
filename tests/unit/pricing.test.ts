@@ -222,18 +222,20 @@ describe("The quote link's choices", () => {
   it("raises a small choice to the minimum job total, with a line saying so", () => {
     const small = priceQuote(house({ runs: selectRuns(house().runs, [2]), minJobTotal: 2500 }));
     // 30 ft x $23 + $500 + $75 - $150 = $1,115, raised by $1,385
-    const minimum = small.lines.find((line) => line.label === "Minimum job total");
-    expect(minimum).toEqual({ label: "Minimum job total", detail: "Jobs start at $2,500", amount: 1385 });
+    // The line names what its amount is: the top-up, not the minimum.
+    const minimum = small.lines.find((line) => line.label.startsWith("To reach"));
+    expect(minimum).toEqual({ label: "To reach our $2,500 minimum", detail: null, amount: 1385 });
+    expect(small.minimumApplied).toBe(true);
     expect(small.subtotal).toBe(2500);
     expect(small.lines.reduce((sum, line) => sum + Math.round(line.amount * 100), 0)).toBe(250000);
   });
 
   it("leaves a choice at or above the minimum alone, and an empty minimum means none", () => {
     const whole = priceQuote(house({ minJobTotal: 2500 }));
-    expect(whole.lines.map((line) => line.label)).not.toContain("Minimum job total");
+    expect(whole.minimumApplied).toBe(false);
     expect(whole.subtotal).toBe(3565);
     const exact = priceQuote(house({ runs: selectRuns(house().runs, [0, 2]), minJobTotal: 2495 }));
-    expect(exact.lines.map((line) => line.label)).not.toContain("Minimum job total");
+    expect(exact.minimumApplied).toBe(false);
     for (const none of [null, 0, undefined]) {
       const small = priceQuote(house({ runs: selectRuns(house().runs, [2]), minJobTotal: none }));
       expect(small.subtotal).toBe(1115);

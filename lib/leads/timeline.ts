@@ -1,6 +1,7 @@
 import { photoSlotLabel, type PhotoSlot } from "@/lib/leads/door";
 import { formatMeetingTime, MEETING_STATUS_LABELS, type MeetingStatus } from "@/lib/schedule/meetings";
 import { STATUS_LABELS, type LeadStatus } from "@/lib/leads/status";
+import { choiceLabel } from "@/lib/quote-link/view";
 import { formatDay } from "@/lib/time";
 import type { Database, Json } from "@/types/database";
 
@@ -107,7 +108,7 @@ export function describeEvent(event: TimelineEvent): string {
       return "Turned off the quote link.";
     case "install_requested": {
       const option = typeof payload.option === "string" && payload.option ? payload.option : null;
-      return option ? `Tapped Book my install: ${sentence(option)}` : "Tapped Book my install.";
+      return option ? `Tapped Book my install: ${sentence(choiceLabel(option))}` : "Tapped Book my install.";
     }
     case "edited": {
       const fields = Array.isArray(payload.fields)

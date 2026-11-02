@@ -92,6 +92,11 @@ html:has(.quote-light) body {
   color-scheme: light !important;
 }
 
+/* Keyboard focus never lands under the bar fixed to the bottom. */
+html:has(.quote-light) {
+  scroll-padding-bottom: calc(7rem + env(safe-area-inset-bottom));
+}
+
 @theme inline {
   --color-navy: var(--navy);
   --color-gold: var(--gold);
