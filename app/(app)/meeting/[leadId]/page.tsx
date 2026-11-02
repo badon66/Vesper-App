@@ -43,7 +43,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ leadId
     supabase
       .from("settings")
       .select(
-        "presentation, warranty_text, price_per_ft, box_price, neighbour_discount, gst_enabled, gst_rate, gst_number, rush_colour_fee_per_ft, service_call_fee, quote_valid_days",
+        "presentation, warranty_text, price_per_ft, box_price, neighbour_discount, gst_enabled, gst_rate, gst_number, rush_colour_fee_per_ft, service_call_fee, quote_valid_days, min_job_total",
       )
       .eq("id", 1)
       .single(),
@@ -136,6 +136,7 @@ export default async function MeetingPage({ params }: { params: Promise<{ leadId
       gstNumber: settings.gst_number,
       rushFeePerFt: settings.rush_colour_fee_per_ft,
       quoteValidDays: settings.quote_valid_days,
+      minJobTotal: settings.min_job_total,
     },
     draft: draft
       ? {

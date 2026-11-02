@@ -44,6 +44,8 @@ export type MeetingPayload = {
     gstNumber: string | null;
     rushFeePerFt: number | null;
     quoteValidDays: number;
+    // The least a job can cost before GST (Settings); null = no minimum.
+    minJobTotal: number | null;
   };
   draft: {
     quoteId: string;
@@ -69,7 +71,8 @@ export type QuoteUIState = {
   boxCount: number;
   pricePerFt: string;
   boxPrice: string;
-  adders: { label: string; amount: string }[];
+  // upperOnly: the line counts only while an upper run is in (quote link).
+  adders: { label: string; amount: string; upperOnly?: boolean }[];
   neighbourOn: boolean;
   neighbourAmount: string;
   customDiscounts: { label: string; amount: string }[];
@@ -125,13 +128,20 @@ export function quoteStateFromDraft(draft: NonNullable<MeetingPayload["draft"]>,
         )
       : [];
   const discounts = items(draft.discounts);
+  const upperOnly = new Map(
+    (Array.isArray(draft.adders) ? draft.adders : []).map((item, at) => [
+      at,
+      Boolean(item && typeof item === "object" && (item as { upper_only?: unknown }).upper_only === true),
+    ]),
+  );
+  const adders = items(draft.adders).map((item, at) => (upperOnly.get(at) ? { ...item, upperOnly: true } : item));
   const neighbour = discounts.find((item) => item.label === "Neighbour discount");
   return {
     runs: runs.length > 0 ? runs : [{ name: "Front", feet: 0, level: "lower" }],
     boxCount: draft.boxCount,
     pricePerFt: moneyString(draft.pricePerFt),
     boxPrice: moneyString(draft.boxPrice),
-    adders: items(draft.adders),
+    adders,
     neighbourOn: Boolean(neighbour),
     neighbourAmount: neighbour?.amount ?? moneyString(payload.pricing.neighbourDiscount),
     customDiscounts: discounts.filter((item) => item.label !== "Neighbour discount"),
@@ -155,7 +165,7 @@ export function quoteFingerprint(state: QuoteUIState): string {
     parseMoney(state.boxPrice),
     state.adders
       .filter((item) => item.label.trim() !== "" || parseMoney(item.amount) > 0)
-      .map((item) => [item.label.trim(), parseMoney(item.amount)]),
+      .map((item) => [item.label.trim(), parseMoney(item.amount), Boolean(item.upperOnly)]),
     state.neighbourOn ? parseMoney(state.neighbourAmount) : null,
     state.customDiscounts
       .filter((item) => parseMoney(item.amount) > 0)
@@ -181,10 +191,15 @@ export function quoteInputs(state: QuoteUIState, pricing: MeetingPayload["pricin
     boxPrice: parseMoney(state.boxPrice),
     adders: state.adders
       .filter((item) => item.label.trim() !== "" || parseMoney(item.amount) > 0)
-      .map((item) => ({ label: item.label.trim() || "Extra work", amount: parseMoney(item.amount) })),
+      .map((item) => ({
+        label: item.label.trim() || "Extra work",
+        amount: parseMoney(item.amount),
+        ...(item.upperOnly ? { upperOnly: true } : {}),
+      })),
     discounts,
     colourTiming: state.colourTiming,
     rushFeePerFt: state.colourTiming === "rush" ? pricing.rushFeePerFt : null,
+    minJobTotal: pricing.minJobTotal,
     gstEnabled: pricing.gstEnabled,
     gstRate: pricing.gstRate,
   };

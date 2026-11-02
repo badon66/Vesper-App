@@ -42,10 +42,14 @@ const quoteDraftSchema = z.object({
   boxCount: z.number().int().min(0).max(20),
   pricePerFt: money,
   boxPrice: money,
-  adders: z.array(z.object({ label: z.string().trim().max(80), amount: money })).max(20),
+  adders: z
+    .array(z.object({ label: z.string().trim().max(80), amount: money, upperOnly: z.boolean().optional() }))
+    .max(20),
   discounts: z.array(z.object({ label: z.string().trim().max(80), amount: money })).max(20),
   colourTiming: z.enum(["stock", "factory_order", "rush"]).nullable(),
   rushFeePerFt: money.nullable(),
+  // The minimum job total from Settings when the quote is saved.
+  minJobTotal: money.nullable().optional(),
   financingOffered: z.boolean(),
   validUntil: z.iso.date(),
   notes: z.string().trim().max(2000),
@@ -88,6 +92,7 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     discounts: draft.discounts,
     colourTiming: draft.colourTiming,
     rushFeePerFt: draft.rushFeePerFt,
+    minJobTotal: draft.minJobTotal ?? null,
     gstEnabled: draft.gstEnabled,
     gstRate: draft.gstRate,
   };
@@ -103,7 +108,12 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     box_count: draft.boxCount,
     runs: draft.runs,
     total_feet: totalFeet(draft.runs),
-    adders: draft.adders,
+    // Stored the way the data model names it: upper_only, only when set.
+    adders: draft.adders.map((adder) => ({
+      label: adder.label,
+      amount: adder.amount,
+      ...(adder.upperOnly ? { upper_only: true } : {}),
+    })),
     discounts: draft.discounts,
     colour_timing: draft.colourTiming,
     rush_fee_per_ft: draft.colourTiming === "rush" ? draft.rushFeePerFt : null,
@@ -119,6 +129,7 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     track_custom: lead.track_ral_code !== null,
     notes: draft.notes || null,
     valid_until: draft.validUntil,
+    min_job_total: draft.minJobTotal ?? null,
   };
 
   // One draft per lead, reused on every save.

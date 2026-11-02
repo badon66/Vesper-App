@@ -65,6 +65,7 @@ export function QuoteScreen({
         discounts: inputs.discounts,
         colourTiming: state.colourTiming,
         rushFeePerFt: inputs.rushFeePerFt,
+        minJobTotal: pricing.minJobTotal,
         financingOffered: state.financingOffered,
         validUntil: state.validUntil,
         notes: "",
@@ -177,26 +178,42 @@ export function QuoteScreen({
         <section className="flex flex-col gap-2" aria-label="Extra work">
           <p className="text-sm font-semibold text-muted-foreground">Extra work</p>
           {state.adders.map((adder, at) => (
-            <div key={at} className="flex items-center gap-2">
-              <Input
-                value={adder.label}
-                placeholder="Height, complexity"
-                aria-label={`Extra work ${at + 1} label`}
-                maxLength={80}
-                onChange={(event) => set({ adders: state.adders.map((item, which) => (which === at ? { ...item, label: event.target.value } : item)) })}
-                className="min-w-0 flex-1"
-              />
-              <Input
-                inputMode="decimal"
-                aria-label={`Extra work ${at + 1} amount`}
-                value={adder.amount}
-                placeholder="$"
-                onChange={(event) => set({ adders: state.adders.map((item, which) => (which === at ? { ...item, amount: event.target.value } : item)) })}
-                className="w-24 text-center tabular-nums"
-              />
-              <Button type="button" variant="ghost" size="icon" aria-label={`Remove extra work ${at + 1}`} onClick={() => set({ adders: state.adders.filter((_, which) => which !== at) })}>
-                <Trash2 className="size-4" />
-              </Button>
+            <div key={at} className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={adder.label}
+                  placeholder="Height, complexity"
+                  aria-label={`Extra work ${at + 1} label`}
+                  maxLength={80}
+                  onChange={(event) => set({ adders: state.adders.map((item, which) => (which === at ? { ...item, label: event.target.value } : item)) })}
+                  className="min-w-0 flex-1"
+                />
+                <Input
+                  inputMode="decimal"
+                  aria-label={`Extra work ${at + 1} amount`}
+                  value={adder.amount}
+                  placeholder="$"
+                  onChange={(event) => set({ adders: state.adders.map((item, which) => (which === at ? { ...item, amount: event.target.value } : item)) })}
+                  className="w-24 text-center tabular-nums"
+                />
+                <Button type="button" variant="ghost" size="icon" aria-label={`Remove extra work ${at + 1}`} onClick={() => set({ adders: state.adders.filter((_, which) => which !== at) })}>
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+              {/* On the customer's link, this line drops off when they
+                  switch off every upper run (2026-11-02). */}
+              <button
+                type="button"
+                aria-pressed={Boolean(adder.upperOnly)}
+                aria-label={`Extra work ${at + 1}: only with upper runs`}
+                onClick={() => set({ adders: state.adders.map((item, which) => (which === at ? { ...item, upperOnly: !item.upperOnly } : item)) })}
+                className={cn(
+                  "inline-flex min-h-11 items-center self-start rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  adder.upperOnly ? "border-foreground bg-foreground text-background" : "border-input",
+                )}
+              >
+                Only with upper runs
+              </button>
             </div>
           ))}
           <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => set({ adders: [...state.adders, { label: "", amount: "" }] })}>
