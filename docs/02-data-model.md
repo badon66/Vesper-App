@@ -208,7 +208,7 @@ unique (host_id, day) where removed_at is null
 ```
 - An evening's times are its own schedule's when it has one, otherwise the template's, and then only on `meeting_days`. A day schedule can open an evening that isn't a usual meeting day.
 - A change never moves or cancels a meeting. A meeting that no longer starts at one of the evening's times keeps its time, and any time that overlaps it can't be held or booked.
-- A hold on a time that is no longer one of the evening's times lets go at once, stamped `schedule_changed`.
+- A hold on a time that is no longer one of the evening's times lets go at once, stamped `released`; the holder's screen sees the time is no longer on the board.
 - Written only by `set_day_schedule` (below), under the evening lock.
 
 ### time_blocks
@@ -236,7 +236,7 @@ lead_id uuid references leads                   -- the lead being booked, once k
 meeting_id uuid references meetings             -- set when the hold is for moving this meeting
 renewed_at timestamptz not null default now()   -- the holder's screen checks in to keep it alive
 released_at timestamptz                         -- set when the hold ends
-release_reason text                             -- booked, moved, released, switched, lapsed or schedule_changed (M3.5: the evening's times changed and this one went)
+release_reason text                             -- booked, moved, released, switched or lapsed (M3.5: a hold whose time disappears in a day change is released)
 created_at
 unique (host_id, starts_at) where released_at is null
 unique (holder_id) where released_at is null    -- one hold per person
@@ -276,7 +276,7 @@ Rules, all enforced in the database:
 ### Booking functions
 Every write to `slot_holds`, `meetings` and `earnings` goes through these SECURITY DEFINER functions; no policy lets anyone write those tables directly. Each takes the evening lock (a move takes both evenings, in a fixed order). The server actions call them with the signed-in person's own session.
 - `schedule_board(host, as_sales, viewer)`: every time in the window with its state (open, held, booked, blocked or closed), the holder's name and initials, and a booked time's neighbourhood and setter. Times come from each evening's own schedule or the template; a live meeting that no longer lines up shows at its own time, and template times that overlap it are left out. Read only; the screens poll it.
-- `set_day_schedule(day, start, minutes, count, scope, host)`: the owner's. Scope `day` gives that evening its own times; `all` updates the template in settings and drops that evening's own times; `usual` drops them only. It takes the evening lock, lets go of holds on times that disappear (`schedule_changed`) and never touches a meeting. `day_schedule_preview(day, start, minutes, count, scope, host)` lists, read only, the meetings that wouldn't line up and the holds that would let go, for the pop-up's warning.
+- `set_day_schedule(day, start, minutes, count, scope, host)`: the owner's. Scope `day` gives that evening its own times; `all` updates the template in settings and drops that evening's own times; `usual` drops them only. It takes the evening lock, lets go of holds on times that disappear (stamped `released`), never touches a meeting, and writes Settings only when a value changes. `day_schedule_preview(day, start, minutes, count, scope, host)` lists, read only, the meetings that wouldn't line up and the holds that would let go, for the pop-up's warning.
 - `hold_slot(starts_at, lead, meeting, host)`, `renew_hold()`, `release_hold()`.
 - `book_meeting(lead, starts_at, everyone_deciding_present, photos_skipped, photos_skip_note, host)`.
 - `move_meeting(meeting, new_starts_at)` and `cancel_meeting(meeting, note)`.
