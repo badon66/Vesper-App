@@ -460,3 +460,27 @@ Judgment calls made while building it, for Keenan to look over.
 **Keenan's template.** His live Settings say a 5:00 pm start with six 35-minute slots, not the 6:00 pm, 45-minute defaults. The app follows Settings; flagged in the report in case the 35 minutes isn't meant (his note said 45 minutes, drive included).
 
 **Supabase's security advisor after M3.** It lists the thirteen booking functions (holds, booking, move, cancel, outcomes, pay, time blocks, the board and the two read-only time checks) as callable by signed-in users. That is the design: each one checks who is calling, and they are the only way to write holds, meetings, earnings and time blocks. The internal helpers they use are not callable. Accepted, like the role helpers and public views before them.
+
+## 2026-11-02: A secret key in the public JavaScript, and the build check
+
+**What happened.**
+- Checking production after M3 found a Supabase secret key in the JavaScript every visitor downloads. Vercel's `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` held a secret key instead of the publishable one.
+- It surfaced because M3's live schedule board is the first thing that reads the database straight from the phone, and Supabase refuses a secret key from a browser. The app's servers had used the same key since the first sign-in on production, on 2026-10-26.
+
+**What Keenan did.**
+- Made a new secret key and deleted the exposed one.
+- Set the publishable key in `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and the new secret key in `SUPABASE_SERVICE_ROLE_KEY`, for Production and Preview.
+- Redeployed.
+
+**What the logs show.** Supabase's request log covers the project's whole life, from 2026-10-25.
+- The exposed key was used 4,910 times, from 2026-10-26 to 2026-11-01, every time by the app's own servers on Vercel or by the test browsers.
+- Every request that read or changed data carried a signed-in person's token, so the usual rules applied. None used the key's admin powers.
+- No account, setting or record changed except through the app, by Keenan or by the tests.
+- Nothing has used the key since it was deleted.
+
+**The call.**
+- `next.config.ts` runs a check (`lib/public-env-guard.ts`) that refuses to build, or to start the dev server, when any `NEXT_PUBLIC_` value is a Supabase secret key. Keenan approved it for keys starting `sb_secret_`.
+- It also catches the legacy service_role key, a JWT with the role `service_role`. That is the same mistake in the older key format, which this project still accepts; the test environment uses one. My call.
+- The error names the variable and never prints the value. It also says to delete the key in Supabase if it was ever deployed.
+- Unit tests cover the check, including that `next.config.ts` refuses to load. A real build was shown to stop within seconds with a made-up secret key in a public variable, set either in the environment or in a local env file.
+- The rule is in CLAUDE.md (rule 6), `.env.example` and `docs/05-supabase-setup.md`.

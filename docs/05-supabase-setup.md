@@ -57,7 +57,7 @@ The full list, with comments, is in `.env.example`. These three point the app an
 | Variable | From the project | Used by |
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Project URL | The app (browser and server), the RLS suite, the walk-throughs |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publishable key (`sb_publishable_...`) | The app, the RLS suite, the walk-throughs |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publishable key (`sb_publishable_...`). Never the secret key: this value goes to every visitor's browser, and the build refuses a secret key in any `NEXT_PUBLIC_` variable. | The app, the RLS suite, the walk-throughs |
 | `SUPABASE_SERVICE_ROLE_KEY` | Secret key (`sb_secret_...`, or the legacy service_role key) | Owner-only server actions for Auth admin calls, the RLS suite, the walk-throughs. Server only, never `NEXT_PUBLIC_`. |
 
 They are set in three places: Vercel (Production and Preview), the cloud environment the build sessions run in, and `.env.local` on any machine that runs the app. Pointing something at another project means changing these three values there and nothing else.

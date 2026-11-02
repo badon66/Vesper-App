@@ -97,7 +97,11 @@ Design each screen for the device it will actually be used on, then make it tole
 
     Settings that can only live in the dashboard are listed in `docs/05-supabase-setup.md`; update that list whenever one of them changes.
 5. Commit in small logical commits with plain messages. One branch per milestone, merged when done.
-6. Never commit secrets. All keys go in `.env.local` and Vercel environment variables. `.env.example` lists every variable with a comment. Nothing in the app, the tests or the scripts hard-codes a Supabase project's URL, ref or keys; they come from environment variables, so pointing anything at another project is a configuration change.
+6. Never commit secrets. All keys go in `.env.local` and Vercel environment variables. `.env.example` lists every variable with a comment. Nothing in the app, the tests or the scripts hard-codes a Supabase project's URL, ref or keys; they come from environment variables, so pointing anything at another project is a configuration change. Never put a secret key in a `NEXT_PUBLIC_` variable (Keenan, 2026-11-02):
+    - anything in a `NEXT_PUBLIC_` variable is copied into the JavaScript every visitor downloads;
+    - the publishable key (`sb_publishable_...`, or the legacy anon key) is the only Supabase key that goes in one;
+    - the secret key (`sb_secret_...`, or the legacy service_role key) goes only in `SUPABASE_SERVICE_ROLE_KEY`;
+    - the build refuses to run if any `NEXT_PUBLIC_` value is a Supabase secret key (`lib/public-env-guard.ts`, run from `next.config.ts`). Keep that check, and never work around it.
 7. When something in the docs is unclear or wrong, stop and ask instead of guessing. When you make a judgment call, write it down in `docs/decisions.md` with the date.
 8. Keep the dashboard honest: every number shows what it counts and the date range. No invented or placeholder numbers in production views. Empty states say what will appear and how to make it appear.
 9. Do not add features that are not in the current milestone. Put ideas in `docs/backlog.md`.
