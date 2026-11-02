@@ -517,6 +517,7 @@ try {
     ["Settings", "/app/admin/settings"],
   ];
   for (const [label, path] of screens) {
+    const visitStart = new Date().toISOString();
     await page.goto(`${base}${path}`);
     await settle(page);
     const real = await capture(page);
@@ -533,7 +534,7 @@ try {
     if (label === "their own lead") {
       check(
         "View as shows the lead's Find out answers, its three slot photos and its track colour",
-        viewed.text.includes("Owns the home Yes Wants a price Not yet Soffit colour Not sure Christmas lights now Not answered Which areas Full wrap Timing New year") &&
+        viewed.text.includes("Owns the home Yes Wants a price Not yet Soffit colour Not sure Christmas lights now Not answered Looked into it before Not answered Which areas Full wrap Timing New year") &&
           ["Front photo of the house", "Left corner photo of the house", "Right corner photo of the house"].every((alt) => viewed.images.includes(alt)) &&
           viewed.text.includes("Custom, RAL 7016 Anthracite grey Needs powder coating.") &&
           viewed.text.includes("Keenan sets the track colour."),
@@ -557,7 +558,8 @@ try {
     }
     if (label === "a lead opened to book") {
       await op.waitForTimeout(1500);
-      const { count: viewHolds } = await admin.from("slot_holds").select("id", { count: "exact", head: true }).in("holder_id", [ownerId, a.id]).is("released_at", null);
+      // Only holds made during this visit count: Keenan's own earlier holds are his data.
+      const { count: viewHolds } = await admin.from("slot_holds").select("id", { count: "exact", head: true }).in("holder_id", [ownerId, a.id]).gte("created_at", visitStart);
       check(
         "View as never opens the booking sheet, even from a link that would, and holds nothing",
         (await op.getByTestId("booking-sheet").count()) === 0 && viewHolds === 0 && (await page.getByTestId("booking-sheet").count()) === 1,

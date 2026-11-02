@@ -457,8 +457,11 @@ try {
   );
   await sheet(pageA).getByRole("button", { name: "Done", exact: true }).click();
   await sheet(pageA).waitFor({ state: "detached", timeout: 15000 });
+  check("Done closes the sheet and returns to the schedule", new URL(pageA.url()).pathname === "/app/schedule");
 
   // ---------------------------------------------------------------- an existing lead skips what it already has
+  // The reload above opened the schedule on its first evening again.
+  await chooseEvening(pageA.locator("main"), testDay);
   await waitForState(pageA, Z, "open");
   await slotButton(pageA, Z).click();
   await waitView(pageA, "who");
