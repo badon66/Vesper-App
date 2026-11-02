@@ -188,7 +188,7 @@ Gently rounded rectangles: 6 px on buttons, fields and time tiles, 8 px on cards
 - 44 px tall, 1 px input stroke, 6 px corners; focus shows the gold ring.
 
 ### Navigation
-- Phone and iPad: a bottom tab bar with New lead as the prominent centre button. 1024 px and wider: a slim left rail with the same items. No top tabs.
+- Phone and iPad: a bottom tab bar with New lead as the prominent gold button. 1024 px and wider: a slim left rail with the same items. No top tabs. The owner's Admin (People, Settings, Pay) is a gear in the header, named Admin where there is room, because Meetings made six items too many for a phone's bar (Keenan, 2026-11-02).
 
 ## Do's and Don'ts
 

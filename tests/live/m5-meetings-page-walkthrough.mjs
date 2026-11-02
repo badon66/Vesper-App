@@ -160,7 +160,8 @@ try {
   check(
     "the owner's rail is Home, Schedule, Meetings, New lead and Leads, with Admin as a gear in the header",
     JSON.stringify(railTabs) === JSON.stringify(["Home", "Schedule", "Meetings", "New lead", "Leads"]) &&
-      (await page.getByTestId("admin-gear").getAttribute("href")) === "/app/admin",
+      (await page.getByTestId("admin-gear").getAttribute("href")) === "/app/admin" &&
+      (await page.getByTestId("admin-gear").innerText()).trim() === "Admin",
     railTabs.join(", "),
   );
   check("Meetings is the current tab", (await page.locator('nav[aria-label="Tabs"]:visible a[aria-current="page"]').innerText()).trim() === "Meetings");
@@ -220,7 +221,10 @@ try {
   const upcomingText = (await upcomingItem.innerText()).replace(/\s+/g, " ");
   check(
     "an upcoming meeting with no mockup and no track colour is flagged, with the way to fix each",
-    upcomingText.includes("No mockup yet.") && upcomingText.includes("No track colour yet.") && (await upcomingItem.locator(`a[href="/app/leads/${laterLead}"]`).count()) === 2,
+    upcomingText.includes("No mockup yet.") &&
+      upcomingText.includes("No track colour yet.") &&
+      (await upcomingItem.locator(`a[href="/app/leads/${laterLead}#mockup"]`).count()) === 1 &&
+      (await upcomingItem.locator(`a[href="/app/leads/${laterLead}#track-colour"]`).count()) === 1,
     upcomingText.slice(0, 200),
   );
   check("the host shows when it isn't the person looking", upcomingText.includes(`Host: ${setter.name}`));
@@ -232,6 +236,10 @@ try {
   await page.getByRole("button", { name: "Start a meeting" }).click();
   const panel = page.getByTestId("start-a-meeting");
   await panel.waitFor({ timeout: 10000 });
+  check(
+    "Start a meeting puts the lists away while it is open, so no other customer is on screen",
+    (await page.getByTestId("meetings-tonight").count()) === 0 && (await page.getByTestId("meeting-item").count()) === 0,
+  );
   await panel.getByLabel("Find their lead").fill(street);
   await panel.getByRole("list", { name: "Matching leads" }).waitFor({ timeout: 20000 }).catch(() => {});
   const found = await panel.getByRole("list", { name: "Matching leads" }).getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("href")));
@@ -253,6 +261,8 @@ try {
     `${neverSaved} saved`,
   );
   await page.screenshot({ path: `${out}/m5p-ipad-start-a-meeting.png`, fullPage: true });
+  await page.getByRole("button", { name: "Close" }).click();
+  check("Close brings the lists back", (await page.getByTestId("meetings-tonight").count()) === 1);
 
   // ---------------------------------------------------------------- get tonight ready, then no signal
   offlineServer = spawn("npx", ["next", "start", "--port", String(offlinePort)], { detached: true, stdio: "ignore", env: process.env });
@@ -270,7 +280,7 @@ try {
   await ready.getByRole("button", { name: "Get tonight ready" }).click();
   await ready
     .waitForFunction(
-      (id) => document.querySelector(`[data-lead="${id}"] [data-testid="meeting-saved"]`)?.textContent?.startsWith("Saved on this iPad"),
+      (id) => document.querySelector(`[data-lead="${id}"] [data-testid="meeting-saved"]`)?.textContent?.startsWith("Saved on this device"),
       tonightLead,
       { timeout: 60000 },
     )
@@ -279,16 +289,44 @@ try {
   const summary = (await ready.getByTestId("tonight-saved-summary").innerText().catch(() => "")).trim();
   check(
     "Get tonight ready saves tonight on the device and says so on each meeting",
-    controlled && savedBefore.includes("Not saved") && /^Saved on this iPad, \d{1,2}:\d{2} [ap]\.m\.$/.test(savedAfter) && /saved on this iPad/i.test(summary),
+    controlled && savedBefore.includes("Not saved") && /^Saved on this device, \d{1,2}:\d{2} [ap]\.m\.$/.test(savedAfter) && /saved on this device/i.test(summary),
     `${savedBefore} / ${savedAfter} / ${summary}`,
   );
   await ready.screenshot({ path: `${out}/m5p-ipad-tonight-saved.png`, fullPage: true });
+
+  // A change after the save (here, a note on the test lead) makes it out of date until saved again.
+  await sleep(1500);
+  await admin.from("leads").update({ notes: "Changed after Get tonight ready (automated)." }).eq("id", tonightLead);
+  await ready.reload();
+  await settle(ready);
+  await ready
+    .waitForFunction((id) => document.querySelector(`[data-lead="${id}"] [data-testid="meeting-saved"]`)?.textContent?.startsWith("Changed since"), tonightLead, { timeout: 20000 })
+    .catch(() => {});
+  const staleLine = (await readyItem.getByTestId("meeting-saved").innerText().catch(() => "")).trim();
+  await ready.getByRole("button", { name: "Get tonight ready" }).click();
+  await ready
+    .waitForFunction((id) => document.querySelector(`[data-lead="${id}"] [data-testid="meeting-saved"]`)?.textContent?.startsWith("Saved on this device"), tonightLead, { timeout: 60000 })
+    .catch(() => {});
+  const resavedLine = (await readyItem.getByTestId("meeting-saved").innerText().catch(() => "")).trim();
+  check(
+    "a change to the lead after saving shows the save is out of date, and saving again fixes it",
+    staleLine === "Changed since it was saved. Tap Get tonight ready again." && resavedLine.startsWith("Saved on this device"),
+    `${staleLine} / ${resavedLine}`,
+  );
   try {
     process.kill(-offlineServer.pid, "SIGTERM");
   } catch {}
   for (let i = 0; i < 30 && (await serverAnswers(offlineBase)); i += 1) await sleep(500);
   const gone = !(await serverAnswers(offlineBase));
-  await ready.goto(`${offlineBase}/meeting/${tonightLead}#start`).catch(() => {});
+  await ready.goto(`${offlineBase}/app`).catch(() => {});
+  await ready.getByTestId("meetings-tonight").waitFor({ timeout: 30000 }).catch(() => {});
+  const landedOnMeetings = new URL(ready.url()).pathname === "/app/meetings";
+  check(
+    "without signal, opening the app's start page lands on the saved Meetings page",
+    gone && landedOnMeetings && (await ready.locator(`[data-testid="meeting-item"][data-lead="${tonightLead}"]`).count()) === 1,
+    ready.url(),
+  );
+  await ready.getByRole("link", { name: `Start the meeting with ${TEST_LEAD} Tonight` }).click().catch(() => {});
   await ready.locator('ol[aria-label="Where you are"]').waitFor({ timeout: 30000 }).catch(() => {});
   const opened = await ready
     .waitForFunction(() => {
@@ -298,7 +336,7 @@ try {
     .then(() => true)
     .catch(() => false);
   check(
-    "with the server gone, a meeting never opened on this device opens from what Get tonight ready saved, mockup and all",
+    "and its Start opens a meeting never opened on this device, from what Get tonight ready saved, mockup and all",
     gone && opened,
     gone ? "" : "the second server did not stop",
   );

@@ -332,7 +332,7 @@ export default async function LeadPage({
 
       {isOwner ? <MockupCard leadId={lead.id} userId={me.id} mockupUrl={slotUrls.mockup ?? null} /> : null}
 
-      <Card>
+      <Card id="track-colour" className="scroll-mt-24">
         <CardHeader>
           <CardTitle>Track colour</CardTitle>
         </CardHeader>

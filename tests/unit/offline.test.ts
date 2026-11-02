@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { OFFLINE_CACHES, imageCacheKey, meetingFiles, meetingPageUrl } from "@/lib/offline";
+import { MEETINGS_PAGE, OFFLINE_CACHES, imageCacheKey, meetingFiles, meetingPageUrl } from "@/lib/offline";
 
 const ORIGIN = "https://vesper.example";
 const SIGNED = "https://abcd.supabase.co/storage/v1/object/sign/lead-photos/u1/p1.jpg?token=eyJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ4In0.sig-_x";
@@ -59,5 +59,6 @@ describe("the caches the service worker reads", () => {
     expect(sw).toContain("const ASSETS = `vesper-assets-${VERSION}`;");
     expect(sw).toContain("const IMAGES = `vesper-images-${VERSION}`;");
     expect(sw).toContain("const PAGES = `vesper-pages-${VERSION}`;");
+    expect(sw).toContain(`const MEETINGS_PAGE = "${MEETINGS_PAGE}";`);
   });
 });

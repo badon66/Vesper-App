@@ -2,6 +2,7 @@
 
 import { Plus, X } from "lucide-react";
 import { useActionState, useEffect, useRef, useState } from "react";
+import { findLeadsAtPlace, type DuplicateLead } from "@/app/(app)/app/leads/actions";
 import {
   searchLeadsForMeeting,
   startMeetingForNewPerson,
@@ -18,12 +19,13 @@ import { submitKeepingValues } from "@/lib/forms/submit";
 // Start a meeting (Keenan, 2026-11-02), for someone not booked through the
 // schedule: find their lead, or add them with a name and an address, and
 // go straight into meeting mode. It opens on the page rather than in a
-// pop-up, so the address suggestions and the iPad's keyboard have room.
-export function StartMeeting({ mapsKey }: { mapsKey: string | null }) {
+// pop-up, so the address suggestions and the iPad's keyboard have room,
+// and the meeting lists step aside while it is open.
+export function StartMeeting({ mapsKey, children }: { mapsKey: string | null; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-10">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Meetings</h1>
@@ -41,7 +43,7 @@ export function StartMeeting({ mapsKey }: { mapsKey: string | null }) {
           {open ? "Close" : "Start a meeting"}
         </Button>
       </div>
-      {open ? <StartPanel mapsKey={mapsKey} /> : null}
+      {open ? <StartPanel mapsKey={mapsKey} /> : children}
     </div>
   );
 }
@@ -54,6 +56,8 @@ function StartPanel({ mapsKey }: { mapsKey: string | null }) {
   const [searchError, setSearchError] = useState<string | null>(null);
   const latest = useRef(0);
   const [neighbourhood, setNeighbourhood] = useState("");
+  // New lead's own check: a house that already has a lead.
+  const [sameHouse, setSameHouse] = useState<DuplicateLead[]>([]);
   const [state, formAction, pending] = useActionState(startMeetingForNewPerson, initialState);
 
   // Search as Keenan types, keeping only the newest answer.
@@ -159,9 +163,33 @@ function StartPanel({ mapsKey }: { mapsKey: string | null }) {
         <AddressField
           apiKey={mapsKey}
           error={state.errors?.address_line}
-          onPicked={(picked) => setNeighbourhood(picked?.neighbourhood ?? "")}
+          place="house"
+          onPicked={(picked) => {
+            setNeighbourhood(picked?.neighbourhood ?? "");
+            setSameHouse([]);
+            if (picked?.placeId) findLeadsAtPlace(picked.placeId, null).then(setSameHouse, () => setSameHouse([]));
+          }}
         />
         <input type="hidden" name="neighbourhood" value={neighbourhood} />
+        {sameHouse.length > 0 ? (
+          <div role="status" className="flex flex-col gap-2 rounded-md border border-foreground/60 px-4 py-3 text-sm">
+            <p className="font-semibold">This address already has a lead. Start with it instead, so it stays with its setter:</p>
+            <ul className="flex flex-col gap-2">
+              {sameHouse.map((lead) => (
+                <li key={lead.id} className="flex flex-wrap items-center justify-between gap-3">
+                  <span>
+                    {lead.name}, {lead.status}, added by {lead.addedBy} on {lead.addedOn}
+                  </span>
+                  <Button asChild variant="outline" className="min-h-11 px-6">
+                    <a href={`/meeting/${lead.id}#start`} aria-label={`Start the meeting with ${lead.name}`}>
+                      Start
+                    </a>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {state.error && !state.errors ? (
           <p role="alert" className="text-sm font-semibold text-destructive">
             {state.error}

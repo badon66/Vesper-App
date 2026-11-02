@@ -20,6 +20,9 @@ export type MeetingItemData = {
   missingMockup: boolean;
   missingColour: boolean;
   next: boolean;
+  // The latest change to anything its meeting page shows (the lead, its
+  // mockup, Settings), so an older save counts as out of date.
+  changedAt: string;
 };
 
 export function MeetingItem({ item, children }: { item: MeetingItemData; children?: React.ReactNode }) {
@@ -36,12 +39,15 @@ export function MeetingItem({ item, children }: { item: MeetingItemData; childre
         {item.host ? <p className="text-sm text-muted-foreground">Host: {item.host}</p> : null}
         {item.outcome ? <p className="text-sm font-semibold">{item.outcome}</p> : null}
         {item.missingMockup || item.missingColour ? (
-          <ul className="mt-1 flex flex-col gap-1" aria-label="To fix before the meeting">
+          <ul className="mt-1 flex flex-col" aria-label="To fix before the meeting">
             {item.missingMockup ? (
               <li className="flex flex-wrap items-center gap-x-2 text-sm font-semibold">
                 <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
                 No mockup yet.
-                <Link href={`/app/leads/${item.leadId}`} className="font-normal underline underline-offset-4">
+                <Link
+                  href={`/app/leads/${item.leadId}#mockup`}
+                  className="inline-flex min-h-11 items-center font-normal underline underline-offset-4"
+                >
                   Add it on the lead page
                 </Link>
               </li>
@@ -50,7 +56,10 @@ export function MeetingItem({ item, children }: { item: MeetingItemData; childre
               <li className="flex flex-wrap items-center gap-x-2 text-sm font-semibold">
                 <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
                 No track colour yet.
-                <Link href={`/app/leads/${item.leadId}`} className="font-normal underline underline-offset-4">
+                <Link
+                  href={`/app/leads/${item.leadId}#track-colour`}
+                  className="inline-flex min-h-11 items-center font-normal underline underline-offset-4"
+                >
                   Set it on the lead page
                 </Link>
               </li>

@@ -37,17 +37,24 @@ export default async function MeetingsPage() {
   const upcoming = laterAll.filter((meeting) => LIVE.has(meeting.status));
 
   const leadIds = Array.from(new Set([...tonight, ...upcoming].map((meeting) => meeting.lead_id)));
-  const [colourRows, mockupRows, hosts] = await Promise.all([
+  const [leadRows, mockupRows, hosts, settingsRow] = await Promise.all([
     leadIds.length > 0
-      ? supabase.from("leads").select("id, track_colour_id, track_ral_code").in("id", leadIds).then(({ data }) => data ?? [])
+      ? supabase.from("leads").select("id, track_colour_id, track_ral_code, updated_at").in("id", leadIds).then(({ data }) => data ?? [])
       : Promise.resolve([]),
     leadIds.length > 0
-      ? supabase.from("lead_photos").select("lead_id").eq("slot", "mockup").in("lead_id", leadIds).then(({ data }) => data ?? [])
+      ? supabase.from("lead_photos").select("lead_id, created_at").eq("slot", "mockup").in("lead_id", leadIds).then(({ data }) => data ?? [])
       : Promise.resolve([]),
     namesById(supabase, [...tonight, ...upcoming].map((meeting) => meeting.host_id)),
+    supabase.from("settings").select("updated_at").eq("id", 1).maybeSingle().then(({ data }) => data),
   ]);
-  const hasColour = new Set(colourRows.filter((row) => row.track_colour_id || row.track_ral_code).map((row) => row.id));
+  const hasColour = new Set(leadRows.filter((row) => row.track_colour_id || row.track_ral_code).map((row) => row.id));
   const hasMockup = new Set(mockupRows.map((row) => row.lead_id));
+  // When anything a meeting page shows last changed: the lead (colour,
+  // initials, details), its mockup, or Settings (the presentation, prices).
+  const changedAt = new Map<string, number>();
+  const settingsChanged = Date.parse(settingsRow?.updated_at ?? "") || 0;
+  for (const row of leadRows) changedAt.set(row.id, Math.max(settingsChanged, Date.parse(row.updated_at) || 0));
+  for (const row of mockupRows) changedAt.set(row.lead_id, Math.max(changedAt.get(row.lead_id) ?? 0, Date.parse(row.created_at) || 0));
 
   // The next meeting still to come tonight gets the one gold Start.
   const nextTonight = tonight.find((meeting) => LIVE.has(meeting.status) && Date.parse(meeting.ends_at) > now)?.id ?? null;
@@ -63,6 +70,7 @@ export default async function MeetingsPage() {
     missingMockup: !hasMockup.has(meeting.lead_id),
     missingColour: !hasColour.has(meeting.lead_id),
     next: meeting.id === nextTonight,
+    changedAt: new Date(changedAt.get(meeting.lead_id) ?? settingsChanged).toISOString(),
   });
 
   // After tonight, by evening.
@@ -72,10 +80,10 @@ export default async function MeetingsPage() {
     evenings.set(day, [...(evenings.get(day) ?? []), toItem(meeting)]);
   }
 
+  // While Start a meeting is open, the lists step aside: someone new may be
+  // standing beside the iPad, and other customers stay off the screen.
   return (
-    <div className="flex flex-col gap-10">
-      <StartMeeting mapsKey={getPublicEnv().NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null} />
-
+    <StartMeeting mapsKey={getPublicEnv().NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null}>
       <TonightList items={tonight.map(toItem)} />
 
       <section aria-labelledby="upcoming-heading" className="flex flex-col gap-4" data-testid="meetings-upcoming">
@@ -100,6 +108,6 @@ export default async function MeetingsPage() {
           </div>
         ))}
       </section>
-    </div>
+    </StartMeeting>
   );
 }

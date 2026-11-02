@@ -16,6 +16,10 @@ export function imageCacheKey(url: string): string {
   return parsed.origin + parsed.pathname;
 }
 
+// The Meetings page, kept too, so the app opened without signal still
+// leads to tonight's saved meetings. Must match MEETINGS_PAGE in sw.js.
+export const MEETINGS_PAGE = "/app/meetings";
+
 export function meetingPageUrl(origin: string, leadId: string): string {
   return `${origin}/meeting/${leadId}`;
 }

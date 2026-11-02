@@ -19,11 +19,13 @@ export function AdminGear() {
       aria-current={current ? "page" : undefined}
       data-testid="admin-gear"
       className={cn(
-        "inline-flex size-11 items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        current ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
+        "inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-md px-2.5 text-sm font-semibold text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
+        current && "bg-muted",
       )}
     >
       <Settings aria-hidden="true" className="size-5" />
+      {/* Named where there is room; a phone shows the gear alone. */}
+      <span className="hidden sm:inline">Admin</span>
     </Link>
   );
 }
