@@ -11,6 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { quoteLinkMessage } from "@/lib/quote-link/view";
 import { formatDateTime, formatLongDay } from "@/lib/time";
 
+// Times end in "p.m.", so a sentence ending in one gets no second full stop.
+const sentence = (text: string) => (text.endsWith(".") ? text : `${text}.`);
+
 // The quote on the lead page (Keenan, 2026-11-02; owner only): the total,
 // the valid-until date and the customer's link: whether it went out, how
 // often it was opened, what they are looking at, and Book my install.
@@ -138,15 +141,15 @@ export function QuoteCard({ leadId, firstName, phone, quote, link }: QuoteCardPr
               <p className="text-muted-foreground">Not sent yet.</p>
             ) : !link.live ? (
               <p className="text-muted-foreground">
-                Turned off {formatDateTime(link.revokedAt ?? link.createdAt)}. Send quote link makes a new one.
+                {sentence(`Turned off ${formatDateTime(link.revokedAt ?? link.createdAt)}`)} Send quote link makes a new one.
               </p>
             ) : (
               <>
-                <p>Made {formatDateTime(link.createdAt)}.</p>
+                <p>{sentence(`Made ${formatDateTime(link.createdAt)}`)}</p>
                 <p data-testid="quote-link-views">
                   {link.views === 0
                     ? "Not opened yet."
-                    : `Opened ${link.views === 1 ? "once" : `${link.views} times`}, last ${formatDateTime(link.lastViewedAt ?? link.createdAt)}.`}
+                    : sentence(`Opened ${link.views === 1 ? "once" : `${link.views} times`}, last ${formatDateTime(link.lastViewedAt ?? link.createdAt)}`)}
                 </p>
                 {link.looking ? (
                   <p data-testid="quote-link-looking">
