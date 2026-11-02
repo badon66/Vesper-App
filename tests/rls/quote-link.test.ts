@@ -36,8 +36,9 @@ const BUCKET = "lead-photos";
 const INTERNAL = "INTERNAL NOTE never shown to a customer";
 
 type TestUser = { email: string; password: string; id: string; client: Client };
-const users: Record<"a" | "nobody", TestUser> = {
+const users: Record<"a" | "b" | "nobody", TestUser> = {
   a: { email: `rls-ql-a-${stamp}@example.com`, password: `Rls-ql-a-${stamp}-pass`, id: "", client: admin },
+  b: { email: `rls-ql-b-${stamp}@example.com`, password: `Rls-ql-b-${stamp}-pass`, id: "", client: admin },
   nobody: { email: `rls-ql-none-${stamp}@example.com`, password: `Rls-ql-n-${stamp}-pass`, id: "", client: admin },
 };
 
@@ -105,7 +106,7 @@ async function addQuote(leadId: string, validUntil: string) {
 }
 
 beforeAll(async () => {
-  for (const key of ["a", "nobody"] as const) {
+  for (const key of ["a", "b", "nobody"] as const) {
     const u = users[key];
     const { data, error } = await admin.auth.admin.createUser({
       email: u.email,
@@ -385,6 +386,27 @@ describe("the page's writes", () => {
     expect(stranger.error !== null || stranger.data?.length === 0).toBe(true);
     const nobody = await users.nobody.client.from("push_subscriptions").select("sealed");
     expect(nobody.data ?? []).toEqual([]);
+  });
+});
+
+describe("notification devices", () => {
+  it("each member sees and changes only their own", async () => {
+    const mine = await users.b.client
+      .from("push_subscriptions")
+      .insert({ profile_id: users.b.id, endpoint_hash: "c".repeat(64), sealed: "SEALED-b-device-for-rls", label: "B's phone" })
+      .select("id")
+      .single();
+    expect(mine.error).toBeNull();
+    const aSees = await users.a.client.from("push_subscriptions").select("id, profile_id");
+    expect((aSees.data ?? []).every((row) => row.profile_id === users.a.id)).toBe(true);
+    const aChanges = await users.a.client.from("push_subscriptions").update({ label: "taken" }).eq("id", mine.data!.id).select("id");
+    expect(aChanges.data ?? []).toEqual([]);
+    const forSomeoneElse = await users.a.client
+      .from("push_subscriptions")
+      .insert({ profile_id: users.b.id, endpoint_hash: "d".repeat(64), sealed: "SEALED-not-yours", label: "Not yours" });
+    expect(forSomeoneElse.error?.code).toBe("42501");
+    const { data: still } = await admin.from("push_subscriptions").select("label").eq("id", mine.data!.id).single();
+    expect(still!.label).toBe("B's phone");
   });
 });
 
