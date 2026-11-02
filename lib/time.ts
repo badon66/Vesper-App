@@ -89,10 +89,19 @@ const longDay = new Intl.DateTimeFormat("en-CA", {
   day: "numeric",
 });
 
+const fullDate = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "UTC",
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+});
+
 // A YYYY-MM-DD date as "Thu, Oct 30" or "Thursday, October 30". The date has
 // no time of day, so it is formatted as is, with no time zone shift.
 export const formatDay = (day: string) => weekdayDate.format(new Date(`${day}T12:00:00Z`));
 export const formatLongDay = (day: string) => longDay.format(new Date(`${day}T12:00:00Z`));
+// "November 16, 2026": dates a customer reads, so never raw YYYY-MM-DD.
+export const formatFullDate = (day: string) => fullDate.format(new Date(`${day}T12:00:00Z`));
 
 // The moment of the request. Server Components render once per request, so
 // "has this meeting started" is asked once, against this.

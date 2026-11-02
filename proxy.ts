@@ -21,7 +21,7 @@ export async function proxy(request: NextRequest) {
     const viewAs = parseViewAsCookie(viewAsValue);
     if (!user || !viewAs || viewAs.ownerId !== user.sub) {
       response.cookies.delete(VIEW_AS_COOKIE);
-    } else if (pathname.startsWith("/app") && refusedWhileViewing(request.method, pathname)) {
+    } else if ((pathname.startsWith("/app") || pathname.startsWith("/meeting")) && refusedWhileViewing(request.method, pathname)) {
       return withCookies(
         new NextResponse("View as is read only. Exit it to make changes.", { status: 403 }),
         response,
@@ -29,7 +29,7 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  if (!user && pathname.startsWith("/app")) {
+  if (!user && (pathname.startsWith("/app") || pathname.startsWith("/meeting"))) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";
@@ -55,5 +55,5 @@ function withCookies(target: NextResponse, source: NextResponse) {
 }
 
 export const config = {
-  matcher: ["/login", "/app/:path*"],
+  matcher: ["/login", "/app/:path*", "/meeting/:path*"],
 };

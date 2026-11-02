@@ -15,12 +15,19 @@ export function TrackColourForm({
   options,
   current,
   ralNames,
+  onSaved,
+  requireColour = false,
 }: {
   leadId: string;
   // The active colours, plus the lead's own colour if it has been retired.
   options: { value: string; label: string }[];
   current: { choice: string | null; ralCode: string | null };
   ralNames: Record<string, string>;
+  // Meeting mode hears about a saved colour, to show it and ask for initials.
+  onSaved?: (choice: string | null, ralCode: string | null) => void;
+  // Meeting mode never saves "no colour": a customer tapping the chosen
+  // colour to agree with it would otherwise clear it.
+  requireColour?: boolean;
 }) {
   const [choice, setChoice] = useState<string | null>(current.choice);
   const [state, setState] = useState<TrackColourState>({});
@@ -29,8 +36,17 @@ export function TrackColourForm({
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
+    const picked = String(formData.get("choice") ?? "") || null;
+    const code = picked === CUSTOM_CHOICE ? String(formData.get("ral_code") ?? "").trim() : null;
     startTransition(async () => {
-      setState(await setTrackColour({}, formData));
+      try {
+        const result = await setTrackColour({}, formData);
+        setState(result);
+        if (result.ok) onSaved?.(picked, code);
+      } catch {
+        // No signal: say so here rather than taking the screen down.
+        setState({ error: "No signal. The colour was not saved. Try again in a moment." });
+      }
     });
   }
 
@@ -69,7 +85,10 @@ export function TrackColourForm({
           Saved.
         </p>
       ) : null}
-      <Button type="submit" size="lg" className="w-full sm:w-fit" disabled={pending}>
+      {requireColour && !choice ? (
+        <p className="text-sm text-muted-foreground">Pick a colour to save it.</p>
+      ) : null}
+      <Button type="submit" size="lg" className="w-full sm:w-fit" disabled={pending || (requireColour && !choice)}>
         {pending ? "Saving" : "Save track colour"}
       </Button>
     </form>

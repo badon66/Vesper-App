@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { submitKeepingValues } from "@/lib/forms/submit";
+import { PAGE_LABELS, type PresentationKind } from "@/lib/presentation";
 import { formatTime } from "@/lib/time";
 import {
   DAY_OPTIONS,
@@ -23,6 +24,8 @@ import {
   type SettingsFormField,
 } from "@/lib/settings/schema";
 import { updateSettings, type SettingsState } from "./actions";
+
+export type PresentationTextPage = { kind: PresentationKind; title: string; body: string };
 
 const initialState: SettingsState = {};
 
@@ -68,7 +71,13 @@ function formatSavedAt(iso: string) {
   return formatTime(iso);
 }
 
-export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
+export function SettingsForm({
+  defaults,
+  presentation,
+}: {
+  defaults: SettingsFormDefaults;
+  presentation: PresentationTextPage[];
+}) {
   const [state, formAction, pending] = useActionState(updateSettings, initialState);
   const errors = state.errors;
 
@@ -149,6 +158,95 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
           <Field name="warranty_text" label="Warranty text" errors={errors}>
             {(p) => <Textarea {...p} rows={6} defaultValue={defaults.warranty_text} />}
           </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Meeting mode</CardTitle>
+          <CardDescription>
+            What the iPad shows and quotes at a meeting. A fee left blank keeps
+            its line out of sight everywhere.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-5 sm:grid-cols-2">
+          <Field name="quote_valid_days" label="Quotes valid for (days)" hint="Every new quote gets a valid-until date this many days out. It can be changed on the quote." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="numeric" min="1" max="90" defaultValue={defaults.quote_valid_days} />}
+          </Field>
+          <Field name="rush_colour_fee_per_ft" label="Rush colour fee ($ per foot)" hint="Added when a custom colour is powder coated this season instead of the factory order. Blank hides that choice on the quote." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.rush_colour_fee_per_ft} />}
+          </Field>
+          <Field name="service_call_fee" label="Service call fee ($)" hint="The flat fee for a service call in years 6 to 10 of the warranty. Blank means the warranty page names no amount." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.service_call_fee} />}
+          </Field>
+          <div className="sm:col-span-2">
+            <Field name="faq_text" label="Common questions" hint="For the leave-behind folder, coming after the first meetings. This started as a draft; make it yours." errors={errors}>
+              {(p) => <Textarea {...p} rows={10} defaultValue={defaults.faq_text} />}
+            </Field>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Presentation</CardTitle>
+          <CardDescription>
+            The six screens of the meeting presentation, in the order they
+            show. The words started as drafts; make them yours. A page with no
+            words or photos is skipped at the meeting, never shown empty.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-6">
+          {presentation.map((page) => (
+            <fieldset key={page.kind} className="flex flex-col gap-3 border-t pt-4 first:border-t-0 first:pt-0">
+              <legend className="sr-only">{PAGE_LABELS[page.kind]}</legend>
+              <p className="text-sm font-semibold text-muted-foreground">{PAGE_LABELS[page.kind]}</p>
+              <input type="hidden" name="presentation_kind" value={page.kind} />
+              <div className="flex flex-col gap-2">
+                <Label htmlFor={`settings-presentation_title_${page.kind}`}>Title on screen</Label>
+                <Input
+                  id={`settings-presentation_title_${page.kind}`}
+                  name={`presentation_title_${page.kind}`}
+                  defaultValue={page.title}
+                  maxLength={80}
+                />
+              </div>
+              {page.kind === "warranty" ? (
+                <>
+                  <input type="hidden" name={`presentation_body_${page.kind}`} defaultValue={page.body} />
+                  <p className="text-sm text-muted-foreground">
+                    This page shows the Warranty text above, word for word.
+                  </p>
+                </>
+              ) : page.kind === "gallery" ? (
+                <>
+                  <input type="hidden" name={`presentation_body_${page.kind}`} defaultValue={page.body} />
+                  <p className="text-sm text-muted-foreground">
+                    This page is photos only. Add them under Presentation photos below.
+                  </p>
+                </>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor={`settings-presentation_body_${page.kind}`}>Words on screen</Label>
+                  <Textarea
+                    id={`settings-presentation_body_${page.kind}`}
+                    name={`presentation_body_${page.kind}`}
+                    rows={page.kind === "install_day" ? 7 : 5}
+                    defaultValue={page.body}
+                  />
+                  {page.kind === "hidden_by_day" ? (
+                    <p className="text-sm text-muted-foreground">
+                      Shown over the day and night photos, uploaded below.
+                    </p>
+                  ) : null}
+                  {page.kind === "install_day" ? (
+                    <p className="text-sm text-muted-foreground">One step per line; the screen numbers them.</p>
+                  ) : null}
+                </div>
+              )}
+            </fieldset>
+          ))}
+          <FieldError id="settings-presentation_pages-error" message={errors?.presentation_pages} />
         </CardContent>
       </Card>
 

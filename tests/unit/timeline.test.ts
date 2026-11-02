@@ -90,7 +90,19 @@ describe("describeEvent", () => {
   });
 
   it("copes with event types from later milestones", () => {
-    expect(describeEvent({ ...base, type: "quote_created" })).toBe("Quote created.");
+    expect(describeEvent({ ...base, type: "quote_accepted" })).toBe("Quote accepted.");
+  });
+
+  it("tells the meeting-mode events plainly, never with an amount", () => {
+    expect(describeEvent({ ...base, type: "quote_created", payload: { quote_id: "q" } })).toBe("Drafted a quote.");
+    expect(describeEvent({ ...base, type: "colour_confirmed", payload: { initials: "MB", colour: "Off-white" } })).toBe(
+      "The customer confirmed Off-white track with their initials, MB.",
+    );
+    expect(describeEvent({ ...base, type: "colour_confirmed", payload: { initials: "MB" } })).toBe(
+      "The customer confirmed the track colour with their initials, MB.",
+    );
+    expect(describeEvent({ ...base, type: "colour_confirmed" })).toBe("The customer confirmed the track colour.");
+    expect(describeEvent({ ...base, type: "photo_added", payload: { photo_id: "p", slot: "mockup" } })).toBe("Added the mockup.");
   });
 
   it("says when a meeting was booked, moved, cancelled or marked, never an amount", () => {

@@ -13,6 +13,7 @@ import { StatusBadge } from "@/components/leads/status-badge";
 import { StatusControl } from "@/components/leads/status-control";
 import { TrackColourForm } from "@/components/leads/track-colour-form";
 import { BookLeadButton, OpenBookingSheet } from "@/components/booking/book-buttons";
+import { MockupCard } from "@/components/meeting/mockup-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth/profile";
@@ -328,6 +329,8 @@ export default async function LeadPage({
           {lead.notes ? <p className="mt-4 text-sm whitespace-pre-wrap">{lead.notes}</p> : null}
         </CardContent>
       </Card>
+
+      {isOwner ? <MockupCard leadId={lead.id} userId={me.id} mockupUrl={slotUrls.mockup ?? null} /> : null}
 
       <Card>
         <CardHeader>

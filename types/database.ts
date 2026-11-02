@@ -459,6 +459,8 @@ export type Database = {
           source: Database["public"]["Enums"]["lead_source"]
           status: Database["public"]["Enums"]["lead_status"]
           track_colour_id: string | null
+          track_colour_initialled_at: string | null
+          track_colour_initials: string | null
           track_ral_code: string | null
           updated_at: string
           wants_price: boolean | null
@@ -508,6 +510,8 @@ export type Database = {
           source?: Database["public"]["Enums"]["lead_source"]
           status?: Database["public"]["Enums"]["lead_status"]
           track_colour_id?: string | null
+          track_colour_initialled_at?: string | null
+          track_colour_initials?: string | null
           track_ral_code?: string | null
           updated_at?: string
           wants_price?: boolean | null
@@ -557,6 +561,8 @@ export type Database = {
           source?: Database["public"]["Enums"]["lead_source"]
           status?: Database["public"]["Enums"]["lead_status"]
           track_colour_id?: string | null
+          track_colour_initialled_at?: string | null
+          track_colour_initials?: string | null
           track_ral_code?: string | null
           updated_at?: string
           wants_price?: boolean | null
@@ -825,6 +831,137 @@ export type Database = {
         }
         Relationships: []
       }
+      quotes: {
+        Row: {
+          accepted_at: string | null
+          adders: Json
+          box_count: number
+          box_price: number
+          colour_timing: string | null
+          created_at: string
+          created_by: string
+          declined_at: string | null
+          discounts: Json
+          financing_offered: boolean
+          gst: number
+          gst_enabled: boolean
+          gst_number: string | null
+          gst_rate: number
+          id: string
+          lead_id: string
+          notes: string | null
+          pdf_path: string | null
+          presented_at: string | null
+          price_per_ft: number
+          runs: Json
+          rush_fee_per_ft: number | null
+          status: Database["public"]["Enums"]["quote_status"]
+          subtotal: number
+          total: number
+          total_feet: number
+          track_colour_name: string | null
+          track_custom: boolean
+          track_ral_code: string | null
+          updated_at: string
+          valid_until: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          adders?: Json
+          box_count?: number
+          box_price: number
+          colour_timing?: string | null
+          created_at?: string
+          created_by: string
+          declined_at?: string | null
+          discounts?: Json
+          financing_offered?: boolean
+          gst?: number
+          gst_enabled?: boolean
+          gst_number?: string | null
+          gst_rate: number
+          id?: string
+          lead_id: string
+          notes?: string | null
+          pdf_path?: string | null
+          presented_at?: string | null
+          price_per_ft: number
+          runs?: Json
+          rush_fee_per_ft?: number | null
+          status?: Database["public"]["Enums"]["quote_status"]
+          subtotal?: number
+          total?: number
+          total_feet?: number
+          track_colour_name?: string | null
+          track_custom?: boolean
+          track_ral_code?: string | null
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          adders?: Json
+          box_count?: number
+          box_price?: number
+          colour_timing?: string | null
+          created_at?: string
+          created_by?: string
+          declined_at?: string | null
+          discounts?: Json
+          financing_offered?: boolean
+          gst?: number
+          gst_enabled?: boolean
+          gst_number?: string | null
+          gst_rate?: number
+          id?: string
+          lead_id?: string
+          notes?: string | null
+          pdf_path?: string | null
+          presented_at?: string | null
+          price_per_ft?: number
+          runs?: Json
+          rush_fee_per_ft?: number | null
+          status?: Database["public"]["Enums"]["quote_status"]
+          subtotal?: number
+          total?: number
+          total_feet?: number
+          track_colour_name?: string | null
+          track_custom?: boolean
+          track_ral_code?: string | null
+          updated_at?: string
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ral_classic_colours: {
         Row: {
           code: string
@@ -850,6 +987,7 @@ export type Database = {
           company: Json
           distance_warning_km: number
           door_guide: string
+          faq_text: string
           gst_enabled: boolean
           gst_number: string | null
           gst_rate: number
@@ -865,7 +1003,10 @@ export type Database = {
           not_qualified_reasons: string[]
           presentation: Json
           price_per_ft: number
+          quote_valid_days: number
           referral_credit: number
+          rush_colour_fee_per_ft: number | null
+          service_call_fee: number | null
           step_note_after_door: string
           step_note_at_door: string
           step_note_book: string
@@ -881,6 +1022,7 @@ export type Database = {
           company: Json
           distance_warning_km?: number
           door_guide?: string
+          faq_text?: string
           gst_enabled?: boolean
           gst_number?: string | null
           gst_rate?: number
@@ -896,7 +1038,10 @@ export type Database = {
           not_qualified_reasons?: string[]
           presentation: Json
           price_per_ft?: number
+          quote_valid_days?: number
           referral_credit?: number
+          rush_colour_fee_per_ft?: number | null
+          service_call_fee?: number | null
           step_note_after_door?: string
           step_note_at_door?: string
           step_note_book?: string
@@ -912,6 +1057,7 @@ export type Database = {
           company?: Json
           distance_warning_km?: number
           door_guide?: string
+          faq_text?: string
           gst_enabled?: boolean
           gst_number?: string | null
           gst_rate?: number
@@ -927,7 +1073,10 @@ export type Database = {
           not_qualified_reasons?: string[]
           presentation?: Json
           price_per_ft?: number
+          quote_valid_days?: number
           referral_credit?: number
+          rush_colour_fee_per_ft?: number | null
+          service_call_fee?: number | null
           step_note_after_door?: string
           step_note_at_door?: string
           step_note_book?: string
@@ -1484,6 +1633,7 @@ export type Database = {
         | "edited"
         | "meeting_moved"
         | "meeting_cancelled"
+        | "colour_confirmed"
       house_type: "bungalow" | "bi_level" | "two_storey" | "other"
       install_timing: "before_christmas" | "new_year" | "no_rush"
       lead_source: "door" | "referral" | "neighbour_card" | "website" | "other"
@@ -1506,7 +1656,8 @@ export type Database = {
         | "no_show"
         | "cancelled"
         | "moved"
-      photo_slot: "front" | "left_corner" | "right_corner" | "soffit"
+      photo_slot: "front" | "left_corner" | "right_corner" | "soffit" | "mockup"
+      quote_status: "draft" | "presented" | "accepted" | "declined" | "expired"
       roofline_areas: "front" | "front_and_sides" | "full_wrap" | "not_sure"
       soffit_colour:
         | "white"
@@ -1662,6 +1813,7 @@ export const Constants = {
         "edited",
         "meeting_moved",
         "meeting_cancelled",
+        "colour_confirmed",
       ],
       house_type: ["bungalow", "bi_level", "two_storey", "other"],
       install_timing: ["before_christmas", "new_year", "no_rush"],
@@ -1687,7 +1839,8 @@ export const Constants = {
         "cancelled",
         "moved",
       ],
-      photo_slot: ["front", "left_corner", "right_corner", "soffit"],
+      photo_slot: ["front", "left_corner", "right_corner", "soffit", "mockup"],
+      quote_status: ["draft", "presented", "accepted", "declined", "expired"],
       roofline_areas: ["front", "front_and_sides", "full_wrap", "not_sure"],
       soffit_colour: [
         "white",
