@@ -45,12 +45,12 @@ export async function TonightMeetings() {
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {meetings.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            When a setter books a meeting for tonight, it shows here in time order.{" "}
-            <Link href="/app/schedule" className="font-semibold underline underline-offset-4">
+          <div className="flex flex-col items-start gap-1">
+            <p className="text-sm text-pretty text-muted-foreground">When a setter books a meeting for tonight, it shows here in time order.</p>
+            <Link href="/app/schedule" className="inline-flex min-h-11 items-center text-sm font-semibold underline underline-offset-4">
               Open the schedule
             </Link>
-          </p>
+          </div>
         ) : (
           meetings.map((meeting) => (
             <MeetingCard
