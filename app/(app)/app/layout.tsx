@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AdminGear } from "@/components/admin-gear";
 import { AppTabs } from "@/components/app-tabs";
 import { BookingSheetHost } from "@/components/booking/booking-sheet";
 import { Wordmark } from "@/components/brand/wordmark";
@@ -6,6 +7,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { ViewAsBar } from "@/components/view-as-bar";
 import { getViewer } from "@/lib/auth/profile";
+import { showsAdminGear } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 import { signOut } from "./actions";
 
@@ -43,6 +45,7 @@ export default async function AppLayout({
               <Wordmark />
             </Link>
             <div className="flex items-center gap-1">
+              {showsAdminGear(profile.role) ? <AdminGear /> : null}
               <ThemeToggle />
               <form action={signOut}>
                 <Button type="submit" variant="ghost" size="sm" disabled={viewingAs}>

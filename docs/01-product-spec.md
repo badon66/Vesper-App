@@ -54,7 +54,7 @@ Keenan marks earnings paid in batches. Only sales users earn; leads assigned to 
 The app is built around the evening schedule, not a list of people.
 
 - Phone and iPad: a bottom tab bar. Screens 1024 px and wider: a slim left side rail with the same items. No top tabs anywhere.
-- Keenan's tabs: Home, Schedule, New lead (the prominent centre button), Leads, Admin. Admin holds People, Settings and Pay. There is no separate Dashboard tab: Keenan's Home is the dashboard.
+- Keenan's tabs: Home, Schedule, Meetings, New lead (the prominent gold button), Leads. Admin, holding People, Settings and Pay, is a gear in the header, because six items crowd a phone's tab bar (Keenan, 2026-11-02). There is no separate Dashboard tab: Keenan's Home is the dashboard.
 - Setter tabs: Home, Schedule, New lead, Leads, My pay.
 - A tab that belongs to a later milestone does not show until that milestone is built.
 - A tap on a tab answers at once with a loading screen, and the screen fills in as its data arrives.
@@ -190,6 +190,8 @@ Built in two takes. Take 1 is the presentation, This house and the live quote bu
 **Live quote builder.** Runs by name (front upper, left gable, garage, and so on), feet each, lower or upper level. Boxes (default 1). Adders for height or complexity with a label and amount. Neighbour discount and a custom discount. Financing available as a flag only, explained in person, with "No payment until your install is complete." on screen. Settings supplies the defaults ($23 per foot, $500 per box, $150 neighbour) and Keenan can change every price for that quote only; the quote stores the prices it actually used, so later Settings changes never alter it. Totals update live from `lib/pricing.ts`, covered by unit tests, and read like "$3,450 + GST" with no GST dollar figure; with GST off nothing mentions GST. Every quote has a valid-until date, default `settings.quote_valid_days` days out (14).
 
 **Track colour pricing.** A stocked colour (the Track colours list) is included. A non-stock colour is included if the customer waits for the factory order (spring install). If they want it this season, the rush colour fee per foot from Settings is added for every foot. When the rush fee is not set, the this-season choice is hidden, never blank.
+
+**Meetings (Keenan, 2026-11-02).** Meeting mode's home, owner only; setters never see it. Tonight's meetings in time order, each with the time, the customer's name and address, and a big Start that opens meeting mode, flagged when the mockup isn't uploaded or the track colour isn't set, so it can be fixed before he leaves. Upcoming meetings below, the same way. Start a meeting, for someone not booked through the schedule: search existing leads, or add a new person with a name and an address and go straight into meeting mode. Get tonight ready saves every one of tonight's meetings on the iPad, photos included, so each opens without signal, and shows which are saved and when.
 
 **Offline.** Houses have weak signal. Meeting mode opened once with signal keeps working without it: the presentation content and images are cached on the iPad, the quote math runs on the iPad, and the quote draft stays on the iPad (and survives a reload) until it is saved. Saving the quote or the initials needs signal, and the screen says so plainly instead of losing anything.
 

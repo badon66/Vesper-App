@@ -46,7 +46,7 @@ export function MockupCard({ leadId, userId, mockupUrl }: { leadId: string; user
   }
 
   return (
-    <Card data-testid="mockup-card">
+    <Card id="mockup" className="scroll-mt-24" data-testid="mockup-card">
       <CardHeader>
         <CardTitle>Meeting mode</CardTitle>
         <CardDescription>

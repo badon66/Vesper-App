@@ -5,7 +5,11 @@
 //   - signed storage images, cache-first by path with the signature
 //     stripped, so a re-signed URL for the same photo still hits the cache;
 //   - the meeting document itself, network-first with the last good copy
-//     as the fallback, so an iPad reload in a dead spot still opens.
+//     as the fallback, so an iPad reload in a dead spot still opens;
+//   - the Meetings page the same way (Get tonight ready saves it too), and
+//     any other app page that can't load without signal sends the iPad to
+//     that saved Meetings page, so the app opened from the home screen, or
+//     the way out of a meeting, still leads back to tonight's meetings.
 // Everything else goes straight to the network, untouched.
 
 const VERSION = "v1";
@@ -55,6 +59,8 @@ async function cacheFirstImage(request, url) {
   return response;
 }
 
+const MEETINGS_PAGE = "/app/meetings";
+
 async function meetingDocument(request) {
   const cache = await caches.open(PAGES);
   try {
@@ -68,6 +74,20 @@ async function meetingDocument(request) {
   } catch {
     const hit = await cache.match(request.url);
     if (hit) return hit;
+    throw new Error("offline");
+  }
+}
+
+// Any other app page: straight to the network. Without signal, the saved
+// Meetings page, if there is one.
+async function appDocument(request, url) {
+  try {
+    return await fetch(request);
+  } catch {
+    const cache = await caches.open(PAGES);
+    if (await cache.match(url.origin + MEETINGS_PAGE)) {
+      return Response.redirect(url.origin + MEETINGS_PAGE, 302);
+    }
     throw new Error("offline");
   }
 }
@@ -88,12 +108,14 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (
-    url.origin === self.location.origin &&
-    request.mode === "navigate" &&
-    url.pathname.startsWith("/meeting/")
-  ) {
-    event.respondWith(meetingDocument(request));
-    return;
+  if (url.origin === self.location.origin && request.mode === "navigate") {
+    if (url.pathname.startsWith("/meeting/") || url.pathname === MEETINGS_PAGE) {
+      event.respondWith(meetingDocument(request));
+      return;
+    }
+    if (url.pathname === "/app" || url.pathname.startsWith("/app/")) {
+      event.respondWith(appDocument(request, url));
+      return;
+    }
   }
 });

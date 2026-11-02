@@ -50,6 +50,7 @@ export function AddressField({
   onPicked,
   leadId = null,
   linkLeads = true,
+  place = "door",
 }: {
   apiKey: string | null;
   defaults?: AddressDefaults;
@@ -57,6 +58,9 @@ export function AddressField({
   error?: string;
   onPicked: (picked: PickedAddress | null) => void;
   leadId?: string | null;
+  // Where the person is standing when it's used: a setter at the door, or
+  // Keenan at the house for a meeting nobody booked.
+  place?: "door" | "house";
   // False inside the booking sheet, where a link would change the page
   // hidden behind it: nearby leads are named as text there.
   linkLeads?: boolean;
@@ -179,7 +183,9 @@ export function AddressField({
   const hint = picking
     ? "Getting the map position."
     : position?.source === "device"
-      ? `Map position from this phone at the door, accurate to about ${Math.round(position.accuracy ?? 0)} m.`
+      ? place === "house"
+        ? `Map position from this device at the house, accurate to about ${Math.round(position.accuracy ?? 0)} m.`
+        : `Map position from this phone at the door, accurate to about ${Math.round(position.accuracy ?? 0)} m.`
       : position
         ? "Map position saved."
       : unavailable
@@ -255,11 +261,14 @@ export function AddressField({
       {position?.source !== "picked" && !picking ? (
         <div className="flex flex-col gap-1">
           {!position ? (
-            <p className="text-sm text-muted-foreground">Brand-new street Google doesn&apos;t have yet? At the door:</p>
+            <p className="text-sm text-muted-foreground">
+              Brand-new street Google doesn&apos;t have yet? {place === "house" ? "At the house:" : "At the door:"}
+            </p>
           ) : null}
           <UseMyPosition
             onPosition={useDevicePosition}
             label={position ? "Take the position again" : "Use where I'm standing"}
+            place={place}
           />
         </div>
       ) : null}

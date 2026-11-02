@@ -2,7 +2,7 @@
 
 One milestone per build session. A milestone is done when every criterion passes in the full automated suite, including the live walk-through on a phone-sized screen against the real database. Anything the suite cannot reach is named in the report. Keep the current milestone marked.
 
-**Current milestone: M5 take 1** (Keenan, 2026-11-02): Meeting mode's first working version, on a preview link by 9 am Calgary time on 2026-11-03, ahead of his first meeting that evening. Built and green on branch `m5-meeting-mode`; waiting for Keenan's look and "push the changes". M5 moved ahead of M4 at Keenan's direction; M4 follows M5.
+**Current milestone: M5 take 2, after Keenan's first meetings.** M5 take 1 was released on 2026-11-02 (merge `b075554`), and the Meetings page, meeting mode's own home in the owner's navigation, the same day (branch `m5-meetings-page`, merged on green as Keenan approved for his first meeting that evening). Take 2 starts from what those meetings show, then M4.
 
 ## M0: Foundation
 Repo, Next.js App Router with TypeScript, Tailwind, shadcn/ui, Supabase client and server helpers, environment setup, PWA manifest and icons, base layout with the brand, light and dark themes, a protected `/app` route group with a working email and password login (accounts are created by the owner in the Supabase dashboard until M1), Vercel preview deploy.
@@ -151,6 +151,15 @@ Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a previe
 - [x] The warranty wording, rush colour fee, service call fee, FAQ text and quote valid days live in Settings; the exact warranty wording Keenan gave is seeded
 - [x] Quotes are owner-only in RLS; sales users can never read them; no dollar amount is written to leads, lead_events or meetings
 - [x] Design: one impeccable shape before building, one critique and polish pass before the preview, scores in the report; deeper rounds wait for take 2
+
+### The Meetings page (Keenan, 2026-11-02; merge on green, approved)
+- [x] Meetings sits in the owner's side rail and bottom bar right after Schedule; setters never see it, and the page refuses them (and View as) on the server
+- [x] If six items crowd the phone's tab bar, Admin becomes a gear in the header instead, and the rail and the bar keep the same items
+- [x] Tonight's meetings in time order: time, customer name, address, a big Start that opens meeting mode; a meeting with no mockup or no track colour is flagged, with the way to fix it
+- [x] Upcoming meetings below, the same way
+- [x] Start a meeting: search existing leads, or add a new person (name and address) and go straight into meeting mode
+- [x] Get tonight ready saves every one of tonight's meetings on the iPad, photos included, so each opens without signal, and shows which ones are saved
+- [x] The full suite passes, including a walk-through that saves tonight with Get tonight ready, stops the server, and opens a meeting that was never opened before
 
 ### Take 2: after Keenan's first meetings
 - [ ] The leave-behind folder: a branded, always-white PDF through AirPrint and a share sheet: the personal quote (runs, feet, track colour, line-by-line prices, valid until), the mockup full page, a one-page overview, the warranty summary, the FAQ from Settings, and the company contact ((403) 895-9915, info@vesperlighting.ca, 448 Strathcona Drive SW, Calgary, AB T3H 1M3, never a unit number)
