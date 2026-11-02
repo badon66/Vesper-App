@@ -142,7 +142,9 @@ export const leadFormSchema = z
       photo_slot_soffit,
       ...rest
     } = values;
-    const slotPaths: Record<PhotoSlot, string | null> = {
+    // The lead form carries the four guided slots; the mockup (M5) is
+    // uploaded by the owner on the lead page, never through this form.
+    const slotPaths: Partial<Record<PhotoSlot, string | null>> = {
       front: photo_slot_front,
       left_corner: photo_slot_left_corner,
       right_corner: photo_slot_right_corner,

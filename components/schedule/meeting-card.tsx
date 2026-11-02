@@ -124,6 +124,14 @@ export function MeetingCard({
           >
             Navigate
           </a>
+          {isOwner ? (
+            <Link
+              href={`/meeting/${lead.id}`}
+              className="inline-flex min-h-11 items-center rounded-md border border-primary px-4 text-sm font-semibold"
+            >
+              Meeting mode
+            </Link>
+          ) : null}
         </div>
       ) : null}
 

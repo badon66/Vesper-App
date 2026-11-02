@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
+import { ServiceWorker } from "@/components/service-worker";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
@@ -40,6 +41,7 @@ export default function RootLayout({
     <html lang="en" className={manrope.variable} suppressHydrationWarning>
       <body className="min-h-dvh">
         <ThemeProvider>{children}</ThemeProvider>
+        <ServiceWorker />
       </body>
     </html>
   );
