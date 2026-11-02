@@ -97,6 +97,18 @@ export function describeEvent(event: TimelineEvent): string {
       if (colour && initials) return `The customer confirmed ${colour} track with their initials, ${initials}.`;
       return initials ? `The customer confirmed the track colour with their initials, ${initials}.` : "The customer confirmed the track colour.";
     }
+    // The customer quote link (2026-11-02). The option is in words; no
+    // timeline entry ever carries a price.
+    case "quote_link_created":
+      return "Made the quote link for the customer.";
+    case "quote_link_opened":
+      return "Opened the quote link.";
+    case "quote_link_revoked":
+      return "Turned off the quote link.";
+    case "install_requested": {
+      const option = typeof payload.option === "string" && payload.option ? payload.option : null;
+      return option ? `Tapped Book my install: ${sentence(option)}` : "Tapped Book my install.";
+    }
     case "edited": {
       const fields = Array.isArray(payload.fields)
         ? payload.fields.filter((field): field is string => typeof field === "string")
@@ -141,4 +153,10 @@ export function describeEvent(event: TimelineEvent): string {
       return `${words.charAt(0).toUpperCase()}${words.slice(1)}.`;
     }
   }
+}
+
+// Events the customer makes on their quote link, with no member behind
+// them: the timeline names the customer instead of "Vesper".
+export function isCustomerEvent(type: TimelineEvent["type"]): boolean {
+  return type === "quote_link_opened" || type === "install_requested";
 }

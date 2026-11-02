@@ -52,6 +52,12 @@ export async function loadCustomerQuote(token: string): Promise<LoadedQuote> {
 export async function quoteBaseUrl(): Promise<string> {
   const configured = getExtrasEnv().QUOTE_BASE_URL;
   if (configured) return configured.replace(/\/+$/, "");
+  return requestOrigin();
+}
+
+// The address this request came in on: the app's own, for Keenan's Preview,
+// where his sign-in makes a tap a preview instead of the customer's.
+export async function requestOrigin(): Promise<string> {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? (/^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? "http" : "https");

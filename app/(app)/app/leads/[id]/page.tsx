@@ -14,6 +14,7 @@ import { StatusControl } from "@/components/leads/status-control";
 import { TrackColourForm } from "@/components/leads/track-colour-form";
 import { BookLeadButton, OpenBookingSheet } from "@/components/booking/book-buttons";
 import { MockupCard } from "@/components/meeting/mockup-card";
+import { QuoteCard, type QuoteCardProps } from "@/components/quote-link/quote-card";
 import { ScrollToHash } from "@/components/scroll-to-hash";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,13 +37,23 @@ import {
   sortTrackColours,
   trackColourText,
 } from "@/lib/leads/track-colour";
-import { describeEvent } from "@/lib/leads/timeline";
+import { describeEvent, isCustomerEvent } from "@/lib/leads/timeline";
 import { formatPhone } from "@/lib/phone";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { mapsLink } from "@/lib/places";
 import { createClient } from "@/lib/supabase/server";
 import { followUpSentence } from "@/lib/leads/attention";
 import { calgaryToday, formatDate, formatDateTime, requestTime } from "@/lib/time";
+import { screenTotal, totalFeet } from "@/lib/pricing";
+import { quoteBaseUrl, requestOrigin } from "@/lib/quote-link/server";
+import {
+  FALLBACK_COMPANY,
+  optionName,
+  parseCustomerQuote,
+  priceSelection,
+  quoteFromRow,
+  quoteLinkUrl,
+} from "@/lib/quote-link/view";
 
 export const metadata: Metadata = {
   title: "Lead",
@@ -81,9 +92,12 @@ export default async function LeadPage({
     supabase.from("track_colours").select("id, name, ral_code, sort_order, active"),
     meetingsForLead(supabase, id),
     isOwner
-      ? supabase.from("settings").select("not_qualified_reasons").eq("id", 1).maybeSingle()
+      ? supabase.from("settings").select("not_qualified_reasons, company").eq("id", 1).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
+  // The quote and its customer link: the owner's only (View as a setter
+  // never loads them).
+  const quoteCard = isOwner ? await loadQuoteCard(supabase, lead, outcomeSettings?.company ?? null) : null;
   const meetings = meetingRows.map((meeting) => ({ ...meeting, lead }));
   const liveMeeting = meetings.find((meeting) => isLive(meeting.status));
   const canBook = canEdit && (lead.status === "new" || lead.status === "follow_up") && !liveMeeting;
@@ -332,6 +346,7 @@ export default async function LeadPage({
       </Card>
 
       {isOwner ? <MockupCard leadId={lead.id} userId={me.id} mockupUrl={slotUrls.mockup ?? null} /> : null}
+      {quoteCard ? <QuoteCard {...quoteCard} /> : null}
       <ScrollToHash />
 
       <Card id="track-colour" className="scroll-mt-24">
@@ -413,7 +428,11 @@ export default async function LeadPage({
                   {describeEvent(event)}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {event.actor_id ? (names.get(event.actor_id) ?? "Someone") : "Vesper"},{" "}
+                  {event.actor_id
+                    ? (names.get(event.actor_id) ?? "Someone")
+                    : isCustomerEvent(event.type)
+                      ? lead.first_name
+                      : "Vesper"},{" "}
                   {formatDateTime(event.created_at)}
                 </p>
               </li>
@@ -423,4 +442,86 @@ export default async function LeadPage({
       </Card>
     </div>
   );
+}
+
+// The Quote card's facts, from the lead's latest quote and its newest link.
+// Totals come from the same lib/pricing.ts the customer's page uses.
+async function loadQuoteCard(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  lead: { id: string; first_name: string },
+  company: unknown,
+): Promise<QuoteCardProps> {
+  const [{ data: quoteRow }, { data: linkRow }] = await Promise.all([
+    supabase
+      .from("quotes")
+      .select(
+        "runs, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee_per_ft, min_job_total, gst_enabled, gst_rate, valid_until",
+      )
+      .eq("lead_id", lead.id)
+      .in("status", ["draft", "presented", "accepted"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("quote_links")
+      .select("token, created_at, revoked_at, view_count, last_viewed_at, booked_at, booked_option, booked_selection")
+      .eq("lead_id", lead.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  const phone =
+    company && typeof company === "object" && typeof (company as { phone?: unknown }).phone === "string"
+      ? ((company as { phone: string }).phone.trim() || FALLBACK_COMPANY.phone)
+      : FALLBACK_COMPANY.phone;
+  const quote = quoteRow ? quoteFromRow(quoteRow) : null;
+  const card: QuoteCardProps = { leadId: lead.id, firstName: lead.first_name, phone, quote: null, link: null };
+  if (!quote || !quoteRow) return card;
+
+  const whole = priceSelection(quote, null);
+  card.quote = {
+    total: screenTotal(whole.subtotal, quote.gstEnabled),
+    feet: totalFeet(quote.runs),
+    validUntil: quoteRow.valid_until,
+    expired: quoteRow.valid_until !== null && quoteRow.valid_until < calgaryToday(),
+  };
+  if (!linkRow) return card;
+
+  const live = linkRow.revoked_at === null;
+  // What they are looking at now, as the customer's page would open: the
+  // database drops a choice made before the runs changed.
+  let looking: { option: string; total: string } | null = null;
+  if (live) {
+    const view = parseCustomerQuote((await supabase.rpc("quote_for_customer", { p_token: linkRow.token })).data);
+    if (view.state === "live" && view.selection) {
+      looking = {
+        option: optionName(quote.runs, view.selection),
+        total: screenTotal(priceSelection(quote, view.selection).subtotal, quote.gstEnabled),
+      };
+    }
+  }
+  const bookedAll = linkRow.booked_option === "Recommended package";
+  const bookedPositions = bookedAll ? null : (linkRow.booked_selection ?? null);
+  card.link = {
+    live,
+    link: quoteLinkUrl(await quoteBaseUrl(), linkRow.token),
+    previewUrl: quoteLinkUrl(await requestOrigin(), linkRow.token),
+    createdAt: linkRow.created_at,
+    revokedAt: linkRow.revoked_at,
+    views: linkRow.view_count,
+    lastViewedAt: linkRow.last_viewed_at,
+    looking: looking && looking.option !== linkRow.booked_option ? looking : null,
+    booked:
+      linkRow.booked_at && linkRow.booked_option
+        ? {
+            at: linkRow.booked_at,
+            option: linkRow.booked_option,
+            total:
+              bookedAll || (bookedPositions && bookedPositions.every((p) => p < quote.runs.length))
+                ? screenTotal(priceSelection(quote, bookedPositions).subtotal, quote.gstEnabled)
+                : null,
+          }
+        : null,
+  };
+  return card;
 }

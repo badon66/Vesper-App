@@ -83,6 +83,47 @@ const runSchema = z.object({
   level: z.enum(["lower", "upper"]).catch("lower"),
 });
 
+const quoteSchema = z.object({
+  runs: z.array(runSchema).catch([]),
+  runs_fingerprint: z.string().catch(""),
+  price_per_ft: number,
+  box_price: number,
+  box_count: number,
+  adders: z
+    .array(z.object({ label: z.string().catch(""), amount: number, upper_only: z.boolean().optional().catch(false) }))
+    .catch([]),
+  discounts: z.array(z.object({ label: z.string().catch(""), amount: number })).catch([]),
+  colour_timing: z.enum(["stock", "factory_order", "rush"]).nullable().catch(null),
+  rush_fee_per_ft: z.coerce.number().nullable().catch(null),
+  min_job_total: z.coerce.number().nullable().catch(null),
+  gst_enabled: z.boolean().catch(false),
+  gst_rate: number,
+});
+
+function toQuote(q: z.infer<typeof quoteSchema>): CustomerQuote["quote"] {
+  return {
+    runs: q.runs,
+    runsFingerprint: q.runs_fingerprint,
+    pricePerFt: q.price_per_ft,
+    boxPrice: q.box_price,
+    boxCount: q.box_count,
+    adders: q.adders.map((a) => ({ label: a.label, amount: a.amount, upperOnly: a.upper_only === true })),
+    discounts: q.discounts,
+    colourTiming: q.colour_timing,
+    rushFeePerFt: q.rush_fee_per_ft,
+    minJobTotal: q.min_job_total,
+    gstEnabled: q.gst_enabled,
+    gstRate: q.gst_rate,
+  };
+}
+
+// A quotes row (Keenan's side), read the same way the customer's page reads
+// it, so the lead page and the link always show the same total.
+export function quoteFromRow(row: unknown): CustomerQuote["quote"] | null {
+  const parsed = quoteSchema.safeParse(row);
+  return parsed.success ? toQuote(parsed.data) : null;
+}
+
 const liveSchema = z.object({
   state: z.literal("live"),
   first_name: z.string(),
@@ -90,22 +131,7 @@ const liveSchema = z.object({
   address: z.string(),
   city: z.string().nullable().catch(null),
   valid_until: z.string().nullable().catch(null),
-  quote: z.object({
-    runs: z.array(runSchema).catch([]),
-    runs_fingerprint: z.string().catch(""),
-    price_per_ft: number,
-    box_price: number,
-    box_count: number,
-    adders: z
-      .array(z.object({ label: z.string().catch(""), amount: number, upper_only: z.boolean().optional().catch(false) }))
-      .catch([]),
-    discounts: z.array(z.object({ label: z.string().catch(""), amount: number })).catch([]),
-    colour_timing: z.enum(["stock", "factory_order", "rush"]).nullable().catch(null),
-    rush_fee_per_ft: z.coerce.number().nullable().catch(null),
-    min_job_total: z.coerce.number().nullable().catch(null),
-    gst_enabled: z.boolean().catch(false),
-    gst_rate: number,
-  }),
+  quote: quoteSchema,
   warranty: z.string().catch(""),
   company: companySchema,
   mockup_path: z.string().nullable().catch(null),
@@ -132,20 +158,7 @@ export function parseCustomerQuote(data: unknown): CustomerQuote | ExpiredQuote 
     address: v.address,
     city: v.city,
     validUntil: v.valid_until,
-    quote: {
-      runs: v.quote.runs,
-      runsFingerprint: v.quote.runs_fingerprint,
-      pricePerFt: v.quote.price_per_ft,
-      boxPrice: v.quote.box_price,
-      boxCount: v.quote.box_count,
-      adders: v.quote.adders.map((a) => ({ label: a.label, amount: a.amount, upperOnly: a.upper_only === true })),
-      discounts: v.quote.discounts,
-      colourTiming: v.quote.colour_timing,
-      rushFeePerFt: v.quote.rush_fee_per_ft,
-      minJobTotal: v.quote.min_job_total,
-      gstEnabled: v.quote.gst_enabled,
-      gstRate: v.quote.gst_rate,
-    },
+    quote: toQuote(v.quote),
     warranty: v.warranty,
     company: v.company,
     mockupPath: v.mockup_path,
