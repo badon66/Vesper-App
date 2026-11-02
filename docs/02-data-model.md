@@ -18,7 +18,7 @@ looked_into_before: got_quotes | thought_about_it | new_to_them   -- added in M3
 meeting_status:  booked | confirmed | qualified | not_qualified | no_show | cancelled | moved   -- qualified and not_qualified both mean the meeting was held; moved means it was replaced by a meeting at another time; confirmed is unused for now
 map_position_source: picked | device               -- picked from the address suggestions, or the phone's own position at the door
 quote_status:    draft | presented | accepted | declined | expired   -- take 1 writes drafts only
-event_type:      created | note | status_change | call | text | meeting_booked | meeting_outcome | quote_created | quote_presented | quote_accepted | quote_declined | photo_added | edited | meeting_moved | meeting_cancelled | colour_confirmed   -- meeting_moved and meeting_cancelled added in M3; colour_confirmed added in M5 (the customer initialled the track colour; payload holds the initials, never a price)
+event_type:      created | note | status_change | call | text | meeting_booked | meeting_outcome | quote_created | quote_presented | quote_accepted | quote_declined | photo_added | edited | meeting_moved | meeting_cancelled | colour_confirmed   -- meeting_moved and meeting_cancelled added in M3; colour_confirmed added in M5 (the customer initialled the track colour; payload holds the initials and the colour by name, never a price)
 run_level:       lower | upper
 earning_type:    booking | commission
 earning_status:  pending | paid | void
@@ -174,7 +174,7 @@ The Find out answers are null until answered, and none of them is required to sa
 One photo per slot per lead (a partial unique index on `(lead_id, slot)`). A photo added to a slot that already has one takes the slot, and the earlier photo stays as an extra with its slot cleared, through a trigger, because only the owner deletes photos. The `photo_added` event records the slot in its payload.
 
 ### lead_events
-Append only for everyone, the owner included: no updates, no deletes. The lead's timeline and the raw material for the dashboard. Database triggers write `created`, `status_change` (with from and to, plus the reason for `lost` or the date for `follow_up` in the payload), `edited` (with the names of the changed fields, never their values) and `photo_added`, with the signed-in user as actor. People write only `note` events by hand.
+Append only for everyone, the owner included: no updates, no deletes. The lead's timeline and the raw material for the dashboard. Database triggers write `created`, `status_change` (with from and to, plus the reason for `lost` or the date for `follow_up` in the payload), `edited` (with the names of the changed fields, never their values) and `photo_added`, with the signed-in user as actor. From M5 they also write `quote_created` when a quote is added (payload: the quote's id, never an amount) and `colour_confirmed` each time the customer's initials are recorded (payload: the initials and the colour by name at that moment). People write only `note` events by hand.
 ```
 id uuid pk
 lead_id uuid not null references leads on delete cascade

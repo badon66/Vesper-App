@@ -309,6 +309,9 @@ try {
     "the colour can be changed without leaving the deck: names only, no swatches",
     chooserText.includes(colour.name) && (await chooser.locator('[style*="background"]').count()) === 0,
   );
+  const saveColour = chooser.getByRole("button", { name: "Save track colour" });
+  await chooser.locator("label").filter({ has: page.getByText(colour.name, { exact: true }) }).click();
+  check("tapping the chosen colour to agree with it can never save no colour", await saveColour.isDisabled());
   await chooser.locator("label").filter({ hasText: /^Custom$/ }).click();
   await chooser.locator("#lead-track-ral").fill("12");
   await chooser.getByRole("button", { name: "Save track colour" }).click();

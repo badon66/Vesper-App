@@ -615,7 +615,7 @@ function ColourScreen({
               <div>
                 <h2 className="text-3xl font-bold lg:text-4xl">The track colour</h2>
                 <p className="mt-2 text-base text-pretty text-muted-foreground">
-                  Pick it together from the RAL book. Names only: a screen never shows a colour truly.
+                  Screens can&apos;t show colour accurately, so choose it from the RAL book together.
                 </p>
               </div>
               <Button type="button" variant="ghost" onClick={() => setChoosing(false)}>
@@ -629,6 +629,7 @@ function ColourScreen({
                 .map((item) => ({ value: item.id, label: item.name }))}
               current={{ choice: colour.choice, ralCode: colour.ralCode }}
               ralNames={colours.ralNames}
+              requireColour
               onSaved={(choice, ralCode) => {
                 onColourSaved(choice, ralCode);
                 setMessage(null);
