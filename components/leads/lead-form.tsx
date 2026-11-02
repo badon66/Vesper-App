@@ -135,7 +135,7 @@ export function LeadForm({
       {duplicates.length > 0 ? (
         <div
           role="status"
-          className="rounded-md border border-primary bg-accent px-4 py-3 text-sm text-accent-foreground"
+          className="rounded-md border border-foreground/60 px-4 py-3 text-sm"
         >
           <p className="font-semibold">This address already has a lead.</p>
           <ul className="mt-1 flex flex-col">

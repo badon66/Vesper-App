@@ -49,6 +49,7 @@ export function AddressField({
   error,
   onPicked,
   leadId = null,
+  linkLeads = true,
 }: {
   apiKey: string | null;
   defaults?: AddressDefaults;
@@ -56,6 +57,9 @@ export function AddressField({
   error?: string;
   onPicked: (picked: PickedAddress | null) => void;
   leadId?: string | null;
+  // False inside the booking sheet, where a link would change the page
+  // hidden behind it: nearby leads are named as text there.
+  linkLeads?: boolean;
 }) {
   const listId = useId();
   const [text, setText] = useState(defaults?.addressLine ?? "");
@@ -260,14 +264,18 @@ export function AddressField({
         </div>
       ) : null}
       {nearby.length > 0 ? (
-        <div role="status" className="rounded-md border border-primary bg-accent px-4 py-3 text-sm text-accent-foreground">
+        <div role="status" className="rounded-md border border-foreground/60 px-4 py-3 text-sm">
           <p className="font-semibold">Another lead is very close to here.</p>
           <ul className="mt-1 flex flex-col">
             {nearby.map((lead) => (
               <li key={lead.id}>
-                <Link href={`/app/leads/${lead.id}`} className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4">
-                  {lead.name}
-                </Link>
+                {linkLeads ? (
+                  <Link href={`/app/leads/${lead.id}`} className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4">
+                    {lead.name}
+                  </Link>
+                ) : (
+                  <span className="font-semibold">{lead.name}</span>
+                )}
                 <span className="block text-muted-foreground">
                   About {lead.metres} m away. {lead.status}, added by {lead.addedBy} on {lead.addedOn}
                 </span>

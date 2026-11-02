@@ -3,6 +3,7 @@
 import { Check, CircleHelp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { findLeadsAtPlace, type DuplicateLead } from "@/app/(app)/app/leads/actions";
 import { holdTime, moveBooking, releaseMyHold, renewMyHold } from "@/app/(app)/app/schedule/actions";
 import {
   bookFromSheet,
@@ -51,6 +52,7 @@ import type { PickedAddress } from "@/lib/places";
 import { toBoardSlots, type BoardSlot } from "@/lib/schedule/board";
 import { sentence, timePhrase } from "@/lib/schedule/meetings";
 import { createClient } from "@/lib/supabase/client";
+import { normalizePhone } from "@/lib/phone";
 import { calgaryDateOf, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -181,6 +183,10 @@ function BookingSheet({
   const [warnings, setWarnings] = useState<string[]>([]);
   const [notBookable, setNotBookable] = useState<string | null>(null);
   const [done, setDone] = useState<{ startsAt: string; leadId: string } | null>(null);
+  const [duplicates, setDuplicates] = useState<DuplicateLead[]>([]);
+  // False while check-ins can't reach the server: the chip can't promise
+  // the time is still held.
+  const [signal, setSignal] = useState(true);
   const mapsKey = getPublicEnv().NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null;
 
   // ------------------------------------------------------------ opening
@@ -260,12 +266,15 @@ function BookingSheet({
       try {
         const result = await renewMyHold();
         if (stopped) return;
+        setSignal(true);
         if (result.status !== "held" || result.startsAt !== heldAt) {
           setHeld(false);
           void explainLost(heldAt);
         }
       } catch {
-        // No signal: the hold lasts the grace period; the next check-in tries again.
+        // No signal: the hold lasts the grace period; the next check-in tries
+        // again, and the chip says it can't check meanwhile.
+        if (!stopped) setSignal(false);
       }
     }
     const timer = window.setInterval(() => void checkIn(), CHECK_IN_MS);
@@ -410,6 +419,13 @@ function BookingSheet({
     try {
       let current = draft;
       const forward = target === null || SCREENS.indexOf(target) > SCREENS.indexOf(view);
+      if (view === "who" && forward) {
+        const phone = normalizePhone(current.phone);
+        if (!phone.ok) {
+          setError({ text: phone.error, fix: null });
+          return;
+        }
+      }
       if (view === "address") {
         current = readAddressForm(draft);
         setDraft(current);
@@ -426,23 +442,31 @@ function BookingSheet({
         await book(current);
         return;
       }
+      const destination = target ?? nextScreen(view, current, skipDone);
+      // A person who can be saved is saved before going past the address,
+      // so the photos have a lead to attach to.
+      const pastAddress = SCREENS.indexOf(destination) > SCREENS.indexOf("address");
       const needsSave =
-        (view === "address" && !current.leadId && canSaveLead(current)) ||
+        (!current.leadId && canSaveLead(current) && (view === "address" || pastAddress)) ||
         (current.leadId !== null && savedFingerprint(current) !== savedPrint);
       if (needsSave) {
         const saved = await save(current);
         if (!saved) return;
         current = saved;
       }
-      go(target ?? nextScreen(view, current, skipDone));
+      go(destination);
     } finally {
       setBusy(false);
     }
   }
 
   async function book(current: SheetDraft) {
-    if (!heldAt || !current.leadId) return;
-    if (savedFingerprint(current) !== savedPrint) {
+    if (!heldAt) return;
+    if (!current.leadId && !canSaveLead(current)) {
+      setError({ text: "Add their first name and the address first, so they can be saved.", fix: current.first_name.trim() ? "address" : "who" });
+      return;
+    }
+    if (!current.leadId || savedFingerprint(current) !== savedPrint) {
       const saved = await save(current);
       if (!saved) return;
       current = saved;
@@ -455,10 +479,13 @@ function BookingSheet({
       skipNote: current.skip_note,
     });
     if (!result.ok) {
-      setError({ text: result.message, fix: null });
+      // A time that's gone is explained once, by the hold notice, which
+      // offers to pick another time.
       if (result.code === "slot_held" || result.code === "slot_taken" || result.code === "slot_closed" || result.code === "not_a_slot") {
         setHeld(false);
         void explainLost(heldAt);
+      } else {
+        setError({ text: result.message, fix: null });
       }
       return;
     }
@@ -468,7 +495,13 @@ function BookingSheet({
     router.refresh();
   }
 
+  // Leaving the address screen any way at all keeps what was typed there.
+  function keepAddress() {
+    if (view === "address") setDraft((current) => readAddressForm(current));
+  }
+
   function back() {
+    keepAddress();
     if (view === "times" || view === "existing") {
       go(returnTo ?? "who");
       return;
@@ -484,6 +517,7 @@ function BookingSheet({
   }
 
   function pickAnother() {
+    keepAddress();
     if (isScreen(view)) setReturnTo(view);
     go("times");
   }
@@ -619,7 +653,7 @@ function BookingSheet({
         {/* ------------------------------------------------ top: the held time, "?", the steps */}
         <header className="border-b pt-[env(safe-area-inset-top)]">
           <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3 px-4 pt-2">
-            <HeldChip when={when} state={done || view === "moved" ? "booked" : held ? "held" : "lost"} isMove={isMove} />
+            <HeldChip when={when} state={done || view === "moved" ? "booked" : !held ? "lost" : signal ? "held" : "unsure"} isMove={isMove} />
             {step && (notes === null || note) ? (
               <Button type="button" variant="ghost" size="icon" aria-label="What to talk about" onClick={() => setNoteOpen(true)}>
                 <CircleHelp className="size-6" />
@@ -637,7 +671,7 @@ function BookingSheet({
 
         {/* ------------------------------------------------ the screen */}
         <div className="flex-1 overflow-y-auto overscroll-contain">
-          <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-5">
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-4">
             <div className="flex flex-col gap-1">
               {skipDone && name && isScreen(view) && view !== "book" ? (
                 <p className="text-sm font-semibold text-muted-foreground" data-testid="sheet-for">
@@ -690,9 +724,12 @@ function BookingSheet({
                 draft={draft}
                 formRef={addressFormRef}
                 apiKey={mapsKey}
+                duplicates={duplicates}
                 onPicked={(picked) => {
                   pickedRef.current = picked;
                   setError(null);
+                  if (picked) findLeadsAtPlace(picked.placeId, draft.leadId).then(setDuplicates, () => setDuplicates([]));
+                  else setDuplicates([]);
                 }}
               />
             ) : null}
@@ -706,10 +743,11 @@ function BookingSheet({
                 onBusyChange={setPhotosBusy}
                 skipOpen={skipOpen}
                 onSkipOpen={() => setSkipOpen(true)}
+                onAddress={() => go("address")}
               />
             ) : null}
             {view === "book" ? (
-              <BookScreen draft={draft} name={personName} warnings={warnings} onFix={(screen) => go(screen)} />
+              <BookScreen draft={draft} name={personName} heldAt={heldAt} warnings={warnings} onFix={(screen) => go(screen)} />
             ) : null}
             {view === "done" && done ? (
               <p className="text-base text-pretty" data-testid="sheet-done">
@@ -740,6 +778,7 @@ function BookingSheet({
               isMove={isMove}
               hasTime={Boolean(heldAt)}
               busy={busy || photosBusy}
+              saving={busy}
               canBook={problems.length === 0 && held}
               missing={problems.length}
               heldTime={heldAt ? formatTime(heldAt) : null}
@@ -792,15 +831,17 @@ function BookingSheet({
       >
         <div className="flex flex-col gap-3">
           <p className="text-base text-pretty">
-            {draft.leadId
-              ? `${personName} stays saved as a lead. Anyone can then pick this time.`
-              : "What you've entered isn't saved yet: they're saved once you add the address. Anyone can then pick this time."}
+            {request.kind === "move"
+              ? `${name}'s booking stays at ${formatTime(request.from)}. Anyone can then pick this time.`
+              : draft.leadId
+                ? `${personName} stays saved as a lead. Anyone can then pick this time.`
+                : "What you've entered isn't saved yet: they're saved once you add the address. Anyone can then pick this time."}
           </p>
           {draft.leadId ? (
             <Button type="button" variant="link" size="sm" className="self-start px-0" onClick={() => void letGo("open-lead")}>
               Let go and open their lead to set a follow-up day
             </Button>
-          ) : draft.first_name.trim() && view !== "address" ? (
+          ) : request.kind !== "move" && draft.first_name.trim() && view !== "address" ? (
             <Button
               type="button"
               variant="link"
@@ -824,7 +865,7 @@ function isScreen(view: View): view is SheetScreen {
   return STEPS.some((step) => step.screens.includes(view as SheetScreen));
 }
 
-function HeldChip({ when, state, isMove }: { when: string | null; state: "held" | "lost" | "booked"; isMove: boolean }) {
+function HeldChip({ when, state, isMove }: { when: string | null; state: "held" | "unsure" | "lost" | "booked"; isMove: boolean }) {
   if (!when) {
     return <p className="text-sm font-semibold text-muted-foreground">{isMove ? "Moving a booking" : "No time held yet"}</p>;
   }
@@ -844,7 +885,9 @@ function HeldChip({ when, state, isMove }: { when: string | null; state: "held" 
         <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", lost ? "border border-muted-foreground" : "bg-primary")} />
       )}
       {when}
-      <span className="font-normal text-muted-foreground">{state === "held" ? "held for you" : state === "booked" ? "booked" : "not held"}</span>
+      <span className="font-normal text-muted-foreground">
+        {state === "held" ? "held for you" : state === "unsure" ? "no signal, can't check" : state === "booked" ? "booked" : "not held"}
+      </span>
     </p>
   );
 }
@@ -907,6 +950,7 @@ function BottomBar({
   missing,
   heldTime,
   uploading,
+  saving,
   onPickAnother,
   onLetGo,
   onBack,
@@ -923,6 +967,8 @@ function BottomBar({
   missing: number;
   heldTime: string | null;
   uploading: boolean;
+  // Saving or booking; Let go still works while only photos upload.
+  saving: boolean;
   onPickAnother: () => void;
   onLetGo: () => void;
   onBack: () => void;
@@ -957,7 +1003,7 @@ function BottomBar({
   // time is gone while the times are already showing.
   const quiet = (
     <div className="flex items-center justify-between">
-      <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={onLetGo} disabled={busy}>
+      <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={onLetGo} disabled={saving || (busy && !uploading)}>
         Let go
       </Button>
       {view === "times" ? (

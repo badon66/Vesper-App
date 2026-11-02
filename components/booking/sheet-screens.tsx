@@ -10,9 +10,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { guidedPhotoCount, PROBLEM_SCREENS, readinessLead, type SheetDraft, type SheetScreen } from "@/lib/booking/sheet";
 import { FIND_OUT_QUESTIONS, yesNoChoice, type FindOutField, type PhotoSlot } from "@/lib/leads/door";
+import type { DuplicateLead } from "@/app/(app)/app/leads/actions";
 import type { PickedAddress } from "@/lib/places";
 import { SOFFIT_OPTIONS, type SoffitColour } from "@/lib/leads/status";
-import { formatPhone } from "@/lib/phone";
+import { formatPhone, normalizePhone } from "@/lib/phone";
+import { timePhrase } from "@/lib/schedule/meetings";
 import { leadReadiness, PHOTO_SKIP_OPTIONS, type PhotoSkip } from "@/lib/schedule/readiness";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +48,7 @@ export function WhoScreen({
             autoComplete="off"
             autoCapitalize="words"
             enterKeyHint="next"
+            onKeyDown={(event) => nextField(event, "sheet-last-name")}
             value={draft.first_name}
             maxLength={80}
             onChange={(event) => onChange({ first_name: event.target.value })}
@@ -58,6 +61,7 @@ export function WhoScreen({
             autoComplete="off"
             autoCapitalize="words"
             enterKeyHint="next"
+            onKeyDown={(event) => nextField(event, "sheet-phone")}
             value={draft.last_name}
             maxLength={80}
             onChange={(event) => onChange({ last_name: event.target.value })}
@@ -75,6 +79,11 @@ export function WhoScreen({
           value={draft.phone}
           maxLength={40}
           onChange={(event) => onChange({ phone: event.target.value })}
+          onKeyDown={(event) => nextField(event, null)}
+          onBlur={(event) => {
+            const phone = normalizePhone(event.currentTarget.value);
+            if (phone.ok && phone.e164) onChange({ phone: formatPhone(phone.e164) });
+          }}
         />
         <p className="text-sm text-muted-foreground">Needed to confirm the meeting.</p>
       </div>
@@ -82,10 +91,21 @@ export function WhoScreen({
   );
 }
 
+// Enter on a phone's keyboard moves to the next field, or closes it on the last.
+function nextField(event: React.KeyboardEvent<HTMLInputElement>, id: string | null) {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  if (id) document.getElementById(id)?.focus();
+  else event.currentTarget.blur();
+}
+
 // The Find out questions on one screen, as one-tap answers.
 export function FindOutScreen({ fields, draft, onChange }: { fields: FindOutField[]; draft: SheetDraft; onChange: Change }) {
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
+      {fields.includes("owns_home") ? (
+        <p className="-mt-2 text-sm text-pretty text-muted-foreground">Booking needs a Yes to Owns the home and Wants a price.</p>
+      ) : null}
       {fields.map((field) => {
         const question = FIND_OUT_QUESTIONS.find((item) => item.field === field);
         if (!question) return null;
@@ -164,17 +184,20 @@ export function AddressScreen({
   draft,
   formRef,
   apiKey,
+  duplicates,
   onPicked,
 }: {
   draft: SheetDraft;
   formRef: RefObject<HTMLFormElement | null>;
   apiKey: string | null;
+  duplicates: DuplicateLead[];
   onPicked: (picked: PickedAddress | null) => void;
 }) {
   return (
     <form ref={formRef} onSubmit={(event) => event.preventDefault()} className="flex flex-col gap-3">
       <AddressField
         apiKey={apiKey}
+        linkLeads={false}
         leadId={draft.leadId}
         fallbackNeighbourhood={draft.neighbourhood || null}
         onPicked={onPicked}
@@ -189,6 +212,22 @@ export function AddressScreen({
           accuracy: draft.position_accuracy_m,
         }}
       />
+      {duplicates.length > 0 ? (
+        <div role="status" className="rounded-md border border-foreground/60 px-3 py-2 text-sm" data-testid="sheet-duplicates">
+          <p className="font-semibold">This address already has a lead.</p>
+          <ul className="mt-1 flex flex-col gap-1">
+            {duplicates.map((duplicate) => (
+              <li key={duplicate.id} className="text-pretty">
+                <span className="font-semibold">{duplicate.name}</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  · {duplicate.status}, added by {duplicate.addedBy} on {duplicate.addedOn}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </form>
   );
 }
@@ -231,6 +270,7 @@ export function PhotosScreen({
   onBusyChange,
   skipOpen,
   onSkipOpen,
+  onAddress,
 }: {
   draft: SheetDraft;
   userId: string;
@@ -239,10 +279,19 @@ export function PhotosScreen({
   onBusyChange: (busy: boolean) => void;
   skipOpen: boolean;
   onSkipOpen: () => void;
+  onAddress: () => void;
 }) {
   const complete = guidedPhotoCount(draft) >= 3;
   return (
     <div className="flex flex-col gap-3">
+      {!draft.leadId ? (
+        <div className="flex flex-col items-start gap-2">
+          <p className="text-sm text-pretty text-muted-foreground">Photos attach to the person once they&apos;re saved, which happens when the address is in.</p>
+          <Button type="button" variant="outline" size="sm" onClick={onAddress}>
+            Add the address
+          </Button>
+        </div>
+      ) : null}
       {draft.leadId ? (
         <PhotoSlots
           userId={userId}
@@ -289,14 +338,22 @@ export function PhotosScreen({
 
 // ---------------------------------------------------------------- Book
 
+// A phone as people read it, whatever form it was typed in.
+function shownPhone(typed: string): string {
+  const phone = normalizePhone(typed);
+  return phone.ok && phone.e164 ? formatPhone(phone.e164) : typed;
+}
+
 export function BookScreen({
   draft,
   name,
+  heldAt,
   warnings,
   onFix,
 }: {
   draft: SheetDraft;
   name: string;
+  heldAt: string | null;
   warnings: string[];
   onFix: (screen: SheetScreen) => void;
 }) {
@@ -321,14 +378,18 @@ export function BookScreen({
     })),
     { key: "everyone_deciding_present", label: "Everyone who decides will be there", ok: draft.everyone, done: null },
   ];
+  // In the order of the screens that ask for them.
+  const order = ["phone", "owns_home", "wants_price", "everyone_deciding_present", "map_position", "soffit_colour", "photos"];
+  items.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
   return (
     <div className="flex flex-col gap-4">
       <div data-testid="sheet-summary">
         <p className="text-lg font-bold text-balance">{name}</p>
         <p className="text-sm text-pretty text-muted-foreground">
           {[draft.address_line, draft.neighbourhood].filter(Boolean).join(", ") || "No address yet"}
-          {draft.phone ? ` · ${formatPhone(draft.phone) || draft.phone}` : ""}
+          {draft.phone ? ` · ${shownPhone(draft.phone)}` : ""}
         </p>
+        {heldAt ? <p className="text-sm font-semibold">{timePhrase(heldAt)}</p> : null}
       </div>
 
       <section aria-labelledby="sheet-ready-heading" className="flex flex-col gap-1">
