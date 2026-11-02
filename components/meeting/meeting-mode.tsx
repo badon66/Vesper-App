@@ -229,13 +229,14 @@ function MeetingDeck({ payload }: { payload: MeetingPayload }) {
         <X className="size-5" />
       </Link>
 
-      {/* Quiet over navy, still findable over a bright day photo. */}
+      {/* Quiet over navy, still findable over a bright day photo. Hidden on
+          a phone, where the form scrolls under them and a swipe does it. */}
       {current > 0 ? (
         <button
           type="button"
           aria-label="Previous screen"
           onClick={() => goBy(-1)}
-          className="absolute top-1/2 left-1 z-20 inline-flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-background/40 text-foreground/50 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute top-1/2 left-1 z-20 hidden size-11 -translate-y-1/2 items-center justify-center rounded-full bg-background/40 text-foreground/50 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
         >
           <ChevronLeft className="size-6" />
         </button>
@@ -245,7 +246,7 @@ function MeetingDeck({ payload }: { payload: MeetingPayload }) {
           type="button"
           aria-label="Next screen"
           onClick={() => goBy(1)}
-          className="absolute top-1/2 right-1 z-20 inline-flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-background/40 text-foreground/50 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          className="absolute top-1/2 right-1 z-20 hidden size-11 -translate-y-1/2 items-center justify-center rounded-full bg-background/40 text-foreground/50 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex"
         >
           <ChevronRight className="size-6" />
         </button>
