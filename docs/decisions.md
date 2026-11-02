@@ -538,3 +538,30 @@ Keenan tried M3: every rule is right, but the screens don't follow how a setter 
   - A hold on a time that disappears lets go at once, so the setter isn't stuck on a time that can't be booked; the pop-up warns about holds as well as bookings.
 - **The "?" notes.** Three notes, one each for At the door, After the door and Book. The old Door guide text stays in the database, unused. New lead shows the same notes behind a "?" where the Door guide card was.
 - **View as.** The sheet starts with a hold, which is a write, so it can't open while viewing; the times stay disabled there, as in M3. Everything the sheet adds to the lead page, the lead form and Schedule shows in View as exactly as the person sees it.
+
+## 2026-11-02: M3.5 as built
+
+**Judgment calls made while building and polishing:**
+- **Keenan's Schedule opens on tonight** whenever tonight has meetings, so his own evening is the first thing he sees. Setters still open on the first evening with an open time.
+- **Times keep the app's Canadian style**, "7:30 p.m.", so the done screen reads "Booked for 7:30 p.m. tonight." Tomorrow's times say "tomorrow", as the evening strip does.
+- **A day change that drops a held time** releases the hold with the existing reason `released`. Adding a new reason would mean replacing the check constraint, a drop, which wasn't asked for.
+- **Chosen things are light, not gold.** A chosen answer and the evening on screen are marked in Night Text with a tick or an outline. Gold stays on the next action: the primary button, open times and the held time (DESIGN.md, the Porch Light Rule).
+- **Keenan can tap booked and blocked times.** A booked one takes him to its card and lights it up; a blocked one opens Unblock.
+- **Escape in the address field** closes the suggestions, not the sheet.
+- **The board shows every booked meeting at its own time and length** (migration 20261102051654, the function only).
+  - The critique found that after a day change to longer meetings, a booking that still lined up could drop off the board.
+  - Booking, holds and the double-booking checks never read the board, so no double booking was ever possible. Only the display was wrong.
+  - A new database test proves the fix.
+- **Block time's "whole evening" blocks every open time.** It writes one block for each run of back-to-back open times. Booked and held times are never part of a block, so the database never refuses it, and the button says what it blocks.
+- **The pencil pop-up asks before All days, and can do nothing.**
+  - Cancel is there.
+  - Just this day and All days stay off until something changes and the bookings have been checked.
+  - It shows the evening as setters will see it, with a one-line summary by the buttons.
+- **The sheet comes back after a reload even if the hold let go**, when anything was typed. It says the hold let go and offers it again when it is still free. This goes beyond the M3.5 rule, which covered a held time only, because losing what was typed at the door costs more than the extra screen.
+- **The screen stays on while a time is held** (the browser's Screen Wake Lock, where the phone has it), so a phone that would lock mid-conversation doesn't let the hold lapse.
+- **Let go moved to the left, above Back.** A slip near Next can then only pick another time, which keeps the hold. Its confirmation puts "Keep holding" where Next was. It also offers "Let go and open their lead to set a follow-up day", or "Add the address to save them first" when the person isn't saved yet.
+- **An answer that rules out booking says so at once.** Owns the home: No and Wants a price: Not yet each get a line under the question. At Book they show as answers with "Change answer", not as missing items.
+- **Field and checkbox edges reach 3:1 in both themes** (WCAG 1.4.11). Night Input changes from #2f4958 to #5e7a8a and Day Input from #c7d0d6 to #7d8f9b. The contrast test now checks edges as well as text.
+- **On an iPad in landscape, Keenan's Schedule has two panes**: the board on the left, held in place, and the evening's bookings on the right.
+
+**Critique method.** Nielsen's 10 heuristics, out of 40. Two isolated reviewers scored, without seeing each other or the detector, and two isolated detector runs checked the code and the rendered pages. The critique step that asks the user which issues to fix was skipped (Questions skipped: Keenan's brief set direction and scope: critique, adapt, clarify and polish before merging).
