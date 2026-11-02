@@ -484,3 +484,57 @@ Judgment calls made while building it, for Keenan to look over.
 - The error names the variable and never prints the value. It also says to delete the key in Supabase if it was ever deployed.
 - Unit tests cover the check, including that `next.config.ts` refuses to load. A real build was shown to stop within seconds with a made-up secret key in a public variable, set either in the environment or in a local env file.
 - The rule is in CLAUDE.md (rule 6), `.env.example` and `docs/05-supabase-setup.md`.
+
+## 2026-11-02: The secret key incident is closed
+
+Keenan confirmed everything the check asked about was him:
+- his three password sign-ins (2026-10-26, 2026-10-28 and 2026-11-01);
+- the two Springbank knock sessions on his account;
+- the one sign-in to keenancudi@gmail.com.
+
+Nothing else in the logs pointed anywhere else, so the incident is closed. Vercel's own request logs aren't needed, and the Vercel connection stays off.
+
+## 2026-11-02: Meeting times in Settings are Keenan's choice
+
+Whatever Settings says about the meeting template (start, length, number, days) is Keenan's choice. Reports stop flagging it. The 5:00 pm, 35-minute note under "M3 as built" stays as history.
+
+## 2026-11-02: M3.5, the booking sheet and Schedule redesign, before M4
+
+Keenan tried M3: every rule is right, but the screens don't follow how a setter works at a door. M4 is on hold until M3.5 is done.
+
+**What stays exactly as it is.** Holds, no double booking, Before you book, pay and every existing test.
+
+**Approved schema additions, all additive:**
+- the Looked into it before column on leads, with its own answers;
+- the per-step notes in Settings;
+- a table for day-specific schedules.
+
+**The impeccable design skill** (github.com/pbakaus/impeccable, Apache 2.0) is in `.claude/skills/impeccable`, with its license and notice, so every session has it. Its hooks are not installed.
+- Its init and document steps were answered from CLAUDE.md and docs/ instead of an interview, as Keenan asked. They wrote `PRODUCT.md` and `DESIGN.md` at the repository root.
+- CLAUDE.md's design rules win over anything it suggests.
+- Its critique scores for the booking flow and the Schedule page are recorded before and after the redesign, below.
+
+**Judgment calls, made before building:**
+- **When the sheet saves the lead.**
+  - A lead needs a first name and an address in the database, so the sheet saves it the moment it has both: when the setter leaves the address screen in After the door.
+  - Before that, what was entered lives on the phone, and survives a reload.
+  - After that, each screen saves as the setter goes, and photos attach to the lead as they upload.
+  - Letting go after that point keeps the lead as New.
+- **Let go asks first.** It is one small button next to the Back button, and the customer's time depends on it, so it asks "Let go of 7:30 pm?" and says whether the person is already saved.
+- **One sheet for every booking.**
+  - From Schedule or Home, tapping a time opens the sheet on the steps.
+  - From New lead's Save and book and the lead page's Book a meeting, the sheet opens on the times first, then skips every screen that is already filled in.
+  - Moving a booking uses the same sheet: pick the new time, then Move.
+  - The old Book a meeting page sends old links to Schedule. New lead loses its "Hold a time" button; the sheet holds the time now.
+- **A reload doesn't lose the booking.** If the phone reloads the app while the sheet is open (iPhones sometimes do after the camera), the sheet comes back on the same screen, as long as the time is still the person's.
+- **Day schedules are per meeting host and per evening.**
+  - "Just this day" gives that evening its own start, length and number of meetings.
+  - "All days" updates the defaults in Settings and drops that evening's own schedule. Other evenings Keenan set on their own keep their times, and the pop-up names them.
+  - An evening with its own schedule can go back to the usual times.
+  - A day schedule can also open an evening that isn't one of the usual meeting days.
+- **Bookings that no longer line up.**
+  - A booked meeting stays at its time, and the board shows it there.
+  - Times on the new template that overlap it are left off the board, so Keenan is never booked into two meetings at once.
+  - A hold on a time that disappears lets go at once, so the setter isn't stuck on a time that can't be booked; the pop-up warns about holds as well as bookings.
+- **The "?" notes.** Three notes, one each for At the door, After the door and Book. The old Door guide text stays in the database, unused. New lead shows the same notes behind a "?" where the Door guide card was.
+- **View as.** The sheet starts with a hold, which is a write, so it can't open while viewing; the times stay disabled there, as in M3. Everything the sheet adds to the lead page, the lead form and Schedule shows in View as exactly as the person sees it.
