@@ -42,18 +42,17 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
   const tools = isOwner ? await ownerTools(day) : null;
 
   return (
-    <div className="flex flex-col gap-6">
-      <ScheduleBoard
-        board={board}
-        today={today}
-        windowDays={settings.windowDays}
-        asSales={!isOwner}
-        viewerId={real.id !== me.id ? me.id : null}
-        initialDay={day}
-        owner={tools}
-      />
+    <ScheduleBoard
+      board={board}
+      today={today}
+      windowDays={settings.windowDays}
+      asSales={!isOwner}
+      viewerId={real.id !== me.id ? me.id : null}
+      initialDay={day}
+      owner={tools}
+    >
       {isOwner ? <OwnerEvening day={day} today={today} /> : null}
-    </div>
+    </ScheduleBoard>
   );
 }
 
@@ -87,15 +86,21 @@ async function ownerTools(day: string): Promise<OwnerEveningTools> {
         .maybeSingle()
     : { data: null };
   const weekday = new Date(`${day}T12:00:00Z`).getUTCDay();
+  const usual = {
+    start: (settingsRow?.meeting_start ?? "18:00").slice(0, 5),
+    minutes: settingsRow?.meeting_slot_minutes ?? 45,
+    count: settingsRow?.meeting_slot_count ?? 4,
+  };
   return {
     day,
     blocks: (blocks ?? []).map((block) => ({ id: block.id, startsAt: block.starts_at, endsAt: block.ends_at, reason: block.reason })),
     template: {
-      start: (own?.meeting_start ?? settingsRow?.meeting_start ?? "18:00").slice(0, 5),
-      minutes: own?.meeting_slot_minutes ?? settingsRow?.meeting_slot_minutes ?? 45,
-      count: own?.meeting_slot_count ?? settingsRow?.meeting_slot_count ?? 4,
+      start: own ? own.meeting_start.slice(0, 5) : usual.start,
+      minutes: own?.meeting_slot_minutes ?? usual.minutes,
+      count: own?.meeting_slot_count ?? usual.count,
       own: Boolean(own),
       usualDay: (settingsRow?.meeting_days ?? []).includes(weekday),
+      usual,
     },
   };
 }

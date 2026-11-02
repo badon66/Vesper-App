@@ -280,8 +280,8 @@ try {
   if (tonight.length > 0) {
     check("Home opens on tonight's open times", homeDay === "Tonight", homeDay);
   } else {
-    const fullTitle = await pageA.getByTestId("tonight-times").getByRole("heading", { name: "Nothing left tonight" }).count();
-    check("with tonight full, Home says so and shows the next evening with an opening", fullTitle === 1 && homeDay !== "Tonight", homeDay);
+    const fullTitle = await pageA.getByTestId("tonight-times").getByRole("heading", { name: /^(Nothing left tonight|No meetings tonight)$/ }).count();
+    check("with nothing open tonight, Home says so and shows the next evening with an opening", fullTitle === 1 && homeDay !== "Tonight", homeDay);
   }
   const homeSlot = await pageA.locator('[data-testid="tonight-times"] [data-time]').first().getAttribute("aria-label").catch(() => null);
   check("tonight's times are big and readable: each is a tap target with the time", Boolean(homeSlot), homeSlot ?? "none");
@@ -431,7 +431,9 @@ try {
   await next(pageA);
   await waitView(pageA, "done", 30000);
   const doneHeading = (await pageA.getByTestId("sheet-heading").innerText()).trim();
-  const expectedDone = testDay === today ? `Booked for ${timeLabel(X)} tonight.` : `Booked for ${dayChip(testDay)} at ${timeLabel(X)}`;
+  const tomorrow = new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  const expectedDone =
+    testDay === today ? `Booked for ${timeLabel(X)} tonight.` : testDay === tomorrow ? `Booked for ${timeLabel(X)} tomorrow.` : `Booked for ${dayChip(testDay)} at ${timeLabel(X)}`;
   check("then a done screen says when it's booked for, in one sentence", doneHeading === expectedDone, doneHeading);
   check("the chip at the top says booked", (await heldState(pageA)) === "booked");
   await pageA.screenshot({ path: `${out}/m3-sheet-done.png` });

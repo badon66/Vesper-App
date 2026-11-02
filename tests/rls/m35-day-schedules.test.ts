@@ -340,6 +340,36 @@ describe("a day change never moves or cancels a booking", () => {
     expect(hintOf((await hold(users.b, at(day, "15:30"))).error)).toBe("slot_taken");
   });
 
+  it("keeps every booking on the board when longer meetings make the times overlap them", async () => {
+    // Two bookings in a row, then each meeting gets longer (critique, M3.5).
+    // The first booking still lines up with the new times; the second no
+    // longer does and overlaps the first new time. Both stay on the board at
+    // their own times, and only new times clear of both are offered.
+    const day = addDays(today, 8);
+    expect((await setDay(admin, day, "17:00", 35, 4, "day")).error).toBeNull();
+    const first = await readyLead(users.a);
+    const second = await readyLead(users.b);
+    expect((await hold(users.a, at(day, "17:00"))).error).toBeNull();
+    expect((await book(users.a, first, at(day, "17:00"))).error).toBeNull();
+    expect((await hold(users.b, at(day, "17:35"))).error).toBeNull();
+    expect((await book(users.b, second, at(day, "17:35"))).error).toBeNull();
+
+    // New times: 17:00, 17:45, 18:30, 19:15. The 17:00 time now runs to
+    // 17:45 and overlaps the 17:35 booking; 17:45 overlaps it too (to 18:10).
+    expect((await setDay(admin, day, "17:00", 45, 4, "day")).error).toBeNull();
+    const rows = await eveningRows(users.a, day);
+    expect(rows.map((row) => [row.starts_at, row.state])).toEqual([
+      [at(day, "17:00"), "booked"],
+      [at(day, "17:35"), "booked"],
+      [at(day, "18:30"), "open"],
+      [at(day, "19:15"), "open"],
+    ]);
+    // A booked time shows the booking's own end, not the new length.
+    const firstRow = rows.find((row) => row.starts_at === at(day, "17:00"));
+    expect(iso(firstRow!.ends_at)).toBe(at(day, "17:35"));
+    expect(hintOf((await hold(users.b, at(day, "17:45"))).error)).toBe("slot_taken");
+  });
+
   it("lets go of a hold whose time disappears, and its holder's check-in says so", async () => {
     const day = addDays(today, 6);
     expect((await hold(users.b, at(day, "17:45"))).error).toBeNull();

@@ -11,7 +11,7 @@ colors:
   night-muted-text: "#a9b6bf"
   night-accent: "#243b4c"
   night-border: "#27404f"
-  night-input: "#2f4958"
+  night-input: "#5e7a8a"
   night-text: "#f4f1eb"
   night-destructive: "#e5675e"
   day-background: "#ffffff"
@@ -20,7 +20,7 @@ colors:
   day-muted-text: "#4f6270"
   day-accent: "#f6f1e7"
   day-border: "#d5dce1"
-  day-input: "#c7d0d6"
+  day-input: "#7d8f9b"
   day-destructive: "#b3261e"
 typography:
   headline:
@@ -123,18 +123,18 @@ Density is low on the phone (one task per screen) and moderate on the iPad (two 
 A two-colour brand, navy and gold, on night-navy surfaces, with white text that leans warm.
 
 ### Primary
-- **Porch Light Gold** (#b99257): primary buttons, the selected evening, the held time, the current step, focus rings. Navy text on gold is 4.9:1; gold never carries body text on a light background (2.9:1).
+- **Porch Light Gold** (#b99257): primary buttons, open times, the held time, focus rings. Navy text on gold is 4.9:1; gold never carries body text on a light background (2.9:1).
 
 ### Neutral
 - **Vesper Navy** (#132e3f): the brand colour, and the text colour in the light theme.
 - **Night Background** (#0c1b26), **Night Card** (#13242f), **Night Secondary** (#1c3140), **Night Muted** (#182b38): the dark theme's surfaces, from page to raised to quiet.
 - **Night Text** (#f4f1eb) and **Night Muted Text** (#a9b6bf): body and secondary text in the dark theme.
-- **Night Border** (#27404f) and **Night Input** (#2f4958): dividers and field strokes.
-- **Day Background** (#ffffff), **Day Secondary** (#e8edf0), **Day Muted** (#f2f4f6), **Day Muted Text** (#4f6270), **Day Accent** (#f6f1e7), **Day Border** (#d5dce1), **Day Input** (#c7d0d6): the light theme.
-- **Warning Red** (#e5675e at night, #b3261e by day): errors, and only errors.
+- **Night Border** (#27404f) and **Night Input** (#5e7a8a): dividers, and the edges of fields, unpicked answers and unticked boxes. Input edges reach 3:1 on every surface (WCAG 1.4.11), so an empty field still reads outdoors.
+- **Day Background** (#ffffff), **Day Secondary** (#e8edf0), **Day Muted** (#f2f4f6), **Day Muted Text** (#4f6270), **Day Accent** (#f6f1e7), **Day Border** (#d5dce1), **Day Input** (#7d8f9b): the light theme.
+- **Warning Red** (#e5675e at night, #b3261e by day): errors, and only errors. A warning that doesn't block (a long drive, a booking that won't line up) gets a neutral border and a bold first line, not red and not gold.
 
 ### Named Rules
-**The Porch Light Rule.** Gold appears only where the next action is: the primary button, the held time, the current step or the selected evening. If two things on a screen are gold, one of them is wrong.
+**The Porch Light Rule.** Gold appears only where the next action is: the primary button, an open time, the held time. Chosen things (an answer, the evening on screen) are marked in Night Text, not gold, and taken things (booked, blocked, closed) go quiet. If two things on a screen compete in gold, one of them is wrong.
 
 ## Typography
 
@@ -174,11 +174,12 @@ Gently rounded rectangles: 6 px on buttons, fields and time tiles, 8 px on cards
 - **Focus:** a 2 px gold ring with an offset.
 
 ### Choice buttons (one-tap answers)
-- A row of equal outline buttons; the chosen one turns gold. Tapping it again clears it.
+- A row of equal outline buttons; the chosen one turns light (Night Text fill, navy text) with a tick. Tapping it again clears it.
 
 ### Time tiles (signature)
-- 80 px tall tiles in a two-column grid on the phone: the time in large tabular figures, a line of detail under it.
-- **Open:** gold border. **Held by me:** gold fill. **Held by someone else:** dashed border, muted fill, the holder's initials in a gold circle. **Booked, blocked or closed:** muted and disabled, with who and where when booked.
+- 80 px tall tiles in a two-column grid on the phone (three when the board is wide enough): the time in large tabular figures with a smaller "p.m.", the detail under it, everything aligned to the top so times line up across a row.
+- **Open:** gold border, the brightest thing on the board. **Held by me:** gold fill. **Held by someone else:** dashed border, muted fill, the holder's initials in a gold circle. **Booked:** flat, with a quiet border and a muted time; the neighbourhood, then who booked it. Keenan's booked tiles carry a small chevron: a tap goes to the booking. **Blocked or closed:** muted.
+- **The evening strip:** the evening on screen has a 2 px Night Text outline on the secondary surface; its name is the board's heading, at Title size.
 
 ### Cards / Containers
 - 8 px corners, card surface, 1 px border, 16 to 24 px padding, no shadow.

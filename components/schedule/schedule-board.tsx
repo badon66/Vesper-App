@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Pencil, Plus } from "lucide-react";
+import { Check, Minus, Pencil, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import {
@@ -17,20 +17,29 @@ import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { BoardSlot } from "@/lib/schedule/board";
+import { dayPlan, openRuns, type PlanRow } from "@/lib/schedule/day-plan";
 import { calgaryDateOf, calgaryInstant, formatDay, formatLongDay, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
+
+type Template = { start: string; minutes: number; count: number };
 
 export type OwnerEveningTools = {
   day: string;
   blocks: { id: string; startsAt: string; endsAt: string; reason: string | null }[];
-  template: { start: string; minutes: number; count: number; own: boolean; usualDay: boolean };
+  // The evening's times now (its own, or the usual ones), and the usual
+  // times in Settings.
+  template: Template & { own: boolean; usualDay: boolean; usual: Template };
 };
+
+// Classes a booking's card wears for a moment after its time is tapped.
+const HIGHLIGHT = ["ring-2", "ring-primary", "ring-offset-2", "ring-offset-background"];
 
 // The Schedule tab (Keenan, 2026-11-01 and 2026-11-02): the times for the
 // booking window, with holds, bookings and blocked times on the board
 // itself. Tapping an open time holds it and opens the booking sheet. Keenan
-// also gets two small buttons at the right of the header: Block time and a
-// pencil for the evening's times. Setters never see them.
+// also gets two small buttons at the right of the header (Block time and a
+// pencil for the evening's times) and the evening's bookings, beside the
+// board on an iPad in landscape. Setters never see them.
 export function ScheduleBoard({
   board,
   today,
@@ -39,6 +48,7 @@ export function ScheduleBoard({
   viewerId,
   initialDay,
   owner,
+  children,
 }: {
   board: BoardSlot[];
   today: string;
@@ -47,17 +57,22 @@ export function ScheduleBoard({
   viewerId: string | null;
   initialDay: string;
   owner: OwnerEveningTools | null;
+  // Keenan's bookings for the evening, from the server.
+  children?: React.ReactNode;
 }) {
   const router = useRouter();
   const [blockOpen, setBlockOpen] = useState(false);
   const [dayOpen, setDayOpen] = useState(false);
-  // Each opening starts fresh on the evening's current times.
-  const [dayOpenings, setDayOpenings] = useState(0);
+  // Each opening of a pop-up starts fresh on the evening as it is.
+  const [openings, setOpenings] = useState(0);
   const [unblock, setUnblock] = useState<OwnerEveningTools["blocks"][number] | null>(null);
+  // Keenan's evening follows the strip through the server; until it arrives,
+  // the bookings dim and the tools wait, so nothing acts on the old evening.
+  const [switching, startSwitch] = useTransition();
   const refresh = useCallback(() => router.refresh(), [router]);
   const onDayChange = useCallback(
     (day: string) => {
-      if (owner) router.replace(`/app/schedule?day=${day}`, { scroll: false });
+      if (owner) startSwitch(() => router.replace(`/app/schedule?day=${day}`, { scroll: false }));
     },
     [owner, router],
   );
@@ -65,7 +80,11 @@ export function ScheduleBoard({
     (slot: BoardSlot) => {
       if (!owner) return;
       if (slot.state === "booked" && slot.meetingId) {
-        document.getElementById(`meeting-${slot.meetingId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        const card = document.getElementById(`meeting-${slot.meetingId}`);
+        if (!card) return;
+        card.scrollIntoView({ behavior: "smooth", block: "start" });
+        card.classList.add(...HIGHLIGHT);
+        window.setTimeout(() => card.classList.remove(...HIGHLIGHT), 1600);
         return;
       }
       const block = owner.blocks.find((item) => item.startsAt < slot.endsAt && item.endsAt > slot.startsAt);
@@ -74,6 +93,7 @@ export function ScheduleBoard({
     [owner],
   );
   const daySlots = board.filter((slot) => slot.day === (owner?.day ?? initialDay));
+  const twoPanes = Boolean(owner && children);
 
   return (
     <div className="flex flex-col gap-5">
@@ -84,16 +104,28 @@ export function ScheduleBoard({
         </div>
         {owner ? (
           <div className="flex shrink-0 items-center gap-2" data-testid="owner-schedule-tools">
-            <Button type="button" variant="outline" size="sm" onClick={() => setBlockOpen(true)}>
-              Block time
-            </Button>
+            {daySlots.length > 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={switching}
+                onClick={() => {
+                  setOpenings((count) => count + 1);
+                  setBlockOpen(true);
+                }}
+              >
+                Block time
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"
               size="icon"
               aria-label="Change this evening's times"
+              disabled={switching}
               onClick={() => {
-                setDayOpenings((count) => count + 1);
+                setOpenings((count) => count + 1);
                 setDayOpen(true);
               }}
             >
@@ -103,23 +135,32 @@ export function ScheduleBoard({
         ) : null}
       </div>
 
-      <TimePicker
-        initial={board}
-        today={today}
-        windowDays={windowDays}
-        asSales={asSales}
-        viewerId={viewerId}
-        mode="book"
-        initialDay={initialDay}
-        onDayChange={onDayChange}
-        onBoardChange={refresh}
-        onUnavailableTap={owner ? onUnavailableTap : undefined}
-      />
+      <div className={cn("flex flex-col gap-6", twoPanes && "lg:grid lg:grid-cols-2 lg:items-start lg:gap-8")}>
+        <div className={cn(twoPanes && "lg:sticky lg:top-6")}>
+          <TimePicker
+            initial={board}
+            today={today}
+            windowDays={windowDays}
+            asSales={asSales}
+            viewerId={viewerId}
+            mode="book"
+            initialDay={initialDay}
+            onDayChange={onDayChange}
+            onBoardChange={refresh}
+            onUnavailableTap={owner ? onUnavailableTap : undefined}
+          />
+        </div>
+        {children ? (
+          <div aria-busy={switching} className={cn("transition-opacity", switching && "opacity-50")}>
+            {children}
+          </div>
+        ) : null}
+      </div>
 
       {owner ? (
         <>
-          <BlockTimeDialog open={blockOpen} onClose={() => setBlockOpen(false)} day={owner.day} slots={daySlots} />
-          <DayTimesDialog key={`${owner.day}-${dayOpenings}`} open={dayOpen} onClose={() => setDayOpen(false)} tools={owner} />
+          <BlockTimeDialog key={`block-${owner.day}-${openings}`} open={blockOpen} onClose={() => setBlockOpen(false)} day={owner.day} slots={daySlots} />
+          <DayTimesDialog key={`day-${owner.day}-${openings}`} open={dayOpen} onClose={() => setDayOpen(false)} tools={owner} slots={daySlots} />
           <UnblockDialog block={unblock} onClose={() => setUnblock(null)} />
         </>
       ) : null}
@@ -129,26 +170,45 @@ export function ScheduleBoard({
 
 // ---------------------------------------------------------------- Block time
 
+// One time, or the whole evening: every open time, joined into runs, so a
+// booked or held time is never part of a block and the database never
+// refuses it for one.
 function BlockTimeDialog({ open, onClose, day, slots }: { open: boolean; onClose: () => void; day: string; slots: BoardSlot[] }) {
   const router = useRouter();
   const [choice, setChoice] = useState<string>("evening");
   const [reason, setReason] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const blockable = slots.filter((slot) => slot.state === "open" || slot.state === "closed");
-  const evening = slots.length > 0 ? { startsAt: slots[0].startsAt, endsAt: slots[slots.length - 1].endsAt } : null;
+  const openSlots = slots.filter((slot) => slot.state === "open");
+  const runs = openRuns(slots);
+  const someTaken = openSlots.length < slots.length;
+  const target = choice === "evening" ? null : openSlots.find((slot) => slot.startsAt === choice);
+  const label =
+    choice === "evening"
+      ? someTaken
+        ? `Block ${openSlots.length} open ${openSlots.length === 1 ? "time" : "times"}`
+        : "Block the whole evening"
+      : `Block ${target ? formatTime(target.startsAt) : ""}`;
 
   function block() {
-    const target = choice === "evening" ? evening : slots.find((slot) => slot.startsAt === choice);
-    if (!target) return;
+    const ranges = choice === "evening" ? runs : target ? [target] : [];
+    if (ranges.length === 0) return;
     setMessage(null);
     startTransition(async () => {
-      const result = await addTimeBlock(target.startsAt, target.endsAt, reason);
-      if (!result.ok) {
-        setMessage(result.message);
-        return;
+      for (const range of ranges) {
+        const result = await addTimeBlock(range.startsAt, range.endsAt, reason);
+        if (!result.ok) {
+          setMessage(
+            result.code === "slot_taken"
+              ? "Someone booked one of these times a moment ago. Close this and look again."
+              : result.code === "slot_held"
+                ? `${result.message} Try again once they're done.`
+                : result.message,
+          );
+          router.refresh();
+          return;
+        }
       }
-      setReason("");
       onClose();
       router.refresh();
     });
@@ -165,14 +225,14 @@ function BlockTimeDialog({ open, onClose, day, slots }: { open: boolean; onClose
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" onClick={block} disabled={pending || !evening}>
-            {pending ? "Blocking" : "Block"}
+          <Button type="button" onClick={block} disabled={pending || openSlots.length === 0}>
+            {pending ? "Blocking" : label}
           </Button>
         </>
       }
     >
-      {!evening ? (
-        <p className="text-sm text-muted-foreground">This evening has no meeting times to block.</p>
+      {openSlots.length === 0 ? (
+        <p className="text-sm text-pretty text-muted-foreground">Every time this evening is booked, held or blocked, so there is nothing left to block.</p>
       ) : (
         <div className="flex flex-col gap-4">
           <fieldset className="flex flex-col gap-2">
@@ -181,7 +241,7 @@ function BlockTimeDialog({ open, onClose, day, slots }: { open: boolean; onClose
               The whole evening
             </ChoiceRow>
             <div className="grid grid-cols-2 gap-2">
-              {blockable.map((slot) => (
+              {openSlots.map((slot) => (
                 <ChoiceRow key={slot.startsAt} name="block-choice" value={slot.startsAt} checked={choice === slot.startsAt} onPick={setChoice}>
                   {formatTime(slot.startsAt)}
                 </ChoiceRow>
@@ -192,7 +252,9 @@ function BlockTimeDialog({ open, onClose, day, slots }: { open: boolean; onClose
             <Label htmlFor="block-reason">Reason (optional)</Label>
             <Input id="block-reason" value={reason} maxLength={200} onChange={(event) => setReason(event.target.value)} />
           </div>
-          <p className="text-sm text-pretty text-muted-foreground">A time with a booking or someone holding it can&apos;t be blocked.</p>
+          <p className="text-sm text-pretty text-muted-foreground">
+            {someTaken ? "Only open times are blocked. Booked times stay booked, and a time someone is holding stays theirs." : "A time someone is holding stays theirs."}
+          </p>
           {message ? (
             <p role="alert" className="text-sm font-semibold text-destructive">
               {message}
@@ -254,30 +316,49 @@ function UnblockDialog({ block, onClose }: { block: OwnerEveningTools["blocks"][
 
 // ---------------------------------------------------------------- the evening's times
 
-function DayTimesDialog({ open, onClose, tools }: { open: boolean; onClose: () => void; tools: OwnerEveningTools }) {
+function sameTemplate(a: Template, b: Template): boolean {
+  return a.start === b.start && a.minutes === b.minutes && a.count === b.count;
+}
+
+function DayTimesDialog({
+  open,
+  onClose,
+  tools,
+  slots,
+}: {
+  open: boolean;
+  onClose: () => void;
+  tools: OwnerEveningTools;
+  slots: BoardSlot[];
+}) {
   const router = useRouter();
   const [start, setStart] = useState(tools.template.start);
   const [minutes, setMinutes] = useState(tools.template.minutes);
   const [count, setCount] = useState(tools.template.count);
-  const [dayPlan, setDayPlan] = useState<DaySchedulePreview | null>(null);
-  const [allPlan, setAllPlan] = useState<DaySchedulePreview | null>(null);
+  const [plans, setPlans] = useState<{ key: string; day: DaySchedulePreview | null; refused: string | null; all: DaySchedulePreview | null } | null>(null);
   const [confirmAll, setConfirmAll] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const key = `${start}|${minutes}|${count}`;
 
-  // What the change would do, read again as the numbers change.
+  // What the change would do, read again as the numbers change. Saving waits
+  // for the read that matches the numbers on screen.
   useEffect(() => {
     if (!open || !/^\d{2}:\d{2}$/.test(start)) return;
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       const input = { day: tools.day, start, minutes, count };
       const [day, all] = await Promise.all([
-        previewDaySchedule({ ...input, scope: "day" }),
-        tools.template.usualDay ? previewDaySchedule({ ...input, scope: "all" }) : Promise.resolve(null),
+        previewDaySchedule({ ...input, scope: "day" }).catch(() => null),
+        tools.template.usualDay ? previewDaySchedule({ ...input, scope: "all" }).catch(() => null) : Promise.resolve(null),
       ]);
       if (cancelled) return;
-      setDayPlan(day && day.ok && "times" in day ? day : null);
-      setAllPlan(all && all.ok && "times" in all ? all : null);
+      setPlans({
+        key: `${start}|${minutes}|${count}`,
+        day: day && day.ok && "times" in day ? day : null,
+        refused: day && !day.ok && "message" in day ? day.message : null,
+        all: all && all.ok && "times" in all ? all : null,
+      });
     }, 250);
     return () => {
       cancelled = true;
@@ -285,9 +366,31 @@ function DayTimesDialog({ open, onClose, tools }: { open: boolean; onClose: () =
     };
   }, [open, start, minutes, count, tools.day, tools.template.usualDay]);
 
+  const checking = plans?.key !== key;
+  const dayRead = checking ? null : plans?.day ?? null;
+  const allRead = checking ? null : plans?.all ?? null;
+  const readFailed = !checking && dayRead === null;
   const times = previewTimes(tools.day, start, minutes, count);
-  const lastStart = times.length > 0 ? times[times.length - 1] : null;
-  const pastMidnight = lastStart === null;
+  const pastMidnight = times.length === 0;
+  const values = { start, minutes, count };
+  const changesDay = !sameTemplate(values, tools.template);
+  const changesAll = tools.template.usualDay && (tools.template.own || !sameTemplate(values, tools.template.usual));
+  const bookings = slots
+    .filter((slot) => slot.state === "booked")
+    .map((slot) => ({ startsAt: slot.startsAt, endsAt: slot.endsAt, label: [slot.neighbourhood, slot.setterName].filter(Boolean).join(" · ") || null }));
+  const rows = pastMidnight ? [] : dayPlan(times, minutes, bookings, tools.blocks);
+  // One line by the buttons, so what saving does is always in view.
+  const kept = rows.filter((row) => row.kind === "booked").length;
+  const leftOff = rows.filter((row) => row.kind === "left-off").map((row) => formatTime(row.startsAt));
+  const summary =
+    !changesDay || pastMidnight
+      ? null
+      : [
+          kept > 0 ? `${kept} ${kept === 1 ? "booking stays" : "bookings stay"} where ${kept === 1 ? "it is" : "they are"}.` : null,
+          leftOff.length > 0 ? `${leftOff.join(", ")} won't be offered.` : null,
+        ]
+          .filter(Boolean)
+          .join(" ") || null;
 
   function save(scope: DayScope) {
     setMessage(null);
@@ -302,8 +405,6 @@ function DayTimesDialog({ open, onClose, tools }: { open: boolean; onClose: () =
     });
   }
 
-  const allNeedsConfirm = Boolean(allPlan && (allPlan.misaligned.length > 0 || allPlan.holds.length > 0 || allPlan.ownDaysKept.length > 0));
-
   return (
     <DialogPanel
       open={open}
@@ -316,61 +417,81 @@ function DayTimesDialog({ open, onClose, tools }: { open: boolean; onClose: () =
             <Button type="button" variant="outline" onClick={() => setConfirmAll(false)}>
               Back
             </Button>
-            <Button type="button" onClick={() => save("all")} disabled={pending}>
+            <Button type="button" onClick={() => save("all")} disabled={pending || checking || allRead === null}>
               {pending ? "Saving" : "Change all days"}
             </Button>
           </>
         ) : (
           <>
+            {summary ? (
+              <p className="w-full text-sm font-semibold text-pretty" data-testid="day-times-summary">
+                {summary}
+              </p>
+            ) : null}
+            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
             {tools.template.usualDay ? (
               <Button
                 type="button"
                 variant="outline"
-                disabled={pending || pastMidnight}
-                onClick={() => (allNeedsConfirm ? setConfirmAll(true) : save("all"))}
+                size="sm"
+                disabled={pending || checking || readFailed || pastMidnight || !changesAll}
+                onClick={() => setConfirmAll(true)}
               >
                 All days
               </Button>
             ) : null}
-            <Button type="button" onClick={() => save("day")} disabled={pending || pastMidnight}>
+            <Button type="button" size="sm" onClick={() => save("day")} disabled={pending || checking || readFailed || pastMidnight || !changesDay}>
               {pending ? "Saving" : "Just this day"}
             </Button>
           </>
         )
       }
     >
-      {confirmAll && allPlan ? (
+      {confirmAll && allRead ? (
         <div className="flex flex-col gap-3 text-sm" data-testid="day-times-all">
           <p className="text-base text-pretty">
-            Every evening without its own times gets {count} meetings of {minutes} minutes from {formatTime(times[0] ?? "")}. Settings change to match.
+            Every meeting evening without its own times gets {count} meetings of {minutes} minutes from {formatTime(times[0] ?? "")}, and the usual times in
+            Settings change to match.
           </p>
-          <Warnings plan={allPlan} showDay />
-          {allPlan.ownDaysKept.length > 0 ? (
-            <p className="text-pretty">
-              These evenings keep their own times: {allPlan.ownDaysKept.map((day) => formatDay(day)).join(", ")}.
-            </p>
+          <Warnings plan={allRead} showDay />
+          {allRead.ownDaysKept.length > 0 ? (
+            <p className="text-pretty">These evenings keep their own times: {allRead.ownDaysKept.map((day) => formatDay(day)).join(", ")}.</p>
           ) : null}
         </div>
       ) : (
         <div className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground" data-testid="day-times-state">
+            {tools.template.own
+              ? "This evening has its own times."
+              : tools.template.usualDay
+                ? "This evening uses the usual times from Settings."
+                : "This isn't a usual meeting day, so times set here are for this evening only."}
+          </p>
           <div className="flex flex-col gap-2">
             <Label htmlFor="day-start">First meeting starts</Label>
             <Input id="day-start" type="time" step={300} value={start} onChange={(event) => setStart(event.target.value)} className="w-40" />
           </div>
           <Stepper label="Meeting length" unit="minutes" value={minutes} min={15} max={180} step={5} onChange={setMinutes} />
           <Stepper label="Number of meetings" value={count} min={1} max={12} step={1} onChange={setCount} />
-          <div className="rounded-md border px-3 py-2" data-testid="day-times-preview">
-            <p className="text-sm font-semibold">{pastMidnight ? "The last meeting would start after midnight." : "Times"}</p>
-            {!pastMidnight ? <p className="text-base tabular-nums">{times.map((time) => formatTime(time)).join(", ")}</p> : null}
-          </div>
-          {dayPlan ? <Warnings plan={dayPlan} /> : null}
+          <EveningPreview rows={rows} pastMidnight={pastMidnight} checking={checking} />
+          {dayRead ? <Warnings plan={dayRead} /> : null}
+          {readFailed && !pastMidnight ? (
+            <p role="alert" className="text-sm font-semibold text-destructive">
+              {plans?.refused ?? "Couldn't check the bookings. Check your signal; saving waits until it can."}
+            </p>
+          ) : null}
           {tools.template.own ? (
             <Button type="button" variant="link" size="sm" className="self-start px-0" onClick={() => save("usual")} disabled={pending}>
               Use the usual times for this evening
             </Button>
           ) : null}
-          {!tools.template.usualDay ? (
-            <p className="text-sm text-pretty text-muted-foreground">This isn&apos;t a usual meeting day, so these times are for this evening only.</p>
+          {tools.template.usualDay ? (
+            <p className="text-sm text-pretty text-muted-foreground">
+              Just this day changes {formatDay(tools.day)} only. All days changes the usual times in Settings, for every meeting evening without its own
+              times.
+            </p>
           ) : null}
           {message ? (
             <p role="alert" className="text-sm font-semibold text-destructive">
@@ -383,13 +504,47 @@ function DayTimesDialog({ open, onClose, tools }: { open: boolean; onClose: () =
   );
 }
 
-// Warns before saving: a booking that won't line up stays where it is, and
-// a time someone is holding lets go.
+// The evening as setters will see it after saving, in time order.
+function EveningPreview({ rows, pastMidnight, checking }: { rows: PlanRow[]; pastMidnight: boolean; checking: boolean }) {
+  return (
+    <section className="rounded-md border px-3 py-2" data-testid="day-times-preview" aria-labelledby="day-times-preview-heading">
+      <h3 id="day-times-preview-heading" className="text-sm font-semibold">
+        {pastMidnight ? "The last meeting would start after midnight." : "What setters will see"}
+      </h3>
+      {!pastMidnight ? (
+        <>
+          <ul className="mt-1 flex flex-col">
+            {rows.map((row) => (
+              <li key={`${row.kind}-${row.startsAt}`} className="flex items-baseline gap-3 py-0.5 text-sm" data-kind={row.kind}>
+                <span className={cn("w-20 shrink-0 font-semibold tabular-nums", row.kind === "left-off" && "text-muted-foreground line-through")}>
+                  {formatTime(row.startsAt)}
+                </span>
+                <span className={cn("min-w-0 text-pretty", row.kind !== "open" && "text-muted-foreground")}>
+                  {row.kind === "open"
+                    ? "Open"
+                    : row.kind === "blocked"
+                      ? "Blocked"
+                      : row.kind === "left-off"
+                        ? `Not offered: overlaps the ${formatTime(row.because)} booking`
+                        : `Booked${row.label ? `, ${row.label}` : ""}${row.aligned ? "" : ". Stays at its own time"}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {checking ? <p className="mt-1 text-xs text-muted-foreground">Checking bookings</p> : null}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+// Warns before saving: a booking that won't line up stays where it is, and a
+// time someone is holding lets go.
 function Warnings({ plan, showDay = false }: { plan: DaySchedulePreview; showDay?: boolean }) {
   if (plan.misaligned.length === 0 && plan.holds.length === 0) return null;
   const at = (iso: string) => (showDay ? `${formatDay(calgaryDateOf(iso))} at ${formatTime(iso)}` : formatTime(iso));
   return (
-    <div role="status" className="flex flex-col gap-2 rounded-md border border-primary px-3 py-2 text-sm" data-testid="day-times-warning">
+    <div role="status" className="flex flex-col gap-2 rounded-md border border-foreground/60 px-3 py-2 text-sm" data-testid="day-times-warning">
       {plan.misaligned.map((meeting) => (
         <p key={meeting.meetingId} className="text-pretty">
           <span className="font-semibold">
@@ -422,6 +577,8 @@ function previewTimes(day: string, start: string, minutes: number, count: number
   });
 }
 
+// A number with Less and More buttons. Typing works as typing does: the box
+// can be cleared and retyped, and the number is checked when it is left.
 function Stepper({
   label,
   unit,
@@ -440,6 +597,18 @@ function Stepper({
   onChange: (value: number) => void;
 }) {
   const id = label.toLowerCase().replace(/\s+/g, "-");
+  const [text, setText] = useState(String(value));
+  const [shown, setShown] = useState(value);
+  if (value !== shown) {
+    setShown(value);
+    setText(String(value));
+  }
+  const settle = (raw: string) => {
+    const typed = Number(raw);
+    const next = raw === "" || !Number.isFinite(typed) ? value : Math.min(max, Math.max(min, Math.round(typed / step) * step || min));
+    setText(String(next));
+    if (next !== value) onChange(next);
+  };
   return (
     <div className="flex flex-col gap-2">
       <Label htmlFor={id}>{label}</Label>
@@ -450,12 +619,14 @@ function Stepper({
         <Input
           id={id}
           inputMode="numeric"
-          value={String(value)}
+          value={text}
           onChange={(event) => {
-            const next = Number(event.target.value.replace(/\D/g, ""));
-            if (Number.isFinite(next) && next > 0) onChange(Math.min(max, next));
+            const raw = event.target.value.replace(/\D/g, "").slice(0, 3);
+            setText(raw);
+            const typed = Number(raw);
+            if (raw !== "" && typed >= min && typed <= max && typed % step === 0) onChange(typed);
           }}
-          onBlur={() => onChange(Math.min(max, Math.max(min, Math.round(value / step) * step || min)))}
+          onBlur={(event) => settle(event.target.value)}
           className="w-20 text-center tabular-nums"
         />
         <Button type="button" variant="outline" size="icon" aria-label={`More: ${label}`} disabled={value + step > max} onClick={() => onChange(Math.min(max, value + step))}>
@@ -483,11 +654,12 @@ function ChoiceRow({
   return (
     <label
       className={cn(
-        "flex min-h-11 cursor-pointer items-center rounded-md border px-3 text-base font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
+        "flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-3 text-base font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
         checked ? "border-foreground bg-foreground text-background" : "border-input bg-background",
       )}
     >
       <input type="radio" name={name} value={value} checked={checked} onChange={() => onPick(value)} className="sr-only" />
+      {checked ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
       {children}
     </label>
   );

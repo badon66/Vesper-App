@@ -148,6 +148,9 @@ export function PhotoSlots({
             const src = local?.preview ?? saved[slot];
             const failed = local?.status === "failed";
             const action = failed ? "Try the upload again" : src ? "Retake" : "Take photo";
+            // Front and both corners are needed to book; the soffit close-up helps.
+            const optional = slot === "soffit";
+            const status = local?.status === "working" ? `${label}: uploading` : failed ? `${label}: didn't upload. Tap to try again.` : "";
             return (
               <li key={slot} data-slot={slot}>
                 <button
@@ -165,9 +168,7 @@ export function PhotoSlots({
                         <span className="truncate">{label}</span>
                         {local?.status === "working" ? (
                           <span className="shrink-0 text-muted-foreground">Uploading</span>
-                        ) : failed ? (
-                          <span className="shrink-0 text-destructive">Didn&apos;t upload. Tap to try again.</span>
-                        ) : canTake ? (
+                        ) : failed ? null : canTake ? (
                           <span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground">
                             <Camera aria-hidden="true" className="size-3.5" />
                             Retake
@@ -179,10 +180,18 @@ export function PhotoSlots({
                     <span className="flex size-full flex-col items-center justify-center gap-1 px-3 text-center">
                       <Camera aria-hidden="true" className="size-6 text-muted-foreground" />
                       <span className="text-sm font-semibold">{label}</span>
-                      <span className="text-xs text-pretty text-muted-foreground">{hint}</span>
+                      <span className="text-xs text-pretty text-muted-foreground">{optional ? `Optional. ${hint}` : hint}</span>
                     </span>
                   )}
+                  {failed ? (
+                    <span className="absolute inset-0 flex items-center justify-center bg-background px-3 text-center text-sm font-semibold text-pretty text-destructive">
+                      {label} didn&apos;t upload. Tap to try again.
+                    </span>
+                  ) : null}
                 </button>
+                <span className="sr-only" aria-live="polite">
+                  {status}
+                </span>
                 {canTake ? input(slot) : null}
               </li>
             );

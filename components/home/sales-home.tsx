@@ -57,7 +57,7 @@ export async function SalesHome({
 
       <Card data-testid="tonight-times">
         <CardHeader>
-          <CardTitle>{opening.tonightFull ? "Nothing left tonight" : "Tonight's open times"}</CardTitle>
+          <CardTitle>{opening.tonightFull ? (opening.tonightHasTimes ? "Nothing left tonight" : "No meetings tonight") : "Tonight's open times"}</CardTitle>
           <CardDescription>
             {opening.tonightFull
               ? opening.day === today

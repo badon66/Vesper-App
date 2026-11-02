@@ -1,7 +1,7 @@
 "use client";
 
 import { Check } from "lucide-react";
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
 import { AddressField } from "@/components/leads/address-field";
 import { AnswerGroup } from "@/components/leads/answer-group";
 import { PhotoSlots } from "@/components/leads/photo-slots";
@@ -45,6 +45,7 @@ export function WhoScreen({
             id="sheet-first-name"
             autoComplete="off"
             autoCapitalize="words"
+            enterKeyHint="next"
             value={draft.first_name}
             maxLength={80}
             onChange={(event) => onChange({ first_name: event.target.value })}
@@ -56,6 +57,7 @@ export function WhoScreen({
             id="sheet-last-name"
             autoComplete="off"
             autoCapitalize="words"
+            enterKeyHint="next"
             value={draft.last_name}
             maxLength={80}
             onChange={(event) => onChange({ last_name: event.target.value })}
@@ -68,6 +70,7 @@ export function WhoScreen({
           id="sheet-phone"
           type="tel"
           inputMode="tel"
+          enterKeyHint="done"
           autoComplete="off"
           value={draft.phone}
           maxLength={40}
@@ -92,20 +95,32 @@ export function FindOutScreen({ fields, draft, onChange }: { fields: FindOutFiel
             : field === "wants_price"
               ? yesNoChoice(draft.wants_price, "not_yet")
               : ((draft[field as keyof SheetDraft] as string | null) ?? null);
+        const rule =
+          field === "owns_home" && draft.owns_home === false
+            ? "Only homeowners can be booked. Keep talking, or let the time go and set a follow-up day."
+            : field === "wants_price" && draft.wants_price === false
+              ? "Book once they want a price. Until then, let the time go and set a follow-up day."
+              : null;
         return (
-          <AnswerGroup
-            key={field}
-            name={`sheet-${field}`}
-            legend={question.question}
-            options={question.options}
-            columns={question.columns === 4 ? 4 : question.columns}
-            value={value}
-            onChange={(next) => {
-              if (field === "owns_home") onChange({ owns_home: next === null ? null : next === "yes" });
-              else if (field === "wants_price") onChange({ wants_price: next === null ? null : next === "yes" });
-              else onChange({ [field]: next } as Partial<SheetDraft>);
-            }}
-          />
+          <div key={field} className="flex flex-col gap-1">
+            <AnswerGroup
+              name={`sheet-${field}`}
+              legend={question.question}
+              options={question.options}
+              columns={question.columns === 4 ? 4 : question.columns}
+              value={value}
+              onChange={(next) => {
+                if (field === "owns_home") onChange({ owns_home: next === null ? null : next === "yes" });
+                else if (field === "wants_price") onChange({ wants_price: next === null ? null : next === "yes" });
+                else onChange({ [field]: next } as Partial<SheetDraft>);
+              }}
+            />
+            {rule ? (
+              <p className="text-sm text-pretty text-muted-foreground" data-testid={`rule-${field}`}>
+                {rule}
+              </p>
+            ) : null}
+          </div>
         );
       })}
     </div>
@@ -184,6 +199,7 @@ export function SoffitScreen({ draft, onChange }: { draft: SheetDraft; onChange:
       <AnswerGroup
         name="sheet-soffit"
         legend="Soffit colour"
+        hideLegend
         options={SOFFIT_OPTIONS}
         columns={2}
         value={draft.soffit_colour}
@@ -285,6 +301,7 @@ export function BookScreen({
   onFix: (screen: SheetScreen) => void;
 }) {
   const guided = guidedPhotoCount(draft);
+  const ruledOut = (key: string) => (key === "owns_home" && draft.owns_home === false) || (key === "wants_price" && draft.wants_price === false);
   const items = [
     ...leadReadiness(readinessLead(draft), guided).map((item) => ({
       key: item.key as string,
@@ -296,7 +313,11 @@ export function BookScreen({
       done:
         item.key === "photos" && guided < 3 && draft.skip
           ? `Photos skipped: ${PHOTO_SKIP_OPTIONS.find((option) => option.value === draft.skip)?.label ?? ""}`
-          : null,
+          : item.key === "owns_home" && draft.owns_home === false
+            ? "Owns the home: No. Only homeowners can be booked."
+            : item.key === "wants_price" && draft.wants_price === false
+              ? "Wants a price: Not yet. Book once they want one."
+              : null,
     })),
     { key: "everyone_deciding_present", label: "Everyone who decides will be there", ok: draft.everyone, done: null },
   ];
@@ -323,9 +344,9 @@ export function BookScreen({
             >
               <span className="flex items-center gap-2 text-sm">
                 {item.ok ? (
-                  <Check aria-label="Done" className="size-4 shrink-0" />
+                  <Check role="img" aria-label="Done" className="size-4 shrink-0" />
                 ) : (
-                  <span aria-label="Missing" className="size-4 shrink-0 rounded-full border-2 border-muted-foreground" />
+                  <span role="img" aria-label="Missing" className="size-4 shrink-0 rounded-full border-2 border-muted-foreground" />
                 )}
                 <span className={item.ok ? "" : "font-semibold"}>{item.done ?? item.label}</span>
               </span>
@@ -335,9 +356,9 @@ export function BookScreen({
                   variant="outline"
                   size="sm"
                   onClick={() => onFix(PROBLEM_SCREENS[item.key] ?? "who")}
-                  aria-label={`Fix: ${item.label}`}
+                  aria-label={ruledOut(item.key) ? `Change answer: ${item.label.split(":")[0]}` : `Fix: ${item.label}`}
                 >
-                  Fix
+                  {ruledOut(item.key) ? "Change answer" : "Fix"}
                 </Button>
               ) : null}
             </li>
@@ -346,7 +367,7 @@ export function BookScreen({
       </section>
 
       {warnings.length > 0 ? (
-        <div role="status" className="rounded-md border border-primary px-3 py-2 text-sm" data-testid="distance-warning">
+        <div role="status" className="rounded-md border border-foreground/60 px-3 py-2 text-sm" data-testid="distance-warning">
           {warnings.map((warning) => (
             <p key={warning} className="font-semibold text-pretty">
               {warning}
@@ -370,29 +391,51 @@ export function ExistingScreen({
   loading: boolean;
   onPick: (leadId: string) => void;
 }) {
+  const [query, setQuery] = useState("");
   if (loading) return <p className="text-sm text-muted-foreground">Loading your leads.</p>;
   if (leads.length === 0) {
     return <p className="text-sm text-muted-foreground">No New or Follow up leads of yours yet. Go back and add this person instead.</p>;
   }
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = words.length === 0 ? leads : leads.filter((lead) => words.every((word) => `${lead.name} ${lead.address}`.toLowerCase().includes(word)));
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-pretty text-muted-foreground">Your New and Follow up leads. Anything already answered is skipped.</p>
-      <ul className="flex flex-col divide-y rounded-md border" aria-label="Your leads">
-      {leads.map((lead) => (
-        <li key={lead.id}>
-          <button
-            type="button"
-            onClick={() => onPick(lead.id)}
-            className="flex min-h-14 w-full flex-col justify-center px-4 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <span className="font-semibold">{lead.name}</span>
-            <span className="text-sm text-muted-foreground">
-              {lead.address} · {lead.status}
-            </span>
-          </button>
-        </li>
-      ))}
-      </ul>
+      <p className="text-sm text-pretty text-muted-foreground">Your Follow up and New leads, follow-ups due first. Anything already answered is skipped.</p>
+      {leads.length > 6 ? (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="sheet-lead-search" className="sr-only">
+            Search your leads
+          </Label>
+          <Input
+            id="sheet-lead-search"
+            type="search"
+            enterKeyHint="search"
+            placeholder="Search by name or street"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+      ) : null}
+      {shown.length === 0 ? (
+        <p className="text-sm text-muted-foreground">None of your leads match that.</p>
+      ) : (
+        <ul className="flex flex-col divide-y rounded-md border" aria-label="Your leads">
+          {shown.map((lead) => (
+            <li key={lead.id}>
+              <button
+                type="button"
+                onClick={() => onPick(lead.id)}
+                className="flex min-h-14 w-full flex-col justify-center px-4 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="font-semibold">{lead.name}</span>
+                <span className="text-sm text-muted-foreground">
+                  {lead.address} · {lead.status}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

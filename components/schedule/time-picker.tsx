@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { holdTime } from "@/app/(app)/app/schedule/actions";
 import { bookingSheet } from "@/lib/booking/sheet-store";
@@ -157,9 +158,10 @@ export function TimePicker({
   const evening = evenings.find((item) => item.day === day) ?? evenings[0];
   const daySlots = evening?.slots ?? [];
   const tonightFullNote = !tonightOnly && opening.tonightFull && day === opening.day && day !== today;
+  const ownerTaps = Boolean(onUnavailableTap);
 
   return (
-    <div className="flex flex-col gap-4" data-testid="time-picker">
+    <div className="@container flex flex-col gap-4" data-testid="time-picker">
       {!tonightOnly ? (
         <div ref={strip} className="-mx-4 overflow-x-auto px-4" role="group" aria-label="Evenings">
           <div className="flex w-max gap-2">
@@ -170,8 +172,8 @@ export function TimePicker({
                 onClick={() => choose(item.day)}
                 aria-pressed={item.day === day}
                 className={cn(
-                  "flex min-h-14 min-w-20 flex-col items-center justify-center rounded-md border px-3 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  item.day === day ? "border-foreground bg-foreground text-background" : "bg-background",
+                  "flex min-h-14 min-w-20 flex-col items-center justify-center rounded-md border px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  item.day === day ? "border-2 border-foreground bg-secondary font-bold" : "bg-background font-semibold",
                   item.slots.length === 0 && item.day !== day && "text-muted-foreground",
                 )}
               >
@@ -184,12 +186,12 @@ export function TimePicker({
       ) : null}
 
       <div>
-        <p className="text-sm font-semibold" data-testid="picker-day">
+        <h2 className="text-lg font-bold" data-testid="picker-day">
           {day === today ? "Tonight" : formatLongDay(day)}
-        </p>
+        </h2>
         {tonightFullNote ? (
           <p className="text-sm text-pretty text-muted-foreground" data-testid="tonight-full">
-            Nothing left tonight. This is the next evening with an opening.
+            {opening.tonightHasTimes ? "Nothing left tonight." : "No meetings tonight."} This is the next evening with an opening.
           </p>
         ) : null}
       </div>
@@ -200,16 +202,18 @@ export function TimePicker({
         </p>
       ) : null}
       {daySlots.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No meeting times this evening.</p>
+        <p className="text-sm text-pretty text-muted-foreground">
+          No meeting times this evening.{ownerTaps ? " Use the pencil to give this evening its own times." : ""}
+        </p>
       ) : (
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label={`Times, ${eveningLabel(day, today)}`}>
+        <ul className="grid grid-cols-2 gap-3 @lg:grid-cols-3" aria-label={`Times, ${eveningLabel(day, today)}`}>
           {daySlots.map((slot) => (
             <li key={slot.startsAt}>
               <SlotButton
                 slot={slot}
                 pending={pending === slot.startsAt}
                 disabled={mode === "view" || pending !== null}
-                ownerTaps={Boolean(onUnavailableTap)}
+                ownerTaps={ownerTaps}
                 onTap={() => void tap(slot)}
               />
             </li>
@@ -235,6 +239,12 @@ function bookedSignature(slots: BoardSlot[]): string {
     .join(",");
 }
 
+// "5:00 p.m." as the digits and the "p.m.", so the digits can carry.
+function splitTime(time: string): [string, string] {
+  const match = /^(.*?)\s*([ap]\.m\.)$/.exec(time);
+  return match ? [match[1], match[2]] : [time, ""];
+}
+
 function SlotButton({
   slot,
   pending,
@@ -249,15 +259,15 @@ function SlotButton({
   onTap: () => void;
 }) {
   const time = formatTime(slot.startsAt);
+  const [digits, suffix] = splitTime(time);
   const heldByOther = slot.state === "held" && !slot.heldByViewer;
   const mine = slot.state === "held" && slot.heldByViewer;
   const booked = slot.state === "booked";
   const blocked = slot.state === "blocked";
   const closed = slot.state === "closed";
+  // A booking: where it is (what setters cluster by), then whose it is.
   const detail = booked
-    ? slot.setterIsViewer
-      ? "Your booking"
-      : "Booked"
+    ? slot.neighbourhood ?? (slot.setterIsViewer ? "Your booking" : "Booked")
     : blocked
       ? ownerTaps
         ? "Blocked · tap to unblock"
@@ -271,10 +281,21 @@ function SlotButton({
             : pending
               ? "Holding"
               : "Open";
+  const more = booked
+    ? slot.neighbourhood
+      ? slot.setterIsViewer
+        ? "Your booking"
+        : slot.setterName
+          ? `Booked by ${slot.setterName}`
+          : "Booked"
+      : !slot.setterIsViewer && slot.setterName
+        ? `By ${slot.setterName}`
+        : ""
+    : "";
   // Blocked and booked times stay tappable for Keenan: to unblock one, or to
-  // jump to a booking's details.
+  // see a booking's details.
   const unavailable = closed || ((booked || blocked) && !ownerTaps);
-  const more = booked ? [slot.neighbourhood, slot.setterIsViewer ? null : slot.setterName].filter(Boolean).join(" · ") : "";
+  const spoken = booked ? `${time}, ${slot.setterIsViewer ? "Your booking" : "Booked"}${slot.neighbourhood ? `, ${slot.neighbourhood}` : ""}${!slot.setterIsViewer && slot.setterName ? `, ${slot.setterName}` : ""}` : `${time}, ${detail}`;
   return (
     <button
       type="button"
@@ -282,19 +303,24 @@ function SlotButton({
       disabled={disabled || unavailable}
       data-time={slot.startsAt}
       data-state={mine ? "mine" : slot.state}
-      aria-label={`${time}, ${detail}${more ? `, ${more}` : ""}`}
+      aria-label={spoken}
       className={cn(
-        "relative flex min-h-20 w-full flex-col items-start justify-center rounded-md border px-4 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed",
+        "relative flex min-h-20 w-full flex-col items-start justify-start rounded-md border px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed",
         slot.state === "open" && "border-primary bg-background",
         mine && "border-primary bg-primary text-primary-foreground",
-        heldByOther && "border-dashed bg-muted",
-        booked && "border-foreground/40 bg-secondary text-foreground",
+        heldByOther && "border-dashed bg-muted pr-12",
+        booked && "border-border bg-background",
         (blocked || closed) && "bg-muted text-muted-foreground",
+        booked && ownerTaps && "pr-9",
       )}
     >
-      <span className="text-2xl font-bold tabular-nums">{time}</span>
-      <span className="text-sm">{detail}</span>
+      <span className={cn("text-2xl leading-tight font-bold tabular-nums", booked && "text-muted-foreground")}>
+        {digits}
+        {suffix ? <span className="ml-1 text-base font-semibold">{suffix}</span> : null}
+      </span>
+      <span className={cn("w-full text-sm", booked && "truncate")}>{detail}</span>
       {more ? <span className="w-full truncate text-xs text-muted-foreground">{more}</span> : null}
+      {booked && ownerTaps ? <ChevronRight aria-hidden="true" className="absolute top-3.5 right-3 size-4 text-muted-foreground" /> : null}
       {heldByOther ? (
         <span
           aria-hidden="true"

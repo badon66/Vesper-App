@@ -160,15 +160,17 @@ describe("Saving the lead from the sheet", () => {
 });
 
 describe("Saying the time", () => {
-  it("says tonight for tonight, and the day otherwise", () => {
+  it("says tonight for tonight, tomorrow for tomorrow, and the day otherwise", () => {
     const tonight = calgaryInstant("2026-11-14", "19:30");
     expect(timePhrase(tonight, "2026-11-14")).toBe("7:30 p.m. tonight");
-    expect(timePhrase(tonight, "2026-11-13")).toBe("Sat, Nov 14 at 7:30 p.m.");
+    expect(timePhrase(tonight, "2026-11-13")).toBe("7:30 p.m. tomorrow");
+    expect(timePhrase(tonight, "2026-11-12")).toBe("Sat, Nov 14 at 7:30 p.m.");
   });
 
   it("ends the done screen's sentence once, after a time that ends in p.m.", () => {
     const at = calgaryInstant("2026-11-14", "17:00");
-    expect(sentence(`Booked for ${timePhrase(at, "2026-11-13")}`)).toBe("Booked for Sat, Nov 14 at 5:00 p.m.");
+    expect(sentence(`Booked for ${timePhrase(at, "2026-11-12")}`)).toBe("Booked for Sat, Nov 14 at 5:00 p.m.");
+    expect(sentence(`Booked for ${timePhrase(at, "2026-11-13")}`)).toBe("Booked for 5:00 p.m. tomorrow.");
     expect(sentence(`Booked for ${timePhrase(at, "2026-11-14")}`)).toBe("Booked for 5:00 p.m. tonight.");
   });
 });

@@ -1,4 +1,4 @@
-import { calgaryDateOf, calgaryToday, formatDay, formatTime } from "@/lib/time";
+import { addDays, calgaryDateOf, calgaryToday, formatDay, formatTime } from "@/lib/time";
 import type { Database } from "@/types/database";
 
 export type MeetingStatus = Database["public"]["Enums"]["meeting_status"];
@@ -31,9 +31,12 @@ export function formatMeetingTime(startsAt: string): string {
   return `${formatDay(calgaryDateOf(startsAt))} at ${formatTime(startsAt)}`;
 }
 
-// "7:30 p.m. tonight", or "Sat, Nov 14 at 7:30 p.m."
+// "7:30 p.m. tonight", "7:30 p.m. tomorrow", or "Sat, Nov 14 at 7:30 p.m."
 export function timePhrase(startsAt: string, today: string = calgaryToday()): string {
-  return calgaryDateOf(startsAt) === today ? `${formatTime(startsAt)} tonight` : formatMeetingTime(startsAt);
+  const day = calgaryDateOf(startsAt);
+  if (day === today) return `${formatTime(startsAt)} tonight`;
+  if (day === addDays(today, 1)) return `${formatTime(startsAt)} tomorrow`;
+  return formatMeetingTime(startsAt);
 }
 
 // Ends a sentence once: times already end in "p.m."

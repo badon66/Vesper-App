@@ -16,6 +16,7 @@ export function AnswerGroup<T extends string>({
   onChange,
   columns = 2,
   error,
+  hideLegend = false,
 }: {
   name: string;
   legend: string;
@@ -24,11 +25,13 @@ export function AnswerGroup<T extends string>({
   onChange: (value: T | null) => void;
   columns?: 2 | 3 | 4;
   error?: string;
+  // When the screen's heading already asks the question.
+  hideLegend?: boolean;
 }) {
   const grid = { 2: "grid-cols-2", 3: "grid-cols-3", 4: "grid-cols-2 sm:grid-cols-4" }[columns];
   return (
     <fieldset className="flex flex-col gap-2" aria-describedby={error ? `${name}-error` : undefined}>
-      <legend className="mb-2 text-sm font-semibold">{legend}</legend>
+      <legend className={hideLegend ? "sr-only" : "mb-2 text-sm font-semibold"}>{legend}</legend>
       <div className={`grid gap-2 ${grid}`}>
         {options.map((option) => (
           <label

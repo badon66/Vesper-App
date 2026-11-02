@@ -10,6 +10,7 @@ import {
 } from "@/lib/auth/profile";
 import type { SheetDraft } from "@/lib/booking/sheet";
 import { type PhotoSlot } from "@/lib/leads/door";
+import { followUpLabel } from "@/lib/leads/attention";
 import { openKnockSession } from "@/lib/leads/queries";
 import { leadColumnsFromValues, parseLeadForm, type LeadFormErrors } from "@/lib/leads/schema";
 import { leadName, STATUS_LABELS } from "@/lib/leads/status";
@@ -173,19 +174,28 @@ export async function sheetBookableLeads(): Promise<{ ok: true; leads: BookableL
   const supabase = await createClient();
   let query = supabase
     .from("leads")
-    .select("id, first_name, last_name, address_line, neighbourhood, status, created_at")
+    .select("id, first_name, last_name, address_line, neighbourhood, status, follow_up_on, created_at")
     .in("status", ["new", "follow_up"])
     .order("created_at", { ascending: false })
-    .limit(50);
+    .limit(100);
   if (me.role !== "owner") query = query.or(`created_by.eq.${me.id},assigned_to.eq.${me.id}`);
   const { data } = await query;
+  const today = calgaryToday();
+  // Like Leads: follow-ups by their day, the most overdue first, then New
+  // leads, the newest first.
+  const rows = [...(data ?? [])].sort((a, b) => {
+    const rank = (lead: typeof a) => (lead.status === "follow_up" ? 0 : 1);
+    if (rank(a) !== rank(b)) return rank(a) - rank(b);
+    if (a.status === "follow_up") return (a.follow_up_on ?? "9999").localeCompare(b.follow_up_on ?? "9999");
+    return b.created_at.localeCompare(a.created_at);
+  });
   return {
     ok: true,
-    leads: (data ?? []).map((lead) => ({
+    leads: rows.map((lead) => ({
       id: lead.id,
       name: leadName(lead),
       address: [lead.address_line, lead.neighbourhood].filter(Boolean).join(", "),
-      status: STATUS_LABELS[lead.status],
+      status: lead.status === "follow_up" && lead.follow_up_on ? `Follow up, ${followUpLabel(lead.follow_up_on, today).toLowerCase()}` : STATUS_LABELS[lead.status],
     })),
   };
 }

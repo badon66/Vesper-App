@@ -27,6 +27,7 @@ import {
 import { TimePicker } from "@/components/schedule/time-picker";
 import { Button } from "@/components/ui/button";
 import { DialogPanel } from "@/components/ui/dialog-panel";
+import { NoteText } from "@/components/booking/step-notes";
 import {
   canSaveLead,
   draftProblems,
@@ -37,6 +38,7 @@ import {
   previousScreen,
   savedFingerprint,
   SCREEN_TITLES,
+  SCREENS,
   STEPS,
   stepOf,
   type SheetDraft,
@@ -49,7 +51,7 @@ import type { PickedAddress } from "@/lib/places";
 import { toBoardSlots, type BoardSlot } from "@/lib/schedule/board";
 import { sentence, timePhrase } from "@/lib/schedule/meetings";
 import { createClient } from "@/lib/supabase/client";
-import { formatTime } from "@/lib/time";
+import { calgaryDateOf, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 const CHECK_IN_MS = 20_000;
@@ -69,6 +71,8 @@ type Stored = {
   savedPrint: string | null;
   name: string;
   savedAt: number;
+  // Set when the sheet comes back after a reload and the hold had let go.
+  lost?: boolean;
 };
 
 function readStored(userId: string): Stored | null {
@@ -90,9 +94,11 @@ function writeStored(userId: string, value: Stored | null) {
 }
 
 // The booking sheet's home in the app layout. It opens when something asks
-// it to (bookingSheet.open), and after a reload when the phone still holds
-// the time it was booking. Off while the owner views the app as someone:
-// the sheet starts with a hold, which is a write.
+// it to (bookingSheet.open), and after a reload (an iPhone sometimes reloads
+// the app after the camera) with what was typed: holding the same time, or
+// saying the hold let go and offering it again when it's still free. Off
+// while the owner views the app as someone: the sheet starts with a hold,
+// which is a write.
 export function BookingSheetHost({ enabled, userId }: { enabled: boolean; userId: string }) {
   const request = useSheetRequest();
   const [restored, setRestored] = useState<Stored | null>(null);
@@ -107,14 +113,16 @@ export function BookingSheetHost({ enabled, userId }: { enabled: boolean; userId
       writeStored(userId, null);
       return;
     }
+    const typed = Boolean(stored.draft.leadId || stored.draft.first_name.trim() || stored.draft.phone.trim());
     renewMyHold()
       .then((result) => {
-        if (result.status === "held" && result.startsAt === stored.heldAt) {
-          setRestored(stored);
-          bookingSheet.open(stored.request);
-        } else {
+        const stillHeld = result.status === "held" && result.startsAt === stored.heldAt;
+        if (!stillHeld && !typed) {
           writeStored(userId, null);
+          return;
         }
+        setRestored({ ...stored, lost: !stillHeld });
+        bookingSheet.open(stored.request);
       })
       .catch(() => {});
   }, [enabled, userId]);
@@ -160,7 +168,7 @@ function BookingSheet({
   const [savedPrint, setSavedPrint] = useState<string | null>(restored?.savedPrint ?? null);
   const [name, setName] = useState(restored?.name ?? (request.kind === "move" ? request.leadName : ""));
   const [heldAt, setHeldAt] = useState<string | null>(restored?.heldAt ?? (request.kind === "book" ? request.startsAt : null));
-  const [held, setHeld] = useState(true);
+  const [held, setHeld] = useState(!restored?.lost);
   const [lostWhy, setLostWhy] = useState<{ text: string; canHoldAgain: boolean } | null>(null);
   const [photos, setPhotos] = useState<Partial<Record<PhotoSlot, string>>>({});
   const [photosBusy, setPhotosBusy] = useState(false);
@@ -272,6 +280,42 @@ function BookingSheet({
     };
   }, [heldAt, held, done, view, explainLost]);
 
+  // Back after a reload with the hold gone: say so, as a lapse would.
+  useEffect(() => {
+    if (!restored?.lost || !restored.heldAt) return;
+    const startsAt = restored.heldAt;
+    const timer = window.setTimeout(() => void explainLost(startsAt), 0);
+    return () => window.clearTimeout(timer);
+  }, [restored, explainLost]);
+
+  // The screen stays on while a time is held, so a phone that would lock in
+  // the middle of the conversation doesn't let the hold lapse. Where the
+  // browser can't, the check-in and Hold it again still cover it.
+  useEffect(() => {
+    if (!heldAt || !held || done || view === "moved") return;
+    const wakeLock = typeof navigator !== "undefined" ? navigator.wakeLock : undefined;
+    if (!wakeLock) return;
+    let lock: WakeLockSentinel | null = null;
+    let stopped = false;
+    const take = async () => {
+      if (stopped || document.visibilityState !== "visible") return;
+      try {
+        lock = await wakeLock.request("screen");
+        if (stopped) void lock.release().catch(() => {});
+      } catch {
+        lock = null;
+      }
+    };
+    void take();
+    const again = () => void take();
+    document.addEventListener("visibilitychange", again);
+    return () => {
+      stopped = true;
+      document.removeEventListener("visibilitychange", again);
+      void lock?.release().catch(() => {});
+    };
+  }, [heldAt, held, done, view]);
+
   async function holdAgain() {
     if (!heldAt) return;
     setBusy(true);
@@ -357,16 +401,19 @@ function BookingSheet({
     return saved;
   }
 
-  async function next() {
+  // Next, or a tap on a step's name. Reads the address screen, saves the
+  // lead when it can and something changed, then goes there.
+  async function advance(target: SheetScreen | null) {
     if (!isScreen(view)) return;
     setBusy(true);
     setError(null);
     try {
       let current = draft;
+      const forward = target === null || SCREENS.indexOf(target) > SCREENS.indexOf(view);
       if (view === "address") {
         current = readAddressForm(draft);
         setDraft(current);
-        if (!current.leadId && !canSaveLead(current)) {
+        if (forward && !current.leadId && !canSaveLead(current)) {
           setError(
             current.first_name.trim() === ""
               ? { text: "Add their first name first, so they can be saved.", fix: "who" }
@@ -375,18 +422,19 @@ function BookingSheet({
           return;
         }
       }
-      if (view === "book") {
+      if (view === "book" && target === null) {
         await book(current);
         return;
       }
       const needsSave =
-        (view === "address" && !current.leadId) || (current.leadId !== null && savedFingerprint(current) !== savedPrint);
+        (view === "address" && !current.leadId && canSaveLead(current)) ||
+        (current.leadId !== null && savedFingerprint(current) !== savedPrint);
       if (needsSave) {
         const saved = await save(current);
         if (!saved) return;
         current = saved;
       }
-      go(nextScreen(view, current, skipDone));
+      go(target ?? nextScreen(view, current, skipDone));
     } finally {
       setBusy(false);
     }
@@ -507,8 +555,9 @@ function BookingSheet({
     router.refresh();
   }
 
-  async function letGo() {
+  async function letGo(then?: "open-lead") {
     setLetGoOpen(false);
+    const leadId = draft.leadId;
     if (heldAt && held) {
       try {
         await releaseMyHold();
@@ -517,6 +566,7 @@ function BookingSheet({
       }
     }
     close();
+    if (then === "open-lead" && leadId) router.push(`/app/leads/${leadId}`);
   }
 
   // Escape, or a phone's back gesture, asks before letting the time go.
@@ -529,7 +579,10 @@ function BookingSheet({
   // ------------------------------------------------------------ drawing it
   const when = heldAt ? timePhrase(heldAt) : null;
   const problems = draftProblems(draft);
-  const step = isScreen(view) ? stepOf(view) : null;
+  // The step the setter is in: the screen's, or on Pick another time and
+  // Existing lead, the step they came from.
+  const place: SheetScreen | null = isScreen(view) ? view : (view === "times" || view === "existing") && returnTo ? returnTo : null;
+  const step = place ? stepOf(place) : null;
   const note = step && notes ? notes[step] : null;
   const personName = [draft.first_name, draft.last_name].filter((part) => part.trim()).join(" ") || name || "this person";
   const title =
@@ -567,7 +620,7 @@ function BookingSheet({
         <header className="border-b pt-[env(safe-area-inset-top)]">
           <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3 px-4 pt-2">
             <HeldChip when={when} state={done || view === "moved" ? "booked" : held ? "held" : "lost"} isMove={isMove} />
-            {note ? (
+            {step && (notes === null || note) ? (
               <Button type="button" variant="ghost" size="icon" aria-label="What to talk about" onClick={() => setNoteOpen(true)}>
                 <CircleHelp className="size-6" />
               </Button>
@@ -575,17 +628,28 @@ function BookingSheet({
               <span className="size-11" aria-hidden="true" />
             )}
           </div>
-          {!isMove ? <Progress view={view} /> : <div className="h-3" />}
+          {!isMove ? (
+            <Progress view={view} place={place} onJump={isScreen(view) && !busy && !photosBusy ? (screen) => void advance(screen) : null} />
+          ) : (
+            <div className="h-3" />
+          )}
         </header>
 
         {/* ------------------------------------------------ the screen */}
         <div className="flex-1 overflow-y-auto overscroll-contain">
           <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-5">
-            <h2 id="sheet-title" ref={headingRef} tabIndex={-1} className="text-2xl font-bold text-balance outline-none" data-testid="sheet-heading">
-              {title}
-            </h2>
+            <div className="flex flex-col gap-1">
+              {skipDone && name && isScreen(view) && view !== "book" ? (
+                <p className="text-sm font-semibold text-muted-foreground" data-testid="sheet-for">
+                  Booking {name}
+                </p>
+              ) : null}
+              <h2 id="sheet-title" ref={headingRef} tabIndex={-1} className="text-2xl font-bold text-balance outline-none" data-testid="sheet-heading">
+                {title}
+              </h2>
+            </div>
             {lostWhy && !held && !done ? (
-              <div role="alert" className="flex flex-col gap-3 rounded-md border border-destructive px-4 py-3" data-testid="sheet-hold-lost">
+              <div role="alert" className="flex flex-col gap-3 rounded-md border border-foreground/60 px-4 py-3" data-testid="sheet-hold-lost">
                 <p className="text-sm font-semibold text-pretty">{lostWhy.text}</p>
                 <div className="flex flex-wrap gap-2">
                   {lostWhy.canHoldAgain ? (
@@ -609,6 +673,7 @@ function BookingSheet({
                 windowDays={board.windowDays}
                 asSales={board.asSales}
                 viewerId={null}
+                initialDay={heldAt ? calgaryDateOf(heldAt) : request.kind === "move" ? calgaryDateOf(request.from) : null}
                 mode="sheet"
                 leadId={draft.leadId}
                 meetingId={isMove ? request.meetingId : null}
@@ -669,7 +734,7 @@ function BookingSheet({
 
         {/* ------------------------------------------------ bottom: always there, Next at the bottom right */}
         <footer className="border-t bg-background pb-[env(safe-area-inset-bottom)]">
-          <div className="mx-auto flex w-full max-w-2xl flex-col gap-1 px-4 py-2">
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-2 px-4 py-2">
             <BottomBar
               view={view}
               isMove={isMove}
@@ -681,7 +746,8 @@ function BookingSheet({
               onPickAnother={pickAnother}
               onLetGo={() => (heldAt ? setLetGoOpen(true) : close())}
               onBack={back}
-              onNext={() => void next()}
+              uploading={photosBusy}
+              onNext={() => void advance(null)}
               onMove={() => void confirmMove()}
               onClose={close}
               onOpenLead={() => {
@@ -705,7 +771,7 @@ function BookingSheet({
           </Button>
         }
       >
-        <p className="text-base whitespace-pre-line text-pretty">{note}</p>
+        {notes === null ? <p className="text-base text-muted-foreground">One moment.</p> : <NoteText text={note ?? ""} />}
       </DialogPanel>
 
       <DialogPanel
@@ -715,20 +781,40 @@ function BookingSheet({
         testId="sheet-let-go"
         actions={
           <>
-            <Button type="button" variant="outline" onClick={() => setLetGoOpen(false)}>
-              Keep holding
-            </Button>
-            <Button type="button" variant="destructive" onClick={() => void letGo()}>
+            <Button type="button" variant="outline" onClick={() => void letGo()}>
               Let go
+            </Button>
+            <Button type="button" onClick={() => setLetGoOpen(false)}>
+              Keep holding
             </Button>
           </>
         }
       >
-        <p className="text-base text-pretty">
-          {draft.leadId
-            ? `${personName} stays saved as a lead. Anyone can then pick this time.`
-            : "What you've entered isn't saved yet: they're saved once you add the address. Anyone can then pick this time."}
-        </p>
+        <div className="flex flex-col gap-3">
+          <p className="text-base text-pretty">
+            {draft.leadId
+              ? `${personName} stays saved as a lead. Anyone can then pick this time.`
+              : "What you've entered isn't saved yet: they're saved once you add the address. Anyone can then pick this time."}
+          </p>
+          {draft.leadId ? (
+            <Button type="button" variant="link" size="sm" className="self-start px-0" onClick={() => void letGo("open-lead")}>
+              Let go and open their lead to set a follow-up day
+            </Button>
+          ) : draft.first_name.trim() && view !== "address" ? (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="self-start px-0"
+              onClick={() => {
+                setLetGoOpen(false);
+                go("address");
+              }}
+            >
+              Add the address to save them first
+            </Button>
+          ) : null}
+        </div>
       </DialogPanel>
     </dialog>
   );
@@ -747,7 +833,7 @@ function HeldChip({ when, state, isMove }: { when: string | null; state: "held" 
     <p
       className={cn(
         "inline-flex min-h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold",
-        lost ? "border-destructive text-destructive" : "border-primary text-foreground",
+        lost ? "border-input text-muted-foreground" : "border-primary text-foreground",
       )}
       data-testid="sheet-held"
       data-held={state === "held" ? "yes" : state === "booked" ? "booked" : "no"}
@@ -755,7 +841,7 @@ function HeldChip({ when, state, isMove }: { when: string | null; state: "held" 
       {state === "booked" ? (
         <Check aria-hidden="true" className="size-4 shrink-0" />
       ) : (
-        <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", lost ? "bg-destructive" : "bg-primary")} />
+        <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", lost ? "border border-muted-foreground" : "bg-primary")} />
       )}
       {when}
       <span className="font-normal text-muted-foreground">{state === "held" ? "held for you" : state === "booked" ? "booked" : "not held"}</span>
@@ -763,20 +849,48 @@ function HeldChip({ when, state, isMove }: { when: string | null; state: "held" 
   );
 }
 
-function Progress({ view }: { view: View }) {
-  const current = isScreen(view) ? stepOf(view) : view === "done" ? "done" : null;
+function Progress({
+  view,
+  place,
+  onJump,
+}: {
+  view: View;
+  place: SheetScreen | null;
+  onJump: ((screen: SheetScreen) => void) | null;
+}) {
   const order = STEPS.map((step) => step.key);
-  const currentIndex = current === "done" ? order.length : current ? order.indexOf(current) : -1;
+  const current = view === "done" ? order.length : place ? order.indexOf(stepOf(place)) : -1;
   return (
-    <ol className="mx-auto grid w-full max-w-2xl grid-cols-3 gap-2 px-4 pt-2 pb-3" aria-label="Steps">
+    <ol className="mx-auto grid w-full max-w-2xl grid-cols-3 gap-2 px-4 pt-1 pb-2" aria-label="Steps">
       {STEPS.map((step, index) => {
-        const state = index < currentIndex ? "done" : index === currentIndex ? "current" : "next";
-        return (
-          <li key={step.key} aria-current={state === "current" ? "step" : undefined} className="flex flex-col gap-1.5">
-            <span className={cn("h-1 rounded-full", state === "next" ? "bg-muted" : "bg-foreground")} />
+        const state = index < current ? "done" : index === current ? "current" : "next";
+        const at = place && state === "current" ? step.screens.indexOf(place) : -1;
+        const fill = state === "done" ? 100 : state === "current" ? ((at + 1) / step.screens.length) * 100 : 0;
+        const label = (
+          <>
+            <span className="relative block h-1 w-full overflow-hidden rounded-full bg-input" aria-hidden="true">
+              <span className="absolute inset-y-0 left-0 rounded-full bg-foreground" style={{ width: `${fill}%` }} />
+            </span>
             <span className={cn("text-xs", state === "current" ? "font-bold text-foreground" : "text-muted-foreground")}>
               {step.label}
+              {state === "current" && step.screens.length > 1 ? <span className="sr-only">, screen {at + 1} of {step.screens.length}</span> : null}
             </span>
+          </>
+        );
+        return (
+          <li key={step.key} aria-current={state === "current" ? "step" : undefined}>
+            {onJump && state !== "current" ? (
+              <button
+                type="button"
+                onClick={() => onJump(step.screens[0])}
+                className="flex min-h-11 w-full flex-col justify-center gap-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={`Go to ${step.label}`}
+              >
+                {label}
+              </button>
+            ) : (
+              <span className="flex min-h-11 w-full flex-col justify-center gap-1.5">{label}</span>
+            )}
           </li>
         );
       })}
@@ -792,6 +906,7 @@ function BottomBar({
   canBook,
   missing,
   heldTime,
+  uploading,
   onPickAnother,
   onLetGo,
   onBack,
@@ -807,6 +922,7 @@ function BottomBar({
   canBook: boolean;
   missing: number;
   heldTime: string | null;
+  uploading: boolean;
   onPickAnother: () => void;
   onLetGo: () => void;
   onBack: () => void;
@@ -836,19 +952,21 @@ function BottomBar({
       </div>
     );
   }
-  // Pick another time is gone while the times are already showing.
+  // The two quiet actions: Let go on the left, above Back, so a slip near
+  // Next can only ever pick another time, which keeps the hold. Pick another
+  // time is gone while the times are already showing.
   const quiet = (
     <div className="flex items-center justify-between">
+      <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={onLetGo} disabled={busy}>
+        Let go
+      </Button>
       {view === "times" ? (
         <span />
       ) : (
-        <Button type="button" variant="ghost" size="sm" onClick={onPickAnother} disabled={busy}>
+        <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={onPickAnother} disabled={busy}>
           Pick another time
         </Button>
       )}
-      <Button type="button" variant="ghost" size="sm" onClick={onLetGo} disabled={busy}>
-        Let go
-      </Button>
     </div>
   );
   if (view === "times" || view === "existing") {
@@ -889,7 +1007,7 @@ function BottomBar({
           Back
         </Button>
         <Button type="button" size="lg" onClick={onNext} disabled={busy || (booking && !canBook)} data-testid="sheet-next">
-          {busy ? (booking ? "Booking" : "Saving") : booking ? (canBook ? `Book ${heldTime ?? ""}` : missing > 0 ? `Fix ${missing} first` : "Time not held") : "Next"}
+          {busy ? (booking ? "Booking" : uploading ? "Uploading photos" : "Saving") : booking ? (canBook ? `Book ${heldTime ?? ""}` : missing > 0 ? `Fix ${missing} first` : "Time not held") : "Next"}
         </Button>
       </div>
     </>

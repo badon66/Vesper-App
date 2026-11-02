@@ -30,11 +30,51 @@ export function StepNotes({ notes }: { notes: { label: string; text: string }[] 
           {filled.map((note) => (
             <section key={note.label} className="flex flex-col gap-1">
               <h3 className="text-base font-bold">{note.label}</h3>
-              <p className="text-base whitespace-pre-line text-pretty">{note.text}</p>
+              <NoteText text={note.text} />
             </section>
           ))}
         </div>
       </DialogPanel>
     </>
+  );
+}
+
+// A step note as Keenan typed it: paragraphs as written, and his "- " lines
+// as a list with a hanging indent, so a list scans at a glance.
+export function NoteText({ text }: { text: string }) {
+  const blocks: { kind: "p" | "ul"; lines: string[] }[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trimEnd();
+    const item = /^\s*[-•]\s+(.*)$/.exec(line);
+    const last = blocks[blocks.length - 1];
+    if (item) {
+      if (last?.kind === "ul") last.lines.push(item[1]);
+      else blocks.push({ kind: "ul", lines: [item[1]] });
+    } else if (line.trim() === "") {
+      blocks.push({ kind: "p", lines: [] });
+    } else if (last?.kind === "p" && last.lines.length > 0) {
+      last.lines.push(line);
+    } else {
+      blocks.push({ kind: "p", lines: [line] });
+    }
+  }
+  return (
+    <div className="flex flex-col gap-2 text-base text-pretty">
+      {blocks
+        .filter((block) => block.lines.length > 0)
+        .map((block, index) =>
+          block.kind === "ul" ? (
+            <ul key={index} className="flex list-disc flex-col gap-1 pl-5">
+              {block.lines.map((line, at) => (
+                <li key={at}>{line}</li>
+              ))}
+            </ul>
+          ) : (
+            <p key={index} className="whitespace-pre-line">
+              {block.lines.join("\n")}
+            </p>
+          ),
+        )}
+    </div>
   );
 }

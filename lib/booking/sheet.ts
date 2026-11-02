@@ -27,8 +27,8 @@ export const SCREENS: SheetScreen[] = STEPS.flatMap((step) => step.screens);
 // Each screen's question, as its heading.
 export const SCREEN_TITLES: Record<SheetScreen, string> = {
   who: "Who are we meeting?",
-  find1: "Find out",
-  find2: "Find out",
+  find1: "Find out, 1 of 2",
+  find2: "Find out, 2 of 2",
   everyone: "Will everyone who decides be there?",
   address: "Where's the house?",
   soffit: "What colour is the soffit?",

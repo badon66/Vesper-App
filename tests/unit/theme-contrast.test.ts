@@ -46,6 +46,14 @@ const pairs: [text: string, surface: string, minimum: number][] = [
   ["destructive-foreground", "destructive", 4.5],
 ];
 
+// The edges that show where a field, an unpicked answer or an unticked box
+// is, against every surface they sit on (WCAG 1.4.11, 3:1).
+const edges: [edge: string, surface: string, minimum: number][] = [
+  ["input", "background", 3],
+  ["input", "card", 3],
+  ["input", "muted", 3],
+];
+
 describe.each([
   ["light", ":root"],
   ["dark", ".dark"],
@@ -55,5 +63,8 @@ describe.each([
     expect(t[text], text).toBeDefined();
     expect(t[surface], surface).toBeDefined();
     expect(contrast(t[text], t[surface])).toBeGreaterThanOrEqual(minimum);
+  });
+  it.each(edges)("the %s edge on %s reaches %s:1", (edge, surface, minimum) => {
+    expect(contrast(t[edge], t[surface])).toBeGreaterThanOrEqual(minimum);
   });
 });
