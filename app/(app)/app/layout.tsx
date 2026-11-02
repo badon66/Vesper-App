@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AppTabs } from "@/components/app-tabs";
-import { HoldKeeper } from "@/components/schedule/hold-keeper";
+import { BookingSheetHost } from "@/components/booking/booking-sheet";
 import { Wordmark } from "@/components/brand/wordmark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -63,7 +63,7 @@ export default async function AppLayout({
         )}
       </main>
       <AppTabs role={profile.role} />
-      <HoldKeeper enabled={!viewingAs && !viewAsEnded} />
+      <BookingSheetHost enabled={!viewingAs && !viewAsEnded} userId={profile.id} />
     </div>
   );
 }

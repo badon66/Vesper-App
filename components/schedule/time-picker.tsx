@@ -1,8 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { holdTime } from "@/app/(app)/app/schedule/actions";
+import { bookingSheet } from "@/lib/booking/sheet-store";
 import {
   eveningLabel,
   eveningsOf,
@@ -12,22 +12,24 @@ import {
   toBoardSlots,
   type BoardSlot,
 } from "@/lib/schedule/board";
-import { holdStore } from "@/lib/schedule/hold-store";
 import { createClient } from "@/lib/supabase/client";
 import { formatLongDay, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 const POLL_MS = 3_000;
 
-export type PickerMode = "book" | "hold" | "move" | "view";
+// book: tapping an open time holds it and opens the booking sheet over the
+// screen (Schedule, Home). sheet: inside the sheet, a held time is handed
+// back to it. view: nothing can be tapped.
+export type PickerMode = "book" | "sheet" | "view";
 
-// The time picker (Keenan, 2026-11-01). Opens on tonight, or when tonight
-// has nothing left says so and opens the next evening with an opening; any
-// evening in the window is one tap away. A held time shows the holder's
-// initials and cannot be picked; a booked one is greyed out. It reads the
-// board from the database every few seconds, so holds and bookings on other
-// phones show up without a refresh. Tapping a time asks the database to hold
-// it; the database decides.
+// The time picker (Keenan, 2026-11-01 and 2026-11-02). Opens on tonight, or
+// when tonight has nothing left says so and opens the next evening with an
+// opening; any evening in the window is one tap away. A held time shows the
+// holder's initials and cannot be picked; a booked one is greyed out. It
+// reads the board from the database every few seconds, so holds and
+// bookings on other phones show up without a refresh. Tapping a time asks
+// the database to hold it; the database decides.
 export function TimePicker({
   initial,
   today,
@@ -42,6 +44,7 @@ export function TimePicker({
   onHeld,
   onDayChange,
   onBoardChange,
+  onUnavailableTap,
 }: {
   initial: BoardSlot[];
   today: string;
@@ -56,8 +59,9 @@ export function TimePicker({
   onHeld?: (startsAt: string) => void;
   onDayChange?: (day: string) => void;
   onBoardChange?: () => void;
+  // Keenan taps a blocked time to unblock it, or a booked one to see it.
+  onUnavailableTap?: (slot: BoardSlot) => void;
 }) {
-  const router = useRouter();
   const [slots, setSlots] = useState(initial);
   const evenings = useMemo(() => eveningsOf(slots, today, windowDays), [slots, today, windowDays]);
   const opening = useMemo(() => pickEvening(eveningsOf(initial, today, windowDays), today), [initial, today, windowDays]);
@@ -67,17 +71,21 @@ export function TimePicker({
   const bookedKey = useRef(bookedSignature(initial));
 
   const read = useCallback(async () => {
-    const { data, error } = await createClient().rpc("schedule_board", {
-      p_as_sales: asSales,
-      ...(viewerId ? { p_viewer: viewerId } : {}),
-    });
-    if (error || !data) return;
-    const next = toBoardSlots(data);
-    setSlots(next);
-    const key = bookedSignature(next);
-    if (key !== bookedKey.current) {
-      bookedKey.current = key;
-      onBoardChange?.();
+    try {
+      const { data, error } = await createClient().rpc("schedule_board", {
+        p_as_sales: asSales,
+        ...(viewerId ? { p_viewer: viewerId } : {}),
+      });
+      if (error || !data) return;
+      const next = toBoardSlots(data);
+      setSlots(next);
+      const key = bookedSignature(next);
+      if (key !== bookedKey.current) {
+        bookedKey.current = key;
+        onBoardChange?.();
+      }
+    } catch {
+      // No signal: the next read tries again.
     }
   }, [asSales, viewerId, onBoardChange]);
 
@@ -111,25 +119,25 @@ export function TimePicker({
       setMessage(`${slot.holderName ?? "Someone"} is booking this time.`);
       return;
     }
-    if (!isBookable(slot) || mode === "view") return;
-    setPending(slot.startsAt);
-    const result = await holdTime(slot.startsAt, { leadId, meetingId });
-    setPending(null);
-    if (!result.ok) {
-      setMessage(result.message);
-      void read();
+    if (!isBookable(slot)) {
+      if ((slot.state === "blocked" || slot.state === "booked") && onUnavailableTap) onUnavailableTap(slot);
       return;
     }
-    void read();
-    // The hold keeper lets a hold go when the screen isn't a booking screen,
-    // so the booking screen tells it about the hold after the move there.
-    if (mode === "hold") {
-      holdStore.set({ startsAt: slot.startsAt });
-      onHeld?.(slot.startsAt);
-    } else if (mode === "move" && meetingId) {
-      router.push(`/app/schedule/book?move=${meetingId}&start=${encodeURIComponent(slot.startsAt)}`);
-    } else if (mode === "book") {
-      router.push(`/app/schedule/book?start=${encodeURIComponent(slot.startsAt)}${leadId ? `&lead=${leadId}` : ""}`);
+    if (mode === "view") return;
+    setPending(slot.startsAt);
+    try {
+      const result = await holdTime(slot.startsAt, { leadId, meetingId });
+      if (!result.ok) {
+        setMessage(result.message);
+        return;
+      }
+      if (mode === "book") bookingSheet.open({ kind: "book", startsAt: slot.startsAt });
+      else onHeld?.(slot.startsAt);
+    } catch {
+      setMessage("No signal. Tap the time again.");
+    } finally {
+      setPending(null);
+      void read();
     }
   }
 
@@ -150,14 +158,12 @@ export function TimePicker({
                 aria-pressed={item.day === day}
                 className={cn(
                   "flex min-h-14 min-w-20 flex-col items-center justify-center rounded-md border px-3 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  item.day === day ? "border-primary bg-primary text-primary-foreground" : "bg-background",
+                  item.day === day ? "border-foreground bg-foreground text-background" : "bg-background",
                   item.slots.length === 0 && item.day !== day && "text-muted-foreground",
                 )}
               >
                 <span>{eveningLabel(item.day, today)}</span>
-                <span className="text-xs font-normal">
-                  {item.slots.length === 0 ? "No meetings" : item.open === 0 ? "Full" : `${item.open} open`}
-                </span>
+                <span className="text-xs font-normal">{eveningSummary(item.slots)}</span>
               </button>
             ))}
           </div>
@@ -169,7 +175,7 @@ export function TimePicker({
           {day === today ? "Tonight" : formatLongDay(day)}
         </p>
         {tonightFullNote ? (
-          <p className="text-sm text-muted-foreground" data-testid="tonight-full">
+          <p className="text-sm text-pretty text-muted-foreground" data-testid="tonight-full">
             Nothing left tonight. This is the next evening with an opening.
           </p>
         ) : null}
@@ -181,7 +187,7 @@ export function TimePicker({
         </p>
       ) : null}
       {daySlots.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No meetings this evening.</p>
+        <p className="text-sm text-muted-foreground">No meeting times this evening.</p>
       ) : (
         <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label={`Times, ${eveningLabel(day, today)}`}>
           {daySlots.map((slot) => (
@@ -190,15 +196,23 @@ export function TimePicker({
                 slot={slot}
                 pending={pending === slot.startsAt}
                 disabled={mode === "view" || pending !== null}
+                ownerTaps={Boolean(onUnavailableTap)}
                 onTap={() => void tap(slot)}
               />
             </li>
           ))}
         </ul>
       )}
-
     </div>
   );
+}
+
+// What an evening's chip says under its name.
+function eveningSummary(slots: BoardSlot[]): string {
+  if (slots.length === 0) return "No times";
+  const open = slots.filter((slot) => slot.state === "open").length;
+  if (open > 0) return `${open} open`;
+  return slots.every((slot) => slot.state === "closed") ? "Closed" : "Full";
 }
 
 function bookedSignature(slots: BoardSlot[]): string {
@@ -212,38 +226,46 @@ function SlotButton({
   slot,
   pending,
   disabled,
+  ownerTaps,
   onTap,
 }: {
   slot: BoardSlot;
   pending: boolean;
   disabled: boolean;
+  ownerTaps: boolean;
   onTap: () => void;
 }) {
   const time = formatTime(slot.startsAt);
   const heldByOther = slot.state === "held" && !slot.heldByViewer;
   const mine = slot.state === "held" && slot.heldByViewer;
-  const greyed = slot.state === "booked" || slot.state === "blocked" || slot.state === "closed";
-  const detail =
-    slot.state === "booked"
-      ? [slot.setterIsViewer ? "Your booking" : "Booked", slot.neighbourhood, slot.setterIsViewer ? null : slot.setterName]
-          .filter(Boolean)
-          .join(" · ")
-      : slot.state === "blocked"
-        ? "Blocked"
-        : slot.state === "closed"
-          ? "Closed"
-          : heldByOther
-            ? `${slot.holderName ?? "Someone"} is booking`
-            : mine
-              ? "You're holding this"
-              : pending
-                ? "Holding"
-                : "Open";
+  const booked = slot.state === "booked";
+  const blocked = slot.state === "blocked";
+  const closed = slot.state === "closed";
+  const detail = booked
+    ? [slot.setterIsViewer ? "Your booking" : "Booked", slot.neighbourhood, slot.setterIsViewer ? null : slot.setterName]
+        .filter(Boolean)
+        .join(" · ")
+    : blocked
+      ? ownerTaps
+        ? "Blocked · tap to unblock"
+        : "Blocked"
+      : closed
+        ? "Too late to book"
+        : heldByOther
+          ? `${slot.holderName ?? "Someone"} is booking`
+          : mine
+            ? "You're holding this"
+            : pending
+              ? "Holding"
+              : "Open";
+  // Blocked and booked times stay tappable for Keenan: to unblock one, or to
+  // jump to a booking's details.
+  const unavailable = closed || ((booked || blocked) && !ownerTaps);
   return (
     <button
       type="button"
       onClick={onTap}
-      disabled={disabled || greyed}
+      disabled={disabled || unavailable}
       data-time={slot.startsAt}
       data-state={mine ? "mine" : slot.state}
       aria-label={`${time}, ${detail}`}
@@ -252,7 +274,8 @@ function SlotButton({
         slot.state === "open" && "border-primary bg-background",
         mine && "border-primary bg-primary text-primary-foreground",
         heldByOther && "border-dashed bg-muted",
-        greyed && "bg-muted text-muted-foreground opacity-70",
+        booked && "border-foreground/40 bg-secondary text-foreground",
+        (blocked || closed) && "bg-muted text-muted-foreground",
       )}
     >
       <span className="text-2xl font-bold tabular-nums">{time}</span>

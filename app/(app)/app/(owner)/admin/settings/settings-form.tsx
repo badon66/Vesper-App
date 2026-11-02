@@ -233,15 +233,21 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Door guide</CardTitle>
+          <CardTitle>What to talk about</CardTitle>
           <CardDescription>
-            Shown to setters in a card they can open at the top of New lead.
-            Line breaks show as written.
+            One note for each step of the booking sheet, behind its &ldquo;?&rdquo;.
+            New lead shows all three. Line breaks show as written.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Field name="door_guide" label="Door guide" errors={errors}>
-            {(p) => <Textarea {...p} rows={9} defaultValue={defaults.door_guide} />}
+        <CardContent className="flex flex-col gap-4">
+          <Field name="step_note_at_door" label="At the door" errors={errors}>
+            {(p) => <Textarea {...p} rows={8} defaultValue={defaults.step_note_at_door} />}
+          </Field>
+          <Field name="step_note_after_door" label="After the door" errors={errors}>
+            {(p) => <Textarea {...p} rows={5} defaultValue={defaults.step_note_after_door} />}
+          </Field>
+          <Field name="step_note_book" label="Book" errors={errors}>
+            {(p) => <Textarea {...p} rows={4} defaultValue={defaults.step_note_book} />}
           </Field>
         </CardContent>
       </Card>

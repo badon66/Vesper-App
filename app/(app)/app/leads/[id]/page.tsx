@@ -12,6 +12,7 @@ import { PhotoSlots } from "@/components/leads/photo-slots";
 import { StatusBadge } from "@/components/leads/status-badge";
 import { StatusControl } from "@/components/leads/status-control";
 import { TrackColourForm } from "@/components/leads/track-colour-form";
+import { BookLeadButton, OpenBookingSheet } from "@/components/booking/book-buttons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth/profile";
@@ -50,11 +51,11 @@ export default async function LeadPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ photos?: string | string[]; booked?: string; moved?: string }>;
+  searchParams: Promise<{ photos?: string | string[]; booked?: string; moved?: string; book?: string }>;
 }) {
   const me = await requireProfile();
   const { id } = await params;
-  const { photos: photosParam, booked: bookedParam, moved: movedParam } = await searchParams;
+  const { photos: photosParam, booked: bookedParam, moved: movedParam, book: bookParam } = await searchParams;
   if (!z.uuid().safeParse(id).success) notFound();
 
   const supabase = await createClient();
@@ -175,12 +176,11 @@ export default async function LeadPage({
             The lead saved, but its photos didn&apos;t attach. Add them again below.
           </p>
         ) : null}
+        {canBook && bookParam === "1" ? <OpenBookingSheet leadId={lead.id} /> : null}
         {canEdit ? (
           <div className="flex flex-wrap gap-2">
             {canBook ? (
-              <Button asChild className="w-fit">
-                <Link href={`/app/schedule/book?lead=${lead.id}`}>Book a meeting</Link>
-              </Button>
+              <BookLeadButton leadId={lead.id} />
             ) : null}
             <Button asChild variant="outline" className="w-fit">
               <Link href={`/app/leads/${lead.id}/edit`}>Edit lead</Link>

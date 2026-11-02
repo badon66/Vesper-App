@@ -9,6 +9,7 @@ import type { Database } from "@/types/database";
 export type ChristmasLightsNow = Database["public"]["Enums"]["christmas_lights_now"];
 export type RooflineAreas = Database["public"]["Enums"]["roofline_areas"];
 export type InstallTiming = Database["public"]["Enums"]["install_timing"];
+export type LookedIntoBefore = Database["public"]["Enums"]["looked_into_before"];
 export type PhotoSlot = Database["public"]["Enums"]["photo_slot"];
 
 type Option<T extends string> = { value: T; label: string };
@@ -31,6 +32,13 @@ export const CHRISTMAS_LIGHTS_OPTIONS: Option<ChristmasLightsNow>[] = [
   { value: "none", label: "None" },
 ];
 
+// M3.5 (Keenan, 2026-11-02): have they looked into permanent lights before?
+export const LOOKED_INTO_BEFORE_OPTIONS: Option<LookedIntoBefore>[] = [
+  { value: "got_quotes", label: "Got quotes" },
+  { value: "thought_about_it", label: "Thought about it" },
+  { value: "new_to_them", label: "New to them" },
+];
+
 export const AREAS_OPTIONS: Option<RooflineAreas>[] = [
   { value: "front", label: "Front only" },
   { value: "front_and_sides", label: "Front and sides" },
@@ -50,6 +58,7 @@ export type FindOutAnswers = {
   soffit_colour: SoffitColour | null;
   soffit_note: string | null;
   christmas_lights_now: ChristmasLightsNow | null;
+  looked_into_before: LookedIntoBefore | null;
   areas_wanted: RooflineAreas | null;
   install_timing: InstallTiming | null;
 };
@@ -59,10 +68,11 @@ export type FindOutField =
   | "wants_price"
   | "soffit_colour"
   | "christmas_lights_now"
+  | "looked_into_before"
   | "areas_wanted"
   | "install_timing";
 
-// The six questions, in the order they are asked, with the choices the form
+// The seven questions, in the order they are asked, with the choices the form
 // offers. `choice` is what the form holds for a stored answer.
 export const FIND_OUT_QUESTIONS: {
   field: FindOutField;
@@ -77,6 +87,12 @@ export const FIND_OUT_QUESTIONS: {
     field: "christmas_lights_now",
     question: "Christmas lights now",
     options: CHRISTMAS_LIGHTS_OPTIONS,
+    columns: 3,
+  },
+  {
+    field: "looked_into_before",
+    question: "Looked into it before",
+    options: LOOKED_INTO_BEFORE_OPTIONS,
     columns: 3,
   },
   { field: "areas_wanted", question: "Which areas", options: AREAS_OPTIONS, columns: 4 },
@@ -95,6 +111,7 @@ export function findOutChoices(answers: FindOutAnswers): Record<FindOutField, st
     wants_price: yesNoChoice(answers.wants_price, "not_yet"),
     soffit_colour: answers.soffit_colour,
     christmas_lights_now: answers.christmas_lights_now,
+    looked_into_before: answers.looked_into_before,
     areas_wanted: answers.areas_wanted,
     install_timing: answers.install_timing,
   };

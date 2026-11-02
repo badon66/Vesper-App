@@ -1,9 +1,11 @@
 "use client";
 
+import { Check } from "lucide-react";
 import { FieldError } from "@/components/field-error";
 
 // A one-tap question: big choices backed by real radio buttons, so they work
-// with one thumb and with a keyboard or screen reader. Unlike a plain choice
+// with one thumb and with a keyboard or screen reader. The chosen answer is
+// light on dark with a tick, not gold: gold is kept for the next step. Unlike a plain choice
 // group, tapping the chosen answer again clears it, because every Find out
 // question is optional.
 export function AnswerGroup<T extends string>({
@@ -31,7 +33,7 @@ export function AnswerGroup<T extends string>({
         {options.map((option) => (
           <label
             key={option.value}
-            className="flex min-h-12 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-2 py-1 text-center text-base font-semibold leading-tight transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground has-[:disabled]:cursor-not-allowed has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background"
+            className="group flex min-h-12 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 text-center text-base font-semibold leading-tight transition-colors has-[:checked]:border-foreground has-[:checked]:bg-foreground has-[:checked]:text-background has-[:disabled]:cursor-not-allowed has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background"
           >
             <input
               type="radio"
@@ -44,6 +46,7 @@ export function AnswerGroup<T extends string>({
               }}
               className="sr-only"
             />
+            <Check aria-hidden="true" className="hidden size-4 shrink-0 group-has-[:checked]:block" />
             {option.label}
           </label>
         ))}

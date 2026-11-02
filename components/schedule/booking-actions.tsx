@@ -1,17 +1,27 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { cancelBooking } from "@/app/(app)/app/schedule/actions";
+import { MoveBookingButton } from "@/components/booking/book-buttons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-// Move or cancel an upcoming booking (Keenan, 2026-11-01). Moving picks a
-// new time, which is held first like any booking. Cancelling sends the lead
-// to Follow up for the next day.
-export function BookingActions({ meetingId }: { meetingId: string }) {
+// Move or cancel an upcoming booking (Keenan, 2026-11-01). Move opens the
+// booking sheet on the times (2026-11-02); the new time is held first like
+// any booking. Cancelling sends the lead to Follow up for the next day.
+export function BookingActions({
+  meetingId,
+  leadId,
+  leadName,
+  startsAt,
+}: {
+  meetingId: string;
+  leadId: string;
+  leadName: string;
+  startsAt: string;
+}) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [note, setNote] = useState("");
@@ -35,9 +45,7 @@ export function BookingActions({ meetingId }: { meetingId: string }) {
     <div className="flex flex-col gap-3" data-testid="booking-actions">
       {!confirming ? (
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline" className="min-h-11">
-            <Link href={`/app/schedule/book?move=${meetingId}`}>Move</Link>
-          </Button>
+          <MoveBookingButton meetingId={meetingId} leadId={leadId} leadName={leadName} from={startsAt} />
           <Button type="button" variant="outline" className="min-h-11" onClick={() => setConfirming(true)}>
             Cancel booking
           </Button>

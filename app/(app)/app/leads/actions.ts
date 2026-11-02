@@ -102,27 +102,10 @@ export async function createLead(
 
   revalidatePath("/app/leads");
 
-  // Save and book (Keenan, 2026-11-01): book the time this person holds,
-  // or open the time picker for the new lead. When the lead isn't ready, the
-  // booking screen shows what is missing, and the hold stays alive.
+  // Save and book (Keenan, 2026-11-02): the lead page opens the booking
+  // sheet for it, on the times, skipping everything already filled in.
   if (formData.get("intent") === "book") {
-    const held = z.iso.datetime({ offset: true }).safeParse(formData.get("held_start"));
-    if (!held.success) redirect(`/app/schedule/book?lead=${lead.id}`);
-    const skip = String(formData.get("photos_skipped") ?? "");
-    const note = String(formData.get("photos_skip_note") ?? "").trim().slice(0, 300);
-    const { data: meetingId, error: bookError } = await supabase.rpc("book_meeting", {
-      p_lead_id: lead.id,
-      p_starts_at: held.data,
-      p_everyone_deciding_present: formData.get("everyone") === "yes",
-      ...(skip === "homeowner_said_no" || skip === "other" ? { p_photos_skipped: skip } : {}),
-      ...(note ? { p_photos_skip_note: note } : {}),
-    });
-    if (!bookError && meetingId) {
-      revalidatePath("/app");
-      revalidatePath("/app/schedule");
-      redirect(`/app/leads/${lead.id}?booked=${meetingId}${photosFailed ? "&photos=failed" : ""}`);
-    }
-    redirect(`/app/schedule/book?start=${encodeURIComponent(held.data)}&lead=${lead.id}`);
+    redirect(`/app/leads/${lead.id}?book=1${photosFailed ? "&photos=failed" : ""}`);
   }
   redirect(photosFailed ? `/app/leads/${lead.id}?photos=failed` : `/app/leads?added=${lead.id}`);
 }

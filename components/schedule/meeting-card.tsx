@@ -156,7 +156,9 @@ export function MeetingCard({
       ) : null}
       {meeting.status === "no_show" && meeting.outcome_note ? <p className="text-sm">Note: {meeting.outcome_note}</p> : null}
 
-      {live && !started && canChange ? <BookingActions meetingId={meeting.id} /> : null}
+      {live && !started && canChange ? (
+        <BookingActions meetingId={meeting.id} leadId={meeting.lead_id} leadName={leadName(lead)} startsAt={meeting.starts_at} />
+      ) : null}
       {live && !started && !canChange && !isOwner ? (
         <p className="text-sm text-muted-foreground">Keenan marks how it went after the meeting.</p>
       ) : null}

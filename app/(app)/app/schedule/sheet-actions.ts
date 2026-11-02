@@ -1,0 +1,324 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+import {
+  NotAllowedError,
+  ReadOnlyError,
+  requireSalesSideForAction,
+  type SessionProfile,
+} from "@/lib/auth/profile";
+import type { SheetDraft } from "@/lib/booking/sheet";
+import { type PhotoSlot } from "@/lib/leads/door";
+import { openKnockSession } from "@/lib/leads/queries";
+import { leadColumnsFromValues, parseLeadForm, type LeadFormErrors } from "@/lib/leads/schema";
+import { leadName, STATUS_LABELS } from "@/lib/leads/status";
+import { PHOTO_BUCKET } from "@/lib/photos";
+import { toBoardSlots, type BoardSlot } from "@/lib/schedule/board";
+import { distanceWarnings, formatKm } from "@/lib/schedule/distance";
+import { isLive } from "@/lib/schedule/meetings";
+import { bookingMessage, errorCode } from "@/lib/schedule/messages";
+import { bookingSettings, meetingsOnDay } from "@/lib/schedule/queries";
+import { createClient } from "@/lib/supabase/server";
+import { calgaryDateOf, calgaryToday, formatTime } from "@/lib/time";
+import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
+
+// The booking sheet's reads and writes (Keenan, 2026-11-02). Every one runs
+// with the signed-in person's own session, so Row Level Security and the
+// booking functions decide, exactly as for the rest of the app. While the
+// owner views the app as someone, every one of them is refused.
+
+type Refused = { ok: false; error: string };
+
+async function salesSide(): Promise<SessionProfile | Refused> {
+  try {
+    return await requireSalesSideForAction();
+  } catch (e) {
+    if (e instanceof ReadOnlyError) return { ok: false, error: VIEW_AS_READ_ONLY };
+    if (e instanceof NotAllowedError) return { ok: false, error: "Not for your role." };
+    throw e;
+  }
+}
+
+const refused = (value: unknown): value is Refused =>
+  typeof value === "object" && value !== null && "ok" in value && (value as { ok: boolean }).ok === false;
+
+const id = z.uuid();
+const instant = z.iso.datetime({ offset: true });
+
+const mine = (me: SessionProfile, lead: { created_by: string; assigned_to: string | null }) =>
+  me.role === "owner" || lead.created_by === me.id || lead.assigned_to === me.id;
+
+// ---------------------------------------------------------------- opening
+
+export type SheetNotes = { door: string; after: string; book: string };
+export type SheetContext =
+  | { ok: true; board: BoardSlot[]; today: string; windowDays: number; asSales: boolean; notes: SheetNotes }
+  | Refused;
+
+// What the sheet needs when it opens: the board for its time picker and the
+// step notes behind "?".
+export async function sheetContext(): Promise<SheetContext> {
+  const me = await salesSide();
+  if (refused(me)) return me;
+  const supabase = await createClient();
+  const asSales = me.role !== "owner";
+  const [settings, { data: board }, { data: notes }] = await Promise.all([
+    bookingSettings(supabase),
+    supabase.rpc("schedule_board", { p_as_sales: asSales }),
+    supabase.from("settings_public").select("step_note_at_door, step_note_after_door, step_note_book").maybeSingle(),
+  ]);
+  return {
+    ok: true,
+    board: toBoardSlots(board ?? []),
+    today: calgaryToday(),
+    windowDays: settings.windowDays,
+    asSales,
+    notes: {
+      door: notes?.step_note_at_door ?? "",
+      after: notes?.step_note_after_door ?? "",
+      book: notes?.step_note_book ?? "",
+    },
+  };
+}
+
+export type SheetLead =
+  | {
+      ok: true;
+      draft: SheetDraft;
+      name: string;
+      bookable: boolean;
+      notBookableReason: string | null;
+      photos: Partial<Record<PhotoSlot, string>>;
+    }
+  | Refused;
+
+// A lead to book, as the sheet's draft, with signed links to its guided photos.
+export async function sheetLead(leadId: string): Promise<SheetLead> {
+  const me = await salesSide();
+  if (refused(me)) return me;
+  const leadIdParsed = id.safeParse(leadId);
+  if (!leadIdParsed.success) return { ok: false, error: "That lead was not found." };
+  const supabase = await createClient();
+  const [{ data: lead }, { data: photoRows }, { data: live }] = await Promise.all([
+    supabase.from("leads").select("*").eq("id", leadIdParsed.data).maybeSingle(),
+    supabase.from("lead_photos").select("storage_path, slot, created_at").eq("lead_id", leadIdParsed.data).not("slot", "is", null).order("created_at"),
+    supabase.from("meetings").select("id").eq("lead_id", leadIdParsed.data).in("status", ["booked", "confirmed"]),
+  ]);
+  if (!lead) return { ok: false, error: "That lead was not found." };
+  if (!mine(me, lead)) return { ok: false, error: "You can only book your own leads." };
+
+  // The newest photo in each slot.
+  const latest = new Map<string, string>();
+  for (const row of photoRows ?? []) if (row.slot) latest.set(row.slot, row.storage_path);
+  const paths = [...latest.values()];
+  const { data: signed } = paths.length > 0 ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
+  const urlByPath = new Map((signed ?? []).flatMap((item) => (item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : [])));
+  const photos: Partial<Record<PhotoSlot, string>> = {};
+  for (const [slot, path] of latest) {
+    const url = urlByPath.get(path);
+    if (url) photos[slot as PhotoSlot] = url;
+  }
+
+  const statusOk = lead.status === "new" || lead.status === "follow_up";
+  const notBookableReason = !statusOk
+    ? `This lead is at ${STATUS_LABELS[lead.status]}, so it can't be booked.`
+    : (live ?? []).length > 0
+      ? "This lead already has a meeting booked. Move that booking instead."
+      : null;
+
+  return {
+    ok: true,
+    name: leadName(lead),
+    bookable: notBookableReason === null,
+    notBookableReason,
+    photos,
+    draft: {
+      leadId: lead.id,
+      first_name: lead.first_name,
+      last_name: lead.last_name ?? "",
+      phone: lead.phone ?? "",
+      owns_home: lead.owns_home,
+      wants_price: lead.wants_price,
+      christmas_lights_now: lead.christmas_lights_now,
+      looked_into_before: lead.looked_into_before,
+      areas_wanted: lead.areas_wanted,
+      install_timing: lead.install_timing,
+      everyone: false,
+      address_line: lead.address_line,
+      city: lead.city,
+      postal_code: lead.postal_code ?? "",
+      neighbourhood: lead.neighbourhood ?? "",
+      lat: lead.lat,
+      lng: lead.lng,
+      place_id: lead.place_id,
+      position_source: lead.position_source,
+      position_accuracy_m: lead.position_accuracy_m,
+      soffit_colour: lead.soffit_colour,
+      soffit_note: lead.soffit_note ?? "",
+      photo_slots: Object.keys(photos) as PhotoSlot[],
+      skip: null,
+      skip_note: "",
+    },
+  };
+}
+
+export type BookableLead = { id: string; name: string; address: string; status: string };
+
+// "Existing lead instead": the person's own New and Follow up leads (every
+// one, for Keenan), newest first.
+export async function sheetBookableLeads(): Promise<{ ok: true; leads: BookableLead[] } | Refused> {
+  const me = await salesSide();
+  if (refused(me)) return me;
+  const supabase = await createClient();
+  let query = supabase
+    .from("leads")
+    .select("id, first_name, last_name, address_line, neighbourhood, status, created_at")
+    .in("status", ["new", "follow_up"])
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (me.role !== "owner") query = query.or(`created_by.eq.${me.id},assigned_to.eq.${me.id}`);
+  const { data } = await query;
+  return {
+    ok: true,
+    leads: (data ?? []).map((lead) => ({
+      id: lead.id,
+      name: leadName(lead),
+      address: [lead.address_line, lead.neighbourhood].filter(Boolean).join(", "),
+      status: STATUS_LABELS[lead.status],
+    })),
+  };
+}
+
+// ---------------------------------------------------------------- saving
+
+export type SheetSave = { ok: true; leadId: string } | { ok: false; error: string; errors?: LeadFormErrors };
+
+
+// Saves the person as a lead the moment they have a first name and an
+// address, and every screen after that. The same validation as New lead.
+export async function saveSheetLead(leadId: string | null, input: Record<string, unknown>): Promise<SheetSave> {
+  const me = await salesSide();
+  if (refused(me)) return me;
+  const parsed = parseLeadForm(input);
+  if (!parsed.ok) {
+    const first = Object.values(parsed.errors)[0];
+    return { ok: false, error: first ?? "Some answers need a look.", errors: parsed.errors };
+  }
+  const columns = leadColumnsFromValues(parsed.values);
+  const supabase = await createClient();
+
+  if (!leadId) {
+    const session = await openKnockSession(supabase, me.id);
+    const { data: lead, error } = await supabase
+      .from("leads")
+      .insert({
+        ...columns,
+        first_name: parsed.values.first_name,
+        address_line: parsed.values.address_line,
+        created_by: me.id,
+        status: "new",
+        knock_session_id: session?.id ?? null,
+      })
+      .select("id")
+      .single();
+    if (error || !lead) return { ok: false, error: "The lead could not be saved. Check your signal and try again." };
+    revalidatePath("/app/leads");
+    return { ok: true, leadId: lead.id };
+  }
+
+  const existing = id.safeParse(leadId);
+  if (!existing.success) return { ok: false, error: "That lead was not found." };
+  // Only the sheet's own columns: an existing lead's email, notes, house
+  // type and source are never touched from the sheet.
+  const { email: _email, notes: _notes, house_type: _house, source: _source, ...update } = columns;
+  void _email;
+  void _notes;
+  void _house;
+  void _source;
+  const { data, error } = await supabase.from("leads").update(update).eq("id", existing.data).select("id");
+  if (error) {
+    return { ok: false, error: error.code === "42501" ? "You can only change your own leads." : "The lead could not be saved. Try again." };
+  }
+  if (!data || data.length === 0) return { ok: false, error: "You can only change your own leads." };
+  revalidatePath("/app/leads");
+  revalidatePath(`/app/leads/${existing.data}`);
+  return { ok: true, leadId: existing.data };
+}
+
+// ---------------------------------------------------------------- booking
+
+export type SheetBook =
+  | { ok: true; meetingId: string }
+  | { ok: false; code: string; message: string; problems?: string[] };
+
+const bookSchema = z.object({
+  leadId: id,
+  startsAt: instant,
+  everyone: z.boolean(),
+  skip: z.enum(["homeowner_said_no", "other"]).nullable(),
+  skipNote: z.string().trim().max(300),
+});
+
+export async function bookFromSheet(input: {
+  leadId: string;
+  startsAt: string;
+  everyone: boolean;
+  skip: "homeowner_said_no" | "other" | null;
+  skipNote: string;
+}): Promise<SheetBook> {
+  const me = await salesSide();
+  if (refused(me)) return { ok: false, code: "not_allowed", message: me.error };
+  const parsed = bookSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: "invalid", message: "Pick a time and a lead first." };
+  const values = parsed.data;
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("book_meeting", {
+    p_lead_id: values.leadId,
+    p_starts_at: values.startsAt,
+    p_everyone_deciding_present: values.everyone,
+    ...(values.skip ? { p_photos_skipped: values.skip } : {}),
+    ...(values.skipNote ? { p_photos_skip_note: values.skipNote } : {}),
+  });
+  if (error || !data) {
+    const code = error ? errorCode(error) : "unknown";
+    return {
+      ok: false,
+      code,
+      message: error ? bookingMessage(error) : "That didn't book. Try again.",
+      problems: code === "not_ready" ? (error?.details ?? "").split(",").filter(Boolean) : undefined,
+    };
+  }
+  revalidatePath("/app");
+  revalidatePath("/app/schedule");
+  revalidatePath("/app/leads");
+  revalidatePath("/app/pay");
+  revalidatePath(`/app/leads/${values.leadId}`);
+  return { ok: true, meetingId: data as string };
+}
+
+// The straight-line distance warning for a lead at a time, for the Book screen.
+export async function sheetDistanceWarnings(leadId: string, startsAt: string): Promise<string[]> {
+  const me = await salesSide();
+  if (refused(me)) return [];
+  const leadIdParsed = id.safeParse(leadId);
+  const at = instant.safeParse(startsAt);
+  if (!leadIdParsed.success || !at.success) return [];
+  const supabase = await createClient();
+  const [{ data: lead }, settings, evening] = await Promise.all([
+    supabase.from("leads").select("lat, lng").eq("id", leadIdParsed.data).maybeSingle(),
+    bookingSettings(supabase),
+    meetingsOnDay(supabase, calgaryDateOf(at.data)),
+  ]);
+  if (!lead || lead.lat === null || lead.lng === null) return [];
+  const others = evening
+    .filter((meeting) => isLive(meeting.status) || meeting.status === "qualified" || meeting.status === "not_qualified")
+    .filter((meeting) => meeting.lead_id !== leadIdParsed.data)
+    .map((meeting) => ({ startsAt: meeting.starts_at, lat: meeting.lead.lat, lng: meeting.lead.lng, neighbourhood: meeting.lead.neighbourhood }));
+  return distanceWarnings({ lat: lead.lat, lng: lead.lng }, at.data, others, settings.distanceKm).map(
+    (warning) =>
+      `This address is ${formatKm(warning.km)} in a straight line from the ${formatTime(warning.meeting.startsAt)} meeting${
+        warning.meeting.neighbourhood ? ` in ${warning.meeting.neighbourhood}` : ""
+      }.`,
+  );
+}

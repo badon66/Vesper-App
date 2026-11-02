@@ -14,12 +14,11 @@ import { ChoiceGroup } from "@/components/leads/choice-group";
 import { FindOutFields } from "@/components/leads/find-out-fields";
 import { PhotoPicker } from "@/components/leads/photo-picker";
 import { PhotoSlots } from "@/components/leads/photo-slots";
-import { HoldOnNewLead, type NewLeadBooking } from "@/components/schedule/hold-on-new-lead";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { FindOutField, PhotoSlot } from "@/lib/leads/door";
+import type { FindOutField } from "@/lib/leads/door";
 import {
   HOUSE_TYPE_OPTIONS,
   SOURCE_OPTIONS,
@@ -51,6 +50,7 @@ const NOTHING_FOUND_OUT: Record<FindOutField, string | null> = {
   wants_price: null,
   soffit_colour: null,
   christmas_lights_now: null,
+  looked_into_before: null,
   areas_wanted: null,
   install_timing: null,
 };
@@ -68,7 +68,6 @@ export function LeadForm({
   sessionNeighbourhood,
   defaults,
   cancelHref,
-  booking,
 }: {
   mode: "create" | "edit";
   action: (state: LeadFormState, formData: FormData) => Promise<LeadFormState>;
@@ -78,8 +77,6 @@ export function LeadForm({
   sessionNeighbourhood: string | null;
   defaults?: LeadFormDefaults;
   cancelHref: string;
-  // On New lead: the time picker and any time this person already holds.
-  booking?: NewLeadBooking;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
   const [, startTransition] = useTransition();
@@ -88,7 +85,6 @@ export function LeadForm({
   );
   const [neighbourhoodEdited, setNeighbourhoodEdited] = useState(Boolean(defaults?.neighbourhood));
   const [slotsBusy, setSlotsBusy] = useState(false);
-  const [takenSlots, setTakenSlots] = useState<PhotoSlot[]>([]);
   const [extrasBusy, setExtrasBusy] = useState(false);
   const photosBusy = slotsBusy || extrasBusy;
   const [duplicates, setDuplicates] = useState<DuplicateLead[]>([]);
@@ -126,13 +122,6 @@ export function LeadForm({
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6 pb-36">
       {leadId ? <input type="hidden" name="id" value={leadId} /> : null}
-
-      {booking ? (
-        <HoldOnNewLead
-          booking={booking}
-          guidedPhotos={takenSlots.filter((slot) => slot !== "soffit").length}
-        />
-      ) : null}
 
       <AddressField
         apiKey={mapsKey}
@@ -239,7 +228,7 @@ export function LeadForm({
           <h2 id="photos-heading" className="text-lg font-bold">
             Photos
           </h2>
-          <PhotoSlots userId={userId} mode="form" onBusyChange={setSlotsBusy} onTakenChange={setTakenSlots} />
+          <PhotoSlots userId={userId} mode="form" onBusyChange={setSlotsBusy} />
           <PhotoPicker
             userId={userId}
             mode="form"

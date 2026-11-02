@@ -40,6 +40,7 @@ const FIND_OUT_LABELS: Record<string, string> = {
   soffit_colour: "soffit colour",
   soffit_note: "soffit colour",
   christmas_lights_now: "Christmas lights now",
+  looked_into_before: "looked into it before",
   areas_wanted: "which areas",
   install_timing: "timing",
 };

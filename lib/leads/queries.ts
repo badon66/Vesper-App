@@ -26,9 +26,17 @@ export async function lostReasons(supabase: Client): Promise<string[]> {
 }
 
 // Keenan's Door guide, which setters read the same way as the lost reasons.
-export async function doorGuide(supabase: Client): Promise<string | null> {
-  const { data } = await supabase.from("settings_public").select("door_guide").maybeSingle();
-  return data?.door_guide?.trim() || null;
+// The booking sheet's three step notes, which replaced the Door guide.
+export async function stepNotes(supabase: Client): Promise<{ label: string; text: string }[]> {
+  const { data } = await supabase
+    .from("settings_public")
+    .select("step_note_at_door, step_note_after_door, step_note_book")
+    .maybeSingle();
+  return [
+    { label: "At the door", text: data?.step_note_at_door?.trim() ?? "" },
+    { label: "After the door", text: data?.step_note_after_door?.trim() ?? "" },
+    { label: "Book", text: data?.step_note_book?.trim() ?? "" },
+  ];
 }
 
 export type OpenKnockSession = {
