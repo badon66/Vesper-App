@@ -411,7 +411,12 @@ try {
     const bText = (await op.getByRole("list", { name: "The team today" }).locator("li", { hasText: "Nav Test B" }).innerText()).replace(/\s+/g, " ");
     check("someone who only added a lead today shows too", /Leads 1\b/.test(bText) && bText.includes("No knock session today"), bText);
     check("today's leads are listed", (await op.getByRole("list", { name: "Today's leads" }).locator(`a[href="/app/leads/${leads.other}"]`).count()) === 1);
-    check("the owner's tabs are Home, Schedule, New lead, Leads and Admin", JSON.stringify(await visibleTabs(op)) === JSON.stringify(["Home", "Schedule", "New lead", "Leads", "Admin"]), (await visibleTabs(op)).join(", "));
+    check(
+      "the owner's tabs are Home, Schedule, Meetings, New lead and Leads, with Admin as a gear in the header",
+      JSON.stringify(await visibleTabs(op)) === JSON.stringify(["Home", "Schedule", "Meetings", "New lead", "Leads"]) &&
+        (await op.getByTestId("admin-gear").getAttribute("href")) === "/app/admin",
+      (await visibleTabs(op)).join(", "),
+    );
     await checkTapTargets(op, "the owner's Home");
     await op.screenshot({ path: `${out}/m25-owner-home.png`, fullPage: true });
   }
@@ -511,6 +516,7 @@ try {
     ["New lead", "/app/leads/new"],
     ["Edit lead", `/app/leads/${leads.newOld}/edit`],
     ["Schedule", "/app/schedule"],
+    ["Meetings", "/app/meetings"],
     ["a lead opened to book", `/app/leads/${leads.later}?book=1`],
     ["My pay", "/app/pay"],
     ["Admin", "/app/admin"],

@@ -11,6 +11,11 @@ test("a protected app route redirects to login and remembers where you were goin
   await expect(page).toHaveURL(/\/login\?next=%2Fapp$/);
 });
 
+test("the Meetings page is behind the login wall", async ({ page }) => {
+  await page.goto("/app/meetings");
+  await expect(page).toHaveURL(/\/login\?next=%2Fapp%2Fmeetings$/);
+});
+
 test("meeting mode is behind the same login wall", async ({ page }) => {
   await page.goto("/meeting/00000000-0000-4000-8000-000000000000");
   await expect(page).toHaveURL(/\/login\?next=%2Fmeeting%2F00000000-0000-4000-8000-000000000000$/);
