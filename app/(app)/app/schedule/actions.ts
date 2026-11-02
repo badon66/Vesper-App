@@ -254,6 +254,99 @@ export async function removeTimeBlock(blockId: string): Promise<ActionResult> {
   return { ok: true };
 }
 
+// ---------------------------------------------------------------- one evening's times (M3.5)
+
+export type DayScope = "day" | "all" | "usual";
+export type DaySchedulePreview = {
+  ok: true;
+  times: string[];
+  misaligned: { meetingId: string; startsAt: string; name: string; neighbourhood: string | null; setterName: string | null }[];
+  holds: { startsAt: string; holderName: string }[];
+  ownDaysKept: string[];
+};
+
+const dayTemplateSchema = z.object({
+  day: z.iso.date(),
+  start: z.string().regex(/^\d{2}:\d{2}$/),
+  minutes: z.number().int().min(15).max(180),
+  count: z.number().int().min(1).max(12),
+  scope: z.enum(["day", "all", "usual"]),
+});
+
+// What a day change would do, before Keenan saves it: the evening's new
+// times, bookings that would no longer line up (they keep their times),
+// holds that would let go, and which evenings keep their own times.
+export async function previewDaySchedule(input: {
+  day: string;
+  start: string;
+  minutes: number;
+  count: number;
+  scope: DayScope;
+}): Promise<DaySchedulePreview | ActionResult> {
+  const me = await owner();
+  if (isResult(me)) return me;
+  const parsed = dayTemplateSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: "bad_template", message: "Check the start, length and number of meetings." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("day_schedule_preview", {
+    p_day: parsed.data.day,
+    p_start: parsed.data.start,
+    p_minutes: parsed.data.minutes,
+    p_count: parsed.data.count,
+    p_scope: parsed.data.scope,
+  });
+  if (error || !data || typeof data !== "object" || Array.isArray(data)) {
+    return error ? failed(error) : { ok: false, code: "unknown", message: "The preview didn't load. Try again." };
+  }
+  const plan = data as {
+    times?: string[];
+    misaligned?: { meeting_id: string; starts_at: string; first_name: string; last_name: string | null; neighbourhood: string | null; setter_name: string | null }[];
+    holds?: { starts_at: string; holder_name: string }[];
+    own_days_kept?: string[];
+  };
+  return {
+    ok: true,
+    times: (plan.times ?? []).map((time) => new Date(time).toISOString()),
+    misaligned: (plan.misaligned ?? []).map((meeting) => ({
+      meetingId: meeting.meeting_id,
+      startsAt: new Date(meeting.starts_at).toISOString(),
+      name: [meeting.first_name, meeting.last_name].filter(Boolean).join(" "),
+      neighbourhood: meeting.neighbourhood,
+      setterName: meeting.setter_name,
+    })),
+    holds: (plan.holds ?? []).map((hold) => ({ startsAt: new Date(hold.starts_at).toISOString(), holderName: hold.holder_name })),
+    ownDaysKept: plan.own_days_kept ?? [],
+  };
+}
+
+// Keenan's day change from Schedule's pencil: this evening only, all days
+// (which updates Settings), or back to the usual times. It never moves or
+// cancels a booking.
+export async function setDaySchedule(input: {
+  day: string;
+  start: string;
+  minutes: number;
+  count: number;
+  scope: DayScope;
+}): Promise<ActionResult> {
+  const me = await owner();
+  if (isResult(me)) return me;
+  const parsed = dayTemplateSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: "bad_template", message: "Check the start, length and number of meetings." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_day_schedule", {
+    p_day: parsed.data.day,
+    p_start: parsed.data.start,
+    p_minutes: parsed.data.minutes,
+    p_count: parsed.data.count,
+    p_scope: parsed.data.scope,
+  });
+  if (error) return failed(error);
+  refreshSchedule();
+  if (parsed.data.scope === "all") revalidatePath("/app/admin/settings");
+  return { ok: true };
+}
+
 export async function markPaid(_previous: ActionResult | null, formData: FormData): Promise<ActionResult | null> {
   const me = await owner();
   if (isResult(me)) return me;

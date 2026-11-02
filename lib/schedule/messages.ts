@@ -22,6 +22,9 @@ const MESSAGES: Record<string, string> = {
   no_host: "No one is set up to run meetings yet.",
   no_lead: "That lead was not found.",
   no_meeting: "That booking was not found.",
+  bad_template: "Meetings are 15 to 180 minutes, 1 to 12 an evening, and the last one starts before midnight.",
+  outside_window: "Pick an evening inside the booking window.",
+  bad_block: "Pick the times to block.",
 };
 
 export type DbError = { message?: string; hint?: string | null; details?: string | null } | null | undefined;

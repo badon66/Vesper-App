@@ -165,6 +165,9 @@ export function AddressField({
       event.preventDefault();
       void pick(suggestions[active]);
     } else if (event.key === "Escape") {
+      // Closes only the suggestions, not a booking sheet or pop-up around them.
+      event.preventDefault();
+      event.stopPropagation();
       setOpen(false);
     }
   }

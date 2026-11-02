@@ -62,6 +62,7 @@ export function MeetingCard({
 
   return (
     <article
+      id={`meeting-${meeting.id}`}
       className={cn("flex flex-col gap-3 rounded-md border p-4", changed && "bg-muted/40 text-muted-foreground")}
       data-testid="meeting-card"
       data-meeting={meeting.id}
