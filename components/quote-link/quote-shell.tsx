@@ -64,7 +64,7 @@ export function ExpiredQuote({ company }: { company: Company }) {
       <div className="flex flex-col gap-3">
         <h1 className="text-3xl font-bold text-balance">This quote has expired</h1>
         <p className="text-lg text-pretty text-muted-foreground">
-          Call or text Keenan for an up-to-date quote.
+          Call or text Keenan for a new quote.
         </p>
       </div>
       <ContactButtons company={company} email={false} />

@@ -7,7 +7,24 @@ import { useRef, useState } from "react";
 // and close-up. At normal size a one-finger swipe turns the page, the
 // same as everywhere else in the deck. Nothing here talks to the
 // network: the image is already on the iPad.
-export function PinchZoom({ src, alt, onSwipe }: { src: string; alt: string; onSwipe?: (delta: number) => void }) {
+// crossOrigin: meeting mode asks for the picture in CORS mode so the
+// service worker can keep it for no signal; the customer's quote page
+// passes null, so the viewer reuses the picture already on the page (its
+// short-lived link may have expired by the time they zoom). onError lets the
+// page say what to do when a picture won't load.
+export function PinchZoom({
+  src,
+  alt,
+  onSwipe,
+  crossOrigin = "anonymous",
+  onError,
+}: {
+  src: string;
+  alt: string;
+  onSwipe?: (delta: number) => void;
+  crossOrigin?: "anonymous" | null;
+  onError?: () => void;
+}) {
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
   const [touching, setTouching] = useState(false);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
@@ -100,7 +117,8 @@ export function PinchZoom({ src, alt, onSwipe }: { src: string; alt: string; onS
       <img
         src={src}
         alt={alt}
-        crossOrigin="anonymous"
+        crossOrigin={crossOrigin ?? undefined}
+        onError={onError}
         draggable={false}
         className="size-full object-contain"
         style={{

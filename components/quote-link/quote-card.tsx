@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, ExternalLink, Link2Off, Send, Share } from "lucide-react";
+import { Copy, ExternalLink, Link2Off, MessageSquare, Phone, Send, Share } from "lucide-react";
 import { useState } from "react";
 import { sendQuoteLink, turnOffQuoteLink } from "@/app/(app)/app/leads/quote-link-actions";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { quoteLinkMessage } from "@/lib/quote-link/view";
+import { phoneHref, quoteLinkMessage } from "@/lib/quote-link/view";
 import { formatDateTime, formatLongDay } from "@/lib/time";
 
 // Times end in "p.m.", so a sentence ending in one gets no second full stop.
@@ -35,12 +35,15 @@ export type QuoteCardLink = {
 export type QuoteCardProps = {
   leadId: string;
   firstName: string;
+  // Vesper's number, for the text Keenan sends.
   phone: string;
+  // The customer's own number, for Call and Text it, when the lead has one.
+  customerPhone: string | null;
   quote: { total: string; feet: number; validUntil: string | null; expired: boolean } | null;
   link: QuoteCardLink | null;
 };
 
-export function QuoteCard({ leadId, firstName, phone, quote, link }: QuoteCardProps) {
+export function QuoteCard({ leadId, firstName, phone, customerPhone, quote, link }: QuoteCardProps) {
   const [sheet, setSheet] = useState<{ link: string; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -100,6 +103,9 @@ export function QuoteCard({ leadId, firstName, phone, quote, link }: QuoteCardPr
   }
 
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  const who = firstName.trim() || "them";
+  // Once they've asked to book, calling them is the next thing to do.
+  const bookedNow = link?.live && link.booked ? link.booked : null;
 
   return (
     <Card id="quote" className="scroll-mt-24" data-testid="quote-card">
@@ -113,8 +119,17 @@ export function QuoteCard({ leadId, firstName, phone, quote, link }: QuoteCardPr
       </CardHeader>
       {quote ? (
         <CardContent className="flex flex-col gap-4 text-sm">
+          {bookedNow ? (
+            <div className="flex flex-col gap-0.5 rounded-md border border-input px-4 py-3" data-testid="quote-card-booked">
+              <p className="text-lg font-bold text-pretty">
+                {who === "them" ? "They" : who} asked to book: {bookedNow.option}
+                {bookedNow.total ? `, ${bookedNow.total}` : ""}.
+              </p>
+              <p className="text-muted-foreground">{sentence(formatDateTime(bookedNow.at))}</p>
+            </div>
+          ) : null}
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
-            <dt className="text-muted-foreground">Total</dt>
+            <dt className="text-muted-foreground">Quoted total, all parts</dt>
             <dd className="font-semibold tabular-nums" data-testid="quote-card-total">
               {quote.total}
             </dd>
@@ -167,7 +182,15 @@ export function QuoteCard({ leadId, firstName, phone, quote, link }: QuoteCardPr
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" onClick={() => void openSheet()} disabled={busy}>
+            {bookedNow && customerPhone ? (
+              <Button asChild>
+                <a href={phoneHref(customerPhone, "tel")}>
+                  <Phone aria-hidden="true" />
+                  Call {who}
+                </a>
+              </Button>
+            ) : null}
+            <Button type="button" variant={bookedNow && customerPhone ? "outline" : "default"} onClick={() => void openSheet()} disabled={busy}>
               <Send aria-hidden="true" />
               Send quote link
             </Button>
@@ -211,26 +234,33 @@ export function QuoteCard({ leadId, firstName, phone, quote, link }: QuoteCardPr
         {sheet ? (
           <div className="flex flex-col gap-4">
             <p className="text-sm text-pretty text-muted-foreground">
-              Nothing is sent from the app. Edit the text if you like, then share it or copy it into your own Messages
-              or email.
+              Nothing is sent from the app. Edit the text if you like, then send it from your own Messages or email.
             </p>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="quote-link-text">Text</Label>
               <Textarea
                 id="quote-link-text"
-                rows={8}
+                rows={10}
                 value={sheet.text}
                 onChange={(event) => setSheet({ ...sheet, text: event.target.value })}
               />
             </div>
             <div className="flex flex-wrap gap-3">
+              {customerPhone ? (
+                <Button asChild>
+                  <a href={`${phoneHref(customerPhone, "sms")}?&body=${encodeURIComponent(sheet.text)}`}>
+                    <MessageSquare aria-hidden="true" />
+                    Text it to {who}
+                  </a>
+                </Button>
+              ) : null}
               {canShare ? (
-                <Button type="button" onClick={() => void share(sheet.text)}>
+                <Button type="button" variant={customerPhone ? "outline" : "default"} onClick={() => void share(sheet.text)}>
                   <Share aria-hidden="true" />
                   Share
                 </Button>
               ) : null}
-              <Button type="button" variant={canShare ? "outline" : "default"} onClick={() => void copy("text", sheet.text)}>
+              <Button type="button" variant={canShare || customerPhone ? "outline" : "default"} onClick={() => void copy("text", sheet.text)}>
                 <Copy aria-hidden="true" />
                 {copied === "text" ? "Text copied" : "Copy text"}
               </Button>
@@ -239,9 +269,6 @@ export function QuoteCard({ leadId, firstName, phone, quote, link }: QuoteCardPr
                 {copied === "link" ? "Link copied" : "Copy link"}
               </Button>
             </div>
-            <p className="text-sm break-all text-muted-foreground" data-testid="send-quote-link-url">
-              {sheet.link}
-            </p>
           </div>
         ) : null}
       </DialogPanel>

@@ -299,8 +299,23 @@ try {
   await viewer.getByRole("button", { name: "Close" }).click().catch(() => {});
   check("a tap opens the mockup full screen to zoom, and Close brings them back", viewerOpen && !(await viewer.isVisible().catch(() => false)));
 
-  // Book my install.
+  // Book my install: it asks once, restating the choice, before it books.
   await page.getByRole("button", { name: "Book my install" }).click();
+  const confirm = page.getByTestId("book-confirm");
+  await confirm.getByRole("button", { name: "Yes, book my install" }).waitFor({ timeout: 10000 }).catch(() => {});
+  const confirmText = (await confirm.innerText().catch(() => "")).replace(/\s+/g, " ");
+  check(
+    "Book my install asks first, with the choice, the total and nothing to sign or pay",
+    (await page.getByTestId("confirm-option").innerText()).trim() === "Start smaller: Garage" &&
+      (await page.getByTestId("confirm-total").innerText()).trim() === "$2,500" &&
+      confirmText.includes("There's nothing to sign or pay today.") &&
+      (await confirm.getByRole("button", { name: "Not yet" }).count()) === 1,
+    confirmText.slice(0, 200),
+  );
+  await page.screenshot({ path: `${out}/ql-phone-confirm.png` });
+  const { data: notYet } = await admin.from("quote_links").select("booked_at").eq("id", link.data.id).single();
+  check("nothing is booked until they say yes", notYet?.booked_at === null);
+  await confirm.getByRole("button", { name: "Yes, book my install" }).click();
   await page.getByTestId("quote-thanks").waitFor({ timeout: 20000 }).catch(() => {});
   const thanks = (await page.getByTestId("quote-thanks").innerText().catch(() => "")).replace(/\s+/g, " ");
   check(
@@ -330,7 +345,13 @@ try {
   );
   await page.reload();
   await settle(page);
-  check("coming back, the page says they asked to book", (await page.getByTestId("quote-booked-before").innerText().catch(() => "")).includes("You asked to book your install"));
+  check(
+    "coming back, the page says they asked to book, and the bar no longer offers it again",
+    (await page.getByTestId("quote-booked-before").innerText().catch(() => "")).includes("you asked us to book your install: Start smaller: Garage") &&
+      (await page.getByTestId("bar-label").innerText()).trim() === "Install requested: Start smaller: Garage" &&
+      (await page.getByRole("button", { name: "Book my install" }).count()) === 0,
+  );
+  await page.screenshot({ path: `${out}/ql-phone-return.png` });
   await customer.close();
 
   // ---------------------------------------------------------------- Keenan
@@ -342,8 +363,10 @@ try {
   const card = owner.getByTestId("quote-card");
   const cardText = (await card.innerText().catch(() => "")).replace(/\s+/g, " ");
   check(
-    "the lead's Quote card: total, opens, last visit, and Book my install with the option",
-    cardText.includes("$4,393") &&
+    "the lead's Quote card leads with the booking, then the total, opens and last visit",
+    (await card.getByTestId("quote-card-booked").innerText().catch(() => "")).includes(`${TEST_LEAD} asked to book: Start smaller: Garage, $2,500.`) &&
+      cardText.includes("Quoted total, all parts") &&
+      cardText.includes("$4,393") &&
       cardText.includes("Opened 2 times, last") &&
       cardText.includes("Tapped Book my install") &&
       cardText.includes("Start smaller: Garage, $2,500") &&
@@ -376,7 +399,10 @@ try {
   await preview.goto(quoteUrl);
   await settle(preview);
   await preview.waitForTimeout(1000);
-  await preview.getByRole("button", { name: "Book my install" }).click();
+  // It opens at the booked choice; switching the front back on offers an update.
+  await preview.getByTestId("start-smaller").getByRole("switch", { name: /^Front,/ }).click();
+  await preview.getByRole("button", { name: "Update my choice" }).click();
+  await preview.getByTestId("book-confirm").getByRole("button", { name: "Yes, update it" }).click();
   await preview.getByTestId("thanks-preview").waitFor({ timeout: 20000 }).catch(() => {});
   const previewNote = await preview.getByTestId("thanks-preview").isVisible().catch(() => false);
   const { data: afterPreview } = await admin.from("quote_links").select("view_count, booked_option").eq("id", link.data.id).single();

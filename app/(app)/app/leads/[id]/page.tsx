@@ -448,7 +448,7 @@ export default async function LeadPage({
 // Totals come from the same lib/pricing.ts the customer's page uses.
 async function loadQuoteCard(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  lead: { id: string; first_name: string },
+  lead: { id: string; first_name: string; phone: string | null },
   company: unknown,
 ): Promise<QuoteCardProps> {
   const [{ data: quoteRow }, { data: linkRow }] = await Promise.all([
@@ -475,7 +475,14 @@ async function loadQuoteCard(
       ? ((company as { phone: string }).phone.trim() || FALLBACK_COMPANY.phone)
       : FALLBACK_COMPANY.phone;
   const quote = quoteRow ? quoteFromRow(quoteRow) : null;
-  const card: QuoteCardProps = { leadId: lead.id, firstName: lead.first_name, phone, quote: null, link: null };
+  const card: QuoteCardProps = {
+    leadId: lead.id,
+    firstName: lead.first_name,
+    phone,
+    customerPhone: lead.phone,
+    quote: null,
+    link: null,
+  };
   if (!quote || !quoteRow) return card;
 
   const whole = priceSelection(quote, null);

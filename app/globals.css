@@ -81,13 +81,15 @@
   --destructive-foreground: #ffffff;
   --border: #d5dce1;
   --input: #7d8f9b;
-  --ring: #b99257;
+  /* Navy focus rings on white (14:1); gold stays on the one action. */
+  --ring: #132e3f;
 }
 
+/* next-themes writes color-scheme on <html> inline; this page is white. */
 html:has(.quote-light),
 html:has(.quote-light) body {
   background-color: #ffffff;
-  color-scheme: light;
+  color-scheme: light !important;
 }
 
 @theme inline {

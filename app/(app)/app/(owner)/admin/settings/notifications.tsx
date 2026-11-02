@@ -177,7 +177,7 @@ function DeviceControls({ publicKey, devices }: { publicKey: string; devices: De
             </p>
             <Button type="button" variant="ghost" onClick={() => void turnOff()} disabled={busy}>
               <BellOff aria-hidden="true" />
-              Turn off here
+              Switch off here
             </Button>
           </div>
         ) : (
