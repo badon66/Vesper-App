@@ -1,0 +1,105 @@
+import type { Metadata } from "next";
+import { MeetingItem, type MeetingItemData } from "@/components/meetings/meeting-item";
+import { StartMeeting } from "@/components/meetings/start-meeting";
+import { TonightList } from "@/components/meetings/tonight-list";
+import { requireProfile } from "@/lib/auth/profile";
+import { getPublicEnv } from "@/lib/env";
+import { namesById } from "@/lib/leads/queries";
+import { leadName } from "@/lib/leads/status";
+import { MEETING_STATUS_LABELS } from "@/lib/schedule/meetings";
+import { bookingSettings, meetingsBetween, meetingsOnDay, type MeetingWithLead } from "@/lib/schedule/queries";
+import { createClient } from "@/lib/supabase/server";
+import { addDays, calgaryDateOf, calgaryDayStart, calgaryToday, formatLongDay, formatTime, requestTime } from "@/lib/time";
+
+export const metadata: Metadata = {
+  title: "Meetings",
+};
+
+const LIVE = new Set(["booked", "confirmed"]);
+const MARKED = new Set(["qualified", "not_qualified", "no_show"]);
+
+// Meetings (Keenan, 2026-11-02): meeting mode's own home, owner only (the
+// owner group's layout refuses everyone else, View as included). Tonight in
+// time order, then what's booked after it, each with a big Start and a flag
+// for a missing mockup or track colour; Start a meeting for anyone not
+// booked; Get tonight ready to keep tonight on the iPad.
+export default async function MeetingsPage() {
+  const me = await requireProfile();
+  const supabase = await createClient();
+  const today = calgaryToday();
+  const now = requestTime();
+  const settings = await bookingSettings(supabase);
+  const [tonightAll, laterAll] = await Promise.all([
+    meetingsOnDay(supabase, today),
+    meetingsBetween(supabase, calgaryDayStart(addDays(today, 1)), calgaryDayStart(addDays(today, settings.windowDays + 1))),
+  ]);
+  const tonight = tonightAll.filter((meeting) => meeting.status !== "moved" && meeting.status !== "cancelled");
+  const upcoming = laterAll.filter((meeting) => LIVE.has(meeting.status));
+
+  const leadIds = Array.from(new Set([...tonight, ...upcoming].map((meeting) => meeting.lead_id)));
+  const [colourRows, mockupRows, hosts] = await Promise.all([
+    leadIds.length > 0
+      ? supabase.from("leads").select("id, track_colour_id, track_ral_code").in("id", leadIds).then(({ data }) => data ?? [])
+      : Promise.resolve([]),
+    leadIds.length > 0
+      ? supabase.from("lead_photos").select("lead_id").eq("slot", "mockup").in("lead_id", leadIds).then(({ data }) => data ?? [])
+      : Promise.resolve([]),
+    namesById(supabase, [...tonight, ...upcoming].map((meeting) => meeting.host_id)),
+  ]);
+  const hasColour = new Set(colourRows.filter((row) => row.track_colour_id || row.track_ral_code).map((row) => row.id));
+  const hasMockup = new Set(mockupRows.map((row) => row.lead_id));
+
+  // The next meeting still to come tonight gets the one gold Start.
+  const nextTonight = tonight.find((meeting) => LIVE.has(meeting.status) && Date.parse(meeting.ends_at) > now)?.id ?? null;
+
+  const toItem = (meeting: MeetingWithLead): MeetingItemData => ({
+    meetingId: meeting.id,
+    leadId: meeting.lead_id,
+    time: formatTime(meeting.starts_at),
+    name: leadName(meeting.lead),
+    address: [meeting.lead.address_line, meeting.lead.neighbourhood].filter(Boolean).join(", "),
+    host: meeting.host_id !== me.id ? (hosts.get(meeting.host_id) ?? "Another host") : null,
+    outcome: MARKED.has(meeting.status) ? `Marked ${MEETING_STATUS_LABELS[meeting.status]}` : null,
+    missingMockup: !hasMockup.has(meeting.lead_id),
+    missingColour: !hasColour.has(meeting.lead_id),
+    next: meeting.id === nextTonight,
+  });
+
+  // After tonight, by evening.
+  const evenings = new Map<string, MeetingItemData[]>();
+  for (const meeting of upcoming) {
+    const day = calgaryDateOf(meeting.starts_at);
+    evenings.set(day, [...(evenings.get(day) ?? []), toItem(meeting)]);
+  }
+
+  return (
+    <div className="flex flex-col gap-10">
+      <StartMeeting mapsKey={getPublicEnv().NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null} />
+
+      <TonightList items={tonight.map(toItem)} />
+
+      <section aria-labelledby="upcoming-heading" className="flex flex-col gap-4" data-testid="meetings-upcoming">
+        <div>
+          <h2 id="upcoming-heading" className="text-xl font-bold">
+            Upcoming
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {upcoming.length === 0
+              ? `Nothing booked after tonight yet. Bookings open ${settings.windowDays} days ahead.`
+              : `The next ${settings.windowDays} days, by evening.`}
+          </p>
+        </div>
+        {[...evenings.entries()].map(([day, items]) => (
+          <div key={day} className="flex flex-col gap-3">
+            <h3 className="text-base font-semibold">{formatLongDay(day)}</h3>
+            <ul className="flex flex-col gap-3">
+              {items.map((item) => (
+                <MeetingItem key={item.meetingId} item={item} />
+              ))}
+            </ul>
+          </div>
+        ))}
+      </section>
+    </div>
+  );
+}
