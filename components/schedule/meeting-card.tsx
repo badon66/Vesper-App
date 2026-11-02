@@ -128,7 +128,7 @@ export function MeetingCard({
             // A full page load on purpose: it lets the service worker keep
             // the meeting page for a reload without signal.
             <a
-              href={`/meeting/${lead.id}`}
+              href={`/meeting/${lead.id}#start`}
               className="inline-flex min-h-11 items-center rounded-md border border-primary px-4 text-sm font-semibold"
             >
               Meeting mode

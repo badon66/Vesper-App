@@ -82,10 +82,20 @@ export function describeEvent(event: TimelineEvent): string {
     case "note":
       return typeof payload.text === "string" ? payload.text : "Added a note.";
     case "photo_added": {
+      if (payload.slot === "mockup") return "Added the mockup.";
       const slot = typeof payload.slot === "string" && PHOTO_SLOT_VALUES.includes(payload.slot)
         ? (payload.slot as PhotoSlot)
         : null;
       return slot ? `Added the ${photoSlotLabel(slot).toLowerCase()} photo.` : "Added a photo.";
+    }
+    // Meeting mode (M5). Neither event ever carries a dollar amount.
+    case "quote_created":
+      return "Drafted a quote.";
+    case "colour_confirmed": {
+      const colour = typeof payload.colour === "string" && payload.colour ? payload.colour : null;
+      const initials = typeof payload.initials === "string" && payload.initials ? payload.initials : null;
+      if (colour && initials) return `The customer confirmed ${colour} track with their initials, ${initials}.`;
+      return initials ? `The customer confirmed the track colour with their initials, ${initials}.` : "The customer confirmed the track colour.";
     }
     case "edited": {
       const fields = Array.isArray(payload.fields)

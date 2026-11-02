@@ -6,7 +6,7 @@ import { useRef, useState } from "react";
 import { attachLeadPhotos } from "@/app/(app)/app/leads/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { PHOTO_BUCKET, photoPath, shrinkPhoto } from "@/lib/photos";
+import { MEETING_PHOTO_MAX_EDGE, PHOTO_BUCKET, photoPath, shrinkPhoto } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/client";
 
 // The customer's mockup (M5): made outside the app, uploaded here by
@@ -27,7 +27,7 @@ export function MockupCard({ leadId, userId, mockupUrl }: { leadId: string; user
     setBusy(true);
     setError(null);
     try {
-      const small = await shrinkPhoto(file);
+      const small = await shrinkPhoto(file, MEETING_PHOTO_MAX_EDGE);
       setPreview(URL.createObjectURL(small));
       const path = photoPath(userId, crypto.randomUUID());
       const { error: uploadError } = await createClient()
@@ -50,8 +50,9 @@ export function MockupCard({ leadId, userId, mockupUrl }: { leadId: string; user
       <CardHeader>
         <CardTitle>Meeting mode</CardTitle>
         <CardDescription>
-          The full-screen presentation and live quote for this house, on the iPad. Upload their mockup first, so the
-          &ldquo;This house&rdquo; screen shows their home in lights.
+          {shown
+            ? "The full-screen presentation and live quote for this house, on the iPad. Their mockup is ready for the “This house” screen."
+            : "The full-screen presentation and live quote for this house, on the iPad. Upload their mockup first, so the “This house” screen shows their home in lights."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -67,7 +68,7 @@ export function MockupCard({ leadId, userId, mockupUrl }: { leadId: string; user
           <Button asChild>
             {/* A full page load on purpose: it lets the service worker keep
                 the meeting page for a reload without signal. */}
-            <a href={`/meeting/${leadId}`}>Open meeting mode</a>
+            <a href={`/meeting/${leadId}#start`}>Open meeting mode</a>
           </Button>
           <Button type="button" variant="outline" disabled={busy} onClick={() => input.current?.click()}>
             <ImagePlus aria-hidden="true" />

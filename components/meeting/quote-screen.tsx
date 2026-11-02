@@ -314,24 +314,39 @@ export function QuoteScreen({
       </div>
 
       {/* ------------------------------------------------ the bill */}
-      <div className="flex min-w-0 flex-col gap-4 border-t pt-6 lg:min-h-0 lg:justify-center lg:border-t-0 lg:pt-0 lg:pl-2" data-testid="quote-bill">
-        <ul className="flex flex-col gap-1.5">
-          {priced.lines.map((line, at) => (
-            <li key={at} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 text-base lg:text-lg">
-              <span className="min-w-0">
-                {line.label}
-                {line.detail ? <span className="ml-2 text-sm text-muted-foreground">{line.detail}</span> : null}
-              </span>
-              <span className="font-semibold tabular-nums">{formatMoney(line.amount)}</span>
-            </li>
-          ))}
-        </ul>
-        <div className="border-t pt-3">
-          <p className="text-sm text-muted-foreground">Your price</p>
-          <p className="text-5xl font-bold text-primary tabular-nums lg:text-6xl" data-testid="quote-total">
-            {screenTotal(priced.subtotal, pricing.gstEnabled)}
-          </p>
-        </div>
+      {/* Pinned high in its column: the iPad's keyboard rises over the
+          lower half while Keenan types the feet. */}
+      <div className="flex min-w-0 flex-col gap-4 border-t pt-6 lg:min-h-0 lg:border-t-0 lg:pt-20 lg:pl-2" data-testid="quote-bill">
+        {priced.totalFeet === 0 ? (
+          // No number until something is measured: the first price the
+          // customer sees is the real one, never the box on its own.
+          <div>
+            <p className="text-sm text-muted-foreground">Total</p>
+            <p className="mt-1 text-2xl text-muted-foreground lg:text-3xl" data-testid="quote-waiting">
+              Adds up here as we measure.
+            </p>
+          </div>
+        ) : (
+          <>
+            <ul className="flex flex-col gap-1.5">
+              {priced.lines.map((line, at) => (
+                <li key={at} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 text-base lg:text-lg">
+                  <span className="min-w-0">
+                    {line.label}
+                    {line.detail ? <span className="ml-2 text-sm text-muted-foreground">{line.detail}</span> : null}
+                  </span>
+                  <span className="font-semibold tabular-nums">{formatMoney(line.amount)}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="border-t pt-3">
+              <p className="text-sm text-muted-foreground">Total</p>
+              <p className="text-5xl font-bold text-primary tabular-nums lg:text-6xl" data-testid="quote-total">
+                {screenTotal(priced.subtotal, pricing.gstEnabled)}
+              </p>
+            </div>
+          </>
+        )}
         <div className="flex flex-col gap-1 text-sm text-muted-foreground">
           <p>No payment until your install is complete.</p>
           {state.financingOffered ? <p>Financing available. We will walk through the options together.</p> : null}

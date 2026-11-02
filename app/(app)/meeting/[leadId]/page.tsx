@@ -6,7 +6,7 @@ import type { MeetingPayload } from "@/lib/meeting/state";
 import { NotForYourRole } from "@/components/not-for-your-role";
 import { getViewer } from "@/lib/auth/profile";
 import { leadName } from "@/lib/leads/status";
-import { leadTrackColour, sortTrackColours, trackColourText } from "@/lib/leads/track-colour";
+import { CUSTOM_CHOICE, leadTrackColour, sortTrackColours, trackColourText } from "@/lib/leads/track-colour";
 import { pageHasContent, parsePresentation } from "@/lib/presentation";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/server";
@@ -51,16 +51,14 @@ export default async function MeetingPage({ params }: { params: Promise<{ leadId
   ]);
   if (!lead || !settings) notFound();
 
-  // The colour by name, exactly as the lead page says it.
+  // The colour by name, exactly as the lead page says it. The whole RAL
+  // Classic list comes along (216 names), so a colour changed at the table
+  // is named on the iPad the moment it is typed.
   const colours = sortTrackColours(colourRows ?? []);
   const colourById = new Map(colours.map((colour) => [colour.id, colour]));
-  const listColour = lead.track_colour_id ? colourById.get(lead.track_colour_id) : undefined;
-  const ralCodes = [lead.track_ral_code, listColour?.ral_code].filter((code): code is string => Boolean(code));
-  const { data: ralRows } =
-    ralCodes.length > 0
-      ? await supabase.from("ral_classic_colours").select("code, name").in("code", ralCodes)
-      : { data: [] };
-  const trackColour = leadTrackColour(lead, colourById, new Map((ralRows ?? []).map((row) => [row.code, row.name])));
+  const { data: ralRows } = await supabase.from("ral_classic_colours").select("code, name");
+  const ralNames = Object.fromEntries((ralRows ?? []).map((row) => [row.code, row.name]));
+  const trackColour = leadTrackColour(lead, colourById, new Map(Object.entries(ralNames)));
 
   // The presentation, with its photos signed for the evening. Pages with
   // nothing in them are dropped here, so the iPad never shows one empty.
@@ -120,6 +118,12 @@ export default async function MeetingPage({ params }: { params: Promise<{ leadId
       body: page.body,
       images: page.image_paths.map((path) => (path ? (presentationUrl.get(path) ?? null) : null)),
     })),
+    colours: {
+      list: colours,
+      ralNames,
+      choice: lead.track_ral_code ? CUSTOM_CHOICE : lead.track_colour_id,
+      ralCode: lead.track_ral_code,
+    },
     warrantyText: settings.warranty_text,
     serviceCallFee: settings.service_call_fee,
     mockupUrl,

@@ -212,11 +212,13 @@ try {
   await settle(page);
   const card = page.getByTestId("mockup-card");
   check("the lead page offers meeting mode, with the customer's mockup", (await card.count()) === 1 && (await card.locator("img").count()) === 1);
+  const entryHref = await card.getByRole("link", { name: "Open meeting mode" }).getAttribute("href");
   const [opened] = await Promise.all([
-    page.waitForResponse((r) => r.url() === `${base}/meeting/${leadId}` && r.request().resourceType() === "document", { timeout: 30000 }),
+    page.waitForResponse((r) => r.url().split("#")[0] === `${base}/meeting/${leadId}` && r.request().resourceType() === "document", { timeout: 30000 }),
     card.getByRole("link", { name: "Open meeting mode" }).click(),
   ]);
   check("Open meeting mode loads the whole page, so the iPad can keep it", opened.ok());
+  check("the way in asks for a fresh start at the cover", entryHref === `/meeting/${leadId}#start`, entryHref ?? "");
   await dots(page).waitFor({ timeout: 30000 });
   await page.waitForTimeout(500);
 
@@ -299,12 +301,35 @@ try {
     waitsForInitials && (await colourScreen.locator("#colour-initials").inputValue()) === "AB" && (await confirm.isEnabled()),
   );
   await page.screenshot({ path: `${out}/m5-colour.png` });
+  await colourScreen.getByRole("button", { name: "Change the colour" }).click();
+  const chooser = page.getByRole("dialog", { name: "Choose the track colour" });
+  await chooser.waitFor({ timeout: 10000 });
+  const chooserText = await chooser.innerText();
+  check(
+    "the colour can be changed without leaving the deck: names only, no swatches",
+    chooserText.includes(colour.name) && (await chooser.locator('[style*="background"]').count()) === 0,
+  );
+  await chooser.locator("label").filter({ hasText: /^Custom$/ }).click();
+  await chooser.locator("#lead-track-ral").fill("12");
+  await chooser.getByRole("button", { name: "Save track colour" }).click();
+  await chooser.locator("#lead-track-ral-error").waitFor({ timeout: 20000 }).catch(() => {});
+  const { data: colourAfter } = await admin.from("leads").select("track_colour_id, track_ral_code").eq("id", leadId).single();
+  check(
+    "a RAL number that is not four digits is refused there, and nothing is saved",
+    (await chooser.locator("#lead-track-ral-error").count()) === 1 && colourAfter?.track_colour_id === colour.id && colourAfter?.track_ral_code === null,
+  );
+  await chooser.getByRole("button", { name: "Back" }).click();
+  check("Back closes the chooser and keeps the colour", (await chooser.count()) === 0 && (await colourScreen.getByTestId("deck-track-colour").innerText()).includes(colour.name));
 
   // ---------------------------------------------------------------- The price
   await goToScreen(page, "The price");
   const priceScreen = page.getByRole("region", { name: "The price" });
   const save = priceScreen.getByRole("button", { name: /^Save/ });
   check("Save waits until there are feet to price", await save.isDisabled());
+  check(
+    "a fresh quote shows no price until something is measured",
+    (await priceScreen.getByTestId("quote-waiting").count()) === 1 && (await priceScreen.getByTestId("quote-total").count()) === 0,
+  );
   await priceScreen.getByLabel("Run 1 feet").fill("120");
   await page.waitForTimeout(300);
   const subtotal = 120 * Number(settings.price_per_ft) + Number(settings.box_price);
@@ -336,6 +361,19 @@ try {
     await currentScreen(page),
   );
 
+  // ---------------------------------------------------------------- the way out takes two taps
+  await page.getByRole("button", { name: "Leave meeting mode" }).click();
+  await page.waitForTimeout(400);
+  const stillIn = page.url().split("#")[0] === `${base}/meeting/${leadId}` && (await dots(page).count()) === 1;
+  const armed = await page.getByRole("button", { name: "Tap again to leave meeting mode" }).count();
+  await page.getByRole("button", { name: "Tap again to leave meeting mode" }).click();
+  await page.waitForURL(`**/app/leads/${leadId}`, { timeout: 30000 }).catch(() => {});
+  check(
+    "one tap on the X stays in the deck and asks again; the second tap leaves for the lead page",
+    stillIn && armed === 1 && page.url().endsWith(`/app/leads/${leadId}`),
+    page.url(),
+  );
+
   // ---------------------------------------------------------------- weak signal, on a server of its own
   offlineServer = spawn("npx", ["next", "start", "--port", String(offlinePort)], { detached: true, stdio: "ignore", env: process.env });
   for (let i = 0; i < 60 && !(await serverAnswers(offlineBase)); i += 1) await sleep(1000);
@@ -348,7 +386,7 @@ try {
     .catch(() => false);
   check("the service worker takes the page in a production build", controlled);
   await Promise.all([
-    signal.waitForResponse((r) => r.url() === `${offlineBase}/meeting/${leadId}` && r.request().resourceType() === "document", { timeout: 30000 }),
+    signal.waitForResponse((r) => r.url().split("#")[0] === `${offlineBase}/meeting/${leadId}` && r.request().resourceType() === "document", { timeout: 30000 }),
     signal.getByTestId("mockup-card").getByRole("link", { name: "Open meeting mode" }).click(),
   ]);
   await dots(signal).waitFor({ timeout: 30000 });
@@ -366,7 +404,7 @@ try {
   });
   check(
     "opened once with signal, the iPad keeps the meeting page and the mockup",
-    kept.pages.includes(`${offlineBase}/meeting/${leadId}`) && kept.photos.some((photo) => photo.includes(mockupPath)),
+    kept.pages.some((kept) => kept.split("#")[0] === `${offlineBase}/meeting/${leadId}`) && kept.photos.some((photo) => photo.includes(mockupPath)),
     `${kept.pages.length} pages, ${kept.photos.length} photos`,
   );
   try {

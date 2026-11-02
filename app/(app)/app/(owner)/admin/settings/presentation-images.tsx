@@ -6,7 +6,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PAGE_LABELS, type PresentationKind } from "@/lib/presentation";
-import { shrinkPhoto } from "@/lib/photos";
+import { MEETING_PHOTO_MAX_EDGE, shrinkPhoto } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/client";
 import { addPresentationImage, movePresentationImage, removePresentationImage } from "./actions";
 
@@ -34,7 +34,7 @@ export function PresentationImages({ hiddenByDay, gallery }: PresentationImagesP
     setBusy(key);
     setError(null);
     try {
-      const small = await shrinkPhoto(file);
+      const small = await shrinkPhoto(file, MEETING_PHOTO_MAX_EDGE);
       const path = `pages/${kind}/${crypto.randomUUID()}.jpg`;
       const { error: uploadError } = await createClient()
         .storage.from("presentation")

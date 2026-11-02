@@ -148,18 +148,12 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     return { ok: true, quoteId: existing.id, savedAt: updated.updated_at };
   }
 
+  // The database writes the quote_created timeline event (its id only,
+  // never a dollar amount), as it writes every event but notes.
   const { data: created, error } = await supabase.from("quotes").insert(row).select("id, updated_at").single();
   if (error || !created) {
     return { ok: false, code: "save_failed", message: "The draft could not be saved. Check your signal and try again." };
   }
-  // The timeline says a quote exists; the payload holds the id and never a
-  // dollar amount, because sales users can read the timeline.
-  await supabase.from("lead_events").insert({
-    lead_id: draft.leadId,
-    actor_id: me.id,
-    type: "quote_created",
-    payload: { quote_id: created.id },
-  });
   revalidatePath(`/app/leads/${draft.leadId}`);
   return { ok: true, quoteId: created.id, savedAt: created.updated_at };
 }
@@ -169,8 +163,9 @@ export type ConfirmInitialsResult =
   | { ok: false; code: string; message: string };
 
 // The customer initials the track colour at every meeting (M5). The lead
-// keeps the latest initials and moment; the timeline keeps every
-// confirmation. Never from a render: only from Keenan's tap.
+// keeps the latest initials and moment; the database writes a
+// colour_confirmed timeline event for each one, naming the colour.
+// Never from a render: only from Keenan's tap.
 export async function confirmColourInitials(leadId: string, initials: string): Promise<ConfirmInitialsResult> {
   const me = await owner();
   if (refused(me)) return me;
@@ -198,12 +193,6 @@ export async function confirmColourInitials(leadId: string, initials: string): P
   if (error) {
     return { ok: false, code: "save_failed", message: "That didn't save. Try again in a moment." };
   }
-  await supabase.from("lead_events").insert({
-    lead_id: id.data,
-    actor_id: me.id,
-    type: "colour_confirmed",
-    payload: { initials: text.data },
-  });
   revalidatePath(`/app/leads/${id.data}`);
   return { ok: true, initialledAt: at };
 }

@@ -4,6 +4,7 @@
 // tested like the pricing it feeds.
 
 import type { SoffitColour } from "@/lib/leads/status";
+import type { TrackColour } from "@/lib/leads/track-colour";
 import { defaultValidUntil, type ColourTiming, type QuoteInputs, type QuoteRun } from "@/lib/pricing";
 import type { PresentationKind } from "@/lib/presentation";
 
@@ -22,6 +23,15 @@ export type MeetingPayload = {
     initialledAt: string | null;
   };
   pages: { kind: PresentationKind; title: string; body: string; images: (string | null)[] }[];
+  // For changing the colour at the table: Keenan's list (retired ones too,
+  // so the lead's own still names itself), the RAL Classic names, and the
+  // lead's choice as the lead page's form takes it.
+  colours: {
+    list: TrackColour[];
+    ralNames: Record<string, string>;
+    choice: string | null;
+    ralCode: string | null;
+  };
   warrantyText: string;
   serviceCallFee: number | null;
   mockupUrl: string | null;
@@ -213,12 +223,19 @@ export type MeetingStart = {
 // Where the meeting starts: the iPad's own copy, which may hold edits made
 // without signal, unless the server has a save the iPad never saw (made on
 // another device). Then the server's, so the price in the room is current.
-export function startingPoint(payload: MeetingPayload, stored: MeetingStored | null, now: number): MeetingStart {
+// Opened fresh from Tonight or the lead page, it starts at the cover; only
+// a reload mid-meeting picks up on the screen it left.
+export function startingPoint(
+  payload: MeetingPayload,
+  stored: MeetingStored | null,
+  now: number,
+  fresh = false,
+): MeetingStart {
   const { draft } = payload;
   const fromServer = draft ? quoteStateFromDraft(draft, payload) : null;
   const serverNewer =
     draft !== null && (!stored?.savedAt || Date.parse(draft.updatedAt) > Date.parse(stored.savedAt));
-  const index = stored?.screen && now - stored.screen.at < RESUME_MS ? stored.screen.index : 0;
+  const index = !fresh && stored?.screen && now - stored.screen.at < RESUME_MS ? stored.screen.index : 0;
   const initialsDraft = stored?.initialsDraft ?? "";
 
   if (stored && !serverNewer) {

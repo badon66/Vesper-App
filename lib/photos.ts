@@ -5,6 +5,9 @@
 // the form is still being filled in.
 export const PHOTO_BUCKET = "lead-photos";
 export const PHOTO_MAX_EDGE = 1600;
+// Meeting mode fills an iPad screen 2388 px wide, and the mockup zooms in
+// to 2.2 times, so the presentation photos and the mockup keep more.
+export const MEETING_PHOTO_MAX_EDGE = 3200;
 export const PHOTO_QUALITY = 0.82;
 export const MAX_PHOTOS_PER_FORM = 6;
 export const PHOTO_PATH_PATTERN =
@@ -28,10 +31,10 @@ export function isOwnPhotoPath(path: string, userId: string): boolean {
 }
 
 // Browser only.
-export async function shrinkPhoto(file: Blob): Promise<Blob> {
+export async function shrinkPhoto(file: Blob, maxEdge = PHOTO_MAX_EDGE): Promise<Blob> {
   const decoded = await decode(file);
   try {
-    const size = fitWithin(decoded.width, decoded.height);
+    const size = fitWithin(decoded.width, decoded.height, maxEdge);
     const canvas = document.createElement("canvas");
     canvas.width = size.width;
     canvas.height = size.height;

@@ -27,6 +27,7 @@ const payload = (draft: MeetingPayload["draft"] = null): MeetingPayload => ({
     initialledAt: null,
   },
   pages: [],
+  colours: { list: [], ralNames: {}, choice: null, ralCode: null },
   warrantyText: "",
   serviceCallFee: null,
   mockupUrl: null,
@@ -195,6 +196,13 @@ describe("where a meeting starts", () => {
     const local = defaultQuoteState(payload());
     expect(startingPoint(payload(), stored(local, { screen: { index: 7, at: now - 60_000 } }), now).index).toBe(7);
     expect(startingPoint(payload(), stored(local, { screen: { index: 7, at: now - RESUME_MS - 1 } }), now).index).toBe(0);
+  });
+
+  it("opened fresh from Tonight or the lead page, starts at the cover but keeps the quote", () => {
+    const local = withFeet(defaultQuoteState(payload()), 33);
+    const start = startingPoint(payload(), stored(local, { screen: { index: 7, at: now - 60_000 } }), now, true);
+    expect(start.index).toBe(0);
+    expect(start.quote.runs[0].feet).toBe(33);
   });
 
   it("keeps initials typed but not yet confirmed", () => {

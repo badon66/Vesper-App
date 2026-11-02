@@ -1,16 +1,18 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { confirmColourInitials } from "@/app/(app)/meeting/actions";
 import { DayNightSlider } from "@/components/meeting/day-night-slider";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
 import { QuoteScreen } from "@/components/meeting/quote-screen";
+import { TrackColourForm } from "@/components/leads/track-colour-form";
 import { Wordmark } from "@/components/brand/wordmark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { labelFor, SOFFIT_OPTIONS } from "@/lib/leads/status";
+import { CUSTOM_CHOICE, leadTrackColour, trackColourText } from "@/lib/leads/track-colour";
 import {
   quoteFingerprint,
   startingPoint,
@@ -20,8 +22,13 @@ import {
 } from "@/lib/meeting/state";
 import type { PresentationKind } from "@/lib/presentation";
 import { formatMoney } from "@/lib/pricing";
-import { formatDateTime } from "@/lib/time";
+import { calgaryDateOf, formatDateTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
+
+// The lead's track colour as the deck shows it, and as the lead page's
+// colour form takes it.
+type DeckColour = { kind: "none" | "list" | "custom"; text: string; choice: string | null; ralCode: string | null };
+type Confirmation = { initials: string; at: string } | null;
 
 // Meeting mode (M5): the customer-facing deck. One idea per screen, swiped
 // sideways, nothing internal anywhere. Always dark navy, whatever the
@@ -69,15 +76,73 @@ type Screen = { key: string; label: string; node: React.ReactNode };
 
 function MeetingDeck({ payload }: { payload: MeetingPayload }) {
   const { lead, pricing } = payload;
+  const router = useRouter();
   const pager = useRef<HTMLDivElement>(null);
-  const [start] = useState(() => startingPoint(payload, readStored(lead.id), Date.now()));
+  // Tonight and the lead page open the deck with #start: a fresh meeting
+  // begins at the cover. A reload carries no #start, so it resumes.
+  const [start] = useState(() =>
+    startingPoint(payload, readStored(lead.id), Date.now(), window.location.hash === "#start"),
+  );
   const [index, setIndex] = useState(start.index);
   const [quote, setQuote] = useState<QuoteUIState>(start.quote);
   const [quoteId, setQuoteId] = useState<string | null>(start.quoteId);
   const [savedAt, setSavedAt] = useState<string | null>(start.savedAt);
   const [savedQuote, setSavedQuote] = useState<string | null>(start.savedQuote);
   const [initialsDraft, setInitialsDraft] = useState(start.initialsDraft);
+  const [colour, setColour] = useState<DeckColour>({
+    kind: lead.colourKind,
+    text: lead.colourText,
+    choice: payload.colours.choice,
+    ralCode: payload.colours.ralCode,
+  });
+  const [confirmation, setConfirmation] = useState<Confirmation>(
+    lead.initials && lead.initialledAt ? { initials: lead.initials, at: lead.initialledAt } : null,
+  );
+  const [leaving, setLeaving] = useState(false);
   const dirty = savedQuote === null || quoteFingerprint(quote) !== savedQuote;
+
+  useEffect(() => {
+    if (window.location.hash === "#start") {
+      window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
+    }
+  }, []);
+
+  // The way out takes two taps, so a brushed corner never puts the lead
+  // page, with its notes and names, in front of the customer.
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = window.setTimeout(() => setLeaving(false), 4000);
+    return () => window.clearTimeout(timer);
+  }, [leaving]);
+
+  // A colour changed at the table: named on the iPad, asks for initials
+  // again, and moves the quote's colour line to match.
+  const onColourSaved = useCallback(
+    (choice: string | null, ralCode: string | null) => {
+      const named = leadTrackColour(
+        {
+          track_colour_id: choice && choice !== CUSTOM_CHOICE ? choice : null,
+          track_ral_code: choice === CUSTOM_CHOICE ? ralCode : null,
+        },
+        new Map(payload.colours.list.map((item) => [item.id, item])),
+        new Map(Object.entries(payload.colours.ralNames)),
+      );
+      setColour({ kind: named.kind, text: trackColourText(named), choice, ralCode });
+      setConfirmation(null);
+      setQuote((current) => ({
+        ...current,
+        colourTiming:
+          named.kind === "custom"
+            ? current.colourTiming === "rush"
+              ? "rush"
+              : "factory_order"
+            : named.kind === "list"
+              ? "stock"
+              : null,
+      }));
+    },
+    [payload.colours],
+  );
 
   // Everything the meeting holds stays on the iPad as it changes.
   useEffect(() => {
@@ -154,7 +219,19 @@ function MeetingDeck({ payload }: { payload: MeetingPayload }) {
     list.push({
       key: "colour",
       label: "The colour",
-      node: <ColourScreen lead={lead} initialsDraft={initialsDraft} onInitialsDraft={setInitialsDraft} />,
+      node: (
+        <ColourScreen
+          lead={lead}
+          colour={colour}
+          colours={payload.colours}
+          confirmation={confirmation}
+          today={payload.today}
+          initialsDraft={initialsDraft}
+          onInitialsDraft={setInitialsDraft}
+          onConfirmed={setConfirmation}
+          onColourSaved={onColourSaved}
+        />
+      ),
     });
     list.push({
       key: "quote",
@@ -163,8 +240,8 @@ function MeetingDeck({ payload }: { payload: MeetingPayload }) {
         <QuoteScreen
           leadId={lead.id}
           pricing={pricing}
-          colourKind={lead.colourKind}
-          colourText={lead.colourText}
+          colourKind={colour.kind}
+          colourText={colour.text}
           state={quote}
           onChange={setQuote}
           quoteId={quoteId}
@@ -180,7 +257,7 @@ function MeetingDeck({ payload }: { payload: MeetingPayload }) {
       ),
     });
     return list;
-  }, [payload, lead, pricing, quote, quoteId, savedAt, dirty, initialsDraft, goBy]);
+  }, [payload, lead, pricing, quote, quoteId, savedAt, dirty, initialsDraft, goBy, colour, confirmation, onColourSaved]);
 
   const current = Math.min(index, screens.length - 1);
 
@@ -220,14 +297,19 @@ function MeetingDeck({ payload }: { payload: MeetingPayload }) {
         ))}
       </div>
 
-      {/* The way out: small and out of the customer's eye line. */}
-      <Link
-        href={`/app/leads/${lead.id}`}
-        aria-label="Leave meeting mode"
-        className="absolute top-[max(0.5rem,env(safe-area-inset-top))] left-2 z-20 inline-flex size-11 items-center justify-center rounded-md text-muted-foreground/50 outline-none hover:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      {/* The way out: small, out of the customer's eye line, two taps. */}
+      <button
+        type="button"
+        aria-label={leaving ? "Tap again to leave meeting mode" : "Leave meeting mode"}
+        onClick={() => (leaving ? router.push(`/app/leads/${lead.id}`) : setLeaving(true))}
+        className={cn(
+          "absolute top-[max(0.5rem,env(safe-area-inset-top))] left-2 z-20 inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-md px-3 outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          leaving ? "bg-background/80 text-foreground" : "text-muted-foreground/50 hover:text-muted-foreground",
+        )}
       >
         <X className="size-5" />
-      </Link>
+        {leaving ? <span className="text-sm font-semibold">Tap again to leave</span> : null}
+      </button>
 
       {/* Quiet over navy, still findable over a bright day photo. Hidden on
           a phone, where the form scrolls under them and a swipe does it. */}
@@ -277,7 +359,7 @@ function MeetingDeck({ payload }: { payload: MeetingPayload }) {
 
 // The text pages share one frame, so the headline sits at the same height
 // on every page and long words scroll instead of being cut off.
-const PAGE_FRAME = "mx-auto flex h-full w-full max-w-4xl flex-col overflow-y-auto px-10 pt-[14vh] pb-20 lg:px-16";
+const PAGE_FRAME = "mx-auto flex h-full w-full max-w-4xl flex-col overflow-y-auto px-10 pt-[18vh] pb-20 lg:px-16";
 
 function CoverScreen({ lead }: { lead: MeetingPayload["lead"] }) {
   return (
@@ -303,7 +385,7 @@ function TextScreen({ kind, title, body }: { kind: PresentationKind; title: stri
         <ol className="flex flex-col gap-4">
           {steps.map((step, at) => (
             <li key={at} className="flex items-baseline gap-5 text-xl text-pretty lg:text-2xl">
-              <span className="font-bold text-primary tabular-nums">{at + 1}</span>
+              <span className="font-bold text-muted-foreground tabular-nums">{at + 1}</span>
               <span>{step}</span>
             </li>
           ))}
@@ -379,7 +461,7 @@ function WarrantyScreen({ title, text, serviceCallFee }: { title: string; text: 
       <ul className="flex flex-col gap-3">
         {lines.map((line, at) => (
           <li key={at} className="flex items-baseline gap-4 text-lg text-pretty lg:text-xl">
-            <span aria-hidden="true" className="size-1.5 shrink-0 translate-y-[-0.2em] rounded-full bg-primary" />
+            <span aria-hidden="true" className="size-1.5 shrink-0 translate-y-[-0.2em] rounded-full bg-muted-foreground" />
             <span>{line}</span>
           </li>
         ))}
@@ -394,28 +476,41 @@ function WarrantyScreen({ title, text, serviceCallFee }: { title: string; text: 
 }
 
 // The colour, confirmed and initialled at every meeting: this screen exists
-// because white track once went on an off-white soffit.
+// because white track once went on an off-white soffit. If the colour
+// changes at the table, it changes here, without leaving the deck.
 function ColourScreen({
   lead,
+  colour,
+  colours,
+  confirmation,
+  today,
   initialsDraft,
   onInitialsDraft,
+  onConfirmed,
+  onColourSaved,
 }: {
   lead: MeetingPayload["lead"];
+  colour: DeckColour;
+  colours: MeetingPayload["colours"];
+  confirmation: Confirmation;
+  today: string;
   initialsDraft: string;
   onInitialsDraft: (value: string) => void;
+  onConfirmed: (confirmation: Confirmation) => void;
+  onColourSaved: (choice: string | null, ralCode: string | null) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [choosing, setChoosing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [confirmed, setConfirmed] = useState<{ initials: string; at: string } | null>(
-    lead.initials && lead.initialledAt ? { initials: lead.initials, at: lead.initialledAt } : null,
-  );
+  // A setter's "Other" note stays on the lead page; the customer sees plain words.
   const soffit = lead.soffitColour
-    ? lead.soffitColour === "other" && lead.soffitNote
-      ? `Other: ${lead.soffitNote}`
+    ? lead.soffitColour === "other"
+      ? "Another colour"
       : labelFor(SOFFIT_OPTIONS, lead.soffitColour) || "Not answered yet"
     : "Not answered yet";
-  const colourSet = lead.colourKind !== "none";
+  const colourSet = colour.kind !== "none";
   const typed = initialsDraft.trim() !== "";
+  const confirmedTonight = confirmation !== null && calgaryDateOf(confirmation.at) === today;
 
   async function confirm() {
     setBusy(true);
@@ -426,7 +521,7 @@ function ColourScreen({
         setMessage(result.message);
         return;
       }
-      setConfirmed({ initials: initialsDraft.trim(), at: result.initialledAt });
+      onConfirmed({ initials: initialsDraft.trim(), at: result.initialledAt });
       onInitialsDraft("");
     } catch {
       setMessage("No signal. The initials were not saved. Try again in a moment.");
@@ -445,53 +540,104 @@ function ColourScreen({
         </div>
         <div>
           <dt className="text-base text-muted-foreground">Your track colour</dt>
-          <dd className="text-2xl font-semibold lg:text-3xl">{colourSet ? lead.colourText : "To be confirmed with Keenan"}</dd>
+          <dd className="flex flex-wrap items-baseline gap-x-5 gap-y-2">
+            <span className="text-2xl font-semibold lg:text-3xl" data-testid="deck-track-colour">
+              {colourSet ? colour.text : "Not chosen yet"}
+            </span>
+            <Button type="button" variant="outline" size="sm" onClick={() => setChoosing(true)}>
+              {colourSet ? "Change the colour" : "Choose the colour"}
+            </Button>
+          </dd>
         </div>
       </dl>
 
       <div className="flex max-w-xl flex-col gap-3">
-        <p className="text-base text-pretty text-muted-foreground">
-          We confirm the colour together at every meeting, so the track on the house is the one you chose.
-        </p>
-        {confirmed ? (
+        {confirmedTonight && confirmation ? (
           <p className="text-lg font-semibold" data-testid="colour-confirmed">
-            Confirmed with initials {confirmed.initials}, {formatDateTime(confirmed.at)}.
+            Confirmed with initials {confirmation.initials}, {formatDateTime(confirmation.at)}.
           </p>
-        ) : null}
-        <div className="flex items-end gap-3">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="colour-initials" className="text-sm font-semibold">
-              {confirmed ? "Confirm again" : "Your initials"}
-            </label>
-            <Input
-              id="colour-initials"
-              value={initialsDraft}
-              onChange={(event) => onInitialsDraft(event.target.value.toUpperCase())}
-              maxLength={12}
-              autoCapitalize="characters"
-              autoComplete="off"
-              disabled={!colourSet}
-              className="w-32 text-center text-xl font-bold tracking-widest"
-            />
-          </div>
-          <Button
-            type="button"
-            variant={typed ? "default" : "outline"}
-            onClick={() => void confirm()}
-            disabled={!colourSet || busy || !typed}
-          >
-            {busy ? "Saving" : "Confirm"}
-          </Button>
-        </div>
-        {!colourSet ? (
-          <p className="text-sm text-muted-foreground">The initials wait until the colour is set.</p>
-        ) : null}
+        ) : (
+          <>
+            <p className="text-base text-pretty text-muted-foreground">
+              Your initials confirm the track colour we will order.
+            </p>
+            {confirmation ? (
+              <p className="text-sm text-muted-foreground">
+                Last confirmed with initials {confirmation.initials}, {formatDateTime(confirmation.at)}.
+              </p>
+            ) : null}
+            <div className="flex items-end gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="colour-initials" className="text-sm font-semibold">
+                  Your initials
+                </label>
+                <Input
+                  id="colour-initials"
+                  value={initialsDraft}
+                  onChange={(event) => onInitialsDraft(event.target.value.toUpperCase())}
+                  maxLength={12}
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  disabled={!colourSet}
+                  className="w-32 text-center text-xl font-bold tracking-widest"
+                />
+              </div>
+              <Button
+                type="button"
+                variant={typed ? "default" : "outline"}
+                onClick={() => void confirm()}
+                disabled={!colourSet || busy || !typed}
+              >
+                {busy ? "Saving" : "Confirm"}
+              </Button>
+            </div>
+            {!colourSet ? (
+              <p className="text-sm text-muted-foreground">Choose the colour first, then initial it here.</p>
+            ) : null}
+          </>
+        )}
         {message ? (
           <p role="alert" className="text-sm font-semibold text-destructive">
             {message}
           </p>
         ) : null}
       </div>
+
+      {choosing ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Choose the track colour"
+          className="fixed inset-0 z-40 overflow-y-auto bg-background"
+        >
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-10 pt-[10vh] pb-16 lg:px-16">
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <h2 className="text-3xl font-bold lg:text-4xl">The track colour</h2>
+                <p className="mt-2 text-base text-pretty text-muted-foreground">
+                  Pick it together from the RAL book. Names only: a screen never shows a colour truly.
+                </p>
+              </div>
+              <Button type="button" variant="ghost" onClick={() => setChoosing(false)}>
+                Back
+              </Button>
+            </div>
+            <TrackColourForm
+              leadId={lead.id}
+              options={colours.list
+                .filter((item) => item.active || item.id === colour.choice)
+                .map((item) => ({ value: item.id, label: item.name }))}
+              current={{ choice: colour.choice, ralCode: colour.ralCode }}
+              ralNames={colours.ralNames}
+              onSaved={(choice, ralCode) => {
+                onColourSaved(choice, ralCode);
+                setMessage(null);
+                setChoosing(false);
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

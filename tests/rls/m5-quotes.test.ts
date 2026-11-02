@@ -164,6 +164,51 @@ describe("the customer's colour initials", () => {
   });
 });
 
+describe("meeting mode's timeline events come from the database", () => {
+  it("adding a quote writes quote_created with its id and nothing else", async () => {
+    const { data } = await admin.from("lead_events").select("type, payload").eq("lead_id", leadA).eq("type", "quote_created");
+    expect(data).toEqual([{ type: "quote_created", payload: { quote_id: quoteId } }]);
+  });
+
+  it("each confirmation writes colour_confirmed with the initials and the colour by name", async () => {
+    const first = await admin.from("lead_events").select("payload").eq("lead_id", leadA).eq("type", "colour_confirmed");
+    expect(first.data).toEqual([{ payload: { initials: "MB", colour: "RAL 7016 Anthracite grey" } }]);
+    const again = await admin
+      .from("leads")
+      .update({ track_colour_initials: "MB", track_colour_initialled_at: new Date(Date.now() + 1000).toISOString() })
+      .eq("id", leadA);
+    expect(again.error).toBeNull();
+    const { count } = await admin
+      .from("lead_events")
+      .select("id", { count: "exact", head: true })
+      .eq("lead_id", leadA)
+      .eq("type", "colour_confirmed");
+    expect(count).toBe(2);
+  });
+
+  it("an edit that leaves the initials alone writes no confirmation", async () => {
+    const edit = await users.a.client.from("leads").update({ notes: "No new initials here." }).eq("id", leadA);
+    expect(edit.error).toBeNull();
+    const { count } = await admin
+      .from("lead_events")
+      .select("id", { count: "exact", head: true })
+      .eq("lead_id", leadA)
+      .eq("type", "colour_confirmed");
+    expect(count).toBe(2);
+  });
+
+  it("a setter reads the confirmations but cannot write either event", async () => {
+    const { data } = await users.a.client.from("lead_events").select("type").eq("lead_id", leadA).eq("type", "colour_confirmed");
+    expect(data).toHaveLength(2);
+    for (const type of ["colour_confirmed", "quote_created"] as const) {
+      const { error } = await users.a.client
+        .from("lead_events")
+        .insert({ lead_id: leadA, actor_id: users.a.id, type, payload: { initials: "ZZ" } });
+      expect(error?.code, type).toBe("42501");
+    }
+  });
+});
+
 describe("the new settings stay the owner's", () => {
   it("settings_public does not carry the meeting-mode columns", async () => {
     for (const column of ["rush_colour_fee_per_ft", "service_call_fee", "faq_text", "warranty_text", "presentation"]) {
