@@ -565,3 +565,35 @@ Keenan tried M3: every rule is right, but the screens don't follow how a setter 
 - **On an iPad in landscape, Keenan's Schedule has two panes**: the board on the left, held in place, and the evening's bookings on the right.
 
 **Critique method.** Nielsen's 10 heuristics, out of 40. Two isolated reviewers scored, without seeing each other or the detector, and two isolated detector runs checked the code and the rendered pages. The critique step that asks the user which issues to fix was skipped (Questions skipped: Keenan's brief set direction and scope: critique, adapt, clarify and polish before merging).
+
+**Scores** (snapshots in `.impeccable/critique/`):
+
+| Surface | Before M3.5 | After the build | Final, after the critique fixes |
+|---|---|---|---|
+| Booking flow | 23/40, Acceptable | 29/40, Good | 31/40, Good |
+| Schedule page | 26/40, Acceptable | 27/40, Acceptable | 31/40, Good |
+
+The detector found no problems in the source either time. In the rendered pages it found one advisory on the final round (a word left alone on a line in a meeting card), which was fixed.
+
+**Fixed after the final scoring**, from the final reviews:
+- **Booking sheet bugs:**
+  - Back and Pick another time lost a typed address.
+  - Book could do nothing for a person who wasn't saved yet.
+  - A taken time showed two notices.
+  - Let go during a Move had the wrong message.
+- **Booking sheet checks:**
+  - The phone is now checked at the door.
+  - Picking an address runs New lead's existing-lead check.
+  - The chip says when there's no signal to check the hold.
+- **Booking sheet layout:**
+  - An existing lead's Find out 2 of 2 no longer scrolls.
+  - The Book checklist follows the screens' order.
+- **Schedule:**
+  - The times pop-up names holds that will let go.
+  - "Use the usual times" asks first.
+  - A time no longer splits from its "p.m." across lines.
+- **Light theme:** the New lead tab label is navy, because gold text on white is 2.9:1.
+
+The final scores were measured before these fixes.
+
+**Left for later**, in the backlog: the iPad homeowner half, Undo after a day change, marks on the evening strip, the distance warning at time pick, and Move offered on an already-booked lead.
