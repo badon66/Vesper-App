@@ -44,32 +44,32 @@ After a meeting, Keenan sends the homeowner a private link to their quote: a pub
 
 ### Take 1 (now; Keenan, 2026-11-02)
 The customer's page, phone first:
-- [ ] Vesper branding, their name and address, and the valid-until date
-- [ ] Their mockup, if one is uploaded, full width, tap to zoom
-- [ ] The Recommended package first: their runs with feet and level, and the breakdown: lights at the per-foot price, the control box, any extra work, any discount, the total; "No payment until your install is complete." and "Financing is available. Just ask." always visible
-- [ ] Start smaller: switch individual runs on or off and watch the total update live; prices, footage and discounts can't be changed; the control box is always included; extra work marked "only with upper runs" drops off when no upper run is on; below the minimum job total (Settings, empty by default) the total rises to the minimum with a line saying so
-- [ ] The warranty in the exact wording from Settings
-- [ ] A big Book my install button, plus call, text and email buttons for (403) 895-9915 and info@vesperlighting.ca
-- [ ] After Book my install, a thank-you screen: Keenan will be in touch within a day to set the date and go through the agreement; no signing, no payment
-- [ ] After the valid-until date, or once revoked: "This quote has expired" with the call and text buttons and no prices
+- [x] Vesper branding, their name and address, and the valid-until date
+- [x] Their mockup, if one is uploaded, full width, tap to zoom
+- [x] The Recommended package first: their runs with feet and level, and the breakdown: lights at the per-foot price, the control box, any extra work, any discount, the total; "No payment until your install is complete." and "Financing is available. Just ask." always visible
+- [x] Start smaller: switch individual runs on or off and watch the total update live; prices, footage and discounts can't be changed; the control box is always included; extra work marked "only with upper runs" drops off when no upper run is on; below the minimum job total (Settings, empty by default) the total rises to the minimum with a line saying so
+- [x] The warranty in the exact wording from Settings
+- [x] A big Book my install button, plus call, text and email buttons for (403) 895-9915 and info@vesperlighting.ca
+- [x] After Book my install, a thank-you screen: Keenan will be in touch within a day to set the date and go through the agreement; no signing, no payment
+- [x] After the valid-until date, or once revoked: "This quote has expired" with the call and text buttons and no prices
 
 Keenan's side:
-- [ ] Send quote link on the quote: copy the link, the share sheet, and an editable prewritten text; nothing sends automatically
-- [ ] On the lead: the link's status, how many times it was opened, the last visit, the option they picked, and Book my install; the timeline records them without dollar amounts
-- [ ] Revoke the link; sending again issues a new one; updating the quote updates what the same link shows
-- [ ] A push notification to his phone and iPad when they tap Book my install, with their name and the option they picked; Send a test notification in Settings; built so the backlog's booking alerts can use the same push later
+- [x] Send quote link on the quote: copy the link, the share sheet, and an editable prewritten text; nothing sends automatically
+- [x] On the lead: the link's status, how many times it was opened, the last visit, the option they picked, and Book my install; the timeline records them without dollar amounts
+- [x] Revoke the link; sending again issues a new one; updating the quote updates what the same link shows
+- [x] A push notification to his phone and iPad when they tap Book my install, with their name and the option they picked; Send a test notification in Settings; built so the backlog's booking alerts can use the same push later
 
 Rules:
-- [ ] The token has at least 128 bits of randomness, lives only in an owner-only table, one live link per lead
-- [ ] The page reads through one database function that returns only customer-safe fields; no anonymous access to any table; the mockup through a short-lived signed URL; writes through token-scoped functions that change nothing else
-- [ ] Database tests prove an anonymous caller can't read quotes, leads or anyone else's data, and that a token only ever returns its own quote
-- [ ] Never shown to the customer: costs, setter names, notes, the timeline, statuses or other customers
-- [ ] `lib/pricing.ts` runs on the page and on the server; the server recomputes every total from the stored runs and the selected runs; unit tests cover every rule
-- [ ] Visits and the last visit, with no IP addresses or device fingerprints stored; a signed-in member's own visits don't count
-- [ ] Book my install saves the option and notifies Keenan; it never accepts the quote or creates commission
-- [ ] Quote pages answer on any host, links come from `QUOTE_BASE_URL`, on quote.vesperlighting.ca only quote routes answer, and quote pages are noindex, no-referrer and not cached
-- [ ] Plain, human copy, no em dashes, no invented reviews or stats; the address is 448 Strathcona Drive SW, Calgary, AB T3H 1M3, no unit number
-- [ ] Design: an impeccable shape before building, one critique and polish pass before the preview, phone size first, scores in the report
+- [x] The token has at least 128 bits of randomness, lives only in an owner-only table, one live link per lead
+- [x] The page reads through one database function that returns only customer-safe fields; no anonymous access to any table; the mockup through a short-lived signed URL; writes through token-scoped functions that change nothing else
+- [x] Database tests prove an anonymous caller can't read quotes, leads or anyone else's data, and that a token only ever returns its own quote
+- [x] Never shown to the customer: costs, setter names, notes, the timeline, statuses or other customers
+- [x] `lib/pricing.ts` runs on the page and on the server; the server recomputes every total from the stored runs and the selected runs; unit tests cover every rule
+- [x] Visits and the last visit, with no IP addresses or device fingerprints stored; a signed-in member's own visits don't count
+- [x] Book my install saves the option and notifies Keenan; it never accepts the quote or creates commission
+- [x] Quote pages answer on any host, links come from `QUOTE_BASE_URL`, on quote.vesperlighting.ca only quote routes answer, and quote pages are noindex, no-referrer and not cached
+- [x] Plain, human copy, no em dashes, no invented reviews or stats; the address is 448 Strathcona Drive SW, Calgary, AB T3H 1M3, no unit number
+- [x] Design: an impeccable shape before building, one critique and polish pass before the preview, phone size first, scores in the report
 - [ ] The full suite passes, including a live walk-through of the customer's page at phone size; the branch is pushed with a preview link; Keenan reviews it on Todd Dean's real quote and says "push the changes" before it merges
 
 ### Take 2 (after the first links go out, with M5 take 2)
