@@ -337,6 +337,7 @@ function DayTimesDialog({
   const [count, setCount] = useState(tools.template.count);
   const [plans, setPlans] = useState<{ key: string; day: DaySchedulePreview | null; refused: string | null; all: DaySchedulePreview | null } | null>(null);
   const [confirmAll, setConfirmAll] = useState(false);
+  const [confirmUsual, setConfirmUsual] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const key = `${start}|${minutes}|${count}`;
@@ -382,15 +383,21 @@ function DayTimesDialog({
   // One line by the buttons, so what saving does is always in view.
   const kept = rows.filter((row) => row.kind === "booked").length;
   const leftOff = rows.filter((row) => row.kind === "left-off").map((row) => formatTime(row.startsAt));
+  const holdsLetGo = dayRead?.holds.length ?? 0;
   const summary =
     !changesDay || pastMidnight
       ? null
       : [
           kept > 0 ? `${kept} ${kept === 1 ? "booking stays" : "bookings stay"} where ${kept === 1 ? "it is" : "they are"}.` : null,
           leftOff.length > 0 ? `${leftOff.join(", ")} won't be offered.` : null,
+          holdsLetGo > 0 ? `${holdsLetGo === 1 ? "A setter's hold lets go" : `${holdsLetGo} setters' holds let go`}.` : null,
         ]
           .filter(Boolean)
           .join(" ") || null;
+  // Going back to the usual times, shown before it happens.
+  const usual = tools.template.usual;
+  const usualTimes = previewTimes(tools.day, usual.start, usual.minutes, usual.count);
+  const usualRows = usualTimes.length > 0 ? dayPlan(usualTimes, usual.minutes, bookings, tools.blocks) : [];
 
   function save(scope: DayScope) {
     setMessage(null);
@@ -409,10 +416,25 @@ function DayTimesDialog({
     <DialogPanel
       open={open}
       onClose={onClose}
-      title={confirmAll ? "Change the times for all days?" : `Times, ${formatLongDay(tools.day)}`}
+      title={
+        confirmAll
+          ? "Change the times for all days?"
+          : confirmUsual
+            ? `Use the usual times for ${formatLongDay(tools.day)}?`
+            : `Times, ${formatLongDay(tools.day)}`
+      }
       testId="day-times"
       actions={
-        confirmAll ? (
+        confirmUsual ? (
+          <>
+            <Button type="button" variant="outline" onClick={() => setConfirmUsual(false)}>
+              Back
+            </Button>
+            <Button type="button" onClick={() => save("usual")} disabled={pending}>
+              {pending ? "Saving" : "Use the usual times"}
+            </Button>
+          </>
+        ) : confirmAll ? (
           <>
             <Button type="button" variant="outline" onClick={() => setConfirmAll(false)}>
               Back
@@ -449,7 +471,16 @@ function DayTimesDialog({
         )
       }
     >
-      {confirmAll && allRead ? (
+      {confirmUsual ? (
+        <div className="flex flex-col gap-3 text-sm" data-testid="day-times-usual">
+          <p className="text-base text-pretty">
+            This evening goes back to the usual times from Settings: {usual.count} meetings of {usual.minutes} minutes
+            {usualTimes[0] ? ` from ${formatTime(usualTimes[0])}` : ""}. Bookings stay where they are, and a time someone is holding lets go if it is no
+            longer one of the times.
+          </p>
+          <EveningPreview rows={usualRows} pastMidnight={usualTimes.length === 0} checking={false} />
+        </div>
+      ) : confirmAll && allRead ? (
         <div className="flex flex-col gap-3 text-sm" data-testid="day-times-all">
           <p className="text-base text-pretty">
             Every meeting evening without its own times gets {count} meetings of {minutes} minutes from {formatTime(times[0] ?? "")}, and the usual times in
@@ -483,7 +514,7 @@ function DayTimesDialog({
             </p>
           ) : null}
           {tools.template.own ? (
-            <Button type="button" variant="link" size="sm" className="self-start px-0" onClick={() => save("usual")} disabled={pending}>
+            <Button type="button" variant="link" size="sm" className="self-start px-0" onClick={() => setConfirmUsual(true)} disabled={pending}>
               Use the usual times for this evening
             </Button>
           ) : null}
