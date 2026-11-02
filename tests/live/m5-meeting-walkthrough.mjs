@@ -8,8 +8,10 @@
 // mockup, and is deleted at the end with the setter and the file.
 //
 // Weak signal is checked on a second server this walk-through starts on its
-// own port: meeting mode is opened there once with signal, that server is
-// stopped, and the page is reloaded with nothing left to answer it.
+// own port, from the local build: meeting mode is opened there once with
+// signal, that server is stopped, and the page is reloaded with nothing
+// left to answer it. A deployed site can't be stopped, so run against one,
+// this part still uses the local build of the same code.
 //
 // The presentation photos are Keenan's own and are never staged here. The
 // day and night page and the gallery are checked when he has uploaded
@@ -380,6 +382,11 @@ try {
   // ---------------------------------------------------------------- weak signal, on a server of its own
   offlineServer = spawn("npx", ["next", "start", "--port", String(offlinePort)], { detached: true, stdio: "ignore", env: process.env });
   for (let i = 0; i < 60 && !(await serverAnswers(offlineBase)); i += 1) await sleep(1000);
+  // The same one-time owner session on the second server's origin. Run
+  // against the deployed site, the cookies belong to its domain; locally,
+  // this just repeats them for localhost.
+  const sessionCookies = await ownerContext.cookies(base);
+  await ownerContext.addCookies(sessionCookies.map(({ name, value }) => ({ name, value, url: offlineBase })));
   const signal = await ownerContext.newPage();
   await signal.goto(`${offlineBase}/app/leads/${leadId}`);
   await settle(signal);
