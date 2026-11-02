@@ -101,7 +101,8 @@ export function MeetingCard({
 
       {legKm !== null && previousTime ? (
         <p className="text-sm text-pretty">
-          {formatKm(legKm).replace(/^under/, "Under")} in a straight line from the {formatTime(previousTime)} meeting
+          {formatKm(legKm).replace(/^under/, "Under")} in a straight line from the{" "}
+          <span className="whitespace-nowrap">{formatTime(previousTime)} meeting</span>
         </p>
       ) : null}
 

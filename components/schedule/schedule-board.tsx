@@ -556,7 +556,11 @@ function EveningPreview({ rows, pastMidnight, checking }: { rows: PlanRow[]; pas
                     : row.kind === "blocked"
                       ? "Blocked"
                       : row.kind === "left-off"
-                        ? `Not offered: overlaps the ${formatTime(row.because)} booking`
+                        ? (
+                          <>
+                            Not offered: overlaps the <span className="whitespace-nowrap">{formatTime(row.because)} booking</span>
+                          </>
+                        )
                         : `Booked${row.label ? `, ${row.label}` : ""}${row.aligned ? "" : ". Stays at its own time"}`}
                 </span>
               </li>
