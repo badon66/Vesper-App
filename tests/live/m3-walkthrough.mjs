@@ -360,6 +360,13 @@ try {
   const viewport = pageA.viewportSize();
   check("Next is the primary button at the bottom right, in thumb reach", bar !== null && bar.x + bar.width / 2 > viewport.width / 2 && bar.y > viewport.height * 0.8, bar ? `${Math.round(bar.x)},${Math.round(bar.y)}` : "none");
   await sheet(pageA).getByRole("button", { name: "What to talk about" }).click();
+  // The "?" is there from the first moment; the note fills in once it arrives.
+  await pageA
+    .waitForFunction(() => {
+      const panel = document.querySelector('[data-testid="sheet-note"]');
+      return Boolean(panel && panel.textContent && !panel.textContent.includes("One moment."));
+    }, null, { timeout: 15000 })
+    .catch(() => {});
   const noteText = (await pageA.getByTestId("sheet-note").innerText().catch(() => "")).trim();
   check("the ? shows what to talk about at the door, from Keenan's step note", /What to talk about: At the door/.test(noteText) && noteText.length > 60, noteText.slice(0, 80));
   await pageA.getByTestId("sheet-note").getByRole("button", { name: "Close", exact: true }).click();
