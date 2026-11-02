@@ -111,6 +111,25 @@ export function withPresentationImage(
   });
 }
 
+// A gallery photo one place earlier (-1) or later (+1); the gallery shows
+// at the meeting in this order. The fixed day and night slots never move.
+export function withPresentationImageMoved(
+  current: Json,
+  kind: PresentationKind,
+  path: string,
+  delta: -1 | 1,
+): PresentationPage[] {
+  return parsePresentation(current).map((page) => {
+    if (page.kind !== kind || kind !== "gallery") return page;
+    const images = page.image_paths.filter(Boolean);
+    const from = images.indexOf(path);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= images.length) return page;
+    [images[from], images[to]] = [images[to], images[from]];
+    return { ...page, image_paths: images };
+  });
+}
+
 export function withoutPresentationImage(current: Json, kind: PresentationKind, path: string): PresentationPage[] {
   return parsePresentation(current).map((page) => {
     if (page.kind !== kind) return page;

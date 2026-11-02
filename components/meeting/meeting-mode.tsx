@@ -2,15 +2,22 @@
 
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { confirmColourInitials } from "@/app/(app)/meeting/actions";
 import { DayNightSlider } from "@/components/meeting/day-night-slider";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
-import { QuoteScreen, defaultQuoteState, quoteStateFromDraft, type QuoteUIState } from "@/components/meeting/quote-screen";
+import { QuoteScreen } from "@/components/meeting/quote-screen";
 import { Wordmark } from "@/components/brand/wordmark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { labelFor, SOFFIT_OPTIONS, type SoffitColour } from "@/lib/leads/status";
+import { labelFor, SOFFIT_OPTIONS } from "@/lib/leads/status";
+import {
+  quoteFingerprint,
+  startingPoint,
+  type MeetingPayload,
+  type MeetingStored,
+  type QuoteUIState,
+} from "@/lib/meeting/state";
 import type { PresentationKind } from "@/lib/presentation";
 import { formatMoney } from "@/lib/pricing";
 import { formatDateTime } from "@/lib/time";
@@ -20,67 +27,20 @@ import { cn } from "@/lib/utils";
 // sideways, nothing internal anywhere. Always dark navy, whatever the
 // device theme: this is the brand at dusk, and the customer is watching.
 
-export type MeetingPayload = {
-  lead: {
-    id: string;
-    name: string;
-    firstName: string;
-    addressLine: string;
-    neighbourhood: string | null;
-    soffitColour: SoffitColour | null;
-    soffitNote: string | null;
-    colourKind: "none" | "list" | "custom";
-    colourText: string;
-    initials: string | null;
-    initialledAt: string | null;
-  };
-  pages: { kind: PresentationKind; title: string; body: string; images: (string | null)[] }[];
-  warrantyText: string;
-  serviceCallFee: number | null;
-  mockupUrl: string | null;
-  pricing: {
-    pricePerFt: number;
-    boxPrice: number;
-    neighbourDiscount: number;
-    gstEnabled: boolean;
-    gstRate: number;
-    gstNumber: string | null;
-    rushFeePerFt: number | null;
-    quoteValidDays: number;
-  };
-  draft: {
-    quoteId: string;
-    runs: unknown;
-    boxCount: number;
-    pricePerFt: number;
-    boxPrice: number;
-    adders: unknown;
-    discounts: unknown;
-    colourTiming: string | null;
-    financingOffered: boolean;
-    validUntil: string | null;
-    updatedAt: string;
-  } | null;
-  today: string;
-};
-
-// What the iPad keeps between reloads: the quote as it stands, and the
-// initials typed but not yet saved. Weak signal never loses either.
-type Stored = { version: 1; quote: QuoteUIState; quoteId: string | null; savedAt: string | null; initialsDraft: string };
 const storageKey = (leadId: string) => `vesper.meeting.${leadId}`;
 
-function readStored(leadId: string): Stored | null {
+function readStored(leadId: string): MeetingStored | null {
   try {
     const raw = window.localStorage.getItem(storageKey(leadId));
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Stored;
+    const parsed = JSON.parse(raw) as MeetingStored;
     return parsed.version === 1 ? parsed : null;
   } catch {
     return null;
   }
 }
 
-export function writeStored(leadId: string, value: Stored) {
+function writeStored(leadId: string, value: MeetingStored) {
   try {
     window.localStorage.setItem(storageKey(leadId), JSON.stringify(value));
   } catch {
@@ -88,25 +48,65 @@ export function writeStored(leadId: string, value: Stored) {
   }
 }
 
-type Screen = { key: string; label: string; node: React.ReactNode };
+const subscribeNever = () => () => {};
 
 export function MeetingMode({ payload }: { payload: MeetingPayload }) {
+  // The iPad's own copy lives in localStorage, which only the browser has.
+  // The server and the first browser render both show the cover; the deck
+  // then starts from that copy, so the two renders always agree.
+  const inBrowser = useSyncExternalStore(subscribeNever, () => true, () => false);
+  if (!inBrowser) {
+    return (
+      <div className="dark fixed inset-0 z-50 bg-background text-foreground">
+        <CoverScreen lead={payload.lead} />
+      </div>
+    );
+  }
+  return <MeetingDeck payload={payload} />;
+}
+
+type Screen = { key: string; label: string; node: React.ReactNode };
+
+function MeetingDeck({ payload }: { payload: MeetingPayload }) {
   const { lead, pricing } = payload;
   const pager = useRef<HTMLDivElement>(null);
-  const [index, setIndex] = useState(0);
-  const stored = useMemo(() => (typeof window === "undefined" ? null : readStored(lead.id)), [lead.id]);
-
-  const [quote, setQuote] = useState<QuoteUIState>(() =>
-    stored?.quote ?? (payload.draft ? quoteStateFromDraft(payload.draft, payload) : defaultQuoteState(payload)),
-  );
-  const [quoteId, setQuoteId] = useState<string | null>(stored?.quoteId ?? payload.draft?.quoteId ?? null);
-  const [savedAt, setSavedAt] = useState<string | null>(stored?.savedAt ?? payload.draft?.updatedAt ?? null);
-  const [initialsDraft, setInitialsDraft] = useState(stored?.initialsDraft ?? "");
+  const [start] = useState(() => startingPoint(payload, readStored(lead.id), Date.now()));
+  const [index, setIndex] = useState(start.index);
+  const [quote, setQuote] = useState<QuoteUIState>(start.quote);
+  const [quoteId, setQuoteId] = useState<string | null>(start.quoteId);
+  const [savedAt, setSavedAt] = useState<string | null>(start.savedAt);
+  const [savedQuote, setSavedQuote] = useState<string | null>(start.savedQuote);
+  const [initialsDraft, setInitialsDraft] = useState(start.initialsDraft);
+  const dirty = savedQuote === null || quoteFingerprint(quote) !== savedQuote;
 
   // Everything the meeting holds stays on the iPad as it changes.
   useEffect(() => {
-    writeStored(lead.id, { version: 1, quote, quoteId, savedAt, initialsDraft });
-  }, [lead.id, quote, quoteId, savedAt, initialsDraft]);
+    writeStored(lead.id, {
+      version: 1,
+      quote,
+      quoteId,
+      savedAt,
+      initialsDraft,
+      savedQuote,
+      screen: { index, at: Date.now() },
+    });
+  }, [lead.id, quote, quoteId, savedAt, initialsDraft, savedQuote, index]);
+
+  // Turn the page from code: the chevrons, the keys, and a swipe on the
+  // mockup. Reads the pager itself, so it never works from a stale index.
+  const goBy = useCallback((delta: number) => {
+    const box = pager.current;
+    if (!box || box.clientWidth === 0) return;
+    const count = Math.round(box.scrollWidth / box.clientWidth);
+    const current = Math.round(box.scrollLeft / box.clientWidth);
+    const next = Math.min(count - 1, Math.max(0, current + delta));
+    box.scrollTo({ left: next * box.clientWidth, behavior: "smooth" });
+  }, []);
+
+  const goTo = useCallback((next: number) => {
+    const box = pager.current;
+    if (box) box.scrollTo({ left: next * box.clientWidth, behavior: "smooth" });
+  }, []);
 
   const screens = useMemo<Screen[]>(() => {
     const list: Screen[] = [];
@@ -145,7 +145,7 @@ export function MeetingMode({ payload }: { payload: MeetingPayload }) {
         label: "This house",
         node: (
           <div className="relative h-full w-full">
-            <PinchZoom src={payload.mockupUrl} alt={`${lead.addressLine}, with the lights on`} />
+            <PinchZoom src={payload.mockupUrl} alt={`${lead.addressLine}, with the lights on`} onSwipe={goBy} />
             <PageCaption title="This house" body="" />
           </div>
         ),
@@ -154,13 +154,7 @@ export function MeetingMode({ payload }: { payload: MeetingPayload }) {
     list.push({
       key: "colour",
       label: "The colour",
-      node: (
-        <ColourScreen
-          lead={lead}
-          initialsDraft={initialsDraft}
-          onInitialsDraft={setInitialsDraft}
-        />
-      ),
+      node: <ColourScreen lead={lead} initialsDraft={initialsDraft} onInitialsDraft={setInitialsDraft} />,
     });
     list.push({
       key: "quote",
@@ -175,22 +169,27 @@ export function MeetingMode({ payload }: { payload: MeetingPayload }) {
           onChange={setQuote}
           quoteId={quoteId}
           savedAt={savedAt}
-          onSaved={(id, at) => {
+          dirty={dirty}
+          onSaved={(id, at, fingerprint) => {
             setQuoteId(id);
             setSavedAt(at);
+            setSavedQuote(fingerprint);
           }}
           today={payload.today}
         />
       ),
     });
     return list;
-  }, [payload, lead, pricing, quote, quoteId, savedAt, initialsDraft]);
+  }, [payload, lead, pricing, quote, quoteId, savedAt, dirty, initialsDraft, goBy]);
 
-  const goTo = useCallback((next: number) => {
+  const current = Math.min(index, screens.length - 1);
+
+  // Back to the screen it was on, without the slide.
+  const resumeAt = Math.min(start.index, screens.length - 1);
+  useEffect(() => {
     const box = pager.current;
-    if (!box) return;
-    box.scrollTo({ left: next * box.clientWidth, behavior: "smooth" });
-  }, []);
+    if (box && resumeAt > 0) box.scrollTo({ left: resumeAt * box.clientWidth, behavior: "instant" });
+  }, [resumeAt]);
 
   function onScroll() {
     const box = pager.current;
@@ -206,8 +205,10 @@ export function MeetingMode({ payload }: { payload: MeetingPayload }) {
         onScroll={onScroll}
         tabIndex={0}
         onKeyDown={(event) => {
-          if (event.key === "ArrowRight") goTo(Math.min(screens.length - 1, index + 1));
-          if (event.key === "ArrowLeft") goTo(Math.max(0, index - 1));
+          // Arrow keys belong to the field being typed in, not the deck.
+          if ((event.target as HTMLElement).closest("input, textarea, select, [contenteditable='true']")) return;
+          if (event.key === "ArrowRight") goBy(1);
+          if (event.key === "ArrowLeft") goBy(-1);
         }}
         className="flex h-full w-full snap-x snap-mandatory overflow-x-auto overscroll-x-contain outline-none"
         aria-label="Meeting screens"
@@ -228,54 +229,60 @@ export function MeetingMode({ payload }: { payload: MeetingPayload }) {
         <X className="size-5" />
       </Link>
 
-      {index > 0 ? (
+      {/* Quiet over navy, still findable over a bright day photo. */}
+      {current > 0 ? (
         <button
           type="button"
           aria-label="Previous screen"
-          onClick={() => goTo(index - 1)}
-          className="absolute top-1/2 left-1 z-20 inline-flex size-11 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground/40 outline-none hover:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => goBy(-1)}
+          className="absolute top-1/2 left-1 z-20 inline-flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-background/40 text-foreground/50 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronLeft className="size-6" />
         </button>
       ) : null}
-      {index < screens.length - 1 ? (
+      {current < screens.length - 1 ? (
         <button
           type="button"
           aria-label="Next screen"
-          onClick={() => goTo(index + 1)}
-          className="absolute top-1/2 right-1 z-20 inline-flex size-11 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground/40 outline-none hover:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => goBy(1)}
+          className="absolute top-1/2 right-1 z-20 inline-flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-background/40 text-foreground/50 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronRight className="size-6" />
         </button>
       ) : null}
 
-      <ol aria-label="Where you are" className="absolute inset-x-0 bottom-[max(0.5rem,env(safe-area-inset-bottom))] z-20 flex justify-center gap-2">
-        {screens.map((screen, at) => (
-          <li key={screen.key}>
-            <button
-              type="button"
-              aria-label={screen.label}
-              aria-current={at === index ? "true" : undefined}
-              onClick={() => goTo(at)}
-              className="flex size-6 items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <span className={cn("size-1.5 rounded-full", at === index ? "bg-primary" : "bg-muted-foreground/40")} />
-            </button>
-          </li>
-        ))}
-      </ol>
+      <div className="absolute inset-x-0 bottom-[max(0.25rem,env(safe-area-inset-bottom))] z-20 flex justify-center">
+        <ol aria-label="Where you are" className="flex rounded-full bg-background/50 px-1">
+          {screens.map((screen, at) => (
+            <li key={screen.key}>
+              <button
+                type="button"
+                aria-label={screen.label}
+                aria-current={at === current ? "true" : undefined}
+                onClick={() => goTo(at)}
+                className="flex size-9 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring lg:size-11"
+              >
+                <span className={cn("size-1.5 rounded-full", at === current ? "bg-primary" : "bg-foreground/40")} />
+              </button>
+            </li>
+          ))}
+        </ol>
+      </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------- screens
 
+// The text pages share one frame, so the headline sits at the same height
+// on every page and long words scroll instead of being cut off.
+const PAGE_FRAME = "mx-auto flex h-full w-full max-w-4xl flex-col overflow-y-auto px-10 pt-[14vh] pb-20 lg:px-16";
+
 function CoverScreen({ lead }: { lead: MeetingPayload["lead"] }) {
   return (
     <div className="flex h-full flex-col items-center justify-center gap-6 px-8 text-center">
       <Wordmark className="text-4xl lg:text-5xl" />
-      <p className="text-xl text-muted-foreground lg:text-2xl">Permanent roofline lighting</p>
-      <p className="text-base text-muted-foreground/70">
+      <p className="text-lg text-muted-foreground lg:text-xl">
         {lead.addressLine}
         {lead.neighbourhood ? `, ${lead.neighbourhood}` : ""}
       </p>
@@ -289,7 +296,7 @@ function TextScreen({ kind, title, body }: { kind: PresentationKind; title: stri
   const steps =
     kind === "install_day" ? body.split(/\n+/).map((line) => line.trim()).filter(Boolean) : null;
   return (
-    <div className="mx-auto flex h-full w-full max-w-4xl flex-col justify-center gap-8 px-10 lg:px-16">
+    <div className={cn(PAGE_FRAME, "gap-8")}>
       <h2 className="text-4xl font-bold text-balance lg:text-6xl">{title}</h2>
       {steps ? (
         <ol className="flex flex-col gap-4">
@@ -312,13 +319,17 @@ function TextScreen({ kind, title, body }: { kind: PresentationKind; title: stri
 }
 
 // A quiet plate over a photo: solid navy at 75%, no gradients, no glass.
+// Title and body carry their own fitted plates, so a short title never
+// leaves an empty slab hanging over the photo.
 function PageCaption({ title, body }: { title: string; body: string }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-0 flex px-10 pt-10 lg:px-16">
-      <div className="rounded-md bg-background/75 px-4 py-3">
-        <h2 className="text-2xl font-bold lg:text-4xl">{title}</h2>
-        {body ? <p className="mt-1 max-w-2xl text-base text-pretty text-muted-foreground lg:text-lg">{body}</p> : null}
-      </div>
+    <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-col items-start gap-1 px-10 pt-10 lg:px-16">
+      <h2 className="w-fit rounded-md bg-background/75 px-4 py-2 text-2xl font-bold lg:text-4xl">{title}</h2>
+      {body ? (
+        <p className="w-fit max-w-2xl rounded-md bg-background/75 px-4 py-2 text-base text-pretty text-muted-foreground lg:text-lg">
+          {body}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -339,12 +350,19 @@ function GalleryScreen({ title, urls }: { title: string; urls: string[] }) {
       >
         {urls.map((url, which) => (
           // eslint-disable-next-line @next/next/no-img-element -- signed, cached for offline
-          <img key={url} src={url} alt={`Install photo ${which + 1}`} className="h-full w-full shrink-0 snap-center object-cover" draggable={false} />
+          <img
+            key={url}
+            src={url}
+            alt={`Install photo ${which + 1}`}
+            crossOrigin="anonymous"
+            className="h-full w-full shrink-0 snap-center object-cover"
+            draggable={false}
+          />
         ))}
       </div>
       <PageCaption title={title} body="" />
       {urls.length > 1 ? (
-        <p aria-hidden="true" className="absolute right-4 bottom-10 rounded bg-background/70 px-2 py-0.5 text-xs font-semibold">
+        <p aria-hidden="true" className="absolute right-4 bottom-14 rounded bg-background/70 px-2 py-0.5 text-xs font-semibold lg:bottom-16">
           {at + 1} / {urls.length}
         </p>
       ) : null}
@@ -355,7 +373,7 @@ function GalleryScreen({ title, urls }: { title: string; urls: string[] }) {
 function WarrantyScreen({ title, text, serviceCallFee }: { title: string; text: string; serviceCallFee: number | null }) {
   const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
   return (
-    <div className="mx-auto flex h-full w-full max-w-4xl flex-col justify-center gap-8 px-10 lg:px-16">
+    <div className={cn(PAGE_FRAME, "gap-8")}>
       <h2 className="text-4xl font-bold lg:text-6xl">{title}</h2>
       <ul className="flex flex-col gap-3">
         {lines.map((line, at) => (
@@ -396,6 +414,7 @@ function ColourScreen({
       : labelFor(SOFFIT_OPTIONS, lead.soffitColour) || "Not answered yet"
     : "Not answered yet";
   const colourSet = lead.colourKind !== "none";
+  const typed = initialsDraft.trim() !== "";
 
   async function confirm() {
     setBusy(true);
@@ -409,14 +428,14 @@ function ColourScreen({
       setConfirmed({ initials: initialsDraft.trim(), at: result.initialledAt });
       onInitialsDraft("");
     } catch {
-      setMessage("No signal. The initials were not saved; try again before they leave.");
+      setMessage("No signal. The initials were not saved. Try again in a moment.");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-4xl flex-col justify-center gap-10 px-10 lg:px-16">
+    <div className={cn(PAGE_FRAME, "gap-10")}>
       <h2 className="text-4xl font-bold lg:text-6xl">The colour</h2>
       <dl className="flex flex-col gap-6">
         <div>
@@ -454,7 +473,12 @@ function ColourScreen({
               className="w-32 text-center text-xl font-bold tracking-widest"
             />
           </div>
-          <Button type="button" onClick={() => void confirm()} disabled={!colourSet || busy || initialsDraft.trim() === ""}>
+          <Button
+            type="button"
+            variant={typed ? "default" : "outline"}
+            onClick={() => void confirm()}
+            disabled={!colourSet || busy || !typed}
+          >
             {busy ? "Saving" : "Confirm"}
           </Button>
         </div>

@@ -1,7 +1,6 @@
 "use client";
 
 import { ImagePlus } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { attachLeadPhotos } from "@/app/(app)/app/leads/actions";
@@ -51,8 +50,8 @@ export function MockupCard({ leadId, userId, mockupUrl }: { leadId: string; user
       <CardHeader>
         <CardTitle>Meeting mode</CardTitle>
         <CardDescription>
-          The full-screen presentation and live quote for this house, on the iPad. Upload their mockup first so This
-          house has their home in lights.
+          The full-screen presentation and live quote for this house, on the iPad. Upload their mockup first, so the
+          &ldquo;This house&rdquo; screen shows their home in lights.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -66,7 +65,9 @@ export function MockupCard({ leadId, userId, mockupUrl }: { leadId: string; user
         )}
         <div className="flex flex-wrap items-center gap-3">
           <Button asChild>
-            <Link href={`/meeting/${leadId}`}>Open meeting mode</Link>
+            {/* A full page load on purpose: it lets the service worker keep
+                the meeting page for a reload without signal. */}
+            <a href={`/meeting/${leadId}`}>Open meeting mode</a>
           </Button>
           <Button type="button" variant="outline" disabled={busy} onClick={() => input.current?.click()}>
             <ImagePlus aria-hidden="true" />

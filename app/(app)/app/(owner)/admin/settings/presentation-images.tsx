@@ -1,6 +1,6 @@
 "use client";
 
-import { ImagePlus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ImagePlus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { PAGE_LABELS, type PresentationKind } from "@/lib/presentation";
 import { shrinkPhoto } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/client";
-import { addPresentationImage, removePresentationImage } from "./actions";
+import { addPresentationImage, movePresentationImage, removePresentationImage } from "./actions";
 
 // The presentation's photos (M5): the day and night pair for Hidden by
 // day, and the gallery of real installs. Uploads land in the private
@@ -59,6 +59,20 @@ export function PresentationImages({ hiddenByDay, gallery }: PresentationImagesP
       router.refresh();
     } catch {
       setError("That photo couldn't be removed. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function move(path: string, delta: -1 | 1, key: string) {
+    setBusy(key);
+    setError(null);
+    try {
+      const result = await movePresentationImage("gallery", path, delta);
+      if (!result.ok) throw new Error(result.error);
+      router.refresh();
+    } catch {
+      setError("The order couldn't be saved. Try again.");
     } finally {
       setBusy(null);
     }
@@ -132,18 +146,40 @@ export function PresentationImages({ hiddenByDay, gallery }: PresentationImagesP
                   ) : (
                     <div className="aspect-[4/3] w-full rounded-md border bg-muted" />
                   )}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy !== null}
-                    onClick={() => void remove("gallery", item.path, `gallery-remove-${at}`)}
-                    aria-label={`Remove install photo ${at + 1}`}
-                    className="self-start text-muted-foreground"
-                  >
-                    <Trash2 aria-hidden="true" className="size-4" />
-                    Remove
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      disabled={busy !== null || at === 0}
+                      onClick={() => void move(item.path, -1, `gallery-move-${at}`)}
+                      aria-label={`Show install photo ${at + 1} earlier`}
+                    >
+                      <ChevronLeft aria-hidden="true" className="size-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      disabled={busy !== null || at === gallery.length - 1}
+                      onClick={() => void move(item.path, 1, `gallery-move-${at}`)}
+                      aria-label={`Show install photo ${at + 1} later`}
+                    >
+                      <ChevronRight aria-hidden="true" className="size-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={busy !== null}
+                      onClick={() => void remove("gallery", item.path, `gallery-remove-${at}`)}
+                      aria-label={`Remove install photo ${at + 1}`}
+                      className="text-muted-foreground"
+                    >
+                      <Trash2 aria-hidden="true" className="size-4" />
+                      Remove
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>

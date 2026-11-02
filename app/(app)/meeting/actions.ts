@@ -131,14 +131,24 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     .limit(1)
     .maybeSingle();
 
+  // savedAt is the database's own updated_at, the same clock the meeting
+  // page reads the draft by, so the iPad can tell its own last save from a
+  // newer one made elsewhere.
   if (existing) {
-    const { error } = await supabase.from("quotes").update(row).eq("id", existing.id);
-    if (error) return { ok: false, code: "save_failed", message: "The draft could not be saved. Check your signal and try again." };
+    const { data: updated, error } = await supabase
+      .from("quotes")
+      .update(row)
+      .eq("id", existing.id)
+      .select("updated_at")
+      .single();
+    if (error || !updated) {
+      return { ok: false, code: "save_failed", message: "The draft could not be saved. Check your signal and try again." };
+    }
     revalidatePath(`/app/leads/${draft.leadId}`);
-    return { ok: true, quoteId: existing.id, savedAt: new Date().toISOString() };
+    return { ok: true, quoteId: existing.id, savedAt: updated.updated_at };
   }
 
-  const { data: created, error } = await supabase.from("quotes").insert(row).select("id").single();
+  const { data: created, error } = await supabase.from("quotes").insert(row).select("id, updated_at").single();
   if (error || !created) {
     return { ok: false, code: "save_failed", message: "The draft could not be saved. Check your signal and try again." };
   }
@@ -151,7 +161,7 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     payload: { quote_id: created.id },
   });
   revalidatePath(`/app/leads/${draft.leadId}`);
-  return { ok: true, quoteId: created.id, savedAt: new Date().toISOString() };
+  return { ok: true, quoteId: created.id, savedAt: created.updated_at };
 }
 
 export type ConfirmInitialsResult =
@@ -186,7 +196,7 @@ export async function confirmColourInitials(leadId: string, initials: string): P
     .update({ track_colour_initials: text.data, track_colour_initialled_at: at })
     .eq("id", id.data);
   if (error) {
-    return { ok: false, code: "save_failed", message: "No signal. The initials were not saved; try again before they leave." };
+    return { ok: false, code: "save_failed", message: "That didn't save. Try again in a moment." };
   }
   await supabase.from("lead_events").insert({
     lead_id: id.data,

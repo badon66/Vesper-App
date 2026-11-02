@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { z } from "zod";
-import { MeetingMode, type MeetingPayload } from "@/components/meeting/meeting-mode";
+import { MeetingMode } from "@/components/meeting/meeting-mode";
+import type { MeetingPayload } from "@/lib/meeting/state";
 import { NotForYourRole } from "@/components/not-for-your-role";
 import { getViewer } from "@/lib/auth/profile";
 import { leadName } from "@/lib/leads/status";

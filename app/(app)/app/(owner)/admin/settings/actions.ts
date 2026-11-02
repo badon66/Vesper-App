@@ -9,6 +9,7 @@ import {
   PRESENTATION_KINDS,
   mergePresentationText,
   withPresentationImage,
+  withPresentationImageMoved,
   withoutPresentationImage,
 } from "@/lib/presentation";
 import {
@@ -175,6 +176,30 @@ export async function removePresentationImage(kind: string, path: string): Promi
   const { error } = await supabase.from("settings").update({ presentation: pages }).eq("id", 1);
   if (error) return { ok: false, error: "The image could not be removed. Try again." };
   await supabase.storage.from("presentation").remove([pathParsed.data]);
+  revalidatePath("/app/admin/settings");
+  return { ok: true };
+}
+
+// Moves a gallery photo one place earlier or later.
+export async function movePresentationImage(kind: string, path: string, delta: number): Promise<PresentationImageResult> {
+  try {
+    await requireOwnerForAction();
+  } catch (e) {
+    if (e instanceof ReadOnlyError) return { ok: false, error: VIEW_AS_READ_ONLY };
+    if (e instanceof NotOwnerError) return { ok: false, error: "Not for your role." };
+    throw e;
+  }
+  const kindParsed = kindSchema.safeParse(kind);
+  const pathParsed = z.string().trim().min(1).max(300).safeParse(path);
+  if (!kindParsed.success || !pathParsed.success || (delta !== -1 && delta !== 1)) {
+    return { ok: false, error: "That image was not found." };
+  }
+
+  const supabase = await createClient();
+  const { data: current } = await supabase.from("settings").select("presentation").eq("id", 1).single();
+  const pages = withPresentationImageMoved(current?.presentation ?? [], kindParsed.data, pathParsed.data, delta);
+  const { error } = await supabase.from("settings").update({ presentation: pages }).eq("id", 1);
+  if (error) return { ok: false, error: "The order could not be saved. Try again." };
   revalidatePath("/app/admin/settings");
   return { ok: true };
 }

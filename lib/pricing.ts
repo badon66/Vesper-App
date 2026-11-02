@@ -91,7 +91,7 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
     const cents = toCents(Math.max(0, adder.amount));
     if (cents === 0 && adder.label.trim() === "") continue;
     adderCents += cents;
-    lines.push({ label: adder.label.trim() || "Adder", detail: null, amount: toDollars(cents) });
+    lines.push({ label: adder.label.trim() || "Extra work", detail: null, amount: toDollars(cents) });
   }
 
   let discountCents = 0;
