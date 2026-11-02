@@ -78,7 +78,9 @@ function TabLink({ tab, current, layout }: { tab: Tab; current: boolean; layout:
         "relative flex flex-col items-center justify-center gap-1 text-xs font-semibold text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
         layout === "bar" ? "h-16" : "h-16 rounded-md",
         current && "text-foreground",
-        tab.prominent && "text-primary",
+        // Gold text reads on navy (6.1:1) but not on white (2.9:1), so by day
+        // the label is navy and only the round button stays gold.
+        tab.prominent && "text-foreground dark:text-primary",
       )}
     >
       {tab.prominent ? (

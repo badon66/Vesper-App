@@ -24,6 +24,7 @@ const blank = {
   owns_home: "",
   wants_price: "",
   christmas_lights_now: "",
+  looked_into_before: "",
   areas_wanted: "",
   install_timing: "",
   notes: "",

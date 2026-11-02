@@ -10,6 +10,7 @@ import {
   PHOTO_SKIP_LABELS,
   positionSourceText,
   sentence,
+  timePhrase,
 } from "@/lib/schedule/meetings";
 import type { MeetingWithLead } from "@/lib/schedule/queries";
 import { leadName } from "@/lib/leads/status";
@@ -40,6 +41,7 @@ export function MeetingCard({
   previousTime = null,
   showLead = true,
   showDetails = false,
+  showDay = false,
 }: {
   meeting: MeetingWithLead;
   names: Map<string, string>;
@@ -52,6 +54,8 @@ export function MeetingCard({
   previousTime?: string | null;
   showLead?: boolean;
   showDetails?: boolean;
+  // A list that spans several evenings (My bookings) names the day too.
+  showDay?: boolean;
 }) {
   const lead = meeting.lead;
   const started = new Date(meeting.starts_at).getTime() <= now;
@@ -62,13 +66,16 @@ export function MeetingCard({
 
   return (
     <article
+      id={`meeting-${meeting.id}`}
       className={cn("flex flex-col gap-3 rounded-md border p-4", changed && "bg-muted/40 text-muted-foreground")}
       data-testid="meeting-card"
       data-meeting={meeting.id}
       data-status={meeting.status}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-xl font-bold tabular-nums">{showLead ? formatTime(meeting.starts_at) : formatMeetingTime(meeting.starts_at)}</p>
+        <p className="text-xl font-bold tabular-nums">
+          {showDay ? timePhrase(meeting.starts_at) : showLead ? formatTime(meeting.starts_at) : formatMeetingTime(meeting.starts_at)}
+        </p>
         <p className="text-sm font-semibold">{MEETING_STATUS_LABELS[meeting.status]}</p>
       </div>
 
@@ -93,8 +100,9 @@ export function MeetingCard({
       ) : null}
 
       {legKm !== null && previousTime ? (
-        <p className="text-sm">
-          {formatKm(legKm)} in a straight line from the {formatTime(previousTime)} meeting
+        <p className="text-sm text-pretty">
+          {formatKm(legKm).replace(/^under/, "Under")} in a straight line from the{" "}
+          <span className="whitespace-nowrap">{formatTime(previousTime)} meeting</span>
         </p>
       ) : null}
 
@@ -156,7 +164,9 @@ export function MeetingCard({
       ) : null}
       {meeting.status === "no_show" && meeting.outcome_note ? <p className="text-sm">Note: {meeting.outcome_note}</p> : null}
 
-      {live && !started && canChange ? <BookingActions meetingId={meeting.id} /> : null}
+      {live && !started && canChange ? (
+        <BookingActions meetingId={meeting.id} leadId={meeting.lead_id} leadName={leadName(lead)} startsAt={meeting.starts_at} />
+      ) : null}
       {live && !started && !canChange && !isOwner ? (
         <p className="text-sm text-muted-foreground">Keenan marks how it went after the meeting.</p>
       ) : null}

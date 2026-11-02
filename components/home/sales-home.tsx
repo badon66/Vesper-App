@@ -57,7 +57,7 @@ export async function SalesHome({
 
       <Card data-testid="tonight-times">
         <CardHeader>
-          <CardTitle>{opening.tonightFull ? "Nothing left tonight" : "Tonight's open times"}</CardTitle>
+          <CardTitle>{opening.tonightFull ? (opening.tonightHasTimes ? "Nothing left tonight" : "No meetings tonight") : "Tonight's open times"}</CardTitle>
           <CardDescription>
             {opening.tonightFull
               ? opening.day === today
@@ -83,32 +83,33 @@ export async function SalesHome({
         </CardContent>
       </Card>
 
-      <Card data-testid="my-bookings">
-        <CardHeader>
-          <CardTitle>My bookings</CardTitle>
-          <CardDescription>Tonight and upcoming, with how each went once Keenan marks it.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {mine.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No bookings yet. Tap an open time above, or book from a lead, and it shows here.
-            </p>
-          ) : (
-            mine.map((meeting) => (
-              <MeetingCard
-                key={meeting.id}
-                meeting={meeting}
-                names={names}
-                now={now}
-                canChange
-                isOwner={false}
-                reasons={[]}
-                showLead
-              />
-            ))
-          )}
-        </CardContent>
-      </Card>
+      <section data-testid="my-bookings" aria-labelledby="my-bookings-heading" className="flex flex-col gap-3">
+        <div>
+          <h2 id="my-bookings-heading" className="text-lg font-bold">
+            My bookings
+          </h2>
+          <p className="text-sm text-muted-foreground">Tonight and upcoming, with how each went once Keenan marks it.</p>
+        </div>
+        {mine.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No bookings yet. Tap an open time above, or book from a lead, and it shows here.
+          </p>
+        ) : (
+          mine.map((meeting) => (
+            <MeetingCard
+              key={meeting.id}
+              meeting={meeting}
+              names={names}
+              now={now}
+              canChange
+              isOwner={false}
+              reasons={[]}
+              showLead
+              showDay
+            />
+          ))
+        )}
+      </section>
 
       <KnockCard key={session?.id ?? "none"} session={session} lastNeighbourhood={last} />
 

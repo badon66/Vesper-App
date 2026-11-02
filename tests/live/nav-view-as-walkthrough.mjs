@@ -2,10 +2,11 @@
 // the tab bar and side rail, both Homes, Leads in attention order with All
 // and search, the follow-up day, sign-in keeping the email, Settings and Add
 // a Vesper member keeping what was typed, the old addresses, the owner's
-// Door guide, Track colours list and track colour card (looked at, never
+// step notes, Track colours list and track colour card (looked at, never
 // saved), and View as compared screen by screen with what a real test
 // setter sees, including a lead with Find out answers, guided photos and a
-// track colour.
+// track colour, the Schedule without Keenan's tools, and a lead's Book a
+// meeting that can't open the booking sheet while viewing.
 //
 // Two throwaway setters do the setter side; their leads are named
 // "TEST LEAD (automated)" and everything they make is deleted at the end.
@@ -442,11 +443,17 @@ try {
   await op.locator("#member-email-error").filter({ hasText: /./ }).waitFor({ timeout: 20000 });
   check("Add a Vesper member keeps what was typed after an error", (await op.inputValue("#member-full_name")) === "TEST (automated) never created" && (await op.inputValue("#member-email")) === "not-an-email");
 
-  // The Door guide and the Track colours list, looked at and never saved.
+  // The step notes and the Track colours list, looked at and never saved.
   await op.goto(`${base}/app/admin/settings`);
   await settle(op);
-  const { data: liveSettings } = await admin.from("settings").select("door_guide").eq("id", 1).single();
-  check("Settings shows the Door guide to edit", (await op.inputValue("#settings-door_guide")) === liveSettings?.door_guide);
+  const { data: liveSettings } = await admin.from("settings").select("step_note_at_door, step_note_after_door, step_note_book").eq("id", 1).single();
+  check(
+    "Settings shows the three step notes to edit, in place of the single Door guide",
+    (await op.inputValue("#settings-step_note_at_door")) === liveSettings?.step_note_at_door &&
+      (await op.inputValue("#settings-step_note_after_door")) === liveSettings?.step_note_after_door &&
+      (await op.inputValue("#settings-step_note_book")) === liveSettings?.step_note_book &&
+      (await op.locator("#settings-door_guide").count()) === 0,
+  );
   const { data: liveColours } = await admin.from("track_colours").select("name, active").order("sort_order");
   const rows = await op.getByTestId("track-colour-row").evaluateAll((items) => items.map((item) => item.querySelector("p").textContent.trim()));
   const expectedRows = (liveColours ?? []).map((colour) => `${colour.name}${colour.active ? "" : "Retired"}`);
@@ -504,12 +511,13 @@ try {
     ["New lead", "/app/leads/new"],
     ["Edit lead", `/app/leads/${leads.newOld}/edit`],
     ["Schedule", "/app/schedule"],
-    ["booking a lead", `/app/schedule/book?lead=${leads.later}`],
+    ["a lead opened to book", `/app/leads/${leads.later}?book=1`],
     ["My pay", "/app/pay"],
     ["Admin", "/app/admin"],
     ["Settings", "/app/admin/settings"],
   ];
   for (const [label, path] of screens) {
+    const visitStart = new Date().toISOString();
     await page.goto(`${base}${path}`);
     await settle(page);
     const real = await capture(page);
@@ -526,7 +534,7 @@ try {
     if (label === "their own lead") {
       check(
         "View as shows the lead's Find out answers, its three slot photos and its track colour",
-        viewed.text.includes("Owns the home Yes Wants a price Not yet Soffit colour Not sure Christmas lights now Not answered Which areas Full wrap Timing New year") &&
+        viewed.text.includes("Owns the home Yes Wants a price Not yet Soffit colour Not sure Christmas lights now Not answered Looked into it before Not answered Which areas Full wrap Timing New year") &&
           ["Front photo of the house", "Left corner photo of the house", "Right corner photo of the house"].every((alt) => viewed.images.includes(alt)) &&
           viewed.text.includes("Custom, RAL 7016 Anthracite grey Needs powder coating.") &&
           viewed.text.includes("Keenan sets the track colour."),
@@ -539,10 +547,23 @@ try {
     }
     if (label === "New lead") {
       check(
-        "View as shows New lead with the Door guide, the six questions and the four photo slots",
-        (await op.getByTestId("door-guide").count()) === 1 &&
-          (await op.getByTestId("find-out").locator("legend").count()) === 6 &&
+        "View as shows New lead with the ? step notes, the seven questions and the four photo slots",
+        (await op.getByTestId("step-notes").count()) === 1 &&
+          (await op.getByTestId("find-out").locator("legend").count()) === 7 &&
           (await op.getByRole("list", { name: "Guided photos" }).locator("li").count()) === 4,
+      );
+    }
+    if (label === "Schedule") {
+      check("View as shows the setter's Schedule without Keenan's Block time and pencil", (await op.getByTestId("owner-schedule-tools").count()) === 0);
+    }
+    if (label === "a lead opened to book") {
+      await op.waitForTimeout(1500);
+      // Only holds made during this visit count: Keenan's own earlier holds are his data.
+      const { count: viewHolds } = await admin.from("slot_holds").select("id", { count: "exact", head: true }).in("holder_id", [ownerId, a.id]).gte("created_at", visitStart);
+      check(
+        "View as never opens the booking sheet, even from a link that would, and holds nothing",
+        (await op.getByTestId("booking-sheet").count()) === 0 && viewHolds === 0 && (await page.getByTestId("booking-sheet").count()) === 1,
+        `${viewHolds} holds`,
       );
     }
     check(`every control on ${label} is disabled while viewing`, viewed.controls.every((c) => c.disabled), viewed.controls.filter((c) => !c.disabled).map((c) => c.label).join(", "));

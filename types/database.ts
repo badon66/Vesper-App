@@ -14,6 +14,109 @@ export type Database = {
   }
   public: {
     Tables: {
+      day_schedules: {
+        Row: {
+          created_at: string
+          created_by: string
+          day: string
+          host_id: string
+          id: string
+          meeting_slot_count: number
+          meeting_slot_minutes: number
+          meeting_start: string
+          removed_at: string | null
+          removed_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          day: string
+          host_id: string
+          id?: string
+          meeting_slot_count: number
+          meeting_slot_minutes: number
+          meeting_start: string
+          removed_at?: string | null
+          removed_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          day?: string
+          host_id?: string
+          id?: string
+          meeting_slot_count?: number
+          meeting_slot_minutes?: number
+          meeting_start?: string
+          removed_at?: string | null
+          removed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "day_schedules_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "day_schedules_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "day_schedules_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "day_schedules_host_id_fkey"
+            columns: ["host_id"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "day_schedules_host_id_fkey"
+            columns: ["host_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "day_schedules_host_id_fkey"
+            columns: ["host_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "day_schedules_removed_by_fkey"
+            columns: ["removed_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "day_schedules_removed_by_fkey"
+            columns: ["removed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "day_schedules_removed_by_fkey"
+            columns: ["removed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       earnings: {
         Row: {
           amount: number
@@ -335,6 +438,9 @@ export type Database = {
           last_name: string | null
           lat: number | null
           lng: number | null
+          looked_into_before:
+            | Database["public"]["Enums"]["looked_into_before"]
+            | null
           lost_at: string | null
           lost_reason: string | null
           neighbourhood: string | null
@@ -381,6 +487,9 @@ export type Database = {
           last_name?: string | null
           lat?: number | null
           lng?: number | null
+          looked_into_before?:
+            | Database["public"]["Enums"]["looked_into_before"]
+            | null
           lost_at?: string | null
           lost_reason?: string | null
           neighbourhood?: string | null
@@ -427,6 +536,9 @@ export type Database = {
           last_name?: string | null
           lat?: number | null
           lng?: number | null
+          looked_into_before?:
+            | Database["public"]["Enums"]["looked_into_before"]
+            | null
           lost_at?: string | null
           lost_reason?: string | null
           neighbourhood?: string | null
@@ -754,6 +866,9 @@ export type Database = {
           presentation: Json
           price_per_ft: number
           referral_credit: number
+          step_note_after_door: string
+          step_note_at_door: string
+          step_note_book: string
           updated_at: string
           warranty_text: string
         }
@@ -782,6 +897,9 @@ export type Database = {
           presentation: Json
           price_per_ft?: number
           referral_credit?: number
+          step_note_after_door?: string
+          step_note_at_door?: string
+          step_note_book?: string
           updated_at?: string
           warranty_text: string
         }
@@ -810,6 +928,9 @@ export type Database = {
           presentation?: Json
           price_per_ft?: number
           referral_credit?: number
+          step_note_after_door?: string
+          step_note_at_door?: string
+          step_note_book?: string
           updated_at?: string
           warranty_text?: string
         }
@@ -1118,6 +1239,9 @@ export type Database = {
           meeting_slot_count: number | null
           meeting_slot_minutes: number | null
           meeting_start: string | null
+          step_note_after_door: string | null
+          step_note_at_door: string | null
+          step_note_book: string | null
         }
         Insert: {
           booking_cutoff_minutes?: number | null
@@ -1130,6 +1254,9 @@ export type Database = {
           meeting_slot_count?: number | null
           meeting_slot_minutes?: number | null
           meeting_start?: string | null
+          step_note_after_door?: string | null
+          step_note_at_door?: string | null
+          step_note_book?: string | null
         }
         Update: {
           booking_cutoff_minutes?: number | null
@@ -1142,6 +1269,9 @@ export type Database = {
           meeting_slot_count?: number | null
           meeting_slot_minutes?: number | null
           meeting_start?: string | null
+          step_note_after_door?: string | null
+          step_note_at_door?: string | null
+          step_note_book?: string | null
         }
         Relationships: []
       }
@@ -1217,6 +1347,17 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
+      day_schedule_preview: {
+        Args: {
+          p_count: number
+          p_day: string
+          p_host?: string
+          p_minutes: number
+          p_scope: string
+          p_start: string
+        }
+        Returns: Json
+      }
       default_meeting_host: { Args: never; Returns: string }
       end_user_sessions: { Args: { target_user: string }; Returns: number }
       hold_grace: { Args: never; Returns: string }
@@ -1231,7 +1372,9 @@ export type Database = {
       }
       is_owner: { Args: never; Returns: boolean }
       is_sales_side: { Args: never; Returns: boolean }
-      is_template_slot: { Args: { p_starts_at: string }; Returns: boolean }
+      is_template_slot:
+        | { Args: { p_starts_at: string }; Returns: boolean }
+        | { Args: { p_host: string; p_starts_at: string }; Returns: boolean }
       lock_evening: {
         Args: { p_at: string; p_host: string }
         Returns: undefined
@@ -1271,6 +1414,17 @@ export type Database = {
           state: string
         }[]
       }
+      set_day_schedule: {
+        Args: {
+          p_count: number
+          p_day: string
+          p_host?: string
+          p_minutes: number
+          p_scope: string
+          p_start: string
+        }
+        Returns: Json
+      }
       set_meeting_outcome: {
         Args: {
           p_meeting_id: string
@@ -1280,10 +1434,34 @@ export type Database = {
         }
         Returns: undefined
       }
-      slot_starts_on: { Args: { p_day: string }; Returns: string[] }
+      slot_minutes_on: {
+        Args: { p_day: string; p_host: string }
+        Returns: number
+      }
+      slot_starts_on:
+        | { Args: { p_day: string }; Returns: string[] }
+        | { Args: { p_day: string; p_host: string }; Returns: string[] }
+      slot_template_on: {
+        Args: { p_day: string; p_host: string }
+        Returns: {
+          meeting_start: string
+          own_schedule: boolean
+          slot_count: number
+          slot_minutes: number
+        }[]
+      }
       slot_time_problem: {
         Args: { p_now: string; p_owner: boolean; p_starts_at: string }
         Returns: string
+      }
+      template_times: {
+        Args: {
+          p_count: number
+          p_day: string
+          p_minutes: number
+          p_start: string
+        }
+        Returns: string[]
       }
     }
     Enums: {
@@ -1318,6 +1496,7 @@ export type Database = {
         | "sold"
         | "installed"
         | "lost"
+      looked_into_before: "got_quotes" | "thought_about_it" | "new_to_them"
       map_position_source: "picked" | "device"
       meeting_status:
         | "booked"
@@ -1497,6 +1676,7 @@ export const Constants = {
         "installed",
         "lost",
       ],
+      looked_into_before: ["got_quotes", "thought_about_it", "new_to_them"],
       map_position_source: ["picked", "device"],
       meeting_status: [
         "booked",

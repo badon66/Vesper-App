@@ -14,6 +14,7 @@ photo_slot:      front | left_corner | right_corner | soffit
 christmas_lights_now: hires | diy | none
 roofline_areas:  front | front_and_sides | full_wrap | not_sure
 install_timing:  before_christmas | new_year | no_rush
+looked_into_before: got_quotes | thought_about_it | new_to_them   -- added in M3.5
 meeting_status:  booked | confirmed | qualified | not_qualified | no_show | cancelled | moved   -- qualified and not_qualified both mean the meeting was held; moved means it was replaced by a meeting at another time; confirmed is unused for now
 map_position_source: picked | device               -- picked from the address suggestions, or the phone's own position at the door
 quote_status:    draft | presented | accepted | declined | expired
@@ -56,7 +57,10 @@ presentation jsonb not null          -- pages: [{title, body, image_paths[]}]
 booking_pay numeric(10,2) not null default 20.00      -- flat pay per qualified booking
 commission_rate numeric(5,4) not null default 0.0500  -- share of the accepted quote total before GST
 lost_reasons text[] not null default '{price, other company, not now, could not reach, other}'
-door_guide text not null                        -- the Door guide on New lead, owner edited; starts as the four steps in the product spec
+door_guide text not null                        -- the M2.6 Door guide; unused since M3.5, kept per the additive rule
+step_note_at_door text not null                 -- M3.5: the "?" note for the booking sheet's At the door step, owner edited; starts as in the product spec
+step_note_after_door text not null              -- M3.5: the note for After the door
+step_note_book text not null                    -- M3.5: the note for Book
 not_qualified_reasons text[] not null default '{Not the homeowner, Decision maker missing, Didn''t want a price, Roofline we can''t do, Other}'   -- Other asks for text
 meeting_days int[] not null default '{1,2,3,4,5,6}'   -- 0 = Sunday
 meeting_start time not null default '18:00'
@@ -119,6 +123,7 @@ wants_price boolean                             -- Find out: Yes true, Not yet f
 christmas_lights_now christmas_lights_now       -- Find out: Hires someone, Does it themselves, None
 areas_wanted roofline_areas                     -- Find out: Front only, Front and sides, Full wrap, Not sure
 install_timing install_timing                   -- Find out: Before Christmas, New year, No rush
+looked_into_before looked_into_before           -- Find out (M3.5): Got quotes, Thought about it, New to them
 track_colour_id uuid references track_colours   -- set by the owner only: one of the active colours
 track_ral_code text references ral_classic_colours  -- set by the owner only: Custom, a RAL Classic code (needs powder coating)
 est_feet int
@@ -186,6 +191,26 @@ created_at, updated_at
 ```
 One open session per person, enforced by a partial unique index. Counters change only through `bump_knock_session(session, doors, conversations)`, one atomic update that never goes below zero, so fast taps never lose counts. A session still open from an earlier Calgary day is closed the next time its owner opens the app, with `ended_at` set to its last update. Leads saved while a session is open link to it.
 
+### day_schedules
+One evening's own meeting times (M3.5), set by the owner from Schedule's pencil with "Just this day". An evening without one uses the template in `settings`. Changing or dropping one stamps the old row; rows are never erased.
+```
+id uuid pk
+host_id uuid not null references profiles       -- whose evening it is: the meeting host
+day date not null                               -- the Calgary date of the evening
+meeting_start time not null
+meeting_slot_minutes int not null               -- 15 to 120
+meeting_slot_count int not null                 -- 1 to 12
+created_by uuid not null references profiles
+removed_at timestamptz                          -- set when the evening goes back to the usual times, gets new times, or "All days" replaces it
+removed_by uuid references profiles
+created_at
+unique (host_id, day) where removed_at is null
+```
+- An evening's times are its own schedule's when it has one, otherwise the template's, and then only on `meeting_days`. A day schedule can open an evening that isn't a usual meeting day.
+- A change never moves or cancels a meeting. A meeting that no longer starts at one of the evening's times keeps its time, and any time that overlaps it can't be held or booked.
+- A hold on a time that is no longer one of the evening's times lets go at once, stamped `released`; the holder's screen sees the time is no longer on the board.
+- Written only by `set_day_schedule` (below), under the evening lock.
+
 ### time_blocks
 Times the owner blocks so nothing can be booked, for example a late install day. Removing a block stamps it; rows are never erased.
 ```
@@ -211,7 +236,7 @@ lead_id uuid references leads                   -- the lead being booked, once k
 meeting_id uuid references meetings             -- set when the hold is for moving this meeting
 renewed_at timestamptz not null default now()   -- the holder's screen checks in to keep it alive
 released_at timestamptz                         -- set when the hold ends
-release_reason text                             -- booked, moved, released, switched or lapsed
+release_reason text                             -- booked, moved, released, switched or lapsed (M3.5: a hold whose time disappears in a day change is released)
 created_at
 unique (host_id, starts_at) where released_at is null
 unique (holder_id) where released_at is null    -- one hold per person
@@ -219,7 +244,7 @@ unique (holder_id) where released_at is null    -- one hold per person
 A hold is active while `released_at` is empty and `renewed_at` is within `settings.hold_grace_minutes` of now. One that has gone quiet longer has lapsed: the next claim on that time stamps it `lapsed` and takes over, and the holder's next check-in takes the time back only if it is still free. Holds are written only by the booking functions below.
 
 ### meetings
-Open times are computed from settings (days, start, slot length, count) minus live meetings, active holds and time blocks, within the booking window and before the cutoff. There is no slots table. After each slot the owner sets the outcome: `qualified`, `not_qualified`, `no_show` or `cancelled`. Sales users can read every meeting, so `outcome_note` must never contain a price.
+Open times are computed from the evening's own schedule in `day_schedules` when it has one, otherwise the template in settings (days, start, slot length, count), minus anything that overlaps a live meeting, active holds and time blocks, within the booking window and before the cutoff. There is no slots table. After each slot the owner sets the outcome: `qualified`, `not_qualified`, `no_show` or `cancelled`. Sales users can read every meeting, so `outcome_note` must never contain a price.
 ```
 id uuid pk
 lead_id uuid not null references leads
@@ -227,7 +252,7 @@ host_id uuid not null references profiles        -- who runs the meeting: Keenan
 setter_id uuid not null references profiles      -- the lead's assigned setter when it was booked; earns the booking fee
 booked_by uuid not null references profiles      -- who picked the time
 starts_at timestamptz not null
-ends_at timestamptz not null                     -- starts_at plus the slot length
+ends_at timestamptz not null                     -- starts_at plus the evening's slot length when it was booked
 status meeting_status not null default 'booked'
 everyone_deciding_present boolean not null      -- the setter's confirmation that everyone who decides on the house will be there; must be true
 photos_skipped text                             -- 'homeowner_said_no' or 'other' when the Front, Left corner or Right corner photo is missing at booking; shown to the owner on Schedule
@@ -250,7 +275,8 @@ Rules, all enforced in the database:
 
 ### Booking functions
 Every write to `slot_holds`, `meetings` and `earnings` goes through these SECURITY DEFINER functions; no policy lets anyone write those tables directly. Each takes the evening lock (a move takes both evenings, in a fixed order). The server actions call them with the signed-in person's own session.
-- `schedule_board(host, as_sales, viewer)`: every time in the window with its state (open, held, booked, blocked or closed), the holder's name and initials, and a booked time's neighbourhood and setter. Read only; the screens poll it.
+- `schedule_board(host, as_sales, viewer)`: every time in the window with its state (open, held, booked, blocked or closed), the holder's name and initials, and a booked time's neighbourhood and setter. Times come from each evening's own schedule or the template. Every live meeting shows at its own start and end, whether or not it still lines up, and template times that overlap any live meeting are left out (migration 20261102051654: before it, a meeting that still lined up could drop off the board after a longer meeting length). Read only; the screens poll it.
+- `set_day_schedule(day, start, minutes, count, scope, host)`: the owner's. Scope `day` gives that evening its own times; `all` updates the template in settings and drops that evening's own times; `usual` drops them only. It takes the evening lock, lets go of holds on times that disappear (stamped `released`), never touches a meeting, and writes Settings only when a value changes. `day_schedule_preview(day, start, minutes, count, scope, host)` lists, read only, the meetings that wouldn't line up and the holds that would let go, for the pop-up's warning.
 - `hold_slot(starts_at, lead, meeting, host)`, `renew_hold()`, `release_hold()`.
 - `book_meeting(lead, starts_at, everyone_deciding_present, photos_skipped, photos_skip_note, host)`.
 - `move_meeting(meeting, new_starts_at)` and `cancel_meeting(meeting, note)`.
@@ -327,12 +353,13 @@ Sales users collaborate, so they can read the team's leads, meetings and knock s
 | profiles | all | read own row; read `id`, `full_name` and `role` of active profiles through a view `profiles_public` (for pickers and the schedule); read `id` and `full_name` of every profile, deactivated ones included, through a view `profile_names` (so old leads and timelines still show who did what) |
 | track_colours | select, insert, update; never delete | select all (active and retired) |
 | ral_classic_colours | select | select |
-| settings | all | read only the fields the client needs: slot template, `distance_warning_km`, `lost_reasons`, `door_guide`, `booking_cutoff_minutes`, `hold_grace_minutes` and `booking_window_days`, through a view `settings_public` that exposes nothing else |
+| settings | all | read only the fields the client needs: slot template, `distance_warning_km`, `lost_reasons`, `door_guide`, `booking_cutoff_minutes`, `hold_grace_minutes`, `booking_window_days` and the three step notes, through a view `settings_public` that exposes nothing else |
 | leads | all | insert as themselves; select all; update where `created_by = auth.uid()` or `assigned_to = auth.uid()`; change status only among `new`, `follow_up`, `lost`; no delete |
 | lead_photos | all | select all; insert for their own leads, with the file inside their own storage folder |
 | lead_events | select and insert; never update or delete | select all; insert `note` events on their own leads |
 | knock_sessions | all | select all; insert and update own rows |
 | time_blocks | select, insert, update (removing stamps the row) | select |
+| day_schedules | select; writes only through `set_day_schedule` | select |
 | slot_holds | select; writes only through the booking functions | select all; writes only through the booking functions |
 | meetings | select; writes only through the booking functions | select all; book, move and cancel their own leads' meetings through the booking functions |
 | quotes | all | none |

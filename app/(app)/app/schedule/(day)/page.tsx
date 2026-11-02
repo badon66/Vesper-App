@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { NotForYourRole } from "@/components/not-for-your-role";
-import { BlockControls } from "@/components/schedule/block-controls";
 import { MeetingCard } from "@/components/schedule/meeting-card";
-import { ScheduleView } from "@/components/schedule/schedule-view";
+import { ScheduleBoard, type OwnerEveningTools } from "@/components/schedule/schedule-board";
 import { getViewer } from "@/lib/auth/profile";
 import { namesById } from "@/lib/leads/queries";
 import { eveningsOf, pickEvening } from "@/lib/schedule/board";
@@ -17,10 +16,12 @@ export const metadata: Metadata = {
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-// The Schedule tab for setters and Keenan (Keenan, 2026-11-01). Everyone
-// sees the time picker: open, held and booked times, tonight and the next
-// evenings. Keenan also sees the evening's bookings in full, marks outcomes
-// and blocks times.
+// The Schedule tab for setters and Keenan (Keenan, 2026-11-01 and
+// 2026-11-02). Everyone sees the board: open, held, booked and blocked
+// times, tonight and the next evenings; tapping an open time opens the
+// booking sheet. Keenan also sees the evening's bookings in full, marks
+// outcomes, blocks times and changes an evening's times from the header.
+// His Schedule opens on tonight whenever tonight has meetings.
 export default async function SchedulePage({ searchParams }: { searchParams: Promise<{ day?: string }> }) {
   const { profile: me, real } = await getViewer();
   if (me.role !== "owner" && me.role !== "sales") return <NotForYourRole />;
@@ -31,51 +32,84 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
   const evenings = eveningsOf(board, today, settings.windowDays);
   const { day: dayParam } = await searchParams;
   const lastDay = addDays(today, settings.windowDays);
+  const tonightHasMeetings = board.some((slot) => slot.day === today);
   const day =
-    dayParam && DAY.test(dayParam) && dayParam >= today && dayParam <= lastDay ? dayParam : pickEvening(evenings, today).day;
+    dayParam && DAY.test(dayParam) && dayParam >= today && dayParam <= lastDay
+      ? dayParam
+      : isOwner && tonightHasMeetings
+        ? today
+        : pickEvening(evenings, today).day;
+  const tools = isOwner ? await ownerTools(day) : null;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold">Schedule</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Tap an open time to start booking it. While you book, it is held for you and nobody else can pick it.
-        </p>
-      </div>
-      <ScheduleView
-        board={board}
-        today={today}
-        windowDays={settings.windowDays}
-        asSales={!isOwner}
-        viewerId={real.id !== me.id ? me.id : null}
-        initialDay={day}
-        followDay={isOwner}
-      />
-      {isOwner ? <OwnerEvening day={day} today={today} board={board} /> : null}
-    </div>
+    <ScheduleBoard
+      board={board}
+      today={today}
+      windowDays={settings.windowDays}
+      asSales={!isOwner}
+      viewerId={real.id !== me.id ? me.id : null}
+      initialDay={day}
+      owner={tools}
+    >
+      {isOwner ? <OwnerEvening day={day} today={today} /> : null}
+    </ScheduleBoard>
   );
 }
 
-async function OwnerEvening({
-  day,
-  today,
-  board,
-}: {
-  day: string;
-  today: string;
-  board: Awaited<ReturnType<typeof fetchBoard>>;
-}) {
+// What Keenan's header tools need for the evening on screen: its blocks and
+// its times, its own schedule's or the usual template's.
+async function ownerTools(day: string): Promise<OwnerEveningTools> {
   const supabase = await createClient();
-  const [meetings, { data: settingsRow }, { data: blocks }] = await Promise.all([
-    meetingsOnDay(supabase, day),
-    supabase.from("settings").select("not_qualified_reasons").eq("id", 1).maybeSingle(),
+  const [{ data: settingsRow }, { data: blocks }, { data: owners }] = await Promise.all([
+    supabase
+      .from("settings")
+      .select("meeting_days, meeting_start, meeting_slot_minutes, meeting_slot_count, meeting_host_id")
+      .eq("id", 1)
+      .maybeSingle(),
     supabase
       .from("time_blocks")
       .select("id, starts_at, ends_at, reason")
       .is("removed_at", null)
-      .gte("starts_at", calgaryDayStart(day))
       .lt("starts_at", calgaryDayStart(addDays(day, 1)))
+      .gt("ends_at", calgaryDayStart(day))
       .order("starts_at"),
+    supabase.from("profiles").select("id").eq("role", "owner").limit(1),
+  ]);
+  const host = settingsRow?.meeting_host_id ?? owners?.[0]?.id ?? null;
+  const { data: own } = host
+    ? await supabase
+        .from("day_schedules")
+        .select("meeting_start, meeting_slot_minutes, meeting_slot_count")
+        .eq("host_id", host)
+        .eq("day", day)
+        .is("removed_at", null)
+        .maybeSingle()
+    : { data: null };
+  const weekday = new Date(`${day}T12:00:00Z`).getUTCDay();
+  const usual = {
+    start: (settingsRow?.meeting_start ?? "18:00").slice(0, 5),
+    minutes: settingsRow?.meeting_slot_minutes ?? 45,
+    count: settingsRow?.meeting_slot_count ?? 4,
+  };
+  return {
+    day,
+    blocks: (blocks ?? []).map((block) => ({ id: block.id, startsAt: block.starts_at, endsAt: block.ends_at, reason: block.reason })),
+    template: {
+      start: own ? own.meeting_start.slice(0, 5) : usual.start,
+      minutes: own?.meeting_slot_minutes ?? usual.minutes,
+      count: own?.meeting_slot_count ?? usual.count,
+      own: Boolean(own),
+      usualDay: (settingsRow?.meeting_days ?? []).includes(weekday),
+      usual,
+    },
+  };
+}
+
+async function OwnerEvening({ day, today }: { day: string; today: string }) {
+  const supabase = await createClient();
+  const [meetings, { data: settingsRow }] = await Promise.all([
+    meetingsOnDay(supabase, day),
+    supabase.from("settings").select("not_qualified_reasons").eq("id", 1).maybeSingle(),
   ]);
   const names = await namesById(
     supabase,
@@ -85,9 +119,6 @@ async function OwnerEvening({
   const held = meetings.filter((meeting) => meeting.status !== "moved" && meeting.status !== "cancelled");
   const distances = legs(held.map((meeting) => ({ startsAt: meeting.starts_at, lat: meeting.lead.lat, lng: meeting.lead.lng, neighbourhood: meeting.lead.neighbourhood })));
   const legById = new Map(held.map((meeting, index) => [meeting.id, { km: distances[index], previous: held[index - 1]?.starts_at ?? null }]));
-  const daySlots = board.filter((slot) => slot.day === day);
-  const evening =
-    daySlots.length > 0 ? { startsAt: daySlots[0].startsAt, endsAt: daySlots[daySlots.length - 1].endsAt } : null;
   const now = requestTime();
 
   return (
@@ -114,11 +145,6 @@ async function OwnerEvening({
           />
         ))
       )}
-      <BlockControls
-        evening={evening}
-        openTimes={daySlots.filter((slot) => slot.state === "open").map((slot) => ({ startsAt: slot.startsAt, endsAt: slot.endsAt }))}
-        blocks={blocks ?? []}
-      />
     </section>
   );
 }

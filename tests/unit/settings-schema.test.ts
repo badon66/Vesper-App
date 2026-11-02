@@ -27,7 +27,9 @@ const valid = {
   booking_window_days: "14",
   distance_warning_km: "10",
   lost_reasons: "price\nother company\nnot now",
-  door_guide: "1. Open.\r\n2. Find out.\r\n",
+  step_note_at_door: "Who you are.\r\nFind out.\r\n",
+  step_note_after_door: "Photos.",
+  step_note_book: "Book it.",
   not_qualified_reasons: "Not the homeowner\nDecision maker missing\nOther",
   company_name: "Vesper Lighting, Inc.",
   company_phone: "",
@@ -95,18 +97,22 @@ describe("parseSettingsForm", () => {
     if (withNumber.ok) expect(settingsUpdateFromValues(withNumber.values).gst_number).toBe("123456789 RT0001");
   });
 
-  it("keeps the Door guide's line breaks, trims it, and refuses it empty or too long", () => {
+  it("keeps each step note's line breaks, trims it, and refuses it empty or too long", () => {
     const result = parseSettingsForm(valid);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.values.door_guide).toBe("1. Open.\n2. Find out.");
-      expect(settingsUpdateFromValues(result.values).door_guide).toBe("1. Open.\n2. Find out.");
+      expect(result.values.step_note_at_door).toBe("Who you are.\nFind out.");
+      const update = settingsUpdateFromValues(result.values);
+      expect([update.step_note_at_door, update.step_note_after_door, update.step_note_book]).toEqual(["Who you are.\nFind out.", "Photos.", "Book it."]);
+      expect(update).not.toHaveProperty("door_guide");
     }
-    const empty = parseSettingsForm({ ...valid, door_guide: "  \n " });
-    expect(empty.ok).toBe(false);
-    if (!empty.ok) expect(empty.errors.door_guide).toBe("cannot be empty");
-    expect(parseSettingsForm({ ...valid, door_guide: "x".repeat(4001) }).ok).toBe(false);
-    expect(parseSettingsForm({ ...valid, door_guide: "x".repeat(4000) }).ok).toBe(true);
+    for (const field of ["step_note_at_door", "step_note_after_door", "step_note_book"] as const) {
+      const empty = parseSettingsForm({ ...valid, [field]: "  \n " });
+      expect(empty.ok).toBe(false);
+      if (!empty.ok) expect(empty.errors[field]).toBe("cannot be empty");
+      expect(parseSettingsForm({ ...valid, [field]: "x".repeat(2001) }).ok).toBe(false);
+      expect(parseSettingsForm({ ...valid, [field]: "x".repeat(2000) }).ok).toBe(true);
+    }
   });
 
   it("keeps the booking cutoff, hold grace period and window within sensible bounds", () => {
@@ -160,6 +166,9 @@ describe("settingsRowToFormDefaults", () => {
       presentation: [],
       lost_reasons: ["price", "other"],
       door_guide: "1. Open.\n2. Find out.",
+      step_note_at_door: "Who you are.",
+      step_note_after_door: "Photos.",
+      step_note_book: "Book it.",
       not_qualified_reasons: ["Not the homeowner", "Other"],
       booking_cutoff_minutes: 30,
       hold_grace_minutes: 2,
@@ -179,7 +188,7 @@ describe("settingsRowToFormDefaults", () => {
     expect(defaults.commission_rate_percent).toBe("12.5");
     expect(defaults.meeting_start).toBe("18:00");
     expect(defaults.lost_reasons).toBe("price\nother");
-    expect(defaults.door_guide).toBe("1. Open.\n2. Find out.");
+    expect([defaults.step_note_at_door, defaults.step_note_after_door, defaults.step_note_book]).toEqual(["Who you are.", "Photos.", "Book it."]);
     expect(defaults.not_qualified_reasons).toBe("Not the homeowner\nOther");
     expect([defaults.booking_cutoff_minutes, defaults.hold_grace_minutes, defaults.booking_window_days]).toEqual(["30", "2", "14"]);
     expect(defaults.company_name).toBe("Vesper");
@@ -188,7 +197,7 @@ describe("settingsRowToFormDefaults", () => {
   it("survives a company value that is not an object", () => {
     const defaults = settingsRowToFormDefaults({
       id: 1, price_per_ft: 1, box_price: 1, neighbour_discount: 0, referral_credit: 0, gst_rate: 0, gst_enabled: false, gst_number: null,
-      booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], door_guide: "g", not_qualified_reasons: ["Other"], booking_cutoff_minutes: 30, hold_grace_minutes: 2, booking_window_days: 14, meeting_host_id: null, meeting_days: [1],
+      booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], door_guide: "g", step_note_at_door: "a", step_note_after_door: "b", step_note_book: "c", not_qualified_reasons: ["Other"], booking_cutoff_minutes: 30, hold_grace_minutes: 2, booking_window_days: 14, meeting_host_id: null, meeting_days: [1],
       meeting_start: "18:00:00", meeting_slot_minutes: 45, meeting_slot_count: 4, distance_warning_km: 10,
       company: "nonsense", updated_at: "2026-10-26T00:00:00Z",
     });

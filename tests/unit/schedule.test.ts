@@ -60,7 +60,7 @@ describe("the schedule board", () => {
   it("opens on tonight while it has an opening", () => {
     const evenings = eveningsOf([slot("2026-11-02", "23:00", "open"), slot("2026-11-03", "23:00", "open")], "2026-11-02", 14);
     expect(evenings).toHaveLength(15);
-    expect(pickEvening(evenings, "2026-11-02")).toEqual({ day: "2026-11-02", tonightFull: false });
+    expect(pickEvening(evenings, "2026-11-02")).toEqual({ day: "2026-11-02", tonightFull: false, tonightHasTimes: true });
   });
 
   it("says tonight is full and opens the next evening with an opening", () => {
@@ -71,12 +71,12 @@ describe("the schedule board", () => {
       slot("2026-11-05", "23:00", "open"),
     ];
     const evenings = eveningsOf(slots, "2026-11-02", 14);
-    expect(pickEvening(evenings, "2026-11-02")).toEqual({ day: "2026-11-05", tonightFull: true });
+    expect(pickEvening(evenings, "2026-11-02")).toEqual({ day: "2026-11-05", tonightFull: true, tonightHasTimes: true });
     expect(evenings.find((e) => e.day === "2026-11-04")?.slots).toEqual([]);
   });
 
   it("stays on tonight when nothing is open in the whole window", () => {
-    expect(pickEvening(eveningsOf([], "2026-11-02", 14), "2026-11-02")).toEqual({ day: "2026-11-02", tonightFull: true });
+    expect(pickEvening(eveningsOf([], "2026-11-02", 14), "2026-11-02")).toEqual({ day: "2026-11-02", tonightFull: true, tonightHasTimes: false });
   });
 
   it("names evenings the way people say them", () => {
@@ -96,6 +96,7 @@ describe("distances", () => {
     expect(kmBetween(evanston, mahogany)).toBeLessThan(34);
     expect(formatKm(3.25)).toBe("3.3 km");
     expect(formatKm(33.4)).toBe("33 km");
+    expect(formatKm(0.04)).toBe("under 100 m");
   });
 
   it("warns about the meetings just before and after a time when they are too far, and only those", () => {

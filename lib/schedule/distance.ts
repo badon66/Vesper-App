@@ -17,6 +17,7 @@ export function kmBetween(a: Point, b: Point): number {
 }
 
 export function formatKm(km: number): string {
+  if (km < 0.1) return "under 100 m";
   return `${km < 10 ? km.toFixed(1) : Math.round(km)} km`;
 }
 

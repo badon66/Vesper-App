@@ -22,18 +22,22 @@ type Taken = {
 // uploaded straight away, like every other photo. In a lead form the
 // uploaded path travels with the form; on a lead page the photo goes into
 // its slot as soon as it is up, and the photo it replaces stays as an extra.
+// The booking sheet uses the tiles layout: each slot is one tap target, so
+// all four fit on a phone screen without scrolling.
 export function PhotoSlots({
   userId,
   mode,
   leadId,
   saved = {},
   canTake = true,
+  layout = "list",
   onBusyChange,
   onTakenChange,
 }: {
   userId: string;
   mode: "form" | "attach";
   leadId?: string;
+  layout?: "list" | "tiles";
   // Signed links to the photos already in each slot, on a lead page.
   saved?: Partial<Record<PhotoSlot, string>>;
   canTake?: boolean;
@@ -119,6 +123,85 @@ export function PhotoSlots({
     void upload(slot, attempt, file);
   }
 
+  const input = (slot: PhotoSlot) => (
+    <input
+      ref={(element) => {
+        inputs.current[slot] = element;
+      }}
+      type="file"
+      accept="image/*"
+      capture="environment"
+      tabIndex={-1}
+      aria-hidden="true"
+      className="sr-only"
+      data-testid={`slot-input-${slot}`}
+      onChange={(event) => onFile(slot, event.currentTarget.files)}
+    />
+  );
+
+  if (layout === "tiles") {
+    return (
+      <div className="flex flex-col gap-3">
+        <ul className="grid grid-cols-2 gap-3" aria-label="Guided photos">
+          {PHOTO_SLOTS.map(({ slot, label, hint }) => {
+            const local = taken[slot];
+            const src = local?.preview ?? saved[slot];
+            const failed = local?.status === "failed";
+            const action = failed ? "Try the upload again" : src ? "Retake" : "Take photo";
+            // Front and both corners are needed to book; the soffit close-up helps.
+            const optional = slot === "soffit";
+            const status = local?.status === "working" ? `${label}: uploading` : failed ? `${label}: didn't upload. Tap to try again.` : "";
+            return (
+              <li key={slot} data-slot={slot}>
+                <button
+                  type="button"
+                  disabled={!canTake}
+                  aria-label={`${action}, ${label}`}
+                  onClick={() => (failed && local ? void upload(slot, local.attempt, local.source) : inputs.current[slot]?.click())}
+                  className="relative flex aspect-[16/10] w-full overflow-hidden rounded-md border bg-muted text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
+                >
+                  {src ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element -- a local preview, or a private photo behind a short-lived signed link */}
+                      <img src={src} alt={`${label} photo of the house`} className="absolute inset-0 size-full object-cover" />
+                      <span className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-background px-2 py-1 text-xs font-semibold">
+                        <span className="truncate">{label}</span>
+                        {local?.status === "working" ? (
+                          <span className="shrink-0 text-muted-foreground">Uploading</span>
+                        ) : failed ? null : canTake ? (
+                          <span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground">
+                            <Camera aria-hidden="true" className="size-3.5" />
+                            Retake
+                          </span>
+                        ) : null}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="flex size-full flex-col items-center justify-center gap-1 px-3 text-center">
+                      <Camera aria-hidden="true" className="size-6 text-muted-foreground" />
+                      <span className="text-sm font-semibold">{label}</span>
+                      <span className="text-xs text-pretty text-muted-foreground">{optional ? `Optional. ${hint}` : hint}</span>
+                    </span>
+                  )}
+                  {failed ? (
+                    <span className="absolute inset-0 flex items-center justify-center bg-background px-3 text-center text-sm font-semibold text-pretty text-destructive">
+                      {label} didn&apos;t upload. Tap to try again.
+                    </span>
+                  ) : null}
+                </button>
+                <span className="sr-only" aria-live="polite">
+                  {status}
+                </span>
+                {canTake ? input(slot) : null}
+              </li>
+            );
+          })}
+        </ul>
+        {canTake ? <p className="text-xs text-pretty text-muted-foreground">{PHOTO_SLOT_HINT}</p> : null}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <ul className="grid grid-cols-2 gap-3" aria-label="Guided photos">
@@ -168,19 +251,7 @@ export function PhotoSlots({
                     <Camera aria-hidden="true" />
                     {src ? "Retake" : "Take photo"}
                   </Button>
-                  <input
-                    ref={(element) => {
-                      inputs.current[slot] = element;
-                    }}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    tabIndex={-1}
-                    aria-hidden="true"
-                    className="sr-only"
-                    data-testid={`slot-input-${slot}`}
-                    onChange={(event) => onFile(slot, event.currentTarget.files)}
-                  />
+                  {input(slot)}
                 </>
               ) : !src ? (
                 <p className="text-xs text-muted-foreground">No photo yet.</p>

@@ -35,12 +35,23 @@ const pairs: [text: string, surface: string, minimum: number][] = [
   ["muted-foreground", "background", 4.5],
   ["muted-foreground", "card", 4.5],
   ["foreground", "muted", 4.5],
+  // Schedule tiles: the quiet second line on booked, blocked and held times.
+  ["muted-foreground", "secondary", 4.5],
+  ["muted-foreground", "muted", 4.5],
   ["primary-foreground", "primary", 4.5],
   ["secondary-foreground", "secondary", 4.5],
   ["accent-foreground", "accent", 4.5],
   ["destructive", "background", 4.5],
   ["destructive", "card", 4.5],
   ["destructive-foreground", "destructive", 4.5],
+];
+
+// The edges that show where a field, an unpicked answer or an unticked box
+// is, against every surface they sit on (WCAG 1.4.11, 3:1).
+const edges: [edge: string, surface: string, minimum: number][] = [
+  ["input", "background", 3],
+  ["input", "card", 3],
+  ["input", "muted", 3],
 ];
 
 describe.each([
@@ -52,5 +63,8 @@ describe.each([
     expect(t[text], text).toBeDefined();
     expect(t[surface], surface).toBeDefined();
     expect(contrast(t[text], t[surface])).toBeGreaterThanOrEqual(minimum);
+  });
+  it.each(edges)("the %s edge on %s reaches %s:1", (edge, surface, minimum) => {
+    expect(contrast(t[edge], t[surface])).toBeGreaterThanOrEqual(minimum);
   });
 });

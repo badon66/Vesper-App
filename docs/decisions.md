@@ -484,3 +484,123 @@ Judgment calls made while building it, for Keenan to look over.
 - The error names the variable and never prints the value. It also says to delete the key in Supabase if it was ever deployed.
 - Unit tests cover the check, including that `next.config.ts` refuses to load. A real build was shown to stop within seconds with a made-up secret key in a public variable, set either in the environment or in a local env file.
 - The rule is in CLAUDE.md (rule 6), `.env.example` and `docs/05-supabase-setup.md`.
+
+## 2026-11-02: The secret key incident is closed
+
+Keenan confirmed everything the check asked about was him:
+- his three password sign-ins (2026-10-26, 2026-10-28 and 2026-11-01);
+- the two Springbank knock sessions on his account;
+- the one sign-in to keenancudi@gmail.com.
+
+Nothing else in the logs pointed anywhere else, so the incident is closed. Vercel's own request logs aren't needed, and the Vercel connection stays off.
+
+## 2026-11-02: Meeting times in Settings are Keenan's choice
+
+Whatever Settings says about the meeting template (start, length, number, days) is Keenan's choice. Reports stop flagging it. The 5:00 pm, 35-minute note under "M3 as built" stays as history.
+
+## 2026-11-02: M3.5, the booking sheet and Schedule redesign, before M4
+
+Keenan tried M3: every rule is right, but the screens don't follow how a setter works at a door. M4 is on hold until M3.5 is done.
+
+**What stays exactly as it is.** Holds, no double booking, Before you book, pay and every existing test.
+
+**Approved schema additions, all additive:**
+- the Looked into it before column on leads, with its own answers;
+- the per-step notes in Settings;
+- a table for day-specific schedules.
+
+**The impeccable design skill** (github.com/pbakaus/impeccable, Apache 2.0) is in `.claude/skills/impeccable`, with its license and notice, so every session has it. Its hooks are not installed.
+- Its init and document steps were answered from CLAUDE.md and docs/ instead of an interview, as Keenan asked. They wrote `PRODUCT.md` and `DESIGN.md` at the repository root.
+- CLAUDE.md's design rules win over anything it suggests.
+- Its critique scores for the booking flow and the Schedule page are recorded before and after the redesign, below.
+
+**Judgment calls, made before building:**
+- **When the sheet saves the lead.**
+  - A lead needs a first name and an address in the database, so the sheet saves it the moment it has both: when the setter leaves the address screen in After the door.
+  - Before that, what was entered lives on the phone, and survives a reload.
+  - After that, each screen saves as the setter goes, and photos attach to the lead as they upload.
+  - Letting go after that point keeps the lead as New.
+- **Let go asks first.** It is one small button next to the Back button, and the customer's time depends on it, so it asks "Let go of 7:30 pm?" and says whether the person is already saved.
+- **One sheet for every booking.**
+  - From Schedule or Home, tapping a time opens the sheet on the steps.
+  - From New lead's Save and book and the lead page's Book a meeting, the sheet opens on the times first, then skips every screen that is already filled in.
+  - Moving a booking uses the same sheet: pick the new time, then Move.
+  - The old Book a meeting page sends old links to Schedule. New lead loses its "Hold a time" button; the sheet holds the time now.
+- **A reload doesn't lose the booking.** If the phone reloads the app while the sheet is open (iPhones sometimes do after the camera), the sheet comes back on the same screen, as long as the time is still the person's.
+- **Day schedules are per meeting host and per evening.**
+  - "Just this day" gives that evening its own start, length and number of meetings.
+  - "All days" updates the defaults in Settings and drops that evening's own schedule. Other evenings Keenan set on their own keep their times, and the pop-up names them.
+  - An evening with its own schedule can go back to the usual times.
+  - A day schedule can also open an evening that isn't one of the usual meeting days.
+- **Bookings that no longer line up.**
+  - A booked meeting stays at its time, and the board shows it there.
+  - Times on the new template that overlap it are left off the board, so Keenan is never booked into two meetings at once.
+  - A hold on a time that disappears lets go at once, so the setter isn't stuck on a time that can't be booked; the pop-up warns about holds as well as bookings.
+- **The "?" notes.** Three notes, one each for At the door, After the door and Book. The old Door guide text stays in the database, unused. New lead shows the same notes behind a "?" where the Door guide card was.
+- **View as.** The sheet starts with a hold, which is a write, so it can't open while viewing; the times stay disabled there, as in M3. Everything the sheet adds to the lead page, the lead form and Schedule shows in View as exactly as the person sees it.
+
+## 2026-11-02: M3.5 as built
+
+**Judgment calls made while building and polishing:**
+- **Keenan's Schedule opens on tonight** whenever tonight has meetings, so his own evening is the first thing he sees. Setters still open on the first evening with an open time.
+- **Times keep the app's Canadian style**, "7:30 p.m.", so the done screen reads "Booked for 7:30 p.m. tonight." Tomorrow's times say "tomorrow", as the evening strip does.
+- **A day change that drops a held time** releases the hold with the existing reason `released`. Adding a new reason would mean replacing the check constraint, a drop, which wasn't asked for.
+- **Chosen things are light, not gold.** A chosen answer and the evening on screen are marked in Night Text with a tick or an outline. Gold stays on the next action: the primary button, open times and the held time (DESIGN.md, the Porch Light Rule).
+- **Keenan can tap booked and blocked times.** A booked one takes him to its card and lights it up; a blocked one opens Unblock.
+- **Escape in the address field** closes the suggestions, not the sheet.
+- **The board shows every booked meeting at its own time and length** (migration 20261102051654, the function only).
+  - The critique found that after a day change to longer meetings, a booking that still lined up could drop off the board.
+  - Booking, holds and the double-booking checks never read the board, so no double booking was ever possible. Only the display was wrong.
+  - A new database test proves the fix.
+- **Block time's "whole evening" blocks every open time.** It writes one block for each run of back-to-back open times. Booked and held times are never part of a block, so the database never refuses it, and the button says what it blocks.
+- **The pencil pop-up asks before All days, and can do nothing.**
+  - Cancel is there.
+  - Just this day and All days stay off until something changes and the bookings have been checked.
+  - It shows the evening as setters will see it, with a one-line summary by the buttons.
+- **The sheet comes back after a reload even if the hold let go**, when anything was typed. It says the hold let go and offers it again when it is still free. This goes beyond the M3.5 rule, which covered a held time only, because losing what was typed at the door costs more than the extra screen.
+- **The screen stays on while a time is held** (the browser's Screen Wake Lock, where the phone has it), so a phone that would lock mid-conversation doesn't let the hold lapse.
+- **Let go moved to the left, above Back.** A slip near Next can then only pick another time, which keeps the hold. Its confirmation puts "Keep holding" where Next was. It also offers "Let go and open their lead to set a follow-up day", or "Add the address to save them first" when the person isn't saved yet.
+- **An answer that rules out booking says so at once.** Owns the home: No and Wants a price: Not yet each get a line under the question. At Book they show as answers with "Change answer", not as missing items.
+- **Field and checkbox edges reach 3:1 in both themes** (WCAG 1.4.11). Night Input changes from #2f4958 to #5e7a8a and Day Input from #c7d0d6 to #7d8f9b. The contrast test now checks edges as well as text.
+- **On an iPad in landscape, Keenan's Schedule has two panes**: the board on the left, held in place, and the evening's bookings on the right.
+
+**Critique method.** Nielsen's 10 heuristics, out of 40. Two isolated reviewers scored, without seeing each other or the detector, and two isolated detector runs checked the code and the rendered pages. The critique step that asks the user which issues to fix was skipped (Questions skipped: Keenan's brief set direction and scope: critique, adapt, clarify and polish before merging).
+
+**Scores** (snapshots in `.impeccable/critique/`):
+
+| Surface | Before M3.5 | After the build | Final, after the critique fixes |
+|---|---|---|---|
+| Booking flow | 23/40, Acceptable | 29/40, Good | 31/40, Good |
+| Schedule page | 26/40, Acceptable | 27/40, Acceptable | 31/40, Good |
+
+The detector found no problems in the source either time. In the rendered pages it found one advisory on the final round (a word left alone on a line in a meeting card), which was fixed.
+
+**Fixed after the final scoring**, from the final reviews:
+- **Booking sheet bugs:**
+  - Back and Pick another time lost a typed address.
+  - Book could do nothing for a person who wasn't saved yet.
+  - A taken time showed two notices.
+  - Let go during a Move had the wrong message.
+- **Booking sheet checks:**
+  - The phone is now checked at the door.
+  - Picking an address runs New lead's existing-lead check.
+  - The chip says when there's no signal to check the hold.
+- **Booking sheet layout:**
+  - An existing lead's Find out 2 of 2 no longer scrolls.
+  - The Book checklist follows the screens' order.
+- **Schedule:**
+  - The times pop-up names holds that will let go.
+  - "Use the usual times" asks first.
+  - A time no longer splits from its "p.m." across lines.
+- **Light theme:** the New lead tab label is navy, because gold text on white is 2.9:1.
+
+The final scores were measured before these fixes.
+
+**Left for later**, in the backlog: the iPad homeowner half, Undo after a day change, marks on the evening strip, the distance warning at time pick, and Move offered on an already-booked lead.
+
+## 2026-11-02: Supabase SQL runs without a prompt (Keenan)
+
+Keenan asked for SQL changes to be accepted automatically. `.claude/settings.json` (committed, so every session has it) allows the two Supabase tools that run SQL, `execute_sql` and `apply_migration`, without a permission prompt. The rules in CLAUDE.md are unchanged:
+- every database change is still a migration file;
+- no destructive SQL (drop, delete, truncate) goes through the connector;
+- a migration that truly has to drop or delete still waits for Keenan at the screen.

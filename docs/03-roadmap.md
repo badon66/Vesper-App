@@ -2,7 +2,7 @@
 
 One milestone per build session. A milestone is done when every criterion passes in the full automated suite, including the live walk-through on a phone-sized screen against the real database. Anything the suite cannot reach is named in the report. Keep the current milestone marked.
 
-**Current milestone: M4** (M3 done 2026-11-01; M4 not started)
+**Current milestone: M4**, next. M3.5, the booking sheet and Schedule redesign Keenan asked for on 2026-11-02, is done; M4 starts with its plan, for Keenan's approval.
 
 ## M0: Foundation
 Repo, Next.js App Router with TypeScript, Tailwind, shadcn/ui, Supabase client and server helpers, environment setup, PWA manifest and icons, base layout with the brand, light and dark themes, a protected `/app` route group with a working email and password login (accounts are created by the owner in the Supabase dashboard until M1), Vercel preview deploy.
@@ -101,7 +101,41 @@ Approved by Keenan on 2026-11-01 with his answers and changes (see `decisions.md
 
 All proved on 2026-11-01 by the unit, RLS and live suites against the real database: the database race tests run 25 rounds each per run, the two-browser walk-through drives two test setters on phone-sized screens, and View as is compared screen by screen through the approved one-time owner session. That session only looks, so Keenan's outcome buttons, Mark paid, time blocks and a booking he makes for a setter's lead are walked up to the save and proved in the database tests, with the service role standing in.
 
+## M3.5: The booking sheet and Schedule redesign (phone and iPad)
+Asked for by Keenan on 2026-11-02, after trying M3: every rule is right, but the screens don't follow how a setter works at a door. The moment it is designed for: the homeowner is getting serious, the setter shows them the open times, they pick one together, and the setter finishes the details in the conversation and right after leaving the door. The rules don't change: holds, no double booking, Before you book and pay stay exactly as they are, and every existing test keeps passing.
+- [x] Tapping an open time on Schedule or Home holds it and opens a full-screen booking sheet over the screen; letting go closes it and returns to where the person was. There are no page hops
+- [x] The sheet assumes a new person and starts straight into the steps; a small "Existing lead instead" link lists the person's New and Follow up leads (all of them for the owner), and picking one skips every screen already filled in
+- [x] A progress bar with the step names sits at the top: At the door, After the door, Book. A "?" in the top corner shows that step's note; Keenan edits the three notes in Settings, they replace the single Door guide wherever it showed, and the old setting stays, unused
+- [x] The bottom bar is always there: Back, and Next as the primary button at the bottom right in thumb reach, with smaller "Pick another time" and "Let go" buttons. Nothing important sits at the top centre. One step per screen, one-tap answers, and no scrolling on a phone-sized screen (390 by 844) for any screen of At the door or After the door
+- [x] At the door: name and phone, then one-tap Find out answers: Owns the home, Wants a price, Christmas lights now, Looked into it before (new: Got quotes, Thought about it, New to them), Which areas, Timing, and the confirmation that everyone who decides will be there
+- [x] After the door: the address (picked from the suggestions, or "Use where I'm standing"), the soffit colour, and the guided photos (Front, Left corner, Right corner, Soffit close-up) with the photo skip option
+- [x] Book: a short summary, every Before you book item ticked or linked to the screen that is missing it, and the Book button; then a done screen ("Booked for 7:30 pm tonight.")
+- [x] The time stays held through every step and the sheet shows it; if the hold lapses, the sheet says so and offers to hold it again when the time is still free; a reload while the sheet is open brings it back on the same screen while the time is still the person's
+- [x] New lead's "Save and book", the lead page's "Book a meeting" and Move open the same sheet, prefilled; it is the only booking experience
+- [x] Schedule header, owner only, on phone and iPad: small "Block time" and pencil buttons at the right; setters never see them. Block time opens a pop-up to block one time or the whole evening, and blocked times show on the board itself, where Keenan can unblock them; the blocked-times section is gone
+- [x] The pencil opens a pop-up to change that evening's start time, meeting length and number of meetings, saved as "Just this day" or "All days" (which updates the defaults in Settings). A day change never moves or cancels a booking: one that no longer lines up stays at its time, shows there on the board, and the pop-up warns about it before saving
+- [x] Open times, holds and booking read the evening's own schedule when it has one, otherwise the defaults. The double-booking race tests and the slot checks cover day schedules
+- [x] Everything new works in View as and is in the View as comparison test
+- [x] The walk-through drives the sheet end to end, including two setters racing for the same time through it
+- [x] The impeccable skill is installed, its critique scores for the booking flow and the Schedule page are recorded before and after, and screenshots of every step at phone and iPad sizes, as a setter and as Keenan, are reviewed before merging
+- Proof (2026-11-02):
+  - **Unit:** 211 tests.
+  - **Database:** 113 tests, including:
+    - 25-round races for holds and bookings on the default times and on an evening with its own times;
+    - day schedules;
+    - every booking staying on the board after a day change.
+  - **Smoke:** 5 tests.
+  - **Live walk-throughs:**
+    - M1: 22 checks.
+    - M2: 86 checks, including the step notes and Looked into it before.
+    - M3: 88 checks, including three rounds of two setters racing for one time through the sheet, a reload mid-sheet, a lapsed hold held again, an existing lead, the distance warning, Move and Cancel, Save and book, and Keenan's tools, view only.
+    - View as: 100 checks.
+  - **Critique** (Nielsen, out of 40):
+    - Booking flow: 23 before, 31 final.
+    - Schedule: 26 before, 31 final.
+
 ## M4: Pipeline board and lead detail (iPad and desktop)
+Was on hold until M3.5 was done (Keenan, 2026-11-02); M3.5 is done, so this is next, starting with the plan for Keenan's approval.
 - [ ] The board is a Board view inside Leads for the owner on iPad and desktop; phones keep the list
 - [ ] Board columns match the status enum, cards show name, address, neighbourhood, setter, feet and total when quoted, and age
 - [ ] Drag between columns on iPad and desktop writes a status change event; `lost` prompts for a reason

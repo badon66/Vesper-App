@@ -18,6 +18,14 @@ Ideas and removed features that are not in the current milestone. Say which vers
 - Supabase Realtime instead of polling for the schedule board, if the few-second poll ever feels slow or costly.
 - Paging on Leads. The list shows the newest 200 and says so; search reaches older ones. Add "Show more" once the team has that many.
 
+From the M3.5 design critiques (2026-11-02), not built:
+- The booking sheet on an iPad: a homeowner's half, with the held time large, instead of the phone layout centred.
+- Schedule: a one-line confirmation with Undo after a day change; a mark on the evening strip for evenings with their own times or blocks; photos on Keenan's cards for evenings other than tonight.
+- The distance warning when the time is picked, not only at Book, so "pick another time" can happen while the homeowner is still at the door.
+- "This lead already has a meeting booked" offering Move directly.
+- Light theme: a 2 px border on open times (gold on white is 2.9:1; the word "Open" carries the state today).
+- A screen reader announcement when a focused time is held or booked by someone else.
+
 ## Infrastructure
 
 - **A second Supabase project, a test copy.** Someday, and only when Keenan asks; not recommended for now. The app stays ready for it: every database change is a migration, nothing hard-codes the project, and `docs/05-supabase-setup.md` has the dashboard settings and the setup steps, owner account included.

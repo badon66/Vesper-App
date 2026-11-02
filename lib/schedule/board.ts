@@ -70,12 +70,14 @@ export function eveningsOf(slots: BoardSlot[], today: string, windowDays: number
 }
 
 // Which evening the time picker opens on: tonight, or when tonight has
-// nothing left, the next evening with an opening.
-export function pickEvening(evenings: Evening[], today: string): { day: string; tonightFull: boolean } {
+// nothing left, the next evening with an opening. tonightHasTimes tells "no
+// meetings tonight" (a Sunday) from "nothing left tonight".
+export function pickEvening(evenings: Evening[], today: string): { day: string; tonightFull: boolean; tonightHasTimes: boolean } {
   const tonight = evenings.find((evening) => evening.day === today);
-  if (tonight && tonight.open > 0) return { day: today, tonightFull: false };
+  const tonightHasTimes = Boolean(tonight && tonight.slots.length > 0);
+  if (tonight && tonight.open > 0) return { day: today, tonightFull: false, tonightHasTimes };
   const next = evenings.find((evening) => evening.day > today && evening.open > 0);
-  return { day: next?.day ?? today, tonightFull: true };
+  return { day: next?.day ?? today, tonightFull: true, tonightHasTimes };
 }
 
 export function eveningLabel(day: string, today: string): string {

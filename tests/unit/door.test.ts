@@ -17,12 +17,13 @@ const nothing: FindOutAnswers = {
   soffit_colour: null,
   soffit_note: null,
   christmas_lights_now: null,
+  looked_into_before: null,
   areas_wanted: null,
   install_timing: null,
 };
 
 describe("Find out questions", () => {
-  it("asks Keenan's six questions, in his order and his words", () => {
+  it("asks Keenan's seven questions, in his order and his words", () => {
     expect(
       FIND_OUT_QUESTIONS.map((q) => [q.question, q.options.map((option) => option.label).join(" / ")]),
     ).toEqual([
@@ -30,6 +31,7 @@ describe("Find out questions", () => {
       ["Wants a price", "Yes / Not yet"],
       ["Soffit colour", "White / Off-white or cream / Other / Not sure"],
       ["Christmas lights now", "Hires someone / Does it themselves / None"],
+      ["Looked into it before", "Got quotes / Thought about it / New to them"],
       ["Which areas", "Front only / Front and sides / Full wrap / Not sure"],
       ["Timing", "Before Christmas / New year / No rush"],
     ]);
@@ -48,6 +50,7 @@ describe("Find out questions", () => {
       soffit_colour: "other",
       soffit_note: "dark green",
       christmas_lights_now: "diy",
+      looked_into_before: "got_quotes",
       areas_wanted: "full_wrap",
       install_timing: "new_year",
     };
@@ -56,6 +59,7 @@ describe("Find out questions", () => {
       wants_price: "not_yet",
       soffit_colour: "other",
       christmas_lights_now: "diy",
+      looked_into_before: "got_quotes",
       areas_wanted: "full_wrap",
       install_timing: "new_year",
     });
@@ -64,10 +68,11 @@ describe("Find out questions", () => {
       "Not yet",
       "Other: dark green",
       "Does it themselves",
+      "Got quotes",
       "Full wrap",
       "New year",
     ]);
-    expect(findOutAnsweredCount(answers)).toBe(6);
+    expect(findOutAnsweredCount(answers)).toBe(7);
   });
 
   it("tells No apart from not answered", () => {

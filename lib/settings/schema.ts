@@ -102,14 +102,34 @@ export const settingsFormSchema = z.object({
   not_qualified_reasons: lines.pipe(
     z.array(z.string().max(200, { error: "keep each reason under 200 characters" })).min(1, { error: "add at least one reason" }),
   ),
-  door_guide: z
+  // The booking sheet's step notes (M3.5); the old door_guide column stays,
+  // unused, and is no longer edited here.
+  step_note_at_door: z
     .string()
     .transform((text) => text.replace(/\r\n?/g, "\n").trim())
     .pipe(
       z
         .string()
         .min(1, { error: "cannot be empty" })
-        .max(4000, { error: "must be under 4,000 characters" }),
+        .max(2000, { error: "must be under 2,000 characters" }),
+    ),
+  step_note_after_door: z
+    .string()
+    .transform((text) => text.replace(/\r\n?/g, "\n").trim())
+    .pipe(
+      z
+        .string()
+        .min(1, { error: "cannot be empty" })
+        .max(2000, { error: "must be under 2,000 characters" }),
+    ),
+  step_note_book: z
+    .string()
+    .transform((text) => text.replace(/\r\n?/g, "\n").trim())
+    .pipe(
+      z
+        .string()
+        .min(1, { error: "cannot be empty" })
+        .max(2000, { error: "must be under 2,000 characters" }),
     ),
   company_name: z.string().trim().min(1, { error: "cannot be empty" }),
   company_phone: z.string().trim().max(40, { error: "is too long" }),
@@ -166,7 +186,9 @@ export function settingsFormDataToInput(
     distance_warning_km: text("distance_warning_km"),
     lost_reasons: text("lost_reasons"),
     not_qualified_reasons: text("not_qualified_reasons"),
-    door_guide: text("door_guide"),
+    step_note_at_door: text("step_note_at_door"),
+    step_note_after_door: text("step_note_after_door"),
+    step_note_book: text("step_note_book"),
     company_name: text("company_name"),
     company_phone: text("company_phone"),
     company_email: text("company_email"),
@@ -197,7 +219,9 @@ export function settingsUpdateFromValues(v: SettingsFormValues): SettingsUpdate 
     distance_warning_km: v.distance_warning_km,
     lost_reasons: v.lost_reasons,
     not_qualified_reasons: v.not_qualified_reasons,
-    door_guide: v.door_guide,
+    step_note_at_door: v.step_note_at_door,
+    step_note_after_door: v.step_note_after_door,
+    step_note_book: v.step_note_book,
     company: {
       name: v.company_name,
       phone: v.company_phone,
@@ -232,7 +256,9 @@ export type SettingsFormDefaults = {
   distance_warning_km: string;
   lost_reasons: string;
   not_qualified_reasons: string;
-  door_guide: string;
+  step_note_at_door: string;
+  step_note_after_door: string;
+  step_note_book: string;
   company_name: string;
   company_phone: string;
   company_email: string;
@@ -268,7 +294,9 @@ export function settingsRowToFormDefaults(row: SettingsRow): SettingsFormDefault
     distance_warning_km: String(row.distance_warning_km),
     lost_reasons: row.lost_reasons.join("\n"),
     not_qualified_reasons: row.not_qualified_reasons.join("\n"),
-    door_guide: row.door_guide,
+    step_note_at_door: row.step_note_at_door,
+    step_note_after_door: row.step_note_after_door,
+    step_note_book: row.step_note_book,
     company_name: companyField("name"),
     company_phone: companyField("phone"),
     company_email: companyField("email"),
