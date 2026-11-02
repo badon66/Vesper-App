@@ -67,11 +67,11 @@ export async function startMeetingForNewPerson(_previous: NewPersonState, formDa
   const input = leadFormDataToInput(formData);
   const parsed = parseLeadForm({ ...input, source: "other" });
   if (!parsed.ok) {
-    const { first_name, last_name, address_line, lat } = parsed.errors;
-    return {
-      error: "A field needs a look.",
-      errors: { first_name, last_name, address_line: address_line ?? lat },
-    };
+    const { first_name, last_name, address_line } = parsed.errors;
+    if (first_name || last_name || address_line) {
+      return { error: "A field needs a look.", errors: { first_name, last_name, address_line } };
+    }
+    return { error: "The address details didn't look right. Pick the address from the suggestions, or type it again." };
   }
   const { values } = parsed;
   const supabase = await createClient();

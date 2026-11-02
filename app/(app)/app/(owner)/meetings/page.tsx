@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { MeetingItem, type MeetingItemData } from "@/components/meetings/meeting-item";
 import { StartMeeting } from "@/components/meetings/start-meeting";
 import { TonightList } from "@/components/meetings/tonight-list";
+import { NotForYourRole } from "@/components/not-for-your-role";
 import { requireProfile } from "@/lib/auth/profile";
 import { getPublicEnv } from "@/lib/env";
 import { namesById } from "@/lib/leads/queries";
@@ -25,6 +26,9 @@ const MARKED = new Set(["qualified", "not_qualified", "no_show"]);
 // booked; Get tonight ready to keep tonight on the iPad.
 export default async function MeetingsPage() {
   const me = await requireProfile();
+  // The layout's gate only swaps what shows; a page still runs and sends
+  // its data. So the page checks too, before it reads anything.
+  if (me.role !== "owner") return <NotForYourRole />;
   const supabase = await createClient();
   const today = calgaryToday();
   const now = requestTime();
@@ -93,7 +97,7 @@ export default async function MeetingsPage() {
           </h2>
           <p className="text-sm text-muted-foreground">
             {upcoming.length === 0
-              ? `Nothing booked after tonight yet. Bookings open ${settings.windowDays} days ahead.`
+              ? `Nothing booked after tonight yet. When a setter books a later evening, up to ${settings.windowDays} days ahead, it shows here.`
               : `The next ${settings.windowDays} days, by evening.`}
           </p>
         </div>

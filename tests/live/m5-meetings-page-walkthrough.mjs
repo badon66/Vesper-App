@@ -355,6 +355,11 @@ try {
     "a setter who opens Meetings gets Not for your role, and none of the meetings",
     (await setterPage.getByRole("heading", { name: "Not for your role" }).count()) === 1 && (await setterPage.getByTestId("meeting-item").count()) === 0,
   );
+  const setterSource = await setterPage.content();
+  check(
+    "and its page source carries none of them: no names, no addresses",
+    !setterSource.includes(street) && !setterSource.includes(`${TEST_LEAD} Tonight`) && !setterSource.includes(`${TEST_LEAD} Later`),
+  );
   await setterContext.close();
 
   // ---------------------------------------------------------------- nothing written as Keenan

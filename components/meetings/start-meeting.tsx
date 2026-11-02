@@ -58,7 +58,13 @@ function StartPanel({ mapsKey }: { mapsKey: string | null }) {
   const [neighbourhood, setNeighbourhood] = useState("");
   // New lead's own check: a house that already has a lead.
   const [sameHouse, setSameHouse] = useState<DuplicateLead[]>([]);
-  const [state, formAction, pending] = useActionState(startMeetingForNewPerson, initialState);
+  const [state, formAction, pending] = useActionState(async (previous: NewPersonState, formData: FormData) => {
+    try {
+      return await startMeetingForNewPerson(previous, formData);
+    } catch {
+      return { error: "No signal. They weren't added. Try again once you have signal." };
+    }
+  }, initialState);
 
   // Search as Keenan types, keeping only the newest answer.
   useEffect(() => {
