@@ -1,4 +1,10 @@
 import type { NextConfig } from "next";
+import { assertNoSecretsInPublicEnv } from "./lib/public-env-guard";
+
+// Refuse to build, or to start the dev server, with a Supabase secret key in
+// any NEXT_PUBLIC_ variable: those values go to every visitor's browser.
+// See lib/public-env-guard.ts and docs/decisions.md (2026-11-02).
+assertNoSecretsInPublicEnv(process.env);
 
 const nextConfig: NextConfig = {
   // People and Settings moved into Admin, and the owner's Home became the
