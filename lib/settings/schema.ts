@@ -40,6 +40,20 @@ const percent = z.preprocess(
     .transform((p) => Math.round(p * 100) / 10_000),
 );
 
+// A money field that may be left empty on purpose: empty means not set
+// (null), and the app hides that line instead of showing a blank (M5).
+const moneyOrUnset = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+  z.union([
+    z.null(),
+    z.coerce
+      .number({ error: "must be a number" })
+      .min(0, { error: "cannot be negative" })
+      .max(99_999_999, { error: "is too large" })
+      .transform((n) => Math.round(n * 100) / 100),
+  ]),
+);
+
 const wholeNumber = (min: number, max: number) =>
   z.preprocess(
     blankToUndefined,
@@ -131,6 +145,26 @@ export const settingsFormSchema = z.object({
         .min(1, { error: "cannot be empty" })
         .max(2000, { error: "must be under 2,000 characters" }),
     ),
+  // Meeting mode (M5).
+  rush_colour_fee_per_ft: moneyOrUnset,
+  service_call_fee: moneyOrUnset,
+  quote_valid_days: wholeNumber(1, 90),
+  faq_text: z
+    .string()
+    .transform((text) => text.replace(/\r\n?/g, "\n").trim())
+    .pipe(z.string().max(8000, { error: "must be under 8,000 characters" })),
+  presentation_pages: z
+    .array(
+      z.object({
+        kind: z.enum(["what_vesper_is", "hidden_by_day", "whites_first", "install_day", "warranty", "gallery"]),
+        title: z.string().trim().min(1, { error: "cannot be empty" }).max(80, { error: "is too long" }),
+        body: z
+          .string()
+          .transform((text) => text.replace(/\r\n?/g, "\n").trim())
+          .pipe(z.string().max(2000, { error: "must be under 2,000 characters" })),
+      }),
+    )
+    .max(6),
   company_name: z.string().trim().min(1, { error: "cannot be empty" }),
   company_phone: z.string().trim().max(40, { error: "is too long" }),
   company_email: z.union([
@@ -193,6 +227,15 @@ export function settingsFormDataToInput(
     company_phone: text("company_phone"),
     company_email: text("company_email"),
     company_address: text("company_address"),
+    rush_colour_fee_per_ft: text("rush_colour_fee_per_ft"),
+    service_call_fee: text("service_call_fee"),
+    quote_valid_days: text("quote_valid_days"),
+    faq_text: text("faq_text"),
+    presentation_pages: formData.getAll("presentation_kind").map((kind) => ({
+      kind: String(kind),
+      title: text(`presentation_title_${String(kind)}`),
+      body: text(`presentation_body_${String(kind)}`),
+    })),
   };
 }
 
@@ -228,6 +271,12 @@ export function settingsUpdateFromValues(v: SettingsFormValues): SettingsUpdate 
       email: v.company_email,
       address: v.company_address,
     },
+    rush_colour_fee_per_ft: v.rush_colour_fee_per_ft,
+    service_call_fee: v.service_call_fee,
+    quote_valid_days: v.quote_valid_days,
+    faq_text: v.faq_text,
+    // presentation titles and bodies merge over the stored image paths in
+    // the action, which is the one place that reads the current jsonb.
   };
 }
 
@@ -263,6 +312,10 @@ export type SettingsFormDefaults = {
   company_phone: string;
   company_email: string;
   company_address: string;
+  rush_colour_fee_per_ft: string;
+  service_call_fee: string;
+  quote_valid_days: string;
+  faq_text: string;
 };
 
 // The stored row, as the strings the inputs start with.
@@ -301,5 +354,9 @@ export function settingsRowToFormDefaults(row: SettingsRow): SettingsFormDefault
     company_phone: companyField("phone"),
     company_email: companyField("email"),
     company_address: companyField("address"),
+    rush_colour_fee_per_ft: row.rush_colour_fee_per_ft === null ? "" : row.rush_colour_fee_per_ft.toFixed(2),
+    service_call_fee: row.service_call_fee === null ? "" : row.service_call_fee.toFixed(2),
+    quote_valid_days: String(row.quote_valid_days),
+    faq_text: row.faq_text,
   };
 }

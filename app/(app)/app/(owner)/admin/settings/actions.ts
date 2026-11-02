@@ -5,6 +5,13 @@ import { z } from "zod";
 import { PASSWORD_MIN_LENGTH } from "@/lib/auth";
 import { NotOwnerError, ReadOnlyError, requireOwnerForAction } from "@/lib/auth/profile";
 import {
+  PAGE_IMAGE_SLOTS,
+  PRESENTATION_KINDS,
+  mergePresentationText,
+  withPresentationImage,
+  withoutPresentationImage,
+} from "@/lib/presentation";
+import {
   parseSettingsForm,
   settingsFormDataToInput,
   settingsUpdateFromValues,
@@ -38,10 +45,14 @@ export async function updateSettings(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("settings")
-    .update(settingsUpdateFromValues(parsed.values))
-    .eq("id", 1);
+  // The presentation's titles and bodies merge over the stored image paths,
+  // which only uploads change (M5).
+  const { data: current } = await supabase.from("settings").select("presentation").eq("id", 1).single();
+  const update = {
+    ...settingsUpdateFromValues(parsed.values),
+    presentation: mergePresentationText(current?.presentation ?? [], parsed.values.presentation_pages),
+  };
+  const { error } = await supabase.from("settings").update(update).eq("id", 1);
   if (error) {
     return { error: "Settings could not be saved. Try again." };
   }
@@ -100,5 +111,70 @@ export async function changeOwnPassword(
     }
     return { error: "The password could not be changed. Try again." };
   }
+  return { ok: true };
+}
+
+
+// ---------------------------------------------------------------- presentation images (M5)
+
+export type PresentationImageResult = { ok: true } | { ok: false; error: string };
+
+const kindSchema = z.enum(PRESENTATION_KINDS);
+
+// Records an upload that already landed in the presentation bucket.
+export async function addPresentationImage(
+  kind: string,
+  path: string,
+  slotIndex: number | null,
+): Promise<PresentationImageResult> {
+  try {
+    await requireOwnerForAction();
+  } catch (e) {
+    if (e instanceof ReadOnlyError) return { ok: false, error: VIEW_AS_READ_ONLY };
+    if (e instanceof NotOwnerError) return { ok: false, error: "Not for your role." };
+    throw e;
+  }
+  const kindParsed = kindSchema.safeParse(kind);
+  const pathParsed = z.string().trim().min(1).max(300).safeParse(path);
+  if (!kindParsed.success || !pathParsed.success || !PAGE_IMAGE_SLOTS[kindParsed.data]) {
+    return { ok: false, error: "That image could not be added." };
+  }
+  const slots = PAGE_IMAGE_SLOTS[kindParsed.data];
+  const slot =
+    slots?.slots === null
+      ? null
+      : typeof slotIndex === "number" && Number.isInteger(slotIndex) && slotIndex >= 0 && slotIndex < (slots?.max ?? 0)
+        ? slotIndex
+        : 0;
+
+  const supabase = await createClient();
+  const { data: current } = await supabase.from("settings").select("presentation").eq("id", 1).single();
+  const pages = withPresentationImage(current?.presentation ?? [], kindParsed.data, pathParsed.data, slot);
+  const { error } = await supabase.from("settings").update({ presentation: pages }).eq("id", 1);
+  if (error) return { ok: false, error: "The image could not be saved. Try again." };
+  revalidatePath("/app/admin/settings");
+  return { ok: true };
+}
+
+// Takes an image off a page and out of the bucket.
+export async function removePresentationImage(kind: string, path: string): Promise<PresentationImageResult> {
+  try {
+    await requireOwnerForAction();
+  } catch (e) {
+    if (e instanceof ReadOnlyError) return { ok: false, error: VIEW_AS_READ_ONLY };
+    if (e instanceof NotOwnerError) return { ok: false, error: "Not for your role." };
+    throw e;
+  }
+  const kindParsed = kindSchema.safeParse(kind);
+  const pathParsed = z.string().trim().min(1).max(300).safeParse(path);
+  if (!kindParsed.success || !pathParsed.success) return { ok: false, error: "That image was not found." };
+
+  const supabase = await createClient();
+  const { data: current } = await supabase.from("settings").select("presentation").eq("id", 1).single();
+  const pages = withoutPresentationImage(current?.presentation ?? [], kindParsed.data, pathParsed.data);
+  const { error } = await supabase.from("settings").update({ presentation: pages }).eq("id", 1);
+  if (error) return { ok: false, error: "The image could not be removed. Try again." };
+  await supabase.storage.from("presentation").remove([pathParsed.data]);
+  revalidatePath("/app/admin/settings");
   return { ok: true };
 }
