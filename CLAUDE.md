@@ -6,6 +6,10 @@ Internal sales and operations app for Vesper Lighting, Inc. (Calgary). Read this
 
 Vesper installs permanent exterior roofline lighting (24V RGBW nodes in an aluminum track under the soffit, app controlled, 10-year warranty). Sales are door to door. Appointment setters knock doors in the late afternoon and book evening meetings for the owner (Keenan), who meets the homeowner at dusk, presents on an iPad, prices the job, and closes. Installs are done by small crews. The app is the system of record for leads, meetings, quotes, and (later) jobs, crews and timesheets.
 
+## Focus (Keenan, 2026-11-02)
+
+The app's fundamentals are three things: the setter sessions (knocking, leads and booking), the sales meetings (meeting mode on the iPad), and the shareable quote links for customers. The current work is the shareable quote link. Everything else is parked until Keenan says otherwise: the pipeline board (M4), the sales dashboard (M6), the website lead form and daily email (M7), and the backlog ideas. Don't start or plan parked work, and don't suggest it.
+
 V1 is the sales side only. See `docs/01-product-spec.md` for scope, `docs/02-data-model.md` for the schema, `docs/03-roadmap.md` for milestones and acceptance criteria, `docs/04-session-prompts.md` for how each build session is run, and `docs/05-supabase-setup.md` for the Supabase settings that live outside the code and how to set up a second project.
 
 ## Stack
@@ -24,7 +28,7 @@ Three roles in `profiles.role`: `owner`, `sales`, `crew`. V1 uses `owner` and `s
 
 - `owner`: everything. Home (which is the dashboard), schedule, Meetings (meeting mode's home), pipeline, all leads, all meetings, quotes, and Admin (people, settings, pay).
 - `sales`: capture leads and edit their own. Sales users work as a team: every sales user can see every lead, booking and knock session (read only unless it is theirs) so they can cluster meetings and avoid knocking the same doors twice. They book meetings for their own leads and can move or cancel those bookings until the time starts, see their own activity stats, and see their own pay (what they are owed and what they have been paid). Never quotes, never sale prices or revenue, never the owner dashboard, never settings, never anyone else's pay.
-- Customers never log in. Anything customer facing is a public link with an unguessable token (V2).
+- Customers never log in. Anything customer facing is a public link with an unguessable token: the quote link from 2026-11-02 (see Business rules), more in V2.
 
 Enforce this in RLS first, then in the UI. The UI hides what a role cannot see, but the database is the actual gate. Never ship a table without RLS policies. Never bypass RLS with the service role key in a code path a non-owner can trigger.
 
@@ -39,11 +43,12 @@ View as: in Admin > People the owner can open the app exactly as an active non-o
 Design each screen for the device it will actually be used on, then make it tolerable elsewhere.
 
 - Phone first: lead capture, my leads, tonight's schedule and booking, knock session counters, my pay. Big tap targets, one-handed, works in bright daylight and at dusk. Fast.
+- Phone first for customers: the customer quote page, opened from a text message on their own phone.
 - iPad first (landscape): meeting mode (presentation plus quote builder), the Meetings page, pipeline board, lead detail with photos.
 - Desktop and iPad: dashboard, settings, people.
 - Navigation: a bottom tab bar on phone and iPad; on screens 1024 px and wider, a slim left side rail with the same items. No top tabs anywhere. Owner tabs: Home, Schedule, Meetings, New lead (the prominent gold button), Leads; Admin (People, Settings and Pay) is a gear in the header, because six items crowd a phone's tab bar (Keenan, 2026-11-02). Sales tabs: Home, Schedule, New lead, Leads, My pay. The owner's Home is the dashboard; there is no separate Dashboard tab. The tab bar lives in the shared app layout so it never reloads, tab links are prefetched, and every tab has a loading screen so a tap responds at once.
 - Forms: after an error, a form keeps everything the person typed except passwords.
-- Theme: dark by default, with a light theme the user can switch to, remembered per device. Anything printed or exported as a PDF is always white. Keep both themes readable. Brand colours: navy `#132E3F`, gold `#B99257`, white, minimal black. Clean and premium, not flashy. No emoji in the UI. No gradients or glassy effects.
+- Theme: dark by default, with a light theme the user can switch to, remembered per device. Anything printed or exported as a PDF is always white, and so is the customer quote page, which reads like the documents (navy and gold on white, whatever the device's theme). Keep both themes readable. Brand colours: navy `#132E3F`, gold `#B99257`, white, minimal black. Clean and premium, not flashy. No emoji in the UI. No gradients or glassy effects.
 - Design skill: the impeccable skill lives in `.claude/skills/impeccable` (Apache 2.0, no hooks), with its product and design context in `PRODUCT.md` and `DESIGN.md`. Every milestone with new or changed screens uses it (Keenan, 2026-11-02): shape before building, critique and polish before the preview, and the before and after scores in the report. These design rules win over anything it suggests: navy and gold, dark by default, no gradients, glassy effects or emoji, calm and premium, phone first for setters. Skip its overdrive, delight and heavy animation.
 
 ## Business rules the code must respect
@@ -82,7 +87,17 @@ Design each screen for the device it will actually be used on, then make it tole
   - Setters can see the track colour but not set it. Their soffit question at the door stays as it is.
   - A quote can't be marked ready until the track colour is set (M5). The quote stores the colour name and RAL code it used, and a Custom colour shows as needing powder coating.
 - Meeting mode (M5) is customer-facing the whole time: full screen on the iPad, no tabs, and nothing internal ever on screen: no costs, margins, setter names, pipeline or other customers. Owner only, enforced on the server. The track colour is confirmed and initialled by the customer at every meeting, stored on the lead with a timeline event. Presentation content and images come from Settings, never from code; a page with no content is skipped, never shown empty; only Vesper's own photos appear in anything a customer sees. Opened once with signal, meeting mode keeps working without it: content and images cached on the iPad, quote math on the iPad, the draft on the iPad until saved; saving needs signal and says so. Track colour pricing: stocked included; non-stock included on the factory order (spring); this season adds the rush colour fee per foot from Settings. A fee that is not set (rush colour, service call) hides its line instead of showing a blank. Every quote has a valid-until date, default `settings.quote_valid_days` days out.
-- Every customer facing string (quote PDF, presentation) is written in plain language with no em dashes, no buzzwords, and no promises the business cannot keep. Use the exact warranty wording from `settings.warranty_text`.
+- Customer quote link (Keenan, 2026-11-02; take 1 now, take 2 with M5 take 2). After a meeting Keenan sends the homeowner a private link to their quote: a public page with no login, opened by an unguessable token, reading the same lead, runs, prices and mockup as meeting mode. One source of truth:
+  - the token has at least 128 bits of randomness and lives only in the owner-only `quote_links` table; one live link per lead; revoking kills it, and sending again issues a new one; updating the quote updates what the same link shows;
+  - the public page reads through one database function that takes the token and returns only customer-safe fields; anonymous callers have no access to any app table; the mockup loads through a short-lived signed URL that only a request carrying a live token can sign; their selection, Book my install and a visit are written through token-scoped functions that change nothing else;
+  - the customer never sees costs, setter names, notes, the timeline, statuses or other customers;
+  - totals come from `lib/pricing.ts` on the page and on the server; the server recomputes every total from the stored quote and the selected runs, never from a total the browser sends; the control box is always included; an extra-work line marked "only with upper runs" drops off when no upper run is selected; when a selection falls below the minimum job total in Settings (empty by default), the total rises to the minimum with a line saying so; GST display as above;
+  - visits are counted with no IP address or device fingerprint stored, and a signed-in member's own visits don't count;
+  - Book my install saves the chosen option and notifies Keenan; it never accepts the quote or creates commission; Keenan still marks the quote accepted after signing;
+  - the push goes to the person who made the link (Keenan) through standard web push from the installed app, keys in environment variables. The secret Supabase key never runs in a customer's request: the database hands the server the addresses sealed, and only the server can open them;
+  - quote pages are noindex, no-referrer and not cached, answer on any host, and links are built from `QUOTE_BASE_URL`; on quote.vesperlighting.ca only quote routes answer;
+  - after the valid-until date, or once revoked, the page says the quote has expired, with call and text buttons and no prices.
+- Every customer facing string (quote PDF, presentation, quote page) is written in plain language with no em dashes, no buzzwords, and no promises the business cannot keep. Use the exact warranty wording from `settings.warranty_text`.
 
 ## How to work in this repo
 

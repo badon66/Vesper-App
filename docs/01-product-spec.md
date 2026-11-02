@@ -9,7 +9,7 @@ Written Oct 25, 2026. V1 is the sales side of the business. Jobs, crews, timeshe
 | Owner (Admin in the app) | Keenan, and only Keenan | Phone in the field, iPad at meetings, desktop at home | Everything: tonight's meetings, running the meeting, quotes, pipeline, dashboard, settings, people |
 | Sales (Sales associate in the app) | Two friends to start, more later | Phone | Logging doors, capturing leads, booking meetings, seeing the team's leads and bookings, seeing their own numbers and their own pay |
 | Crew | Installers | Phone | V2: job sheets, timesheets |
-| Customer | Homeowners | Their phone or email | V2: quote link, confirmation page. No login, ever |
+| Customer | Homeowners | Their phone or email | The quote link from 2026-11-02; a confirmation page in V2. No login, ever |
 
 ## The day this app has to fit
 
@@ -201,6 +201,32 @@ Built in two takes. Take 1 is the presentation, This house and the live quote bu
 
 **Lead detail.** Everything about the lead: contact, address with a small map, photos by slot, the Find out answers, notes, the timeline of events (who did what, when), the meetings, the quotes, the earnings. Owner can edit anything and change to any status. The owner marks `installed` by hand in V1 (jobs come in V2); that makes the commission payable. `lost` asks for a reason (price, went with another company, not now, could not reach, other).
 
+### Phone (customers): the quote link (Keenan, 2026-11-02)
+
+After a meeting Keenan sends the homeowner a private link to their quote. It is a public page with no login, opened by an unguessable token, and it reads the same lead, runs, prices and mockup as meeting mode, so there is one source of truth. Customers open it from a text message on their own phone, so it is designed phone first. It is always white with a navy header and gold for the main action, like the documents, whatever theme the phone uses.
+
+**Take 1 (now).**
+- Vesper branding, their name and address, and the date the quote is good until.
+- Their mockup, if one is uploaded, full width; a tap opens it full screen with pinch to zoom.
+- The Recommended package first: their runs with feet and level, and the breakdown line by line: the lights at the per-foot price, the control box, any extra work, any discount, and the total ("$3,450 + GST" while GST is on, the price alone while it is off). "No payment until your install is complete." and "Financing is available. Just ask." are always visible.
+- Start smaller: they can switch individual runs on or off and watch the total update. They can't change prices, footage or discounts. The control box is always included. Extra work marked "only with upper runs" in the quote builder drops off when no upper run is on. When a selection falls below the minimum job total (Settings, empty by default), the total rises to the minimum with a line saying so. At least one run stays on.
+- The warranty, in the exact wording from Settings.
+- A big Book my install button, and call, text and email buttons for (403) 895-9915 and info@vesperlighting.ca.
+- After Book my install, a thank-you screen: Keenan will be in touch within a day to set the install date and go through the agreement. No signing, no payment.
+- After the valid-until date, or once Keenan turns the link off: "This quote has expired", with the call and text buttons and no prices.
+- Never on the page: costs, setter names, notes, the timeline, statuses or other customers.
+
+**Keenan's side.**
+- The lead page has a Quote card, owner only: the total, the valid-until date and the link. Send quote link makes the link if there isn't a live one and opens a sheet with an editable prewritten text, Copy link, Copy text and Share (the phone's own share sheet). Nothing sends automatically: Keenan sends it from his own Messages or email.
+- The card shows the link's status, how many times it was opened, the last visit, the option they picked or are looking at, and Book my install. The timeline records the link made, first opened, Book my install with the option, and the link turned off, never with a dollar amount.
+- Turn off link kills it; Send quote link afterwards makes a new one. Updating the quote updates what the same link shows.
+- A push notification to Keenan's phone and iPad when they tap Book my install, with their name and the option they picked. Settings has Notifications: turn them on for this device (from the Vesper app on the home screen, on iPhone and iPad), the devices that get them, and Send a test notification.
+- The quote builder can mark an extra-work line "only with upper runs".
+
+**Hosting and privacy.** The quote pages run in the same Vercel app and answer on any address; links are built from `QUOTE_BASE_URL`, so they can move to quote.vesperlighting.ca as soon as that domain is live, where only quote pages answer. Quote pages are not indexed by search engines, send no referrer and are never cached. Visits are counted with no IP address or device details stored, and a signed-in member's own visits don't count.
+
+**Take 2 (after the first links go out, with meeting mode's take 2).** Your documents: Quote, Warranty, What you get, FAQ, Install day and Agreement preview, each a phone page with Download PDF, built once together with the leave-behind folder. Which documents were opened. Quote version history.
+
 ### Desktop and iPad (Keenan)
 
 **Dashboard.** Owner only, on Keenan's Home below tonight's meetings and today's team. A sales dashboard, kept small and honest because there is not much data yet:
@@ -211,7 +237,7 @@ Built in two takes. Take 1 is the presentation, This house and the live quote bu
 - Upcoming jobs: sold leads not yet installed, oldest first, with sold date and total feet.
 - Every number shows its date range and what it counts. Empty states explain what will show up.
 
-**Settings.** In Admin. The three step notes (At the door, After the door, Book); the Track colours list (each with a name and an optional RAL code, added, renamed, reordered and retired, never deleted, starting with White, Off-white, Brown, Black and Grey); pricing defaults, GST on or off and the GST number, booking pay and commission rate, the rush colour fee per foot and the service call fee (both may be unset; unset hides their lines everywhere), quote valid days (14), the warranty text (the exact wording meeting mode and the folder use), the FAQ text for the folder, the presentation pages (each page's title and text, the day and night photos for Hidden by day, and the gallery uploads; the seeded text is a draft for Keenan to make his own), meeting slot template (days, start, slot length, count), the booking cutoff (30 minutes), the hold grace period (2 minutes) and the booking window (14 days), the lost reasons and Not qualified reasons lists. Blocked times and one evening's own times are set on Schedule; "All days" there updates the template here.
+**Settings.** In Admin. The three step notes (At the door, After the door, Book); the Track colours list (each with a name and an optional RAL code, added, renamed, reordered and retired, never deleted, starting with White, Off-white, Brown, Black and Grey); pricing defaults, GST on or off and the GST number, booking pay and commission rate, the rush colour fee per foot and the service call fee (both may be unset; unset hides their lines everywhere), quote valid days (14), the minimum job total (empty by default), the warranty text (the exact wording meeting mode and the folder use), the FAQ text for the folder, the presentation pages (each page's title and text, the day and night photos for Hidden by day, and the gallery uploads; the seeded text is a draft for Keenan to make his own), meeting slot template (days, start, slot length, count), the booking cutoff (30 minutes), the hold grace period (2 minutes) and the booking window (14 days), the lost reasons and Not qualified reasons lists. Notifications: turn them on for this device, the devices that get them, and Send a test notification. Blocked times and one evening's own times are set on Schedule; "All days" there updates the template here.
 
 **People.** In Admin. Current members are the main content: name, role, active or deactivated, with View as, Reset password and Deactivate or Reactivate on each row. View as, on active non-owner members, opens the app exactly as that person sees it, every screen included, under a gold bar across the top: "Viewing as [name]. Read only. Exit." Nothing can be changed while viewing, the server refuses every write, and it only ever shows what that person's role can see. At the bottom, a button labelled "Add a Vesper member" opens the form: name, email, phone and a role picker that offers only Sales associate for now and is built so a new role (Crew in V2) appears by adding it to the list, never by rebuilding the screen. Owner is never a choice. The app generates the password (three lowercase common words and four digits, like maple-river-stone-4821), shows it once in the gold box, and the admin texts it. That password is permanent until the admin resets it: Reset password generates a new one, shows it once, and ends the person's open sessions. Non-owners have no way to change or reset their own password and get no emails of any kind; the sign-in screen says "Forgot your password? Ask Keenan." A deactivated person cannot sign in and is hidden from pickers. There is exactly one admin and People cannot hand out that role.
 
@@ -230,8 +256,8 @@ Built in two takes. Take 1 is the presentation, This house and the live quote bu
 
 - Payments, deposits, e-signature, invoices (waiting on the prepaid contracting licence, planned for January).
 - Jobs, crews, job sheets, timesheets, driver authorization, certifications (V2).
-- Customer-facing pages and public quote links (V2).
-- Any texting or emailing of customers from the app, including the prefilled confirmation text (see `docs/backlog.md`). Automated SMS and email are V1.5, after CASL consent is in the lead form.
+- Customer-facing pages other than the quote link (the quote link moved into V1 on 2026-11-02; more customer pages in V2).
+- Any texting or emailing of customers from the app, including the prefilled confirmation text (see `docs/backlog.md`). Send quote link only hands Keenan a text to send from his own phone; the app never sends it. Automated SMS and email are V1.5, after CASL consent is in the lead form.
 - Inventory and feet tracking.
 - Paying setters from the app. The app records earnings and payments; the money moves outside it.
 - Maps of knocked houses, territory management, route optimization beyond the distance warning.
@@ -245,4 +271,4 @@ Jobs created from sold leads: install date, crew, materials (feet, boxes, track 
 
 ## V3 (January onward)
 
-Customer-facing: public quote link, booking page from the website, confirmation page, e-signature, deposits and payments once licensed, warranty claim form, referral tracking. Automated reminders. Inventory with purchase orders.
+Customer-facing: booking page from the website, confirmation page, e-signature, deposits and payments once licensed, warranty claim form, referral tracking. Automated reminders. Inventory with purchase orders.
