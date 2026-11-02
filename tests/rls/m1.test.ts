@@ -113,7 +113,7 @@ describe("settings", () => {
     expect(data).toEqual([]);
   });
 
-  it("a sales user reads the slot template, booking rules, lost reasons and Door guide through settings_public, nothing more", async () => {
+  it("a sales user reads the slot template, booking rules, lost reasons, Door guide and step notes through settings_public, nothing more", async () => {
     const { data, error } = await users.a.client.from("settings_public").select("*");
     expect(error).toBeNull();
     expect(data).toHaveLength(1);
@@ -128,6 +128,9 @@ describe("settings", () => {
       "meeting_slot_count",
       "meeting_slot_minutes",
       "meeting_start",
+      "step_note_after_door",
+      "step_note_at_door",
+      "step_note_book",
     ]);
   });
 

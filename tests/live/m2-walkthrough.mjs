@@ -1,7 +1,8 @@
 // Live walk-through of M2 on a phone-sized screen against a running
 // production build: the knock session counters, a new lead with a typed
-// address and phone, the door process (the Door guide, the six Find out
-// questions, the four guided photos with a retake and More photos), search,
+// address and phone, the door process (the step notes behind the "?", the
+// seven Find out questions, the four guided photos with a retake and More
+// photos), search,
 // the Everyone view, the status rules and the timeline, the track colour as
 // a setter sees it, tap-target sizes, and the Google address path with the
 // duplicate warning. Two throwaway setters do the work. Their leads are named
@@ -184,24 +185,32 @@ try {
   await checkTapTargets(page, "Home with a session running");
   await page.screenshot({ path: `${out}/m2-home-session.png`, fullPage: true });
 
-  // 3. New lead: the Door guide, a typed address and phone, the Find out
+  // 3. New lead: the step notes, a typed address and phone, the Find out
   // questions and the guided photos.
-  const { data: guideRow } = await admin.from("settings").select("door_guide").eq("id", 1).single();
+  const { data: noteRow } = await admin.from("settings").select("step_note_at_door, step_note_after_door, step_note_book").eq("id", 1).single();
   const started = Date.now();
   await page.getByRole("link", { name: "New lead" }).first().click();
   await page.waitForURL("**/app/leads/new", { timeout: 20000 });
   await settle(page);
-  check("there is no Book a meeting button before M3", (await page.getByText(/book a meeting/i).count()) === 0);
-  const guide = page.getByTestId("door-guide");
-  const guideBox = await guide.boundingBox();
+  check("New lead has no separate Book a meeting button: Save and book opens the booking sheet", (await page.getByText(/book a meeting/i).count()) === 0);
+  check("the single Door guide is gone from New lead", (await page.getByTestId("door-guide").count()) === 0);
+  const notesButton = page.getByTestId("step-notes");
+  const notesBox = await notesButton.boundingBox();
   const addressBox = await page.locator("#lead-address").boundingBox();
-  check("the Door guide card sits at the top of New lead, above the address", guideBox !== null && addressBox !== null && guideBox.y < addressBox.y);
-  check("the Door guide starts closed", (await guide.evaluate((element) => element.open)) === false);
-  await guide.locator("summary").click();
-  const guideText = (await guide.locator("p").innerText()).trim();
-  check("tapping it opens Keenan's Door guide from Settings", (await guide.evaluate((element) => element.open)) && guideText === guideRow?.door_guide?.trim(), guideText.slice(0, 60));
-  await page.screenshot({ path: `${out}/m26-door-guide.png`, fullPage: false });
-  await guide.locator("summary").click();
+  check("the ? with what to talk about sits at the top of New lead, above the address", notesBox !== null && addressBox !== null && notesBox.y < addressBox.y);
+  await notesButton.click();
+  const notesPanel = page.getByRole("dialog", { name: "What to talk about" });
+  await notesPanel.waitFor({ timeout: 10000 });
+  const notesText = (await notesPanel.innerText()).replace(/\s+/g, " ");
+  const squash = (text) => (text ?? "").replace(/\s+/g, " ").trim();
+  check(
+    "tapping it shows Keenan's three step notes from Settings: At the door, After the door, Book",
+    ["At the door", "After the door", "Book"].every((label) => notesText.includes(label)) &&
+      [noteRow?.step_note_at_door, noteRow?.step_note_after_door, noteRow?.step_note_book].every((note) => notesText.includes(squash(note).slice(0, 40))),
+    notesText.slice(0, 80),
+  );
+  await page.screenshot({ path: `${out}/m26-step-notes.png`, fullPage: false });
+  await notesPanel.getByRole("button", { name: "Close" }).click();
   await page.fill("#lead-address", TYPED_ADDRESS);
   await page.keyboard.press("Escape");
   await page.fill("#lead-first_name", TEST_LEAD);
@@ -210,13 +219,14 @@ try {
   check("the phone shows in the local format as soon as it is typed", (await page.inputValue("#lead-phone")) === "(403) 555-0199", await page.inputValue("#lead-phone"));
 
   const legends = (await page.getByTestId("find-out").locator("legend").allTextContents()).map((t) => t.trim());
-  check("Find out asks the six questions in order", JSON.stringify(legends) === JSON.stringify(["Owns the home", "Wants a price", "Soffit colour", "Christmas lights now", "Which areas", "Timing"]), legends.join(", "));
+  check("Find out asks the seven questions in order", JSON.stringify(legends) === JSON.stringify(["Owns the home", "Wants a price", "Soffit colour", "Christmas lights now", "Looked into it before", "Which areas", "Timing"]), legends.join(", "));
   const offeredSoffit = (await question(page, "Soffit colour").locator("label").allTextContents()).map((t) => t.trim());
   check("the soffit question offers White, Off-white or cream, Other and Not sure", JSON.stringify(offeredSoffit) === JSON.stringify(["White", "Off-white or cream", "Other", "Not sure"]), offeredSoffit.join(", "));
   await answer(page, "Owns the home", "Yes");
   await answer(page, "Wants a price", "Yes");
   await answer(page, "Soffit colour", "Off-white or cream");
   await answer(page, "Christmas lights now", "Hires someone");
+  await answer(page, "Looked into it before", "Got quotes");
   await answer(page, "Which areas", "Front and sides");
   await answer(page, "Timing", "Before Christmas");
   check("each answer takes one tap", (await checkedValue(page, "Christmas lights now")) === "hires" && (await checkedValue(page, "Owns the home")) === "yes");
@@ -262,7 +272,7 @@ try {
 
   const { data: typedLead } = await admin
     .from("leads")
-    .select("id, created_by, knock_session_id, phone, lat, lng, place_id, neighbourhood, address_line, status, house_type, soffit_colour, owns_home, wants_price, christmas_lights_now, areas_wanted, install_timing, track_colour_id, track_ral_code")
+    .select("id, created_by, knock_session_id, phone, lat, lng, place_id, neighbourhood, address_line, status, house_type, soffit_colour, owns_home, wants_price, christmas_lights_now, looked_into_before, areas_wanted, install_timing, track_colour_id, track_ral_code")
     .eq("created_by", people.a.id)
     .eq("address_line", TYPED_ADDRESS)
     .single();
@@ -277,12 +287,13 @@ try {
     wants_price: typedLead?.wants_price,
     soffit_colour: typedLead?.soffit_colour,
     christmas_lights_now: typedLead?.christmas_lights_now,
+    looked_into_before: typedLead?.looked_into_before,
     areas_wanted: typedLead?.areas_wanted,
     install_timing: typedLead?.install_timing,
   };
   check(
     "the Find out answers are saved, and the cleared one is left empty",
-    JSON.stringify(savedAnswers) === JSON.stringify({ owns_home: true, wants_price: true, soffit_colour: "off_white", christmas_lights_now: null, areas_wanted: "front_and_sides", install_timing: "before_christmas" }),
+    JSON.stringify(savedAnswers) === JSON.stringify({ owns_home: true, wants_price: true, soffit_colour: "off_white", christmas_lights_now: null, looked_into_before: "got_quotes", areas_wanted: "front_and_sides", install_timing: "before_christmas" }),
     JSON.stringify(savedAnswers),
   );
   check("a setter's new lead has no track colour", typedLead?.track_colour_id === null && typedLead?.track_ral_code === null);
@@ -340,7 +351,7 @@ try {
   const answersShown = (await page.getByTestId("find-out-answers").innerText()).replace(/\s+/g, " ").trim();
   check(
     "the lead page shows the Find out answers, and Not answered for the cleared one",
-    answersShown === "Owns the home Yes Wants a price Yes Soffit colour Off-white or cream Christmas lights now Not answered Which areas Front and sides Timing Before Christmas",
+    answersShown === "Owns the home Yes Wants a price Yes Soffit colour Off-white or cream Christmas lights now Not answered Looked into it before Got quotes Which areas Front and sides Timing Before Christmas",
     answersShown,
   );
   const trackShown = (await page.getByTestId("track-colour").innerText()).replace(/\s+/g, " ").trim();
@@ -399,10 +410,11 @@ try {
     await checkedValue(page, "Wants a price"),
     await checkedValue(page, "Soffit colour"),
     await checkedValue(page, "Christmas lights now"),
+    await checkedValue(page, "Looked into it before"),
     await checkedValue(page, "Which areas"),
     await checkedValue(page, "Timing"),
   ];
-  check("Edit lead opens with the saved answers", JSON.stringify(prefilled) === JSON.stringify(["yes", "yes", "off_white", "", "front_and_sides", "before_christmas"]), prefilled.join(", "));
+  check("Edit lead opens with the saved answers", JSON.stringify(prefilled) === JSON.stringify(["yes", "yes", "off_white", "", "got_quotes", "front_and_sides", "before_christmas"]), prefilled.join(", "));
   check("Edit lead has no photo slots; photos are added on the lead page", (await page.getByRole("list", { name: "Guided photos" }).count()) === 0);
   await answer(page, "Christmas lights now", "None");
   await answer(page, "Timing", "Before Christmas");
