@@ -329,7 +329,7 @@ A quote can't be marked ready until the lead's track colour is set; the quote st
 The customer quote link (2026-11-02). Owner only; anonymous callers and sales users read nothing here. The public page reaches it only through the token functions below.
 ```
 id uuid pk
-lead_id uuid not null references leads on delete cascade
+lead_id uuid not null references leads
 token text not null unique                        -- 24 characters, base64url of 18 random bytes (144 bits), made in the database
 created_by uuid not null references profiles      -- who made it; Book my install notifies this person
 created_at
@@ -361,14 +361,15 @@ Functions (all `security definer`, `search_path = ''`):
 Web push addresses for members' devices (2026-11-02). Built for Book my install first and for any later alert (the backlog's booking alerts) without changes.
 ```
 id uuid pk
-profile_id uuid not null references profiles on delete cascade
+profile_id uuid not null references profiles
 endpoint_hash text not null unique                -- sha256 of the push address, so one device is stored once
 sealed text not null                              -- the push address and its keys, AES-GCM sealed with a key derived from the server's VAPID private key; only the server can open it
 label text not null                               -- "iPhone", "iPad" and so on, from the browser, for the list in Settings
 created_at
 last_sent_at timestamptz
+removed_at timestamptz                            -- switched off; the row is kept, sealed, and gets nothing
 ```
-Each member reads, adds and removes only their own rows. A function that decides an event warrants a notice (today only `quote_link_book`) returns the recipient's sealed rows; the server opens them and sends.
+Each member reads, adds and switches off only their own rows. A function that decides an event warrants a notice (today only `quote_link_book`) returns the recipient's sealed rows; the server opens them and sends.
 
 ### earnings
 What setters are owed and what they have been paid. One row per earning. Rows are created by server actions, never by the client directly.
