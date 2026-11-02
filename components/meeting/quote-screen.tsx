@@ -16,7 +16,7 @@ import {
   type QuoteRun,
 } from "@/lib/pricing";
 import type { MeetingPayload } from "@/components/meeting/meeting-mode";
-import { formatTime } from "@/lib/time";
+import { formatFullDate, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 // The live quote (M5): Keenan builds on the left, the bill sits on the
@@ -443,7 +443,7 @@ export function QuoteScreen({
         <div className="flex flex-col gap-1 text-sm text-muted-foreground">
           <p>No payment until your install is complete.</p>
           {state.financingOffered ? <p>Financing available. We will walk through the options together.</p> : null}
-          <p>Valid until {state.validUntil}.</p>
+          {state.validUntil ? <p>Valid until {formatFullDate(state.validUntil)}.</p> : null}
         </div>
         <div className="flex items-center gap-3">
           <Button type="button" onClick={() => void save()} disabled={busy}>
