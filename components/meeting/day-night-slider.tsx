@@ -1,5 +1,6 @@
 "use client";
 
+import { MoveHorizontal } from "lucide-react";
 import { useRef, useState } from "react";
 
 // The same house, day and night, with a handle to drag between them
@@ -49,10 +50,11 @@ export function DayNightSlider({ dayUrl, nightUrl }: { dayUrl: string; nightUrl:
       <div aria-hidden="true" className="absolute inset-y-0 w-0.5 bg-background/80" style={{ left: `${position}%` }} />
       <div
         aria-hidden="true"
-        className="absolute top-1/2 flex size-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-primary bg-background/90 text-xs font-bold"
+        className="absolute top-1/2 flex size-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-primary bg-background/90"
         style={{ left: `${position}%` }}
       >
-        {"↔"}
+        {/* An icon, not the ↔ character: some fonts promote it to emoji. */}
+        <MoveHorizontal className="size-4" />
       </div>
       <input
         type="range"

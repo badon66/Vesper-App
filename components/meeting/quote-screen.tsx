@@ -192,9 +192,9 @@ export function QuoteScreen({
   }
 
   return (
-    <div className="mx-auto grid h-full w-full max-w-6xl grid-rows-[auto_1fr] gap-4 px-6 pt-14 pb-10 lg:grid-cols-[1fr_380px] lg:grid-rows-1 lg:gap-10 lg:px-10 lg:pt-16">
+    <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-6 overflow-y-auto px-6 pt-14 pb-12 lg:grid lg:grid-cols-[1fr_380px] lg:gap-10 lg:overflow-hidden lg:px-10 lg:pt-16 lg:pb-10">
       {/* ------------------------------------------------ the builder */}
-      <div className="flex min-h-0 flex-col gap-5 overflow-y-auto pr-1 pb-4" data-testid="quote-builder">
+      <div className="flex min-w-0 flex-col gap-5 lg:min-h-0 lg:overflow-y-auto lg:pr-1 lg:pb-4" data-testid="quote-builder">
         <h2 className="text-3xl font-bold lg:text-4xl">Your price</h2>
 
         <section className="flex flex-col gap-2" aria-label="Runs">
@@ -422,10 +422,10 @@ export function QuoteScreen({
       </div>
 
       {/* ------------------------------------------------ the bill */}
-      <div className="flex min-h-0 flex-col justify-center gap-4 lg:pl-2" data-testid="quote-bill">
+      <div className="flex min-w-0 flex-col gap-4 border-t pt-6 lg:min-h-0 lg:justify-center lg:border-t-0 lg:pt-0 lg:pl-2" data-testid="quote-bill">
         <ul className="flex flex-col gap-1.5">
           {priced.lines.map((line, at) => (
-            <li key={at} className="flex items-baseline justify-between gap-4 text-base lg:text-lg">
+            <li key={at} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 text-base lg:text-lg">
               <span className="min-w-0">
                 {line.label}
                 {line.detail ? <span className="ml-2 text-sm text-muted-foreground">{line.detail}</span> : null}
