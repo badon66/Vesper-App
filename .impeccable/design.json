@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-02T03:30:00Z",
+  "title": "Design System: Vesper App",
+  "extensions": {
+    "colorMeta": {
+      "gold": { "role": "primary", "displayName": "Porch Light Gold", "canonical": "#b99257" },
+      "navy": { "role": "neutral", "displayName": "Vesper Navy", "canonical": "#132e3f" },
+      "night-background": { "role": "neutral", "displayName": "Night Background", "canonical": "#0c1b26" },
+      "night-card": { "role": "neutral", "displayName": "Night Card", "canonical": "#13242f" },
+      "night-text": { "role": "neutral", "displayName": "Night Text", "canonical": "#f4f1eb" },
+      "night-muted-text": { "role": "neutral", "displayName": "Night Muted Text", "canonical": "#a9b6bf" },
+      "night-destructive": { "role": "error", "displayName": "Warning Red (night)", "canonical": "#e5675e" },
+      "day-destructive": { "role": "error", "displayName": "Warning Red (day)", "canonical": "#b3261e" }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Headline", "purpose": "Screen titles and the booking sheet's question." },
+      "time": { "displayName": "Time", "purpose": "Meeting times, tabular figures." },
+      "label": { "displayName": "Label", "purpose": "Field labels, choice buttons and secondary detail." }
+    },
+    "shadows": [
+      { "name": "notice", "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "purpose": "Only under floating notices that sit over content." }
+    ],
+    "motion": [
+      { "name": "colors", "value": "150ms cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Colour changes on hover, press and selection. No other motion." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px", "note": "the side rail replaces the bottom tab bar" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one main action in a screen region, at the bottom right on a phone.",
+      "html": "<button class=\"ds-btn-primary\">Next</button>",
+      "css": ".ds-btn-primary { background: #b99257; color: #0c1b26; height: 44px; padding: 0 20px; border: none; border-radius: 6px; font: 600 16px Manrope, system-ui, sans-serif; transition: background-color 150ms; } .ds-btn-primary:hover { background: rgb(185 146 87 / 0.9); } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px #0c1b26, 0 0 0 4px #b99257; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary actions such as Back.",
+      "html": "<button class=\"ds-btn-outline\">Back</button>",
+      "css": ".ds-btn-outline { background: #0c1b26; color: #f4f1eb; height: 44px; padding: 0 20px; border: 1px solid #27404f; border-radius: 6px; font: 600 16px Manrope, system-ui, sans-serif; transition: background-color 150ms; } .ds-btn-outline:hover { background: #182b38; } .ds-btn-outline:focus-visible { outline: none; box-shadow: 0 0 0 2px #0c1b26, 0 0 0 4px #b99257; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "Single-line field, 44 px tall.",
+      "html": "<input class=\"ds-input\" placeholder=\"First name\">",
+      "css": ".ds-input { background: #0c1b26; color: #f4f1eb; height: 44px; padding: 0 12px; border: 1px solid #2f4958; border-radius: 6px; font: 400 16px Manrope, system-ui, sans-serif; } .ds-input:focus-visible { outline: none; box-shadow: 0 0 0 2px #b99257; }"
+    },
+    {
+      "name": "Open Time",
+      "kind": "custom",
+      "refersTo": "time-open",
+      "description": "An open meeting time on the board; tapping it holds it.",
+      "html": "<button class=\"ds-time\"><span class=\"ds-time-t\">7:30 p.m.</span><span class=\"ds-time-d\">Open</span></button>",
+      "css": ".ds-time { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; min-height: 80px; width: 160px; padding: 8px 16px; background: #0c1b26; color: #f4f1eb; border: 1px solid #b99257; border-radius: 6px; font-family: Manrope, system-ui, sans-serif; } .ds-time-t { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; } .ds-time-d { font-size: 14px; } .ds-time:focus-visible { outline: none; box-shadow: 0 0 0 2px #b99257; }"
+    },
+    {
+      "name": "Held Time (mine)",
+      "kind": "custom",
+      "refersTo": "time-held-mine",
+      "description": "The time this person is holding.",
+      "html": "<button class=\"ds-time-held\"><span class=\"ds-time-t\">7:30 p.m.</span><span class=\"ds-time-d\">You're holding this</span></button>",
+      "css": ".ds-time-held { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; min-height: 80px; width: 160px; padding: 8px 16px; background: #b99257; color: #0c1b26; border: 1px solid #b99257; border-radius: 6px; font-family: Manrope, system-ui, sans-serif; } .ds-time-held .ds-time-t { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; } .ds-time-held .ds-time-d { font-size: 14px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Porch Light",
+    "overview": "A small, steady warm light on a deep navy evening. The app is used at dusk, by a company that sells light, so the screen behaves like a porch light: dark and quiet by default, with gold appearing only where the next thing to do is. Everything else steps back. It is calm and premium through restraint: flat surfaces, plain words, generous spacing and big targets, never decoration.",
+    "keyCharacteristics": [
+      "Dark by default (night navy), with a light theme each device remembers; PDFs are always white.",
+      "Gold marks the primary action, the current step and the time someone is holding, nothing else.",
+      "Flat surfaces separated by borders and tonal steps, not shadows.",
+      "One sans (Manrope), bold for headings and times, tabular figures for times.",
+      "Every control is at least 44 px tall; the next step sits at the bottom right in thumb reach."
+    ],
+    "rules": [
+      { "name": "The Porch Light Rule", "body": "Gold appears only where the next action is: the primary button, the held time, the current step or the selected evening. If two things on a screen are gold, one of them is wrong.", "section": "colors" }
+    ],
+    "dos": [
+      "Do keep the next action at the bottom right, in thumb reach, at least 44 px tall.",
+      "Do use gold for one thing per screen region: the action, the held time or the current step.",
+      "Do write empty states that say what will appear and how to make it appear.",
+      "Do show times in Calgary time with tabular figures."
+    ],
+    "donts": [
+      "Don't use emoji, gradients, glassy effects, icon grids or filler.",
+      "Don't show colour swatches for track or soffit colours; show names.",
+      "Don't put anything important at the top centre of a phone screen.",
+      "Don't use gold for body text on a light background."
+    ]
+  }
+}
