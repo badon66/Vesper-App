@@ -14,6 +14,7 @@ import { StatusControl } from "@/components/leads/status-control";
 import { TrackColourForm } from "@/components/leads/track-colour-form";
 import { BookLeadButton, OpenBookingSheet } from "@/components/booking/book-buttons";
 import { MockupCard } from "@/components/meeting/mockup-card";
+import { ScrollToHash } from "@/components/scroll-to-hash";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth/profile";
@@ -331,6 +332,7 @@ export default async function LeadPage({
       </Card>
 
       {isOwner ? <MockupCard leadId={lead.id} userId={me.id} mockupUrl={slotUrls.mockup ?? null} /> : null}
+      <ScrollToHash />
 
       <Card id="track-colour" className="scroll-mt-24">
         <CardHeader>

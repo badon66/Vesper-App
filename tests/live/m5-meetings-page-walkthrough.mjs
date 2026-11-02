@@ -302,6 +302,10 @@ try {
       { timeout: 60000 },
     )
     .catch(() => {});
+  // The summary waits for the Meetings page itself to be saved too.
+  await ready
+    .waitForFunction(() => /saved on this device/i.test(document.querySelector('[data-testid="tonight-saved-summary"]')?.textContent ?? ""), null, { timeout: 60000 })
+    .catch(() => {});
   const savedAfter = (await readyItem.getByTestId("meeting-saved").innerText().catch(() => "")).trim();
   const summary = (await ready.getByTestId("tonight-saved-summary").innerText().catch(() => "")).trim();
   check(
@@ -323,6 +327,9 @@ try {
   await ready.getByRole("button", { name: "Get tonight ready" }).click();
   await ready
     .waitForFunction((id) => document.querySelector(`[data-lead="${id}"] [data-testid="meeting-saved"]`)?.textContent?.startsWith("Saved on this device"), tonightLead, { timeout: 60000 })
+    .catch(() => {});
+  await ready
+    .waitForFunction(() => /saved on this device/i.test(document.querySelector('[data-testid="tonight-saved-summary"]')?.textContent ?? ""), null, { timeout: 60000 })
     .catch(() => {});
   const resavedLine = (await readyItem.getByTestId("meeting-saved").innerText().catch(() => "")).trim();
   check(
