@@ -2,7 +2,7 @@
 
 One milestone per build session. A milestone is done when every criterion passes in the full automated suite, including the live walk-through on a phone-sized screen against the real database. Anything the suite cannot reach is named in the report. Keep the current milestone marked.
 
-**Current milestone: M5 take 1** (Keenan, 2026-11-02): Meeting mode's first working version, on a preview link by 9 am Calgary time on 2026-11-03, ahead of his first meeting that evening. M5 moved ahead of M4 at Keenan's direction; M4 follows M5.
+**Current milestone: M5 take 1** (Keenan, 2026-11-02): Meeting mode's first working version, on a preview link by 9 am Calgary time on 2026-11-03, ahead of his first meeting that evening. Built and green on branch `m5-meeting-mode`; waiting for Keenan's look and "push the changes". M5 moved ahead of M4 at Keenan's direction; M4 follows M5.
 
 ## M0: Foundation
 Repo, Next.js App Router with TypeScript, Tailwind, shadcn/ui, Supabase client and server helpers, environment setup, PWA manifest and icons, base layout with the brand, light and dark themes, a protected `/app` route group with a working email and password login (accounts are created by the owner in the Supabase dashboard until M1), Vercel preview deploy.
@@ -138,19 +138,19 @@ Asked for by Keenan on 2026-11-02, after trying M3: every rule is right, but the
 Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a preview link by 9 am Calgary that day. Keenan approved take 1's direction, pricing and schema up front; the short plan is in `decisions.md`. Meeting mode is customer-facing the whole time: full screen, no tabs, and nothing internal on screen, ever: no costs, margins, setter names, pipeline or other customers.
 
 ### Take 1: present, price, save a draft
-- [ ] Meeting mode opens full screen from Tonight and from the lead page (owner only, enforced on the server), with a small, discreet exit
-- [ ] The presentation is swipeable, one idea per screen, big type, navy and gold: What Vesper is, Hidden by day (day and night photos of the same house with a drag slider), The whites first, How install day works, The warranty (the exact wording from `settings.warranty_text`), and a gallery of real install photos
-- [ ] Presentation text and images come from Settings, not from code; a page with no content yet is skipped, never shown empty; the seeds are plain drafts (no invented stats, reviews or install counts, no em dashes) and only Vesper's own photos ever appear
-- [ ] This house: the customer's mockup image full screen with pinch to zoom (skipped until uploaded), and the colour screen: their soffit colour, the matched track colour by name (no swatches), and the customer's initials confirming the colour, saved on the lead with a timeline event, at every meeting
-- [ ] Uploads: presentation images (day, night, gallery) in Settings; the mockup on the lead page; both work the morning of the meeting
-- [ ] Live quote builder: runs by name with feet and level, boxes, adders, neighbour and custom discounts, financing flag, "No payment until your install is complete."; every price editable for that quote only; the quote stores the prices it used; totals update live from `lib/pricing.ts` with unit tests (plain house, adders and discounts, per-quote price changes, GST on and off, rounding)
-- [ ] Track colour pricing: stocked colours included; a non-stock colour included if they wait for the factory order (spring install); this season adds the rush colour fee per foot from Settings; when the rush fee or the service call fee is not set, that line is hidden, never blank
-- [ ] On screen, totals read like "$3,450 + GST" with no GST dollar figure; with GST off nothing mentions GST
-- [ ] Every quote has a valid-until date, default `settings.quote_valid_days` (14) days out
-- [ ] Offline: meeting mode opened once with signal keeps working without it: presentation content and images are cached on the iPad, the quote math runs on the iPad, and the draft stays on the iPad until it is saved; saving needs signal and says so plainly
-- [ ] The warranty wording, rush colour fee, service call fee, FAQ text and quote valid days live in Settings; the exact warranty wording Keenan gave is seeded
-- [ ] Quotes are owner-only in RLS; sales users can never read them; no dollar amount is written to leads, lead_events or meetings
-- [ ] Design: one impeccable shape before building, one critique and polish pass before the preview, scores in the report; deeper rounds wait for take 2
+- [x] Meeting mode opens full screen from Tonight and from the lead page (owner only, enforced on the server), with a small, discreet exit
+- [x] The presentation is swipeable, one idea per screen, big type, navy and gold: What Vesper is, Hidden by day (day and night photos of the same house with a drag slider), The whites first, How install day works, The warranty (the exact wording from `settings.warranty_text`), and a gallery of real install photos
+- [x] Presentation text and images come from Settings, not from code; a page with no content yet is skipped, never shown empty; the seeds are plain drafts (no invented stats, reviews or install counts, no em dashes) and only Vesper's own photos ever appear
+- [x] This house: the customer's mockup image full screen with pinch to zoom (skipped until uploaded), and the colour screen: their soffit colour, the matched track colour by name (no swatches), and the customer's initials confirming the colour, saved on the lead with a timeline event, at every meeting
+- [x] Uploads: presentation images (day, night, gallery) in Settings; the mockup on the lead page; both work the morning of the meeting
+- [x] Live quote builder: runs by name with feet and level, boxes, adders, neighbour and custom discounts, financing flag, "No payment until your install is complete."; every price editable for that quote only; the quote stores the prices it used; totals update live from `lib/pricing.ts` with unit tests (plain house, adders and discounts, per-quote price changes, GST on and off, rounding)
+- [x] Track colour pricing: stocked colours included; a non-stock colour included if they wait for the factory order (spring install); this season adds the rush colour fee per foot from Settings; when the rush fee or the service call fee is not set, that line is hidden, never blank
+- [x] On screen, totals read like "$3,450 + GST" with no GST dollar figure; with GST off nothing mentions GST
+- [x] Every quote has a valid-until date, default `settings.quote_valid_days` (14) days out
+- [x] Offline: meeting mode opened once with signal keeps working without it: presentation content and images are cached on the iPad, the quote math runs on the iPad, and the draft stays on the iPad until it is saved; saving needs signal and says so plainly
+- [x] The warranty wording, rush colour fee, service call fee, FAQ text and quote valid days live in Settings; the exact warranty wording Keenan gave is seeded
+- [x] Quotes are owner-only in RLS; sales users can never read them; no dollar amount is written to leads, lead_events or meetings
+- [x] Design: one impeccable shape before building, one critique and polish pass before the preview, scores in the report; deeper rounds wait for take 2
 
 ### Take 2: after Keenan's first meetings
 - [ ] The leave-behind folder: a branded, always-white PDF through AirPrint and a share sheet: the personal quote (runs, feet, track colour, line-by-line prices, valid until), the mockup full page, a one-page overview, the warranty summary, the FAQ from Settings, and the company contact ((403) 895-9915, info@vesperlighting.ca, 448 Strathcona Drive SW, Calgary, AB T3H 1M3, never a unit number)
