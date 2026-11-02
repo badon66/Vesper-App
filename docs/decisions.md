@@ -597,3 +597,10 @@ The detector found no problems in the source either time. In the rendered pages 
 The final scores were measured before these fixes.
 
 **Left for later**, in the backlog: the iPad homeowner half, Undo after a day change, marks on the evening strip, the distance warning at time pick, and Move offered on an already-booked lead.
+
+## 2026-11-02: Supabase SQL runs without a prompt (Keenan)
+
+Keenan asked for SQL changes to be accepted automatically. `.claude/settings.json` (committed, so every session has it) allows the two Supabase tools that run SQL, `execute_sql` and `apply_migration`, without a permission prompt. The rules in CLAUDE.md are unchanged:
+- every database change is still a migration file;
+- no destructive SQL (drop, delete, truncate) goes through the connector;
+- a migration that truly has to drop or delete still waits for Keenan at the screen.
