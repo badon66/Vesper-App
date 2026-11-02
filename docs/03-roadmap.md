@@ -2,7 +2,7 @@
 
 One milestone per build session. A milestone is done when every criterion passes in the full automated suite, including the live walk-through on a phone-sized screen against the real database. Anything the suite cannot reach is named in the report. Keep the current milestone marked.
 
-**Current milestone: M4**, next. M3.5, the booking sheet and Schedule redesign Keenan asked for on 2026-11-02, is done; M4 starts with its plan, for Keenan's approval.
+**Current milestone: M5 take 1** (Keenan, 2026-11-02): Meeting mode's first working version, on a preview link by 9 am Calgary time on 2026-11-03, ahead of his first meeting that evening. M5 moved ahead of M4 at Keenan's direction; M4 follows M5.
 
 ## M0: Foundation
 Repo, Next.js App Router with TypeScript, Tailwind, shadcn/ui, Supabase client and server helpers, environment setup, PWA manifest and icons, base layout with the brand, light and dark themes, a protected `/app` route group with a working email and password login (accounts are created by the owner in the Supabase dashboard until M1), Vercel preview deploy.
@@ -134,23 +134,37 @@ Asked for by Keenan on 2026-11-02, after trying M3: every rule is right, but the
     - Booking flow: 23 before, 31 final.
     - Schedule: 26 before, 31 final.
 
+## M5: Meeting mode (iPad), in two takes
+Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a preview link by 9 am Calgary that day. Keenan approved take 1's direction, pricing and schema up front; the short plan is in `decisions.md`. Meeting mode is customer-facing the whole time: full screen, no tabs, and nothing internal on screen, ever: no costs, margins, setter names, pipeline or other customers.
+
+### Take 1: present, price, save a draft
+- [ ] Meeting mode opens full screen from Tonight and from the lead page (owner only, enforced on the server), with a small, discreet exit
+- [ ] The presentation is swipeable, one idea per screen, big type, navy and gold: What Vesper is, Hidden by day (day and night photos of the same house with a drag slider), The whites first, How install day works, The warranty (the exact wording from `settings.warranty_text`), and a gallery of real install photos
+- [ ] Presentation text and images come from Settings, not from code; a page with no content yet is skipped, never shown empty; the seeds are plain drafts (no invented stats, reviews or install counts, no em dashes) and only Vesper's own photos ever appear
+- [ ] This house: the customer's mockup image full screen with pinch to zoom (skipped until uploaded), and the colour screen: their soffit colour, the matched track colour by name (no swatches), and the customer's initials confirming the colour, saved on the lead with a timeline event, at every meeting
+- [ ] Uploads: presentation images (day, night, gallery) in Settings; the mockup on the lead page; both work the morning of the meeting
+- [ ] Live quote builder: runs by name with feet and level, boxes, adders, neighbour and custom discounts, financing flag, "No payment until your install is complete."; every price editable for that quote only; the quote stores the prices it used; totals update live from `lib/pricing.ts` with unit tests (plain house, adders and discounts, per-quote price changes, GST on and off, rounding)
+- [ ] Track colour pricing: stocked colours included; a non-stock colour included if they wait for the factory order (spring install); this season adds the rush colour fee per foot from Settings; when the rush fee or the service call fee is not set, that line is hidden, never blank
+- [ ] On screen, totals read like "$3,450 + GST" with no GST dollar figure; with GST off nothing mentions GST
+- [ ] Every quote has a valid-until date, default `settings.quote_valid_days` (14) days out
+- [ ] Offline: meeting mode opened once with signal keeps working without it: presentation content and images are cached on the iPad, the quote math runs on the iPad, and the draft stays on the iPad until it is saved; saving needs signal and says so plainly
+- [ ] The warranty wording, rush colour fee, service call fee, FAQ text and quote valid days live in Settings; the exact warranty wording Keenan gave is seeded
+- [ ] Quotes are owner-only in RLS; sales users can never read them; no dollar amount is written to leads, lead_events or meetings
+- [ ] Design: one impeccable shape before building, one critique and polish pass before the preview, scores in the report; deeper rounds wait for take 2
+
+### Take 2: after Keenan's first meetings
+- [ ] The leave-behind folder: a branded, always-white PDF through AirPrint and a share sheet: the personal quote (runs, feet, track colour, line-by-line prices, valid until), the mockup full page, a one-page overview, the warranty summary, the FAQ from Settings, and the company contact ((403) 895-9915, info@vesperlighting.ca, 448 Strathcona Drive SW, Calgary, AB T3H 1M3, never a unit number)
+- [ ] Mark presented, accepted or declined; each writes a lead event and moves the lead to `quoted` or `sold`; accepting creates one pending `commission` earning for the lead's assigned setter (none when assigned to the owner) at the commission rate on the total as actually priced before GST; `installed` makes it payable; `lost` voids it; unit tests cover the amount and rounding
+- [ ] A quote can't be marked ready until the lead's track colour is set; the quote stores the colour name and RAL code it used and prints them, and a Custom colour shows as needing powder coating
+- [ ] A deeper impeccable pass with before and after scores, and whatever the first meetings show needs changing
+
 ## M4: Pipeline board and lead detail (iPad and desktop)
-Was on hold until M3.5 was done (Keenan, 2026-11-02); M3.5 is done, so this is next, starting with the plan for Keenan's approval.
+Follows M5 (Keenan, 2026-11-02: Meeting mode comes first, for his first meetings). Starts with a plan for Keenan's approval.
 - [ ] The board is a Board view inside Leads for the owner on iPad and desktop; phones keep the list
 - [ ] Board columns match the status enum, cards show name, address, neighbourhood, setter, feet and total when quoted, and age
 - [ ] Drag between columns on iPad and desktop writes a status change event; `lost` prompts for a reason
 - [ ] Lead detail shows contact, map pin, photos, timeline, meetings, quotes and earnings; owner can edit everything, including marking `installed` by hand
 - [ ] Board stays usable with 200 leads (pagination or virtualization)
-
-## M5: Meeting mode and quotes (iPad)
-- [ ] Landscape iPad layout: presentation pages on the left, quote builder on the right, or swipe between them on narrower screens
-- [ ] Presentation content and images come from settings, not from code
-- [ ] Quote builder: runs, boxes, adders, discounts, financing flag; every price is editable on the quote itself, with a custom line, and the quote stores the prices it used; totals update live and match `lib/pricing.ts`; unit tests cover a plain house, a house with adders and discounts, per-quote price changes, GST on and off, rounding
-- [ ] On screen, totals read like "$3,450 + GST" with no GST dollar figure; with GST off nothing on screen or paper mentions GST
-- [ ] A quote can't be marked ready until the lead's track colour is set; the quote stores the colour name and RAL code it used and prints them, and a Custom colour shows as needing powder coating
-- [ ] Save draft, mark presented, accepted or declined; each writes a lead event and moves the lead status to `quoted` or `sold`
-- [ ] PDF export: breakdown, subtotal, GST as a dollar amount, total and the GST number when GST is on, warranty text, "No payment until your install is complete," company contact, no em dashes anywhere; always white regardless of theme; opens in a share sheet on iPad
-- [ ] Accepting a quote creates one pending `commission` earning for the lead's assigned setter (none when the lead is assigned to the owner) at the current commission rate on the total as actually priced before GST; marking the lead `installed` makes it payable; marking it `lost` voids it; unit tests cover the amount and rounding
 
 ## M6: Dashboard on the owner's Home (desktop and iPad)
 - [ ] The tiles sit on the owner's Home, below tonight's meetings and today's team; there is no separate dashboard page or tab

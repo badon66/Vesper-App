@@ -10,15 +10,15 @@ lead_status:     new | follow_up | meeting_booked | met | quoted | sold | instal
 lead_source:     door | referral | neighbour_card | website | other
 house_type:      bungalow | bi_level | two_storey | other
 soffit_colour:   white | off_white | black | brown | other | not_sure    -- off_white and not_sure added 2026-11-01; black and brown stay but are unused (the app offers White, Off-white or cream, Other, Not sure)
-photo_slot:      front | left_corner | right_corner | soffit
+photo_slot:      front | left_corner | right_corner | soffit | mockup   -- mockup added in M5: the customer's mockup image, one per lead, owner-uploaded
 christmas_lights_now: hires | diy | none
 roofline_areas:  front | front_and_sides | full_wrap | not_sure
 install_timing:  before_christmas | new_year | no_rush
 looked_into_before: got_quotes | thought_about_it | new_to_them   -- added in M3.5
 meeting_status:  booked | confirmed | qualified | not_qualified | no_show | cancelled | moved   -- qualified and not_qualified both mean the meeting was held; moved means it was replaced by a meeting at another time; confirmed is unused for now
 map_position_source: picked | device               -- picked from the address suggestions, or the phone's own position at the door
-quote_status:    draft | presented | accepted | declined | expired
-event_type:      created | note | status_change | call | text | meeting_booked | meeting_outcome | quote_created | quote_presented | quote_accepted | quote_declined | photo_added | edited | meeting_moved | meeting_cancelled   -- the last two added in M3
+quote_status:    draft | presented | accepted | declined | expired   -- take 1 writes drafts only
+event_type:      created | note | status_change | call | text | meeting_booked | meeting_outcome | quote_created | quote_presented | quote_accepted | quote_declined | photo_added | edited | meeting_moved | meeting_cancelled | colour_confirmed   -- meeting_moved and meeting_cancelled added in M3; colour_confirmed added in M5 (the customer initialled the track colour; payload holds the initials, never a price)
 run_level:       lower | upper
 earning_type:    booking | commission
 earning_status:  pending | paid | void
@@ -53,9 +53,16 @@ gst_rate numeric(5,4) not null default 0.0500
 gst_enabled boolean not null default false
 gst_number text                      -- printed on formal documents when GST is on
 warranty_text text not null
-presentation jsonb not null          -- pages: [{title, body, image_paths[]}]
+presentation jsonb not null          -- M5: six pages in order, [{kind, title, body, image_paths[]}]
+                                     -- kinds: what_vesper_is | hidden_by_day | whites_first | install_day | warranty | gallery
+                                     -- hidden_by_day image_paths = [day, night]; gallery holds many; other pages are text
+                                     -- paths point into the 'presentation' bucket; a page with no content is skipped on the iPad
 booking_pay numeric(10,2) not null default 20.00      -- flat pay per qualified booking
 commission_rate numeric(5,4) not null default 0.0500  -- share of the accepted quote total before GST
+rush_colour_fee_per_ft numeric(10,2)             -- M5: per foot, for a non-stock colour installed this season; null = not set, the line is hidden
+service_call_fee numeric(10,2)                   -- M5: warranty years 6 to 10; null = not set, no amount shows
+quote_valid_days int not null default 14         -- M5: a new quote's valid-until date is this many days out
+faq_text text not null default ''                -- M5: the folder's FAQ (take 2); seeded as a draft
 lost_reasons text[] not null default '{price, other company, not now, could not reach, other}'
 door_guide text not null                        -- the M2.6 Door guide; unused since M3.5, kept per the additive rule
 step_note_at_door text not null                 -- M3.5: the "?" note for the booking sheet's At the door step, owner edited; starts as in the product spec
@@ -124,6 +131,8 @@ christmas_lights_now christmas_lights_now       -- Find out: Hires someone, Does
 areas_wanted roofline_areas                     -- Find out: Front only, Front and sides, Full wrap, Not sure
 install_timing install_timing                   -- Find out: Before Christmas, New year, No rush
 looked_into_before looked_into_before           -- Find out (M3.5): Got quotes, Thought about it, New to them
+track_colour_initials text                       -- M5: the customer's initials confirming the track colour, owner-written only (same guard as the track colour)
+track_colour_initialled_at timestamptz           -- M5: when they initialled it; every confirmation also writes a colour_confirmed event
 track_colour_id uuid references track_colours   -- set by the owner only: one of the active colours
 track_ral_code text references ral_classic_colours  -- set by the owner only: Custom, a RAL Classic code (needs powder coating)
 est_feet int
@@ -301,7 +310,9 @@ subtotal numeric(10,2) not null default 0
 gst numeric(10,2) not null default 0
 total numeric(10,2) not null default 0
 financing_offered boolean not null default false
-track_colour_name text                           -- copied from the lead's track colour when the quote is made ready
+colour_timing text                               -- M5: stock | factory_order | rush; how the colour is priced (see the spec)
+rush_fee_per_ft numeric(10,2)                    -- M5: the rush colour fee this quote used, when colour_timing = 'rush'
+track_colour_name text                           -- copied from the lead's track colour when the quote is made ready (take 1 copies what is already set)
 track_ral_code text                              -- the RAL code used, when there is one
 track_custom boolean not null default false      -- a Custom RAL colour, which needs powder coating
 notes text
@@ -310,7 +321,7 @@ valid_until date
 presented_at, accepted_at, declined_at timestamptz
 created_at, updated_at
 ```
-A quote can't be marked ready until the lead's track colour is set; the quote stores the colour name and RAL code it used, prints them, and shows a Custom colour as needing powder coating. Totals are computed in one pure function in `lib/pricing.ts`, used by the UI and the server action, and covered by unit tests. The database stores the result so history is stable if prices change later. `subtotal` is the total before GST and is the base for commission. Every price on a quote belongs to that quote: `price_per_ft`, `box_price`, each adder and discount amount, and custom lines in `adders` and `discounts`. Settings supplies the defaults when the quote is created; later changes to settings never alter an existing quote. Accepting a quote creates a `commission` earning (see `earnings`).
+A quote can't be marked ready until the lead's track colour is set; the quote stores the colour name and RAL code it used, prints them, and shows a Custom colour as needing powder coating. Totals are computed in one pure function in `lib/pricing.ts`, used by the UI and the server action, and covered by unit tests. The database stores the result so history is stable if prices change later. `subtotal` is the total before GST and is the base for commission. Every price on a quote belongs to that quote: `price_per_ft`, `box_price`, each adder and discount amount, and custom lines in `adders` and `discounts`. Settings supplies the defaults when the quote is created; later changes to settings never alter an existing quote. Accepting a quote creates a `commission` earning (see `earnings`). Take 1 (M5) writes drafts only, one draft per lead reused; presented, accepted, declined, the ready rule and the PDF arrive in take 2. The rush line is `total_feet` times `rush_fee_per_ft` when `colour_timing` is 'rush'; a stocked colour and a factory order add nothing.
 
 ### earnings
 What setters are owed and what they have been paid. One row per earning. Rows are created by server actions, never by the client directly.
