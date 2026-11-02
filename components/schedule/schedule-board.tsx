@@ -383,16 +383,18 @@ function DayTimesDialog({ open, onClose, tools }: { open: boolean; onClose: () =
   );
 }
 
+// Warns before saving: a booking that won't line up stays where it is, and
+// a time someone is holding lets go.
 function Warnings({ plan, showDay = false }: { plan: DaySchedulePreview; showDay?: boolean }) {
   if (plan.misaligned.length === 0 && plan.holds.length === 0) return null;
-  const at = (iso: string) => (showDay ? `${formatDay(calgaryDateOf(iso))} ${formatTime(iso)}` : formatTime(iso));
+  const at = (iso: string) => (showDay ? `${formatDay(calgaryDateOf(iso))} at ${formatTime(iso)}` : formatTime(iso));
   return (
-    <div role="status" className="flex flex-col gap-2 rounded-md border border-destructive px-3 py-2 text-sm" data-testid="day-times-warning">
+    <div role="status" className="flex flex-col gap-2 rounded-md border border-primary px-3 py-2 text-sm" data-testid="day-times-warning">
       {plan.misaligned.map((meeting) => (
         <p key={meeting.meetingId} className="text-pretty">
           <span className="font-semibold">
-            {at(meeting.startsAt)} {meeting.name}
-            {meeting.neighbourhood ? `, ${meeting.neighbourhood}` : ""}
+            The {at(meeting.startsAt)} meeting with {meeting.name}
+            {meeting.neighbourhood ? ` in ${meeting.neighbourhood}` : ""}
           </span>{" "}
           won&apos;t line up with the new times. It stays at {formatTime(meeting.startsAt)}, and new times that overlap it can&apos;t be booked.
         </p>

@@ -33,7 +33,7 @@ export const SCREEN_TITLES: Record<SheetScreen, string> = {
   address: "Where's the house?",
   soffit: "What colour is the soffit?",
   photos: "Photos of the house",
-  book: "Book it",
+  book: "Ready to book?",
 };
 
 export function stepOf(screen: SheetScreen): StepKey {

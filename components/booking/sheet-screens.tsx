@@ -226,11 +226,12 @@ export function PhotosScreen({
 }) {
   const complete = guidedPhotoCount(draft) >= 3;
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       {draft.leadId ? (
         <PhotoSlots
           userId={userId}
           mode="attach"
+          layout="tiles"
           leadId={draft.leadId}
           saved={photos}
           onBusyChange={onBusyChange}
@@ -275,13 +276,11 @@ export function PhotosScreen({
 export function BookScreen({
   draft,
   name,
-  when,
   warnings,
   onFix,
 }: {
   draft: SheetDraft;
   name: string;
-  when: string;
   warnings: string[];
   onFix: (screen: SheetScreen) => void;
 }) {
@@ -302,28 +301,31 @@ export function BookScreen({
     { key: "everyone_deciding_present", label: "Everyone who decides will be there", ok: draft.everyone, done: null },
   ];
   return (
-    <div className="flex flex-col gap-5">
-      <div className="rounded-md border bg-card px-4 py-3" data-testid="sheet-summary">
+    <div className="flex flex-col gap-4">
+      <div data-testid="sheet-summary">
         <p className="text-lg font-bold text-balance">{name}</p>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-pretty text-muted-foreground">
           {[draft.address_line, draft.neighbourhood].filter(Boolean).join(", ") || "No address yet"}
           {draft.phone ? ` · ${formatPhone(draft.phone) || draft.phone}` : ""}
         </p>
-        <p className="mt-2 text-base font-semibold">{when}</p>
       </div>
 
-      <section aria-labelledby="sheet-ready-heading" className="flex flex-col gap-2">
-        <h3 id="sheet-ready-heading" className="text-base font-bold">
+      <section aria-labelledby="sheet-ready-heading" className="flex flex-col gap-1">
+        <h3 id="sheet-ready-heading" className="text-sm font-bold">
           Before you book
         </h3>
-        <ul className="flex flex-col divide-y rounded-md border" data-testid="readiness">
+        <ul className="flex flex-col" data-testid="readiness">
           {items.map((item) => (
-            <li key={item.key} className="flex min-h-12 items-center justify-between gap-3 px-3 py-1" data-ok={item.ok ? "yes" : "no"}>
+            <li
+              key={item.key}
+              className={cn("flex items-center justify-between gap-3", item.ok ? "min-h-8" : "min-h-12")}
+              data-ok={item.ok ? "yes" : "no"}
+            >
               <span className="flex items-center gap-2 text-sm">
                 {item.ok ? (
-                  <Check aria-label="Done" className="size-5 shrink-0" />
+                  <Check aria-label="Done" className="size-4 shrink-0" />
                 ) : (
-                  <span aria-label="Missing" className="size-5 shrink-0 rounded-full border-2 border-muted-foreground" />
+                  <span aria-label="Missing" className="size-4 shrink-0 rounded-full border-2 border-muted-foreground" />
                 )}
                 <span className={item.ok ? "" : "font-semibold"}>{item.done ?? item.label}</span>
               </span>
@@ -344,9 +346,9 @@ export function BookScreen({
       </section>
 
       {warnings.length > 0 ? (
-        <div role="status" className="rounded-md border px-4 py-3 text-sm" data-testid="distance-warning">
+        <div role="status" className="rounded-md border border-primary px-3 py-2 text-sm" data-testid="distance-warning">
           {warnings.map((warning) => (
-            <p key={warning} className="font-semibold">
+            <p key={warning} className="font-semibold text-pretty">
               {warning}
             </p>
           ))}
@@ -373,7 +375,9 @@ export function ExistingScreen({
     return <p className="text-sm text-muted-foreground">No New or Follow up leads of yours yet. Go back and add this person instead.</p>;
   }
   return (
-    <ul className="flex flex-col divide-y rounded-md border" aria-label="Your leads">
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-pretty text-muted-foreground">Your New and Follow up leads. Anything already answered is skipped.</p>
+      <ul className="flex flex-col divide-y rounded-md border" aria-label="Your leads">
       {leads.map((lead) => (
         <li key={lead.id}>
           <button
@@ -388,6 +392,7 @@ export function ExistingScreen({
           </button>
         </li>
       ))}
-    </ul>
+      </ul>
+    </div>
   );
 }

@@ -35,6 +35,9 @@ const pairs: [text: string, surface: string, minimum: number][] = [
   ["muted-foreground", "background", 4.5],
   ["muted-foreground", "card", 4.5],
   ["foreground", "muted", 4.5],
+  // Schedule tiles: the quiet second line on booked, blocked and held times.
+  ["muted-foreground", "secondary", 4.5],
+  ["muted-foreground", "muted", 4.5],
   ["primary-foreground", "primary", 4.5],
   ["secondary-foreground", "secondary", 4.5],
   ["accent-foreground", "accent", 4.5],

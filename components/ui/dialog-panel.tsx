@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 // including the tab bar and the booking sheet, keeps focus inside and closes
 // with Escape. On a phone it is a panel along the bottom, in thumb reach;
 // from 640 px wide it is a centred box. Its actions sit at the bottom right.
+// It opens with its title in focus, so a phone's keyboard stays down until
+// a field is tapped, and a screen reader reads the title first.
 export function DialogPanel({
   open,
   onClose,
@@ -23,12 +25,16 @@ export function DialogPanel({
   testId?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const titleId = useId();
 
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
+    if (open && !dialog.open) {
+      dialog.showModal();
+      titleRef.current?.focus();
+    }
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
@@ -52,7 +58,7 @@ export function DialogPanel({
     >
       {open ? (
         <div className="flex max-h-[90dvh] flex-col">
-          <h2 id={titleId} className="px-5 pt-5 text-lg font-bold text-balance">
+          <h2 id={titleId} ref={titleRef} tabIndex={-1} className="px-5 pt-5 text-lg font-bold text-balance outline-none">
             {title}
           </h2>
           <div className="overflow-y-auto px-5 py-4">{children}</div>

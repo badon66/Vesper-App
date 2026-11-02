@@ -10,6 +10,7 @@ import {
   PHOTO_SKIP_LABELS,
   positionSourceText,
   sentence,
+  timePhrase,
 } from "@/lib/schedule/meetings";
 import type { MeetingWithLead } from "@/lib/schedule/queries";
 import { leadName } from "@/lib/leads/status";
@@ -40,6 +41,7 @@ export function MeetingCard({
   previousTime = null,
   showLead = true,
   showDetails = false,
+  showDay = false,
 }: {
   meeting: MeetingWithLead;
   names: Map<string, string>;
@@ -52,6 +54,8 @@ export function MeetingCard({
   previousTime?: string | null;
   showLead?: boolean;
   showDetails?: boolean;
+  // A list that spans several evenings (My bookings) names the day too.
+  showDay?: boolean;
 }) {
   const lead = meeting.lead;
   const started = new Date(meeting.starts_at).getTime() <= now;
@@ -69,7 +73,9 @@ export function MeetingCard({
       data-status={meeting.status}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-xl font-bold tabular-nums">{showLead ? formatTime(meeting.starts_at) : formatMeetingTime(meeting.starts_at)}</p>
+        <p className="text-xl font-bold tabular-nums">
+          {showDay ? timePhrase(meeting.starts_at) : showLead ? formatTime(meeting.starts_at) : formatMeetingTime(meeting.starts_at)}
+        </p>
         <p className="text-sm font-semibold">{MEETING_STATUS_LABELS[meeting.status]}</p>
       </div>
 

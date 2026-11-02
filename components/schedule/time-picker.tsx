@@ -69,6 +69,19 @@ export function TimePicker({
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const bookedKey = useRef(bookedSignature(initial));
+  const strip = useRef<HTMLDivElement>(null);
+
+  // The chosen evening's chip is always in view, also when the page opens on
+  // an evening further along the strip.
+  useEffect(() => {
+    const chip = strip.current?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    const box = strip.current;
+    if (!chip || !box) return;
+    const left = chip.offsetLeft - box.offsetLeft;
+    if (left < box.scrollLeft || left + chip.offsetWidth > box.scrollLeft + box.clientWidth) {
+      box.scrollTo({ left: Math.max(0, left - 16) });
+    }
+  }, [day]);
 
   const read = useCallback(async () => {
     try {
@@ -148,7 +161,7 @@ export function TimePicker({
   return (
     <div className="flex flex-col gap-4" data-testid="time-picker">
       {!tonightOnly ? (
-        <div className="-mx-4 overflow-x-auto px-4" role="group" aria-label="Evenings">
+        <div ref={strip} className="-mx-4 overflow-x-auto px-4" role="group" aria-label="Evenings">
           <div className="flex w-max gap-2">
             {evenings.map((item) => (
               <button
@@ -242,9 +255,9 @@ function SlotButton({
   const blocked = slot.state === "blocked";
   const closed = slot.state === "closed";
   const detail = booked
-    ? [slot.setterIsViewer ? "Your booking" : "Booked", slot.neighbourhood, slot.setterIsViewer ? null : slot.setterName]
-        .filter(Boolean)
-        .join(" · ")
+    ? slot.setterIsViewer
+      ? "Your booking"
+      : "Booked"
     : blocked
       ? ownerTaps
         ? "Blocked · tap to unblock"
@@ -261,6 +274,7 @@ function SlotButton({
   // Blocked and booked times stay tappable for Keenan: to unblock one, or to
   // jump to a booking's details.
   const unavailable = closed || ((booked || blocked) && !ownerTaps);
+  const more = booked ? [slot.neighbourhood, slot.setterIsViewer ? null : slot.setterName].filter(Boolean).join(" · ") : "";
   return (
     <button
       type="button"
@@ -268,7 +282,7 @@ function SlotButton({
       disabled={disabled || unavailable}
       data-time={slot.startsAt}
       data-state={mine ? "mine" : slot.state}
-      aria-label={`${time}, ${detail}`}
+      aria-label={`${time}, ${detail}${more ? `, ${more}` : ""}`}
       className={cn(
         "relative flex min-h-20 w-full flex-col items-start justify-center rounded-md border px-4 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed",
         slot.state === "open" && "border-primary bg-background",
@@ -280,6 +294,7 @@ function SlotButton({
     >
       <span className="text-2xl font-bold tabular-nums">{time}</span>
       <span className="text-sm">{detail}</span>
+      {more ? <span className="w-full truncate text-xs text-muted-foreground">{more}</span> : null}
       {heldByOther ? (
         <span
           aria-hidden="true"

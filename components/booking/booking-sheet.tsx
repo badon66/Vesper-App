@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleHelp } from "lucide-react";
+import { Check, CircleHelp } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { holdTime, moveBooking, releaseMyHold, renewMyHold } from "@/app/(app)/app/schedule/actions";
@@ -47,8 +47,9 @@ import { getPublicEnv } from "@/lib/env";
 import type { PhotoSlot } from "@/lib/leads/door";
 import type { PickedAddress } from "@/lib/places";
 import { toBoardSlots, type BoardSlot } from "@/lib/schedule/board";
+import { sentence, timePhrase } from "@/lib/schedule/meetings";
 import { createClient } from "@/lib/supabase/client";
-import { calgaryDateOf, calgaryToday, formatDay, formatTime } from "@/lib/time";
+import { formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 const CHECK_IN_MS = 20_000;
@@ -86,13 +87,6 @@ function writeStored(userId: string, value: Stored | null) {
     // Private mode or storage off: the sheet still works, it just can't
     // come back after a reload.
   }
-}
-
-// "7:30 p.m. tonight", or "Sat, Nov 14 at 7:30 p.m."
-export function timePhrase(startsAt: string): string {
-  return calgaryDateOf(startsAt) === calgaryToday()
-    ? `${formatTime(startsAt)} tonight`
-    : `${formatDay(calgaryDateOf(startsAt))} at ${formatTime(startsAt)}`;
 }
 
 // The booking sheet's home in the app layout. It opens when something asks
@@ -548,18 +542,16 @@ function BookingSheet({
       : view === "existing"
         ? "Which lead?"
         : view === "done"
-          ? `Booked for ${done ? timePhrase(done.startsAt) : ""}.`
+          ? sentence(`Booked for ${done ? timePhrase(done.startsAt) : ""}`)
           : view === "move-confirm"
             ? `Move ${name} to ${when ?? ""}?`
             : view === "moved"
-              ? `Moved to ${when ?? ""}.`
+              ? sentence(`Moved to ${when ?? ""}`)
               : view === "not-bookable"
                 ? "This lead can't be booked"
                 : view === "loading"
                   ? "Opening"
-                  : view === "book"
-                    ? `Book ${when ?? ""}`
-                    : SCREEN_TITLES[view];
+                  : SCREEN_TITLES[view];
 
   return (
     <dialog
@@ -574,7 +566,7 @@ function BookingSheet({
         {/* ------------------------------------------------ top: the held time, "?", the steps */}
         <header className="border-b pt-[env(safe-area-inset-top)]">
           <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3 px-4 pt-2">
-            <HeldChip when={when} held={held} isMove={isMove} />
+            <HeldChip when={when} state={done || view === "moved" ? "booked" : held ? "held" : "lost"} isMove={isMove} />
             {note ? (
               <Button type="button" variant="ghost" size="icon" aria-label="What to talk about" onClick={() => setNoteOpen(true)}>
                 <CircleHelp className="size-6" />
@@ -652,7 +644,7 @@ function BookingSheet({
               />
             ) : null}
             {view === "book" ? (
-              <BookScreen draft={draft} name={personName} when={when ?? ""} warnings={warnings} onFix={(screen) => go(screen)} />
+              <BookScreen draft={draft} name={personName} warnings={warnings} onFix={(screen) => go(screen)} />
             ) : null}
             {view === "done" && done ? (
               <p className="text-base text-pretty" data-testid="sheet-done">
@@ -685,7 +677,7 @@ function BookingSheet({
               busy={busy || photosBusy}
               canBook={problems.length === 0 && held}
               missing={problems.length}
-              when={when}
+              heldTime={heldAt ? formatTime(heldAt) : null}
               onPickAnother={pickAnother}
               onLetGo={() => (heldAt ? setLetGoOpen(true) : close())}
               onBack={back}
@@ -746,22 +738,27 @@ function isScreen(view: View): view is SheetScreen {
   return STEPS.some((step) => step.screens.includes(view as SheetScreen));
 }
 
-function HeldChip({ when, held, isMove }: { when: string | null; held: boolean; isMove: boolean }) {
+function HeldChip({ when, state, isMove }: { when: string | null; state: "held" | "lost" | "booked"; isMove: boolean }) {
   if (!when) {
     return <p className="text-sm font-semibold text-muted-foreground">{isMove ? "Moving a booking" : "No time held yet"}</p>;
   }
+  const lost = state === "lost";
   return (
     <p
       className={cn(
         "inline-flex min-h-9 items-center gap-2 rounded-md border px-3 text-sm font-semibold",
-        held ? "border-primary text-foreground" : "border-destructive text-destructive",
+        lost ? "border-destructive text-destructive" : "border-primary text-foreground",
       )}
       data-testid="sheet-held"
-      data-held={held ? "yes" : "no"}
+      data-held={state === "held" ? "yes" : state === "booked" ? "booked" : "no"}
     >
-      <span aria-hidden="true" className={cn("size-2 rounded-full", held ? "bg-primary" : "bg-destructive")} />
+      {state === "booked" ? (
+        <Check aria-hidden="true" className="size-4 shrink-0" />
+      ) : (
+        <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", lost ? "bg-destructive" : "bg-primary")} />
+      )}
       {when}
-      <span className="font-normal text-muted-foreground">{held ? "held for you" : "not held"}</span>
+      <span className="font-normal text-muted-foreground">{state === "held" ? "held for you" : state === "booked" ? "booked" : "not held"}</span>
     </p>
   );
 }
@@ -794,7 +791,7 @@ function BottomBar({
   busy,
   canBook,
   missing,
-  when,
+  heldTime,
   onPickAnother,
   onLetGo,
   onBack,
@@ -809,7 +806,7 @@ function BottomBar({
   busy: boolean;
   canBook: boolean;
   missing: number;
-  when: string | null;
+  heldTime: string | null;
   onPickAnother: () => void;
   onLetGo: () => void;
   onBack: () => void;
@@ -839,11 +836,16 @@ function BottomBar({
       </div>
     );
   }
+  // Pick another time is gone while the times are already showing.
   const quiet = (
     <div className="flex items-center justify-between">
-      <Button type="button" variant="ghost" size="sm" onClick={onPickAnother} disabled={busy || view === "times"}>
-        Pick another time
-      </Button>
+      {view === "times" ? (
+        <span />
+      ) : (
+        <Button type="button" variant="ghost" size="sm" onClick={onPickAnother} disabled={busy}>
+          Pick another time
+        </Button>
+      )}
       <Button type="button" variant="ghost" size="sm" onClick={onLetGo} disabled={busy}>
         Let go
       </Button>
@@ -887,7 +889,7 @@ function BottomBar({
           Back
         </Button>
         <Button type="button" size="lg" onClick={onNext} disabled={busy || (booking && !canBook)} data-testid="sheet-next">
-          {busy ? (booking ? "Booking" : "Saving") : booking ? (canBook ? `Book ${when ?? ""}` : `${missing} to go`) : "Next"}
+          {busy ? (booking ? "Booking" : "Saving") : booking ? (canBook ? `Book ${heldTime ?? ""}` : missing > 0 ? `Fix ${missing} first` : "Time not held") : "Next"}
         </Button>
       </div>
     </>
