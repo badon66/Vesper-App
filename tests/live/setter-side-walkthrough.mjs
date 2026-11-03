@@ -31,9 +31,7 @@ if (!url || !anonKey || !serviceKey) {
 const noSession = { auth: { persistSession: false, autoRefreshToken: false } };
 const admin = createClient(url, serviceKey, noSession);
 const results = [];
-const notes = [];
 const check = (name, ok, extra = "") => results.push(`${ok ? "PASS" : "FAIL"} ${name}${extra ? ` [${extra}]` : ""}`);
-const note = (text) => notes.push(text);
 const stamp = Date.now().toString(36);
 const digits = String(Date.now() % 10000).padStart(4, "0");
 const setter = { email: `ss-live-a-${stamp}@example.com`, password: `cedar-harbor-lantern-${digits}`, name: "Sam Welcometest", id: null };
@@ -369,7 +367,6 @@ try {
 }
 
 for (const line of results) console.log(line);
-for (const line of notes) console.log(`NOTE ${line}`);
 const failed = results.filter((line) => !line.startsWith("PASS")).length;
 console.log(`\n${results.length - failed}/${results.length} checks passed`);
 process.exit(failed ? 1 : 0);
