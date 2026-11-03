@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AdminGear } from "@/components/admin-gear";
 import { AppTabs } from "@/components/app-tabs";
 import { BookingSheetHost } from "@/components/booking/booking-sheet";
+import { BellLink } from "@/components/notifications/bell-link";
 import { Wordmark } from "@/components/brand/wordmark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ export default async function AppLayout({
             </Link>
             <div className="flex items-center gap-1">
               {showsAdminGear(profile.role) ? <AdminGear /> : null}
+              {profile.role === "sales" ? <BellLink /> : null}
               <ThemeToggle />
               <form action={signOut}>
                 <Button type="submit" variant="ghost" size="sm" disabled={viewingAs}>

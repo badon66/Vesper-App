@@ -244,3 +244,30 @@ export async function startViewAs(
   (await cookies()).set(VIEW_AS_COOKIE, viewAsCookieValue(me.id, target.person.id), viewAsCookieOptions);
   redirect("/app");
 }
+
+export type ResetWelcomeState = {
+  error?: string;
+  done?: { id: string; fullName: string };
+};
+
+// Shows a setter the first sign-in welcome again, the next time they open
+// Home (Keenan, 2026-11-03). Owner only; it changes nothing else.
+export async function resetWelcome(
+  _previous: ResetWelcomeState,
+  formData: FormData,
+): Promise<ResetWelcomeState> {
+  const me = await owner();
+  if (typeof me === "string") return { error: me };
+
+  const parsed = idSchema.safeParse({ id: formData.get("id") });
+  if (!parsed.success) return { error: "That request did not make sense." };
+  const target = await targetPerson(parsed.data.id, me.id);
+  if ("error" in target) return { error: target.error };
+  if (target.person.role !== "sales") return { error: "The welcome is for sales associates." };
+
+  const { data, error } = await (await createClient()).rpc("reset_welcome", { p_profile_id: target.person.id });
+  if (error || !data) return { error: "The change could not be saved. Try again." };
+
+  revalidatePath("/app/admin/people");
+  return { done: { id: target.person.id, fullName: target.person.full_name } };
+}

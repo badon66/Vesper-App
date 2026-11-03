@@ -57,8 +57,10 @@ describe("currentTab", () => {
 });
 
 describe("hidesBottomBar", () => {
-  it("steps aside only on the lead form, which has its own Save bar", () => {
+  it("steps aside only on the lead form and the welcome, which have their own bars", () => {
     expect(hidesBottomBar("/app/leads/new")).toBe(true);
+    expect(hidesBottomBar("/app/welcome")).toBe(true);
+    expect(hidesBottomBar("/app/notifications")).toBe(false);
     expect(hidesBottomBar("/app/leads/0b6f6f0e-2c1a-4e8b-9a7d-5c3e2f1a0b9c/edit")).toBe(true);
     expect(hidesBottomBar("/app/leads")).toBe(false);
     expect(hidesBottomBar("/app")).toBe(false);

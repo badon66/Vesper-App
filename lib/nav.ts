@@ -50,8 +50,8 @@ export function currentTab(pathname: string, tabs: Tab[]): string | null {
   return match?.href ?? null;
 }
 
-// The lead form has its own Cancel and Save bar at the bottom of a phone, so
-// the bottom tab bar steps aside there. The side rail stays.
+// The lead form and the welcome have their own bar at the bottom of a
+// phone, so the bottom tab bar steps aside there. The side rail stays.
 export function hidesBottomBar(pathname: string): boolean {
-  return pathname === "/app/leads/new" || /^\/app\/leads\/[^/]+\/edit$/.test(pathname);
+  return pathname === "/app/leads/new" || pathname === "/app/welcome" || /^\/app\/leads\/[^/]+\/edit$/.test(pathname);
 }

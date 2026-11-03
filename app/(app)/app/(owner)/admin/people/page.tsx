@@ -10,6 +10,7 @@ import {
 import { requireProfile } from "@/lib/auth/profile";
 import { assignableRoleOptions, roleLabel } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
+import { formatDate } from "@/lib/time";
 import { AddMember } from "./add-member";
 import { PersonActions } from "./person-actions";
 
@@ -22,7 +23,7 @@ export default async function PeoplePage() {
   const supabase = await createClient();
   const { data: people, error } = await supabase
     .from("profiles")
-    .select("id, full_name, email, phone, role, active, created_at")
+    .select("id, full_name, email, phone, role, active, created_at, welcome_done_at")
     .order("role", { ascending: true })
     .order("active", { ascending: false })
     .order("full_name", { ascending: true });
@@ -63,12 +64,24 @@ export default async function PeoplePage() {
                 <div className="text-xs text-muted-foreground">{person.email}</div>
               </TableCell>
               <TableCell>{roleLabel(person.role)}</TableCell>
-              <TableCell>{person.active ? "Active" : "Deactivated"}</TableCell>
+              <TableCell>
+                {person.active ? "Active" : "Deactivated"}
+                {person.role === "sales" ? (
+                  <div className="text-xs text-muted-foreground" data-testid="welcome-status">
+                    {person.welcome_done_at ? `Welcome done ${formatDate(person.welcome_done_at)}` : "Welcome not done yet"}
+                  </div>
+                ) : null}
+              </TableCell>
               <TableCell className="text-right">
                 {person.role === "owner" ? (
                   <span className="text-xs text-muted-foreground">Change your password in Settings</span>
                 ) : (
-                  <PersonActions id={person.id} name={person.full_name} active={person.active} />
+                  <PersonActions
+                    id={person.id}
+                    name={person.full_name}
+                    active={person.active}
+                    welcomeDone={person.role === "sales" && Boolean(person.welcome_done_at)}
+                  />
                 )}
               </TableCell>
             </TableRow>

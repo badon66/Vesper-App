@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { OwnerHome } from "@/components/home/owner-home";
 import { SalesHome } from "@/components/home/sales-home";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +16,9 @@ export const metadata: Metadata = {
 export default async function HomePage() {
   const { profile, real, viewingAs } = await getViewer();
   if (profile.role === "owner") return <OwnerHome profile={profile} />;
+  // A setter's first sign-in lands here: the welcome until it is finished or
+  // skipped (Keenan, 2026-11-03). Never while Keenan views the app as them.
+  if (profile.role === "sales" && !profile.welcome_done_at && !viewingAs) redirect("/app/welcome");
   if (profile.role === "sales") return <SalesHome profile={profile} readOnly={viewingAs} realRole={real.role} />;
 
   const firstName = profile.full_name.split(" ")[0] || profile.full_name;
