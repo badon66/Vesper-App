@@ -271,7 +271,7 @@ try {
   check("while knocking, save returns Home to the counters", true, `${seconds.toFixed(1)} s for the scripted flow`);
   check("the scripted new-lead flow takes well under 30 seconds", seconds < 30, `${seconds.toFixed(1)} s`);
   await page.getByTestId("lead-saved").waitFor({ timeout: 10000 });
-  const doorsBox = await page.getByRole("button", { name: /Doors/ }).first().boundingBox().catch(() => null);
+  const doorsBox = await page.getByRole("button", { name: /^Add one to doors/ }).first().boundingBox().catch(() => null);
   check("Home names the saved lead and shows the counters without scrolling", doorsBox !== null && doorsBox.y + doorsBox.height <= viewport.height, doorsBox ? `${Math.round(doorsBox.y)}` : "missing");
 
   const { data: typedLead } = await admin
@@ -315,6 +315,10 @@ try {
   }
 
   // 4. Leads: grouping, search, Everyone.
+  await page.getByRole("navigation", { name: "Tabs" }).filter({ visible: true }).getByRole("link", { name: "Leads", exact: true }).click();
+  await page.waitForURL((u) => new URL(u).pathname === "/app/leads", { timeout: 20000 });
+  await settle(page);
+  check("the saved lead is on Leads too", (await page.getByText(TYPED_ADDRESS).count()) >= 1);
   await checkTapTargets(page, "Leads");
   await page.screenshot({ path: `${out}/m2-leads.png`, fullPage: true });
   await page.fill('input[name="q"]', "TEST LEAD");
@@ -486,7 +490,8 @@ try {
     check("picking an address that already has a lead shows who has it", (await warning.innerText()).includes(TEST_LEAD) && (await warning.innerText()).includes("added by Live Test A"), (await warning.innerText()).replace(/\n/g, " | "));
     check("the warning links to that lead", (await warning.getByRole("link").getAttribute("href")) === `/app/leads/${googleLead?.id}`);
     await page.screenshot({ path: `${out}/m2-duplicate-warning.png`, fullPage: false });
-    await page.getByRole("link", { name: "Cancel" }).click();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await page.getByTestId("discard-lead").getByRole("button", { name: "Discard" }).click();
     await page.waitForURL("**/app/leads", { timeout: 20000 });
     await settle(page);
 
