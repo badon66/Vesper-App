@@ -201,6 +201,18 @@ Built in two takes. Take 1 is the presentation, This house and the live quote bu
 
 **Lead detail.** Everything about the lead: contact, address with a small map, photos by slot, the Find out answers, notes, the timeline of events (who did what, when), the meetings, the quotes, the earnings. Owner can edit anything and change to any status. The owner marks `installed` by hand in V1 (jobs come in V2); that makes the commission payable. `lost` asks for a reason (price, went with another company, not now, could not reach, other).
 
+**First sign-in (Keenan, 2026-11-03).** The first time a setter signs in, Home opens a short welcome instead, in three steps, each skippable:
+1. Add Vesper to your home screen, with the iPhone steps (Share, then Add to Home Screen). Already on the home screen counts as done.
+2. Allow location, so "Use where I'm standing" works for a street too new for the map. The phone asks once; Vesper reads the position only when that button is tapped.
+3. Turn on notifications (from the Vesper app on the home screen on iPhone).
+Then one screen on how a door goes: start a knock session on Home, tap an open time on Schedule (it's held for you), and the booking sheet's three steps. Once finished or skipped, it never shows again. Keenan can reset it for a setter from People, and People shows whether each setter has seen it.
+
+**Notifications for setters (Keenan, 2026-11-03).** A setter gets a push when Keenan marks one of their bookings or changes it:
+- Qualified: "Your booking on [street] was qualified. $20 added to My pay." (the fee only when one was added);
+- Not qualified, No-show or Cancelled: a short note with the reason from the list;
+- moved or cancelled by Keenan: where it moved to, or that it was cancelled and the lead is back in Follow up.
+It shows on a lock screen, so it names the street only, never a house number, a customer's name, a phone number, a typed note or another setter's details. Setters turn notifications on or off for each device from Notifications, the bell in their header, which also lists their devices and sends a test.
+
 ### Phone (customers): the quote link (Keenan, 2026-11-02)
 
 After a meeting Keenan sends the homeowner a private link to their quote. It is a public page with no login, opened by an unguessable token, and it reads the same lead, runs, prices and mockup as meeting mode, so there is one source of truth. Customers open it from a text message on their own phone, so it is designed phone first. It is always white with a navy header and gold for the main action, like the documents, whatever theme the phone uses.

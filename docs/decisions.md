@@ -677,3 +677,20 @@ Judgment calls:
 - **The page opens at the Recommended package**, not at whatever someone last switched, because the link can be opened on more than one phone. Their switching is still saved, for Keenan's card ("Looking at ..."). Once they've booked, the page opens at what they booked.
 - **Text it to [name].** The Send sheet adds a button that opens Keenan's own Messages to the customer's number with the text filled in; he still taps send. Nothing sends from the app.
 - **For Keenan's call, not built:** an extra-work line can be marked "only with upper runs", but not "only with this run", so a "Garage corner" line stays when the garage is switched off. The service call fee isn't added beside the warranty on the link (meeting mode adds it when set). The track colour isn't on the page yet (take 2 documents).
+
+## 2026-11-03: The setter side first (Keenan)
+
+Keenan put the setter side ahead of M5 take 2: Zane and the other setters are about to use the app every night. Approved to merge on green; it changes no pay or booking rules.
+
+**The plan.**
+- **Polish.** One dual impeccable critique as a setter at phone size of Home, Leads, the lead page, New lead and My pay, run on a staged throwaway setter with a realistic evening; fixes with adapt, clarify and polish; a re-score after.
+- **Schema (additive).** `profiles.welcome_done_at`; `finish_welcome()` for the setter's own row and `reset_welcome(profile_id)` for Keenan; `push_targets_for_member(profile_id)` and `push_devices_for_member(profile_id)`, owner only.
+- **Files.** `/app/welcome` (the steps and the tour), `/app/notifications` (the setter's Notifications card), the bell in the header for setters, Reset welcome in People, the notices in the schedule actions, `lib/push/notices.ts` for the wording.
+- **Risks.** Notifications need Keenan's VAPID keys in Vercel first; until then the card says notifications aren't set up yet. iPhone push needs the home-screen app. Setters already using the app see the welcome once too, since none of them has had it.
+
+Judgment calls:
+- **Where the welcome shows.** Home sends a setter whose welcome isn't done to it, so it appears on the first sign-in (sign-in lands on Home) and never interrupts a link they followed. Finishing or skipping stamps it done. A setter can still open it later from Notifications ("See the welcome again").
+- **Who gets a notice, and how it's sent.** The setter recorded on the meeting (the one whose lead it is, who earns the fee), only when Keenan made the change and only when that person is a setter. Keenan's own action sends it: an owner-only function hands his server the setter's addresses sealed, so no secret key runs and nothing readable leaves the database. A setter's own moves and cancels send nothing.
+- **What a notice says.** The street without the house number ("Aspen Crescent SW"); the fee only when the earning was actually added; a reason only from the fixed list (Not qualified reasons). A note Keenan types by hand, or an "Other" reason he wrote out, never goes on a lock screen: the notice says to see the booking instead.
+- **On and off.** Per device: turning notifications off on a phone stops them there. Setters get one kind of notice today, so there is no list of kinds to choose from.
+- **View as.** The welcome and Notifications render as the setter sees them, read only; the device list comes from the owner-only function, since Row Level Security keeps those rows to their owner.

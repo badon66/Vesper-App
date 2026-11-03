@@ -41,6 +41,12 @@ unique index on (true) where role = 'owner'     -- exactly one owner
 ```
 A new login is created by the admin, who also sets every non-owner password: the app generates it (three common words and four digits), shows it once, and the admin texts it. Reset password from People generates a new one and ends that person's open sessions through `end_user_sessions(uuid)`, a SECURITY DEFINER function callable only by the service role that deletes the user's rows from `auth.sessions` and `auth.refresh_tokens`. Non-owners have no self-service password change or reset. The trigger reads the role from the auth user's `app_metadata` (only the service role can write it; users can edit their own `user_metadata`). The Auth server writes `app_metadata` in an update right after the insert, so the profile is created by the first of the insert or that update that carries a usable role. The owner is still decided by email. An account created with no role or an unknown role gets no profile row and therefore no access: no policy matches it, both public views return nothing to it, and the app signs it out with "not set up yet". A new role appears in People by adding it to the assignable list in code.
 
+### profiles: the welcome (2026-11-03)
+```
+welcome_done_at timestamptz                       -- when the setter finished or skipped the first sign-in welcome; null shows it on Home
+```
+`finish_welcome()` stamps the caller's own row; `reset_welcome(profile_id)` (owner only) clears it, from People. Neither touches anything else on the profile.
+
 ### settings
 Single row (id = 1). Owner only. Everything the business tunes without a deploy.
 ```
@@ -369,7 +375,7 @@ created_at
 last_sent_at timestamptz
 removed_at timestamptz                            -- switched off; the row is kept, sealed, and gets nothing
 ```
-Each member reads, adds and switches off only their own rows. A function that decides an event warrants a notice (today only `quote_link_book`) returns the recipient's sealed rows; the server opens them and sends.
+Each member reads, adds and switches off only their own rows. A function that decides an event warrants a notice returns the recipient's sealed rows; the server opens them and sends: `quote_link_book` for Keenan's Book my install notice, and `push_targets_for_member(profile_id)` (owner only, 2026-11-03) for the notice a setter gets when Keenan marks, moves or cancels their booking. `push_devices_for_member(profile_id)` (owner only) lists a member's devices by label and date, for View as.
 
 ### earnings
 What setters are owed and what they have been paid. One row per earning. Rows are created by server actions, never by the client directly.
