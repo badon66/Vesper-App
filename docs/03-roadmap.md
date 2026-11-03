@@ -67,7 +67,7 @@ The booking sheet:
 - [x] No double booking stays a hard rule: the race tests cover the timer and extensions (only the holder extends; an expired hold can't be extended once someone else has the time; two setters racing still get exactly one)
 
 - [x] Design: impeccable shape, then critique and polish at both phone sizes; plain copy, no em dashes; everything new works in View as (28/40 before polish, 31/40 after, then the re-score's P1 and smaller findings worked)
-- [ ] The full suite passes, the branch merges on green, and production is verified
+- [x] The full suite passes, the branch merges on green, and production is verified (2026-11-03)
 
 ## Setter side (Keenan, 2026-11-03; merge on green, approved)
 It changes no pay or booking rules.
