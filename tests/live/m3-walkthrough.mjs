@@ -143,12 +143,6 @@ async function skipPhotos(page) {
   await sheet(page).getByRole("button", { name: "Can't get the photos?" }).click();
   await answer(page, "Why can't you get them?", "Homeowner said no");
 }
-const notCollected = (page, legend) =>
-  page
-    .locator('[data-testid="booking-sheet"] fieldset')
-    .filter({ has: page.locator("legend", { hasText: new RegExp(`^${escape(legend)}$`) }) })
-    .getByText("Not collected", { exact: true })
-    .click();
 const stepCounter = (page) => sheet(page).getByTestId("sheet-step-count").innerText().then((text) => text.replace(/\s+/g, " ").trim()).catch(() => "");
 const nextLabel = (page) => page.getByTestId("sheet-next").innerText().then((text) => text.trim()).catch(() => "");
 // Seconds left on the header's countdown, as the screen shows it.
