@@ -1,9 +1,10 @@
-import { ChevronLeft } from "lucide-react";
+import { Check, ChevronLeft } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Fragment } from "react";
 import { z } from "zod";
+import { ClearLeadDraft } from "@/components/leads/clear-lead-draft";
 import { LeadPosition } from "@/components/leads/lead-position";
 import { NoteForm } from "@/components/leads/note-form";
 import { MeetingCard } from "@/components/schedule/meeting-card";
@@ -17,11 +18,12 @@ import { MockupCard } from "@/components/meeting/mockup-card";
 import { QuoteCard, type QuoteCardProps } from "@/components/quote-link/quote-card";
 import { ScrollToHash } from "@/components/scroll-to-hash";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth/profile";
 import { findOutAnswerList, type PhotoSlot } from "@/lib/leads/door";
 import { lostReasons, namesById } from "@/lib/leads/queries";
-import { formatMeetingTime, isLive, positionSourceText, sentence } from "@/lib/schedule/meetings";
+import { formatMeetingTime, isLive, positionSourceText, sentence, timePhrase } from "@/lib/schedule/meetings";
+import { leadReadiness } from "@/lib/schedule/readiness";
 import { meetingsForLead } from "@/lib/schedule/queries";
 import {
   HOUSE_TYPE_OPTIONS,
@@ -149,6 +151,18 @@ export default async function LeadPage({
   const today = calgaryToday();
   const followUp = lead.status === "follow_up" && lead.follow_up_on ? lead.follow_up_on : null;
 
+  // What happens next, said at the top (2026-11-03): the booked time, the
+  // follow-up day, why it was lost, or that Keenan takes it from here.
+  const lostLine = lead.status === "lost" ? sentence(lead.lost_reason ? `Lost: ${lead.lost_reason}` : "Lost") : null;
+  const laterLine =
+    choices.length === 0 && !["new", "follow_up", "meeting_booked", "lost"].includes(lead.status)
+      ? `This lead is at ${STATUS_LABELS[lead.status]}. Keenan takes it from here.`
+      : null;
+  // Before you book, listed on the lead (the booking sheet asks the rest).
+  const guidedPhotos = (["front", "left_corner", "right_corner"] as const).filter((slot) => slotUrls[slot]).length;
+  const readiness = canBook ? leadReadiness(lead, guidedPhotos) : [];
+  const missing = readiness.filter((item) => !item.ok).length;
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
@@ -164,12 +178,29 @@ export default async function LeadPage({
           <StatusBadge status={lead.status} />
         </div>
         <p className="text-sm text-muted-foreground">
-          Added by {owner} on {formatDate(lead.created_at)}
+          Added by {lead.created_by === me.id ? "you" : owner} on {formatDate(lead.created_at)}
           {session ? `, while knocking in ${session.neighbourhood}` : ""}.
         </p>
         {followUp ? (
-          <p className={followUp < today ? "text-sm font-semibold text-destructive" : "text-sm font-semibold"}>
+          <p className={followUp < today ? "text-base font-semibold text-destructive" : "text-base font-semibold"} data-testid="lead-next">
             {followUpSentence(followUp, today)}
+          </p>
+        ) : null}
+        {liveMeeting && !justBooked && movedParam !== "1" ? (
+          <p className="text-base font-semibold" data-testid="lead-next">
+            <a href="#meetings" className="underline underline-offset-4">
+              {sentence(`Meeting ${timePhrase(liveMeeting.starts_at)}`)}
+            </a>
+          </p>
+        ) : null}
+        {lostLine ? (
+          <p className="text-base font-semibold" data-testid="lead-next">
+            {lostLine}
+          </p>
+        ) : null}
+        {laterLine ? (
+          <p className="text-base text-pretty" data-testid="lead-next">
+            {laterLine}
           </p>
         ) : null}
         {!canEdit ? (
@@ -193,44 +224,113 @@ export default async function LeadPage({
           </p>
         ) : null}
         {canBook && bookParam === "1" ? <OpenBookingSheet leadId={lead.id} /> : null}
-        {canEdit ? (
-          <div className="flex flex-wrap gap-2">
-            {canBook ? (
-              <BookLeadButton leadId={lead.id} />
+        {(bookParam === "1" || photosParam === "failed") && lead.created_by === me.id ? <ClearLeadDraft userId={me.id} /> : null}
+        {/* Gold only for the next step: Book a meeting. Call and Edit are plain. */}
+        {canBook || lead.phone || canEdit ? (
+          <div className="grid grid-cols-2 gap-2 pt-1 sm:flex sm:flex-wrap">
+            {canBook ? <BookLeadButton leadId={lead.id} className="col-span-2 w-full sm:w-fit" /> : null}
+            {lead.phone ? (
+              <Button asChild variant="outline" className={canEdit ? "w-full sm:w-fit" : "col-span-2 w-full sm:w-fit"}>
+                <a href={`tel:${lead.phone}`}>Call {formatPhone(lead.phone)}</a>
+              </Button>
             ) : null}
-            <Button asChild variant="outline" className="w-fit">
-              <Link href={`/app/leads/${lead.id}/edit`}>Edit lead</Link>
-            </Button>
+            {canEdit ? (
+              <Button asChild variant="outline" className={lead.phone ? "w-full sm:w-fit" : "col-span-2 w-full sm:w-fit"}>
+                <Link href={`/app/leads/${lead.id}/edit`}>Edit lead</Link>
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Contact</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 text-sm">
-          {lead.phone ? (
-            <Button asChild size="lg" className="w-full sm:w-fit">
-              <a href={`tel:${lead.phone}`}>Call {formatPhone(lead.phone)}</a>
-            </Button>
-          ) : (
-            <p className="text-muted-foreground">No phone yet. Booking a meeting will need one.</p>
-          )}
-          {lead.email ? (
-            <a
-              href={`mailto:${lead.email}`}
-              className="inline-flex min-h-11 w-fit items-center font-semibold underline underline-offset-4"
-            >
-              {lead.email}
-            </a>
-          ) : null}
-        </CardContent>
-      </Card>
+      {canBook ? (
+        <Card data-testid="before-you-book">
+          <CardHeader>
+            <CardTitle>Before you book</CardTitle>
+            <CardDescription className="text-pretty">
+              {missing === 0
+                ? "Ready to book. In the booking sheet you'll also confirm everyone who decides will be there."
+                : `${missing === 1 ? "One thing" : `${missing} things`} to sort out. You can do them in the booking sheet too.`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="flex flex-col gap-2" data-testid="readiness">
+              {readiness.map((item) => (
+                <li key={item.key} className="flex items-start gap-2 text-sm" data-ok={item.ok ? "yes" : "no"}>
+                  {item.ok ? (
+                    <Check role="img" aria-label="Done" className="mt-0.5 size-4 shrink-0" />
+                  ) : (
+                    <span role="img" aria-label="Missing" className="mt-0.5 size-4 shrink-0 rounded-full border-2 border-muted-foreground" />
+                  )}
+                  <span className="flex flex-col">
+                    <span className={item.ok ? "" : "font-semibold"}>{item.label}</span>
+                    {item.ok ? null : <span className="text-pretty text-muted-foreground">{item.fix}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {meetings.length > 0 ? (
+        <section id="meetings" data-testid="lead-meetings" aria-labelledby="lead-meetings-heading" className="flex scroll-mt-24 flex-col gap-3">
+          <h2 id="lead-meetings-heading" className="text-lg font-bold">
+            Meetings
+          </h2>
+          {meetings.map((meeting) => (
+            <MeetingCard
+              key={meeting.id}
+              meeting={meeting}
+              names={names}
+              now={requestTime()}
+              canChange={canEdit}
+              isOwner={isOwner}
+              reasons={outcomeSettings?.not_qualified_reasons ?? []}
+              showLead={false}
+              viewerId={me.id}
+            />
+          ))}
+        </section>
+      ) : null}
+
+      {isOwner ? <MockupCard leadId={lead.id} userId={me.id} mockupUrl={slotUrls.mockup ?? null} /> : null}
+      {quoteCard ? <QuoteCard {...quoteCard} /> : null}
+      <ScrollToHash />
+
+      {canEdit && choices.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <StatusControl
+              key={`${lead.status}-${lead.follow_up_on ?? ""}`}
+              leadId={lead.id}
+              current={lead.status}
+              choices={choices}
+              lostReasons={reasons}
+              followUpOn={lead.follow_up_on}
+              today={today}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {canEdit ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Notes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <NoteForm leadId={lead.id} />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
-          <CardTitle>Address</CardTitle>
+          <CardTitle>{lead.email ? "Address and email" : "Address"}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2 text-sm">
           <p className="text-base font-semibold">{lead.address_line}</p>
@@ -246,8 +346,8 @@ export default async function LeadPage({
             Open in Google Maps
           </a>
           {lead.lat === null ? (
-            <p className="text-muted-foreground">
-              No map position yet. Booking needs one.
+            <p className="text-pretty text-muted-foreground">
+              No map position yet.
               {canEdit ? " Edit the lead and pick the address from the suggestions to add one." : ""}
             </p>
           ) : (
@@ -256,32 +356,14 @@ export default async function LeadPage({
             </p>
           )}
           {lead.lat === null && canEdit ? <LeadPosition leadId={lead.id} /> : null}
-        </CardContent>
-      </Card>
-
-      <Card data-testid="lead-meetings">
-        <CardHeader>
-          <CardTitle>Meetings</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {meetings.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No meetings yet.{canBook ? " Book one once Before you book is ready." : ""}
-            </p>
-          ) : (
-            meetings.map((meeting) => (
-              <MeetingCard
-                key={meeting.id}
-                meeting={meeting}
-                names={names}
-                now={requestTime()}
-                canChange={canEdit}
-                isOwner={isOwner}
-                reasons={outcomeSettings?.not_qualified_reasons ?? []}
-                showLead={false}
-              />
-            ))
-          )}
+          {lead.email ? (
+            <a
+              href={`mailto:${lead.email}`}
+              className="inline-flex min-h-11 w-fit items-center font-semibold underline underline-offset-4"
+            >
+              {lead.email}
+            </a>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -345,10 +427,6 @@ export default async function LeadPage({
         </CardContent>
       </Card>
 
-      {isOwner ? <MockupCard leadId={lead.id} userId={me.id} mockupUrl={slotUrls.mockup ?? null} /> : null}
-      {quoteCard ? <QuoteCard {...quoteCard} /> : null}
-      <ScrollToHash />
-
       <Card id="track-colour" className="scroll-mt-24">
         <CardHeader>
           <CardTitle>Track colour</CardTitle>
@@ -356,7 +434,7 @@ export default async function LeadPage({
         <CardContent className="flex flex-col gap-4 text-sm">
           <div data-testid="track-colour">
             <p className={trackColour.kind === "none" ? "text-muted-foreground" : "text-base font-semibold"}>
-              {trackColourText(trackColour)}
+              {trackColour.kind === "none" ? sentence(trackColourText(trackColour)) : trackColourText(trackColour)}
               {trackColour.kind === "list" && trackColour.retired ? " (retired from the list)" : ""}
             </p>
             {needsPowderCoating(trackColour) ? (
@@ -380,42 +458,6 @@ export default async function LeadPage({
         </CardContent>
       </Card>
 
-      {canEdit ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {choices.length > 0 ? (
-              <StatusControl
-                key={`${lead.status}-${lead.follow_up_on ?? ""}`}
-                leadId={lead.id}
-                current={lead.status}
-                choices={choices}
-                lostReasons={reasons}
-                followUpOn={lead.follow_up_on}
-                today={today}
-              />
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                This lead is at {STATUS_LABELS[lead.status]}. From here Keenan moves it along.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {canEdit ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Notes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <NoteForm leadId={lead.id} />
-          </CardContent>
-        </Card>
-      ) : null}
-
       <Card>
         <CardHeader>
           <CardTitle>Timeline</CardTitle>
@@ -427,9 +469,11 @@ export default async function LeadPage({
                 <p className={event.type === "note" ? "text-sm whitespace-pre-wrap" : "text-sm font-semibold"}>
                   {describeEvent(event)}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   {event.actor_id
-                    ? (names.get(event.actor_id) ?? "Someone")
+                    ? event.actor_id === me.id
+                      ? "You"
+                      : (names.get(event.actor_id) ?? "Someone")
                     : isCustomerEvent(event.type)
                       ? lead.first_name
                       : "Vesper"},{" "}

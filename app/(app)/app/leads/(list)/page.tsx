@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Form from "next/form";
 import Link from "next/link";
+import { ClearLeadDraft } from "@/components/leads/clear-lead-draft";
 import { StatusBadge } from "@/components/leads/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { requireProfile } from "@/lib/auth/profile";
 import { ACTIVE_STATUSES, followUpLabel, groupByAttention } from "@/lib/leads/attention";
-import { formatMeetingTime } from "@/lib/schedule/meetings";
+import { formatMeetingTime, sentence } from "@/lib/schedule/meetings";
 import { namesById } from "@/lib/leads/queries";
 import { cleanSearch, searchFilter } from "@/lib/leads/search";
 import { groupByStatus, leadName, STATUS_LABELS, type LeadStatus } from "@/lib/leads/status";
@@ -76,7 +77,7 @@ export default async function LeadsPage({
     query = query.order("created_at", { ascending: false }).limit(LIMIT);
   }
   const addedQuery = added
-    ? supabase.from("leads").select("id, first_name, last_name").eq("id", added).maybeSingle()
+    ? supabase.from("leads").select("id, first_name, last_name, created_by").eq("id", added).maybeSingle()
     : null;
   const [{ data, error }, addedResult] = await Promise.all([query, addedQuery]);
   if (error) throw new Error("Leads could not be loaded.");
@@ -106,6 +107,7 @@ export default async function LeadsPage({
     <div className="flex flex-col gap-5">
       <h1 className="text-2xl font-bold">Leads</h1>
 
+      {addedLead && addedLead.created_by === me.id ? <ClearLeadDraft userId={me.id} /> : null}
       {addedLead ? (
         <div
           role="status"
@@ -155,14 +157,14 @@ export default async function LeadsPage({
         </Button>
       </Form>
 
-      <p className="text-sm text-muted-foreground">
-        {searching
-          ? "Search covers every status, lost and closed leads included."
-          : all
-            ? "Every lead, grouped by status, newest first."
-            : "New, Follow up and Meeting booked, what needs attention first."}
-        {everyone ? " Everyone's leads, so you can check an address before knocking. You can open them but only change your own." : ""}
-      </p>
+      {/* One short line only when it tells something the switches don't. */}
+      {searching || everyone ? (
+        <p className="text-sm text-pretty text-muted-foreground">
+          {searching ? "Search covers every status, lost and closed leads included." : ""}
+          {searching && everyone ? " " : ""}
+          {everyone ? "Everyone's leads, to check an address before knocking. You can change only your own." : ""}
+        </p>
+      ) : null}
 
       {sections.length === 0 ? (
         <p className="rounded-md border px-4 py-6 text-sm text-muted-foreground">
@@ -189,7 +191,7 @@ export default async function LeadsPage({
                   lead.status === "follow_up" && lead.follow_up_on
                     ? `${followUpLabel(lead.follow_up_on, today)}. `
                     : meetingAt.has(lead.id)
-                      ? `Meeting ${formatMeetingTime(meetingAt.get(lead.id) as string)}. `
+                      ? `${sentence(`Meeting ${formatMeetingTime(meetingAt.get(lead.id) as string)}`)} `
                       : "";
                 return (
                   <li key={lead.id}>
@@ -205,7 +207,7 @@ export default async function LeadsPage({
                         {lead.address_line}
                         {lead.neighbourhood ? `, ${lead.neighbourhood}` : ""}
                       </span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-sm text-muted-foreground">
                         {followUp}
                         Added {formatDate(lead.created_at)}
                         {everyone && !mine ? ` by ${names.get(lead.created_by) ?? "someone"}, read only` : ""}

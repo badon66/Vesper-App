@@ -42,6 +42,7 @@ export function MeetingCard({
   showLead = true,
   showDetails = false,
   showDay = false,
+  viewerId = null,
 }: {
   meeting: MeetingWithLead;
   names: Map<string, string>;
@@ -56,12 +57,16 @@ export function MeetingCard({
   showDetails?: boolean;
   // A list that spans several evenings (My bookings) names the day too.
   showDay?: boolean;
+  // Who is looking: their own lead or booking says "you".
+  viewerId?: string | null;
 }) {
   const lead = meeting.lead;
   const started = new Date(meeting.starts_at).getTime() <= now;
   const live = isLive(meeting.status);
   const changed = meeting.status === "moved" || meeting.status === "cancelled";
   const who = (id: string | null) => (id ? (names.get(id) ?? "someone") : "someone");
+  const whose = (id: string | null) => (id && id === viewerId ? "Your" : `${who(id)}'s`);
+  const by = (id: string | null) => (id && id === viewerId ? "you" : who(id));
   const position = positionSourceText(lead.position_source, lead.position_accuracy_m);
 
   return (
@@ -93,8 +98,8 @@ export function MeetingCard({
           </p>
           <p className="text-sm text-muted-foreground">
             {meeting.setter_id === meeting.booked_by
-              ? `${who(meeting.setter_id)}'s lead`
-              : `${who(meeting.setter_id)}'s lead, booked by ${who(meeting.booked_by)}`}
+              ? `${whose(meeting.setter_id)} lead`
+              : `${whose(meeting.setter_id)} lead, booked by ${by(meeting.booked_by)}`}
           </p>
         </div>
       ) : null}

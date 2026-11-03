@@ -33,6 +33,7 @@ export function PhotoSlots({
   layout = "list",
   onBusyChange,
   onTakenChange,
+  initial,
 }: {
   userId: string;
   mode: "form" | "attach";
@@ -44,9 +45,19 @@ export function PhotoSlots({
   onBusyChange?: (busy: boolean) => void;
   // Which slots have a photo ready to save, for Before you book on New lead.
   onTakenChange?: (slots: PhotoSlot[]) => void;
+  // A form's photos already uploaded, brought back from a draft after a
+  // reload: the path and a signed link to show it.
+  initial?: Partial<Record<PhotoSlot, { path: string; preview: string }>>;
 }) {
   const router = useRouter();
-  const [taken, setTaken] = useState<Partial<Record<PhotoSlot, Taken>>>({});
+  const [taken, setTaken] = useState<Partial<Record<PhotoSlot, Taken>>>(() =>
+    Object.fromEntries(
+      Object.entries(initial ?? {}).map(([slot, photo]) => [
+        slot,
+        { attempt: 0, status: "done", preview: photo.preview, source: new Blob(), path: photo.path } satisfies Taken,
+      ]),
+    ),
+  );
   const inputs = useRef<Partial<Record<PhotoSlot, HTMLInputElement | null>>>({});
   const working = useRef(0);
   const attempts = useRef(0);
@@ -236,7 +247,7 @@ export function PhotoSlots({
               </div>
               <div>
                 <p className="text-sm font-semibold">{label}</p>
-                <p className="text-xs text-muted-foreground">{hint}</p>
+                <p className="text-sm text-pretty text-muted-foreground">{hint}</p>
               </div>
               {canTake ? (
                 <>
@@ -263,7 +274,7 @@ export function PhotoSlots({
           );
         })}
       </ul>
-      {canTake ? <p className="text-sm text-muted-foreground">{PHOTO_SLOT_HINT}</p> : null}
+      {canTake ? <p className="text-sm text-pretty text-muted-foreground">{PHOTO_SLOT_HINT}</p> : null}
     </div>
   );
 }

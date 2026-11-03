@@ -216,6 +216,7 @@ try {
   await settle(page);
   check("Home stays Home once the welcome is done", path(page) === "/app");
   await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByTestId("sign-out").getByRole("button", { name: "Sign out" }).click();
   await page.waitForURL("**/login**", { timeout: 20000 });
   await signIn(page, (u) => new URL(u).pathname === "/app");
   check("signing in again goes straight Home", path(page) === "/app", path(page));
@@ -247,6 +248,39 @@ try {
     "Skip the welcome goes Home and keeps the first time it was done",
     path(page) === "/app" && new Date(await welcomeOf()).getTime() === new Date(doneAt).getTime(),
   );
+
+  // ---------------------------------------------------------------- 6b. New lead keeps a draft
+  // The camera can reload an iPhone mid-lead: what was entered comes back.
+  // Nothing here is saved.
+  await page.goto(`${base}/app/leads/new`);
+  await settle(page);
+  await page.fill("#lead-first_name", "Draft (test)");
+  await page.fill("#lead-phone", "403 555 0142");
+  await page.waitForTimeout(700);
+  await page.reload();
+  await settle(page);
+  await page.getByTestId("draft-restored").waitFor({ timeout: 10000 }).catch(() => {});
+  check(
+    "New lead brings back what was entered after a reload",
+    (await page.getByTestId("draft-restored").count()) === 1 &&
+      (await page.inputValue("#lead-first_name")) === "Draft (test)" &&
+      (await page.inputValue("#lead-phone")).replace(/\D/g, "").endsWith("4035550142"),
+    `${await page.inputValue("#lead-first_name")} / ${await page.inputValue("#lead-phone")}`,
+  );
+  await page.getByRole("button", { name: "Cancel" }).click();
+  const discardDialog = page.getByTestId("discard-lead");
+  await discardDialog.getByText("Discard this lead?").waitFor({ timeout: 5000 }).catch(() => {});
+  check("X asks before throwing away what was entered", (await discardDialog.getByText("Discard this lead?").count()) === 1);
+  await discardDialog.getByRole("button", { name: "Keep going" }).click();
+  await page.getByRole("button", { name: "Start over" }).click();
+  await page.waitForTimeout(300);
+  const keptDrafts = await page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("vesper:new-lead-draft:")).length);
+  check("Start over empties the form and forgets the draft", (await page.inputValue("#lead-first_name")) === "" && keptDrafts === 0, `${keptDrafts} kept`);
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.waitForURL((u) => new URL(u).pathname === "/app/leads", { timeout: 15000 });
+  check("with nothing entered, X leaves straight away", path(page).startsWith("/app/leads"));
+  const { count: draftLeads } = await admin.from("leads").select("id", { count: "exact", head: true }).eq("created_by", setter.id);
+  check("no lead was saved by the draft checks", draftLeads === 0, String(draftLeads));
 
   // ---------------------------------------------------------------- 7. Keenan's side
   const ownerContext = await browser.newContext(iphone);

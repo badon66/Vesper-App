@@ -35,6 +35,7 @@ export function StatusControl({
   const hasDate = current === "follow_up" && followUpOn !== null;
   const [when, setWhen] = useState<FollowUpChoice>(hasDate ? "keep" : "tomorrow");
   const [error, setError] = useState<string | null>(null);
+  const [lostReason, setLostReason] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -56,6 +57,8 @@ export function StatusControl({
     { value: "date", label: "On a date" },
   ];
   const unchanged = selected === current && (selected !== "follow_up" || when === "keep");
+  // Lost needs its reason before it can be saved.
+  const needsReason = selected === "lost" && current !== "lost" && lostReason === null;
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
@@ -63,6 +66,7 @@ export function StatusControl({
       <ChoiceGroup
         name="status"
         legend="Status"
+        hideLegend
         options={choices.map((status) => ({ value: status, label: STATUS_LABELS[status] }))}
         defaultValue={current}
         columns={3}
@@ -100,6 +104,7 @@ export function StatusControl({
           legend="Why was it lost?"
           options={lostReasons.map((reason) => ({ value: reason, label: sentence(reason) }))}
           columns={2}
+          onChange={setLostReason}
         />
       ) : null}
       {error ? (
@@ -107,8 +112,14 @@ export function StatusControl({
           {error}
         </p>
       ) : null}
-      <Button type="submit" size="lg" disabled={pending || unchanged}>
-        {pending ? "Saving" : selected === current && selected === "follow_up" ? "Save follow-up day" : "Save status"}
+      <Button type="submit" size="lg" disabled={pending || unchanged || needsReason}>
+        {pending
+          ? "Saving"
+          : needsReason
+            ? "Pick why it was lost"
+            : selected === current && selected === "follow_up"
+              ? "Save follow-up day"
+              : "Save status"}
       </Button>
     </form>
   );

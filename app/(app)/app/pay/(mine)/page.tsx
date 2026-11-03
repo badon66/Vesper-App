@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Check } from "lucide-react";
 import Link from "next/link";
 import { NotForYourRole } from "@/components/not-for-your-role";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,17 +57,18 @@ export default async function MyPayPage() {
         {[
           ["Owed now", totals.owedNow],
           ["Pending install", totals.pendingInstall],
-          ["Paid", totals.paid],
+          ["Paid, all time", totals.paid],
         ].map(([label, amount]) => (
-          <div key={label as string} className="flex flex-col gap-1 rounded-md border p-3">
-            <span className="text-xs font-semibold text-muted-foreground">{label}</span>
+          // The figures line up at the bottom even when a label wraps.
+          <div key={label as string} className="flex flex-col justify-between gap-1 rounded-md border p-3">
+            <span className="text-sm leading-tight font-semibold text-muted-foreground">{label}</span>
             <span className="text-xl font-bold tabular-nums">{formatMoney(amount as number)}</span>
           </div>
         ))}
       </div>
-      <p className="text-sm text-muted-foreground">
-        Owed now: fees for meetings Keenan marked Qualified, not paid yet. Pending install: commission
-        on sales waiting for the install. Paid: everything Keenan has marked paid.
+      <p className="text-sm text-pretty text-muted-foreground">
+        Owed now: fees for meetings Keenan marked Qualified, not paid yet. Pending install: commission on sales
+        waiting for the install. Paid, all time: everything Keenan has marked paid since you started.
       </p>
 
       <Card>
@@ -80,7 +82,7 @@ export default async function MyPayPage() {
               No bookings yet. Book a meeting from Schedule or a lead, and it shows here with its outcome.
             </p>
           ) : (
-            <ul className="flex flex-col divide-y rounded-md border" aria-label="Bookings" data-testid="pay-lines">
+            <ul className="flex flex-col divide-y border-y" aria-label="Bookings" data-testid="pay-lines">
               {(meetings ?? []).map((meeting) => {
                 const lead = meeting.lead as unknown as { id: string; first_name: string; last_name: string | null; address_line: string } | null;
                 const fee = feeByMeeting.get(meeting.id);
@@ -93,15 +95,19 @@ export default async function MyPayPage() {
                     : meeting.status === "not_qualified" && meeting.outcome_reason
                       ? `Not qualified: ${meeting.outcome_reason}`
                       : MEETING_STATUS_LABELS[meeting.status];
+                // A booking still to come, or waiting for Keenan, can still earn.
+                const open = (meeting.status === "booked" || meeting.status === "confirmed") && !fee;
                 const feeText = !fee
-                  ? "No fee"
+                  ? open
+                    ? "Fee if Qualified"
+                    : "No fee"
                   : fee.status === "paid"
                     ? `${formatMoney(fee.amount)} paid${fee.paid_at ? ` ${formatDate(fee.paid_at)}` : ""}`
                     : fee.status === "void"
                       ? "Fee voided"
                       : `${formatMoney(fee.amount)} owed`;
                 return (
-                  <li key={meeting.id} className="flex flex-col gap-0.5 px-4 py-3 text-sm">
+                  <li key={meeting.id} className="flex flex-col gap-0.5 px-1 py-3 text-sm">
                     <span className="font-semibold">{formatMeetingTime(meeting.starts_at)}</span>
                     {lead ? (
                       <Link href={`/app/leads/${lead.id}`} className="inline-flex min-h-11 w-fit items-center underline underline-offset-4">
@@ -109,7 +115,10 @@ export default async function MyPayPage() {
                       </Link>
                     ) : null}
                     <span>{outcome}</span>
-                    <span className="font-semibold">{feeText}</span>
+                    <span className={open ? "text-muted-foreground" : "flex items-center gap-1.5 font-semibold"}>
+                      {fee && fee.status !== "void" ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
+                      {feeText}
+                    </span>
                   </li>
                 );
               })}
@@ -124,9 +133,9 @@ export default async function MyPayPage() {
             <CardTitle>Commission</CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="flex flex-col divide-y rounded-md border">
+            <ul className="flex flex-col divide-y border-y">
               {commissions.map((line) => (
-                <li key={line.id} className="flex justify-between px-4 py-3 text-sm">
+                <li key={line.id} className="flex justify-between px-1 py-3 text-sm">
                   <span>{formatDate(line.created_at)}</span>
                   <span className="font-semibold">
                     {formatMoney(line.amount)} {line.status === "paid" ? "paid" : line.payable_at ? "owed" : "pending install"}

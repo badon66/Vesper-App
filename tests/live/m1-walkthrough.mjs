@@ -113,6 +113,7 @@ try {
 
   // g. sign out and the redirect back
   await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByTestId("sign-out").getByRole("button", { name: "Sign out" }).click();
   await page.waitForURL("**/login**", { timeout: 20000 });
   await page.goto(`${base}/app`);
   check("g. signed out, /app redirects to login with next", /\/login\?next=%2Fapp$/.test(page.url()), page.url());
