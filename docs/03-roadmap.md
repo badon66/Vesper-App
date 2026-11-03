@@ -4,7 +4,7 @@ One milestone per build session. A milestone is done when every criterion passes
 
 **Focus (Keenan, 2026-11-02).** The app's fundamentals are three things: the setter sessions (knocking, leads and booking), the sales meetings (meeting mode on the iPad), and the shareable quote links for customers. Everything else is parked until Keenan says otherwise: M4 (pipeline board), M6 (sales dashboard), M7 (website lead form and daily email) and the backlog ideas. Parked milestones are not started or planned.
 
-**Current milestone: Customer quote link, take 1** (Keenan, 2026-11-02, approved with its pricing and schema changes; plan in `decisions.md`). Keenan wants to send Todd Dean his link as soon as possible. Take 2 of the quote link goes with M5 take 2, after the first links go out. M5 take 1 was released on 2026-11-02 (merge `b075554`), and the Meetings page the same day (merge `13b737d`).
+**Current milestone: M5 take 2 and the quote link's take 2, together, after Keenan's first meetings and the first links go out.** The customer quote link's take 1 was released on 2026-11-03 (branch `quote-link-take-1`, after Keenan reviewed the preview on Todd Dean's quote and said "push the changes"). M5 take 1 was released on 2026-11-02 (merge `b075554`), and the Meetings page the same day (merge `13b737d`).
 
 ## M5: Meeting mode (iPad), in two takes
 Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a preview link by 9 am Calgary that day. Keenan approved take 1's direction, pricing and schema up front; the short plan is in `decisions.md`. Meeting mode is customer-facing the whole time: full screen, no tabs, and nothing internal on screen, ever: no costs, margins, setter names, pipeline or other customers.
@@ -70,7 +70,7 @@ Rules:
 - [x] Quote pages answer on any host, links come from `QUOTE_BASE_URL`, on quote.vesperlighting.ca only quote routes answer, and quote pages are noindex, no-referrer and not cached
 - [x] Plain, human copy, no em dashes, no invented reviews or stats; the address is 448 Strathcona Drive SW, Calgary, AB T3H 1M3, no unit number
 - [x] Design: an impeccable shape before building, one critique and polish pass before the preview, phone size first, scores in the report
-- [ ] The full suite passes, including a live walk-through of the customer's page at phone size; the branch is pushed with a preview link; Keenan reviews it on Todd Dean's real quote and says "push the changes" before it merges
+- [x] The full suite passes, including a live walk-through of the customer's page at phone size; the branch is pushed with a preview link; Keenan reviews it on Todd Dean's real quote and says "push the changes" before it merges
 
 ### Take 2 (after the first links go out, with M5 take 2)
 - [ ] Your documents: Quote, Warranty, What you get, FAQ, Install day and Agreement preview, each a phone page with Download PDF, built once together with M5 take 2's leave-behind folder
