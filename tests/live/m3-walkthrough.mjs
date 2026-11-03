@@ -535,11 +535,14 @@ try {
   await pageA.getByTestId("sheet-heading").click();
   await sheet(pageA).getByRole("button", { name: "Use where I'm standing" }).click();
   await sheet(pageA).getByText(/accurate to about 10 m/).first().waitFor({ timeout: 15000 });
-  check("with the address placed, the step can be finished", (await nextLabel(pageA)) === "Next");
+  check("with the address placed, the step asks for the soffit colour with it", (await nextLabel(pageA)) === "Pick the soffit first", await nextLabel(pageA));
+  await answer(pageA, "Soffit colour", "White");
+  check("then the step can be finished", (await nextLabel(pageA)) === "Next");
+  scrolls.addressDone = await sheetScrolls(pageA);
   await next(pageA);
   await waitView(pageA, "house", 30000);
   scrolls.house = await sheetScrolls(pageA);
-  check("the soffit colour and the photos share a step: Step 5 of 6, 1 left", (await stepCounter(pageA)) === "Step 5 of 6, 1 left" && (await nextLabel(pageA)) === "Pick the soffit first", await nextLabel(pageA));
+  check("the photos have a step of their own: Step 5 of 6, 1 left", (await stepCounter(pageA)) === "Step 5 of 6, 1 left" && (await nextLabel(pageA)) === "Photos first", await nextLabel(pageA));
   const tiles = await Promise.all(
     ["Front", "Left corner", "Right corner", "Soffit close-up"].map(async (label) => [
       await sheet(pageA).getByRole("button", { name: `Take photo, ${label}` }).count(),
@@ -551,7 +554,6 @@ try {
     tiles.every(([take, upload]) => take === 1 && upload === 1) && (await sheet(pageA).locator("svg[data-guide]").count()) === 4,
     JSON.stringify(tiles),
   );
-  await answer(pageA, "Soffit colour", "White");
 
   // Under a minute: the time says so and offers Add 5 minutes.
   await setSecondsLeft(pageA, people.a, 45);
@@ -606,7 +608,12 @@ try {
   const ticks = await sheet(pageA).getByTestId("readiness").locator("li").evaluateAll((items) => items.map((item) => item.getAttribute("data-ok")));
   check("Book lists every Before you book item, all ticked", ticks.length === 7 && ticks.every((tick) => tick === "yes"), ticks.join(","));
   const bookLabel = (await pageA.getByTestId("sheet-next").innerText()).trim();
-  check("the Book button says which time it books", bookLabel === `Book ${timeLabel(X)}`, bookLabel);
+  const weekday = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", weekday: "short" }).format(new Date(`${testDay}T12:00:00Z`));
+  const tomorrowDay = new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+  const expectedBook = testDay === today ? `Book ${timeLabel(X)}` : testDay === tomorrowDay ? `Book tomorrow ${timeLabel(X)}` : `Book ${weekday} ${timeLabel(X)}`;
+  check("the Book button says which time it books, with the day when it isn't tonight", bookLabel === expectedBook, bookLabel);
+  const heldShown = (await sheet(pageA).getByTestId("sheet-held-time").innerText()).trim();
+  check("the held time in the header names its day", heldShown.endsWith(timeLabel(X)) && (testDay === today ? heldShown.startsWith("Tonight") : heldShown.startsWith(testDay === tomorrowDay ? "Tomorrow" : weekday)), heldShown);
   await swipe(pageA, "left");
   check("a swipe never books: Book is a tap", (await viewOf(pageA)) === "book");
   await checkTapTargets(pageA, "Book");
@@ -748,12 +755,14 @@ try {
   await pageB.getByTestId("sheet-heading").click();
   await sheet(pageB).getByRole("button", { name: "Use where I'm standing" }).click();
   await sheet(pageB).getByText(/accurate to about 10 m/).first().waitFor({ timeout: 15000 });
+  await answer(pageB, "Soffit colour", "Not sure");
+  scrollsB.addressDone = await sheetScrolls(pageB);
+  await checkTapTargets(pageB, "The house at 390 wide");
   await next(pageB);
   await waitView(pageB, "house", 30000);
   scrollsB.house = await sheetScrolls(pageB);
-  await checkTapTargets(pageB, "Soffit and photos at 390 wide");
+  await checkTapTargets(pageB, "Photos at 390 wide");
   await pageB.screenshot({ path: `${out}/r2-house-390.png` });
-  await answer(pageB, "Soffit colour", "Not sure");
   await skipPhotos(pageB);
   scrollsB.houseSkipped = await sheetScrolls(pageB);
   await next(pageB);
@@ -766,7 +775,7 @@ try {
   const unfinished = (await pageB.getByTestId("unfinished").innerText().catch(() => "")).replace(/\s+/g, " ");
   check(
     "leaving the sheet keeps what was entered: Home lists it under Unfinished, where it stopped",
-    unfinished.includes(`${TEST_LEAD} Narrow`) && unfinished.includes("307 Narrow Test Way NW (TEST)") && unfinished.includes("Stopped at step 6 of 6"),
+    unfinished.includes(`${TEST_LEAD} Narrow`) && unfinished.includes("307 Narrow Test Way NW (TEST)") && unfinished.includes("Stopped at Book"),
     unfinished.slice(0, 200),
   );
   const keptKeys = await pageB.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("vesper:sheet-drafts:")));
@@ -798,9 +807,17 @@ try {
   await waitView(pageA, "who");
   check("the lead page's Book a meeting opens the same sheet, prefilled, with the time held", (await heldState(pageA)) === "yes" && (await pageA.inputValue("#sheet-first-name")) === TEST_LEAD);
   await sheet(pageA).getByTestId("sheet-phone-not-collected").click();
+  const phoneNote = (await sheet(pageA).getByTestId("rule-phone").innerText().catch(() => "")).replace(/\s+/g, " ").trim();
+  check("marking the phone Not collected says at once that the time can't be booked without it", phoneNote.startsWith("Without a number, this time can't be booked."), phoneNote);
   await next(pageA);
   await waitView(pageA, "door");
   await sheet(pageA).getByTestId("mark-rest").click();
+  const doorNote = (await sheet(pageA).getByTestId("door-note").innerText().catch(() => "")).replace(/\s+/g, " ").trim();
+  check(
+    "Mark the rest at the door says at once what it means for booking, and the way to follow up instead",
+    doorNote.startsWith("Booking needs a Yes for owns the home, wants a price and everyone who decides.") && doorNote.includes("set a follow-up day on their lead"),
+    doorNote,
+  );
   await next(pageA);
   await waitView(pageA, "learned");
   await sheet(pageA).getByTestId("mark-rest").click();
@@ -808,9 +825,9 @@ try {
   await waitView(pageA, "address", 30000);
   await sheet(pageA).getByRole("button", { name: "Use where I'm standing" }).click();
   await sheet(pageA).getByText(/accurate to about 10 m/).first().waitFor({ timeout: 15000 });
+  await answer(pageA, "Soffit colour", "Not sure");
   await next(pageA);
   await waitView(pageA, "house", 30000);
-  await answer(pageA, "Soffit colour", "Not sure");
   await skipPhotos(pageA);
   await next(pageA);
   await waitView(pageA, "book");
@@ -818,14 +835,14 @@ try {
   const blocked = pageA.getByTestId("sheet-next");
   check(
     "Not collected never counts where booking needs a real answer: phone, owns the home, wants a price, everyone who decides",
-    missing.length === 4 && (await blocked.isDisabled()) && (await blocked.innerText()).trim() === "Fix 4 first",
+    missing.length === 4 && (await blocked.innerText()).trim() === "Fix 4 first" && (await blocked.getAttribute("data-ready")) === "no",
     `${missing.length} missing`,
   );
   const phoneMissing = missing.find((item) => item.startsWith("Phone number")) ?? "";
   check("each says Not collected and what booking needs", phoneMissing.replace(/\s+/g, " ").includes("Phone number: Not collected Booking needs a number."), phoneMissing.replace(/\s+/g, " "));
-  await sheet(pageA).getByRole("button", { name: "Fix: Phone number saved" }).click();
+  await next(pageA);
   await waitView(pageA, "who");
-  check("each missing item's Fix goes to the screen that asks for it, with the time still held", (await heldState(pageA)) === "yes");
+  check("Fix 4 first, like each Fix beside an item, goes to the screen that asks for it, with the time still held", (await heldState(pageA)) === "yes");
   await letGo(pageA);
   const reopenedW = await waitForState(pageB, W, "open");
   check("letting go from the lead page frees the time on other phones", reopenedW !== null);

@@ -719,10 +719,10 @@ try {
   await op.getByTestId("sheet-heading").click();
   await sheetOf.getByRole("button", { name: "Use where I'm standing" }).click();
   await sheetOf.getByText(/accurate to about 10 m/).first().waitFor({ timeout: 15000 });
+  await pickIn("Soffit colour", "White");
   await sheetNext();
   await sheetView("house");
   check("the photo step opens even though nothing was saved, with each slot ready", (await sheetOf.getByRole("button", { name: "Take photo, Front" }).count()) === 1);
-  await pickIn("Soffit colour", "White");
   await op.setInputFiles('[data-testid="booking-sheet"] [data-testid="slot-input-front"]', fixture);
   await sheetOf.locator('img[alt="Front photo of the house"]').waitFor({ timeout: 10000 }).catch(() => {});
   const photoNote = await calm(sheetOf);
