@@ -15,7 +15,9 @@
 // 390 wide with a draft left and picked up from Home, a lead that isn't
 // ready, the distance warning, Move and Cancel, Save and book from New lead
 // with the phone's GPS, My pay, and Keenan's screens through the view-only
-// owner session.
+// owner session. Last, Book's answer lost to the signal (2026-11-03): the
+// sheet asks whether the lead booked before it says anything, in four
+// cases, with the phone's requests dropped as a lost signal would.
 //
 // The holds and bookings land on Keenan's real board, so the run uses only
 // the last evening of the booking window, under test names, and removes
@@ -146,6 +148,35 @@ async function skipPhotos(page) {
 const stepCounter = (page) => sheet(page).getByTestId("sheet-step-count").innerText().then((text) => text.replace(/\s+/g, " ").trim()).catch(() => "");
 const nextLabel = (page) => page.getByTestId("sheet-next").innerText().then((text) => text.trim()).catch(() => "");
 // Seconds left on the header's countdown, as the screen shows it.
+// Drops setter A's requests as a lost signal would (2026-11-03). drop.book:
+// "before" stops Book on the phone, so nothing books; "after" lets it reach
+// the server, which books, and drops only the answer. drop.check drops the
+// sheet's question of whether the lead booked; drop.sync drops the hold's
+// own checks, so only a tap can find the booking. Server actions are POSTs
+// whose body is their arguments, which is how each one is told apart.
+function dropping(page, leadId) {
+  const drop = { book: null, check: false, sync: false };
+  const seen = { book: 0, check: 0 };
+  const handler = async (route) => {
+    const request = route.request();
+    const body = request.method() === "POST" ? (request.postData() ?? "") : "";
+    if (body.includes(`"leadId":"${leadId}"`) && body.includes('"everyone":')) {
+      seen.book += 1;
+      if (!drop.book) return route.fallback();
+      if (drop.book === "after") await route.fetch().catch(() => {});
+      return route.abort("internetdisconnected");
+    }
+    if (body.startsWith(`[{"leadId":"${leadId}","startsAt":`) && !body.includes('"everyone":')) {
+      seen.check += 1;
+      if (!drop.check) return route.fallback();
+      return route.abort("internetdisconnected");
+    }
+    if (drop.sync && body === "[]") return route.abort("internetdisconnected");
+    return route.fallback();
+  };
+  return { drop, seen, start: () => page.route("**/*", handler), stop: () => page.unroute("**/*", handler) };
+}
+
 async function secondsLeft(page) {
   const text = (await sheet(page).getByTestId("sheet-countdown").innerText().catch(() => "")).trim();
   const match = /^(\d+):(\d{2}) left$/.exec(text);
@@ -1117,6 +1148,114 @@ try {
   ownerSession = null;
   check("nothing of Keenan's changed: settings, pay, meetings and blocks", (await footprint()) === before);
   note("Keenan's own outcome buttons, Mark paid, time blocks and booking a setter's lead are walked up to the save only, because the owner session is view only; the database tests prove them with the service role standing in.");
+
+  // ---------------------------------------------------------------- Book's answer lost to the signal (2026-11-03)
+  // The booking may go through while its answer never reaches the phone. The
+  // sheet asks whether the lead now has the booking before it says anything.
+  // V and Z are free again by now: the move freed Z, and the cancel freed V.
+  const leadD = await readyLead(people.a, "306 Drop Test Way NW (TEST)");
+  const leadE = await readyLead(people.a, "307 Drop Test Way NW (TEST)");
+  const leadF = await readyLead(people.a, "308 Drop Test Way NW (TEST)");
+  const liveMeetings = async (leadId) =>
+    (await admin.from("meetings").select("id").eq("lead_id", leadId).in("status", ["booked", "confirmed"])).data ?? [];
+  const sheetError = async (startsWith) => {
+    await pageA
+      .waitForFunction((text) => document.querySelector('[data-testid="sheet-error"]')?.textContent?.trim().startsWith(text), startsWith, { timeout: 20000 })
+      .catch(() => {});
+    return (await sheet(pageA).getByTestId("sheet-error").innerText().catch(() => "")).replace(/\s+/g, " ").trim();
+  };
+  async function toBook(leadId, at) {
+    await pageA.goto(`${base}/app/leads/${leadId}`);
+    await settle(pageA);
+    await pageA.getByRole("button", { name: "Book a meeting" }).click();
+    await waitView(pageA, "times");
+    await chooseEvening(sheet(pageA), testDay);
+    await sheetSlot(pageA, at).click();
+    await waitView(pageA, "door");
+    await answer(pageA, "Everyone who decides will be there", "Yes");
+    await next(pageA);
+    await waitView(pageA, "learned");
+    await sheet(pageA).getByTestId("mark-rest").click();
+    await next(pageA);
+    await waitView(pageA, "house", 30000);
+    await skipPhotos(pageA);
+    await next(pageA);
+    await waitView(pageA, "book");
+  }
+  async function closeDone() {
+    await sheet(pageA).getByRole("button", { name: "Done", exact: true }).click();
+    await sheet(pageA).waitFor({ state: "detached", timeout: 15000 });
+  }
+
+  // 1. The server booked, and the answer dropped on its way back.
+  await toBook(leadD, V);
+  const lossD = dropping(pageA, leadD);
+  lossD.drop.book = "after";
+  await lossD.start();
+  await next(pageA);
+  await waitView(pageA, "done", 30000);
+  await lossD.stop();
+  check(
+    "Book's answer dropped after the server booked: the sheet finds the booking and shows the done screen, no error",
+    lossD.seen.book === 1 && (await liveMeetings(leadD)).length === 1 && (await sheet(pageA).getByTestId("sheet-error").count()) === 0,
+    `${lossD.seen.book} dropped`,
+  );
+  await closeDone();
+
+  // 2. Book dropped on the phone, before the server got it: nothing booked.
+  await toBook(leadE, Z);
+  const lossE = dropping(pageA, leadE);
+  lossE.drop.book = "before";
+  await lossE.start();
+  await next(pageA);
+  const notYet = await sheetError("Not booked");
+  check(
+    "Book dropped before it reached the server: it says not booked yet, the time stays held, and nothing is booked",
+    notYet === "Not booked yet. Check your signal and tap Book again." && (await heldState(pageA)) === "yes" && (await liveMeetings(leadE)).length === 0,
+    notYet,
+  );
+
+  // 3. Book again: the server books, the answer drops, and the check can't get through either.
+  lossE.drop.book = "after";
+  lossE.drop.check = true;
+  await next(pageA);
+  const cantTell = await sheetError("No signal");
+  check(
+    "with no signal for the check either, it says it can't tell yet and that Book again can't book twice",
+    cantTell === "No signal to check whether it booked. Tap Book again once you have signal: it can't book twice." && lossE.seen.check >= 1 && (await liveMeetings(leadE)).length === 1,
+    cantTell,
+  );
+
+  // 4. The signal comes back: the hold has gone to the booking, and the sheet says booked by itself.
+  await lossE.stop();
+  await pageA.evaluate(() => window.dispatchEvent(new Event("online")));
+  await waitView(pageA, "done", 30000);
+  check("when the signal comes back, the sheet finds its hold went to this booking and shows the done screen by itself", (await liveMeetings(leadE)).length === 1);
+  await closeDone();
+
+  // 5. Book again after a booking whose answer never came: refused as already booked, checked, done.
+  await admin.from("meetings").delete().eq("lead_id", leadE);
+  const freedZ = await waitForState(pageB, Z, "open");
+  check("the test frees Z again for the last case", freedZ !== null);
+  await toBook(leadF, Z);
+  const lossF = dropping(pageA, leadF);
+  lossF.drop.book = "after";
+  lossF.drop.check = true;
+  lossF.drop.sync = true;
+  await lossF.start();
+  await next(pageA);
+  await sheetError("No signal");
+  lossF.drop.book = null;
+  lossF.drop.check = false;
+  await next(pageA);
+  await waitView(pageA, "done", 30000);
+  await lossF.stop();
+  check(
+    "Book again after an unanswered booking is refused as already booked, then checked and shown as booked: one booking only",
+    (await liveMeetings(leadF)).length === 1 && lossF.seen.book === 2,
+    `${lossF.seen.book} Book taps`,
+  );
+  await closeDone();
 } catch (error) {
   results.push(`SCRIPT ERROR ${error?.message ?? String(error)} at A ${pageA.url()} / B ${pageB.url()}${ownerPage ? ` / owner ${ownerPage.url()}` : ""}`);
   await pageA.screenshot({ path: `${out}/m3-failure-a.png`, fullPage: true }).catch(() => {});
