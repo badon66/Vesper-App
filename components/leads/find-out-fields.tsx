@@ -3,7 +3,7 @@
 import { Check } from "lucide-react";
 import { useRef, useState } from "react";
 import { FieldError } from "@/components/field-error";
-import { AnswerGroup } from "@/components/leads/answer-group";
+import { AnswerGroup, NOT_COLLECTED_CHIP, NOT_COLLECTED_CHIP_ON } from "@/components/leads/answer-group";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,14 +37,14 @@ const ASKED: { field: Exclude<QuestionField, "soffit_colour">; legend: string; o
     field: item.field as "owns_home" | "wants_price",
     legend: item.question,
     options: item.options,
-    columns: 3 as const,
+    columns: 2 as const,
   })),
-  { field: "both_decision_makers", legend: QUESTION_LABELS.both_decision_makers, options: EVERYONE_OPTIONS, columns: 3 },
+  { field: "both_decision_makers", legend: QUESTION_LABELS.both_decision_makers, options: EVERYONE_OPTIONS, columns: 2 },
   ...FIND_OUT_QUESTIONS.filter((item) => !["owns_home", "wants_price", "soffit_colour"].includes(item.field)).map((item) => ({
     field: item.field as "christmas_lights_now" | "looked_into_before" | "areas_wanted" | "install_timing",
     legend: item.question,
     options: item.options,
-    columns: (item.options.length + 1 === 3 ? 3 : 2) as 2 | 3,
+    columns: Math.min(Math.max(item.options.length, 2), 4) as 2 | 3 | 4,
   })),
 ];
 
@@ -119,8 +119,25 @@ export function LeadQuestions({
   const phoneMessage = phoneError ?? (errors.phone === ANSWER_OR_NOT_COLLECTED && (phoneTyped || phoneMarked) ? undefined : errors.phone);
   return (
     <>
-      <div className="flex flex-col gap-2" data-question="phone">
-        <Label htmlFor="lead-phone">Phone</Label>
+      <div className="flex flex-col gap-3" data-question="phone">
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="lead-phone">Phone</Label>
+          <button
+            type="button"
+            aria-pressed={phoneMarked}
+            aria-label="Phone: Not collected"
+            className={cn(
+              NOT_COLLECTED_CHIP,
+              "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              phoneMarked && NOT_COLLECTED_CHIP_ON,
+            )}
+            onClick={() => markPhone(!phoneMarked)}
+            data-testid="phone-not-collected"
+          >
+            {phoneMarked ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
+            {NOT_COLLECTED_LABEL}
+          </button>
+        </div>
         <Input
           ref={phoneRef}
           id="lead-phone"
@@ -139,20 +156,6 @@ export function LeadQuestions({
           aria-invalid={phoneMessage ? true : undefined}
           aria-describedby="lead-phone-error"
         />
-        <div className="flex justify-end">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-pressed={phoneMarked}
-            className={cn("border-dashed", phoneMarked && "border-solid border-foreground bg-foreground text-background hover:bg-foreground")}
-            onClick={() => markPhone(!phoneMarked)}
-            data-testid="phone-not-collected"
-          >
-            {phoneMarked ? <Check aria-hidden="true" className="size-4" /> : null}
-            {NOT_COLLECTED_LABEL}
-          </Button>
-        </div>
         {phoneMarked ? <input type="hidden" name="phone_not_collected" value="1" /> : null}
         <FieldError id="lead-phone-error" message={phoneMessage} />
       </div>

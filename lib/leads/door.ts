@@ -191,6 +191,8 @@ export const PHOTO_SLOTS: { slot: PhotoSlot; label: string; hint: string }[] = [
 
 export const PHOTO_SLOT_HINT =
   "Hold the phone sideways and get the whole roofline in. At night, hold still while night mode finishes.";
+// The booking sheet's one line: the drawings show the angles.
+export const PHOTO_SLOT_HINT_SHORT = "Hold the phone sideways. At night, hold still until it's taken.";
 
 export function photoSlotLabel(slot: PhotoSlot): string {
   return PHOTO_SLOTS.find((item) => item.slot === slot)?.label ?? slot;

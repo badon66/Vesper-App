@@ -7,7 +7,7 @@ import { attachLeadPhotos } from "@/app/(app)/app/leads/actions";
 import { PhotoGuide } from "@/components/leads/photo-guides";
 import { Button } from "@/components/ui/button";
 import { useViewAs } from "@/components/view-as-context";
-import { PHOTO_SLOT_HINT, PHOTO_SLOTS, slotFieldName, type PhotoSlot } from "@/lib/leads/door";
+import { PHOTO_SLOT_HINT, PHOTO_SLOT_HINT_SHORT, PHOTO_SLOTS, slotFieldName, type PhotoSlot } from "@/lib/leads/door";
 import { PHOTO_BUCKET, photoPath, shrinkPhoto } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/client";
 import { VIEW_AS_NOTHING_SAVED } from "@/lib/view-as";
@@ -192,8 +192,8 @@ export function PhotoSlots({
 
   if (layout === "tiles") {
     return (
-      <div className="flex flex-col gap-3">
-        <ul className="grid grid-cols-2 gap-x-3 gap-y-2" aria-label="Guided photos">
+      <div className="flex flex-col gap-2">
+        <ul className="grid grid-cols-2 gap-2 min-[420px]:gap-3" aria-label="Guided photos">
           {PHOTO_SLOTS.map(({ slot, label, hint }) => {
             const local = taken[slot];
             const src = local?.preview ?? saved[slot];
@@ -203,38 +203,39 @@ export function PhotoSlots({
             const optional = slot === "soffit";
             const status = local?.status === "working" ? `${label}: uploading` : failed ? `${label}: didn't upload. Tap to try again.` : "";
             return (
-              <li key={slot} data-slot={slot} className="flex flex-col gap-1">
+              <li key={slot} data-slot={slot} className="relative">
+                {/* The tile is the big Take photo button; Upload sits in its corner. */}
                 <button
                   type="button"
                   disabled={!canTake}
                   aria-label={`${action}, ${label}`}
                   aria-describedby={`slot-hint-${slot}`}
                   onClick={() => (failed && local ? void upload(slot, local.attempt, local.source) : inputs.current[slot]?.click())}
-                  className="relative flex aspect-[16/11] w-full overflow-hidden rounded-md border bg-muted text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
+                  className="relative flex aspect-[16/9] w-full overflow-hidden rounded-md border bg-muted text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
                 >
                   {src ? (
                     <>
                       {/* eslint-disable-next-line @next/next/no-img-element -- a local preview, or a private photo behind a short-lived signed link */}
                       <img src={src} alt={`${label} photo of the house`} className="absolute inset-0 size-full object-cover" />
-                      <span className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-background px-2 py-1 text-xs font-semibold">
+                      <span className="absolute inset-x-0 bottom-0 flex min-h-11 flex-col justify-center bg-background px-2 pr-20 text-xs font-semibold">
                         <span className="truncate">{label}</span>
-                        {local?.status === "working" ? (
-                          <span className="shrink-0 text-muted-foreground">Uploading</span>
-                        ) : failed ? null : canTake ? (
-                          <span className="inline-flex shrink-0 items-center gap-1 text-muted-foreground">
-                            <Camera aria-hidden="true" className="size-3.5" />
-                            Retake
-                          </span>
-                        ) : null}
+                        <span className="font-normal text-muted-foreground">
+                          {local?.status === "working" ? "Uploading" : failed ? "" : canTake ? "Tap to retake" : ""}
+                        </span>
                       </span>
                     </>
                   ) : (
-                    <span className="flex size-full flex-col items-center justify-center gap-0.5 px-2 text-center">
-                      <PhotoGuide slot={slot} className="h-11 w-auto min-[420px]:h-14" />
-                      <span className="text-sm font-semibold min-[420px]:text-base">{label}</span>
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                    <span className="flex size-full flex-col justify-between px-2 pt-2">
+                      <span className="flex items-start justify-between gap-2">
+                        {/* A hyphen that never breaks: "Soffit close-up" wraps as words. */}
+                        <span className="text-sm leading-tight font-semibold text-pretty min-[420px]:text-base min-[420px]:leading-tight">
+                          {label.replace("-", "\u2011")}
+                        </span>
+                        <PhotoGuide slot={slot} className="h-8 w-auto shrink-0 min-[420px]:h-10" />
+                      </span>
+                      <span className="flex min-h-11 items-center gap-1 text-xs whitespace-nowrap text-muted-foreground">
                         <Camera aria-hidden="true" className="size-3.5" />
-                        {optional ? "Take photo, optional" : "Take photo"}
+                        {optional ? "Optional" : "Take photo"}
                       </span>
                     </span>
                   )}
@@ -244,23 +245,21 @@ export function PhotoSlots({
                     </span>
                   ) : null}
                 </button>
-                <span id={`slot-hint-${slot}`} className="sr-only">
-                  {hint}
-                </span>
-                {canTake ? (
-                  <Button
+                {canTake && !failed ? (
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="-ml-2 w-fit text-muted-foreground"
                     aria-label={`Upload a photo from the phone, ${label}`}
                     onClick={() => uploads.current[slot]?.click()}
                     data-testid={`slot-upload-button-${slot}`}
+                    className="absolute right-0 bottom-0 inline-flex min-h-11 items-center gap-1 rounded-tl-md rounded-br-md border-t border-l bg-background px-2 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <Upload aria-hidden="true" className="size-4" />
                     Upload
-                  </Button>
+                  </button>
                 ) : null}
+                <span id={`slot-hint-${slot}`} className="sr-only">
+                  {hint}
+                </span>
                 <span className="sr-only" aria-live="polite">
                   {status}
                 </span>
@@ -269,7 +268,7 @@ export function PhotoSlots({
             );
           })}
         </ul>
-        {canTake ? <p className="text-xs text-pretty text-muted-foreground">{PHOTO_SLOT_HINT}</p> : null}
+        {canTake ? <p className="text-xs text-pretty text-muted-foreground">{PHOTO_SLOT_HINT_SHORT}</p> : null}
         {actedOutNote}
       </div>
     );

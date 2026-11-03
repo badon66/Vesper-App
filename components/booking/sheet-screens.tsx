@@ -3,7 +3,7 @@
 import { Check } from "lucide-react";
 import { useState, type RefObject } from "react";
 import { AddressField } from "@/components/leads/address-field";
-import { AnswerGroup } from "@/components/leads/answer-group";
+import { AnswerGroup, NOT_COLLECTED_CHIP, NOT_COLLECTED_CHIP_ON } from "@/components/leads/answer-group";
 import { PhotoSlots } from "@/components/leads/photo-slots";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -97,10 +97,27 @@ export function WhoScreen({
           />
         </div>
       </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="sheet-phone" className="min-[420px]:text-base">
-          Phone
-        </Label>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="sheet-phone" className="min-[420px]:text-base">
+            Phone
+          </Label>
+          <button
+            type="button"
+            aria-pressed={phoneNotCollected}
+            aria-label="Phone: Not collected"
+            className={cn(
+              NOT_COLLECTED_CHIP,
+              "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              phoneNotCollected && NOT_COLLECTED_CHIP_ON,
+            )}
+            onClick={() => onAnswer("phone", phoneNotCollected ? null : NOT_COLLECTED)}
+            data-testid="sheet-phone-not-collected"
+          >
+            {phoneNotCollected ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
+            {NOT_COLLECTED_LABEL}
+          </button>
+        </div>
         <Input
           id="sheet-phone"
           type="tel"
@@ -112,6 +129,7 @@ export function WhoScreen({
           maxLength={40}
           disabled={phoneNotCollected}
           placeholder={phoneNotCollected ? NOT_COLLECTED_LABEL : undefined}
+          aria-describedby="sheet-phone-hint"
           onChange={(event) => onChange({ phone: event.target.value })}
           onKeyDown={(event) => nextField(event, null)}
           onBlur={(event) => {
@@ -119,21 +137,9 @@ export function WhoScreen({
             if (phone.ok && phone.e164) onChange({ phone: formatPhone(phone.e164) });
           }}
         />
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-muted-foreground">Needed to book and to confirm the meeting.</p>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-pressed={phoneNotCollected}
-            className={cn("border-dashed", phoneNotCollected && "border-solid border-foreground bg-foreground text-background hover:bg-foreground")}
-            onClick={() => onAnswer("phone", phoneNotCollected ? null : NOT_COLLECTED)}
-            data-testid="sheet-phone-not-collected"
-          >
-            {phoneNotCollected ? <Check aria-hidden="true" className="size-4" /> : null}
-            {NOT_COLLECTED_LABEL}
-          </Button>
-        </div>
+        <p id="sheet-phone-hint" className="-mt-1 text-sm text-muted-foreground">
+          Needed to book and to confirm the meeting.
+        </p>
       </div>
     </div>
   );
@@ -162,8 +168,8 @@ function questionSetup(question: CountedQuestion): { legend: string; options: { 
   if (question === "both_decision_makers") return { legend: QUESTION_LABELS.both_decision_makers, options: EVERYONE_OPTIONS, columns: 3 };
   const found = FIND_OUT_QUESTIONS.find((item) => item.field === question);
   const options = found?.options ?? [];
-  // With Not collected added, a row of two becomes a row of three.
-  const columns = options.length + 1 === 3 ? 3 : 2;
+  // One row of answers where they fit; four are two by two on a narrow phone.
+  const columns = (Math.min(Math.max(options.length, 2), 4) as 2 | 3 | 4);
   return { legend: found?.question ?? QUESTION_LABELS[question], options, columns };
 }
 
@@ -187,7 +193,7 @@ export function QuestionsScreen({
   const answers = draftAnswers(draft);
   const open = screenOpenQuestions(screen, draft);
   return (
-    <div className="flex flex-col gap-4 min-[420px]:gap-5">
+    <div className="flex flex-col gap-5 min-[420px]:gap-6">
       {intro ? <p className="-mt-2 text-sm text-pretty text-muted-foreground min-[420px]:text-base">{intro}</p> : null}
       {questions.map((question) => {
         const setup = questionSetup(question);
@@ -214,7 +220,7 @@ export function QuestionsScreen({
         );
       })}
       {open.length > 0 ? (
-        <Button type="button" variant="link" size="sm" className="self-start px-0" onClick={onMarkRest} data-testid="mark-rest">
+        <Button type="button" variant="link" size="sm" className="-mt-2 self-start px-0" onClick={onMarkRest} data-testid="mark-rest">
           Mark the rest Not collected
         </Button>
       ) : null}
@@ -306,15 +312,21 @@ export function HouseScreen({
   const complete = guidedPhotoCount(draft) >= 3;
   const canTake = Boolean(draft.leadId) || local;
   return (
-    <div className="flex flex-col gap-5">
-      <section aria-labelledby="sheet-soffit-heading" className="flex flex-col gap-2">
-        <h3 id="sheet-soffit-heading" className="text-sm font-semibold min-[420px]:text-base">
-          Soffit colour
-        </h3>
+    <div className="flex flex-col gap-4 min-[420px]:gap-5">
+      <section className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <span aria-hidden="true" className="text-sm font-semibold min-[420px]:text-base">
+            Soffit colour
+          </span>
+          <span id="sheet-soffit-note-hint" className="text-xs text-muted-foreground min-[420px]:text-sm">
+            White is the only stock track
+          </span>
+        </div>
         <AnswerGroup
           name="sheet-soffit"
           legend="Soffit colour"
           hideLegend
+          describedBy="sheet-soffit-note-hint"
           options={SOFFIT_OPTIONS}
           columns={2}
           size="sheet"
@@ -332,10 +344,9 @@ export function HouseScreen({
             />
           </div>
         ) : null}
-        <p className="text-sm text-pretty text-muted-foreground">White is the only stock track colour, so off-white matters. Not sure is fine.</p>
       </section>
 
-      <section aria-labelledby="sheet-photos-heading" className="flex flex-col gap-3">
+      <section aria-labelledby="sheet-photos-heading" className="flex flex-col gap-2">
         <h3 id="sheet-photos-heading" className="text-sm font-semibold min-[420px]:text-base">
           Photos
         </h3>
