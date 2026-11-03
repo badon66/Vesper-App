@@ -57,6 +57,8 @@ import {
 } from "@/lib/booking/hold-clock";
 import {
   addressPlaced,
+  bookingBlockers,
+  bookNeed,
   canSaveLead,
   DOOR_QUESTIONS,
   draftAnswers,
@@ -65,9 +67,11 @@ import {
   emptyDraft,
   firstScreenToVisit,
   isScreenComplete,
+  leadDraftFromSheet,
   LEARNED_QUESTIONS,
   markScreenNotCollected,
   nextScreen,
+  photosNeed,
   previousScreen,
   PROBLEM_SCREENS,
   savedFingerprint,
@@ -85,6 +89,8 @@ import {
 import { bookingSheet, useSheetRequest, type SheetRequest, type SheetTimer } from "@/lib/booking/sheet-store";
 import { getPublicEnv } from "@/lib/env";
 import type { PhotoSlot } from "@/lib/leads/door";
+import { draftKey } from "@/lib/leads/draft";
+import { handOffToNewLead } from "@/lib/leads/hand-off";
 import { COUNTED_QUESTIONS, isQuestionDone, type CountedQuestion } from "@/lib/leads/questions";
 import { normalizePhone } from "@/lib/phone";
 import type { PickedAddress } from "@/lib/places";
@@ -93,7 +99,7 @@ import { bookButtonLabel, formatMeetingTime, heldTimeLabel, sentence, timePhrase
 import { createClient } from "@/lib/supabase/client";
 import { calgaryDateOf, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import { VIEW_AS_NOTHING_SAVED } from "@/lib/view-as";
+import { VIEW_AS_EXIT_PATH, VIEW_AS_NOTHING_SAVED } from "@/lib/view-as";
 
 // How often the sheet checks its hold with the database. The countdown on
 // screen runs on its own between checks; a check keeps it honest.
@@ -801,11 +807,9 @@ function BookingSheet({
         return current.soffit_colour === null ? "Pick the soffit first" : null;
       }
       case "house":
-        return isScreenComplete("house", current) ? null : "Photos first";
-      case "book": {
-        const problems = draftProblems(current);
-        return problems.length > 0 ? `Fix ${problems.length} first` : null;
-      }
+        return photosNeed(current);
+      case "book":
+        return bookNeed(current);
     }
   }
 
@@ -1078,6 +1082,64 @@ function BookingSheet({
     if (then === "open-lead" && current.leadId) router.push(`/app/leads/${current.leadId}`);
   }
 
+  // Keep as a lead (round 2 polish): an answer rules booking out, so the
+  // time goes back on the board at once and the person is kept: a new person
+  // carries on in New lead with everything entered; a saved lead has its
+  // changes saved, when they can be, and opens on its page, where a
+  // follow-up day is set. Under View as nothing is released or saved, and
+  // New lead gets the person in memory only.
+  async function keepAsLead() {
+    if (busy) return;
+    setMenuOpen(false);
+    setError(null);
+    let current = currentDraft();
+    if (current.leadId) {
+      const answers = draftAnswers(current);
+      const allAnswered = COUNTED_QUESTIONS.every((question) => isQuestionDone(answers[question]));
+      if (!allAnswered) {
+        // A lead from before round 2 with questions still open: its changes
+        // wait in Unfinished, as when the time is let go.
+        await letGo("open-lead");
+        return;
+      }
+      if (savedFingerprint(current) !== savedPrint) {
+        setBusy(true);
+        try {
+          const saved = await save(current);
+          if (!saved) return;
+          current = saved;
+        } finally {
+          setBusy(false);
+        }
+      }
+    }
+    if (heldAt && held && !viewingAs) {
+      try {
+        await releaseMyHold();
+      } catch {
+        // The hold runs out by itself.
+      }
+    }
+    if (current.leadId) {
+      forgetDraft(current);
+      close();
+      router.push(`/app/leads/${current.leadId}`);
+      return;
+    }
+    const handed = leadDraftFromSheet(current, Date.now());
+    handOffToNewLead(handed);
+    if (!viewingAs) {
+      try {
+        localStorage.setItem(draftKey(userId), JSON.stringify(handed));
+      } catch {
+        // Private browsing or full storage: the hand-off in memory still works.
+      }
+      forgetDraft(current);
+    }
+    close();
+    router.push("/app/leads/new");
+  }
+
   // Escape, or a phone's back gesture: closes the time menu first, then asks
   // before letting a held time go.
   function onCancel(event: React.SyntheticEvent) {
@@ -1127,6 +1189,10 @@ function BookingSheet({
   const partLabel = isScreen(view) ? STEPS.find((item) => item.key === stepOf(view))?.label : null;
   const personName = [draft.first_name, draft.last_name].filter((part) => part.trim()).join(" ") || name || "this person";
   const need = isScreen(view) ? needs(view, draft) : null;
+  // An answer rules booking out: Keep as a lead is the gold button where it
+  // shows (the phone, the door, Book), and Next steps back there.
+  const ruledOut = bookingBlockers(draft).length > 0;
+  const stepBack = ruledOut && (view === "who" || view === "door" || view === "book");
   const title =
     view === "times"
       ? isMove
@@ -1164,9 +1230,21 @@ function BookingSheet({
         <header className="border-b pt-[env(safe-area-inset-top)]">
           {/* The sheet covers the app's gold bar, so it carries a slim one of its own. */}
           {viewingAs ? (
-            <p role="status" className="bg-primary px-4 py-1 text-center text-xs font-semibold text-primary-foreground" data-testid="sheet-view-as">
-              Viewing as {viewedName ?? "someone"}. Read only: nothing here is saved.
-            </p>
+            <div className="flex h-5 items-center justify-between gap-3 bg-primary px-4 text-primary-foreground" data-testid="sheet-view-as">
+              <p role="status" className="text-xs leading-5 font-semibold">
+                Viewing as {viewedName ?? "someone"}. Read only.
+              </p>
+              {/* Slim, so every step still fits: the tap area reaches past
+                  the strip into the space around it. */}
+              <form method="post" action={VIEW_AS_EXIT_PATH}>
+                <button
+                  type="submit"
+                  className="relative inline-flex h-5 items-center rounded-md px-2 text-xs leading-5 font-bold underline underline-offset-1 outline-none after:absolute after:-inset-x-1 after:-inset-y-2.5 after:content-[''] focus-visible:ring-2 focus-visible:ring-primary-foreground"
+                >
+                  Exit
+                </button>
+              </form>
+            </div>
           ) : null}
           <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3 px-4 py-2">
             <Wordmark className="text-sm min-[420px]:text-base" />
@@ -1298,6 +1376,14 @@ function BookingSheet({
                   Then you&apos;re back where you left off: {SCREEN_TITLES[returnTo].replace(/\?$/, "")}.
                 </p>
               ) : null}
+              {view === "times" && !heldAt && !isMove && ruledOut ? (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="times-ruled-out">
+                  <p className="text-sm text-pretty min-[420px]:text-base">Their answers rule booking out for now.</p>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void keepAsLead()} data-testid="keep-as-lead-times">
+                    Keep as a lead instead
+                  </Button>
+                </div>
+              ) : null}
             </div>
 
             {view === "loading" ? <p className="text-sm text-muted-foreground">One moment.</p> : null}
@@ -1335,6 +1421,7 @@ function BookingSheet({
                 onChange={change}
                 onAnswer={answer}
                 onExisting={request.kind === "book" && !draft.leadId ? () => void openExisting() : null}
+                onKeepAsLead={() => void keepAsLead()}
               />
             ) : null}
             {view === "door" ? (
@@ -1344,6 +1431,7 @@ function BookingSheet({
                 draft={draft}
                 onAnswer={answer}
                 onMarkRest={() => setDraft((current) => markScreenNotCollected("door", current))}
+                onKeepAsLead={() => void keepAsLead()}
               />
             ) : null}
             {view === "learned" ? (
@@ -1353,6 +1441,7 @@ function BookingSheet({
                 draft={draft}
                 onAnswer={answer}
                 onMarkRest={() => setDraft((current) => markScreenNotCollected("learned", current))}
+                onKeepAsLead={() => void keepAsLead()}
               />
             ) : null}
             {view === "address" ? (
@@ -1385,7 +1474,14 @@ function BookingSheet({
               />
             ) : null}
             {view === "book" ? (
-              <BookScreen draft={draft} name={personName} heldAt={heldAt} warnings={warnings} onFix={(screen) => go(screen)} />
+              <BookScreen
+                draft={draft}
+                name={personName}
+                heldAt={heldAt}
+                warnings={warnings}
+                onFix={(screen) => go(screen)}
+                onKeepAsLead={() => void keepAsLead()}
+              />
             ) : null}
             {view === "done" && done ? (
               <p className="text-base text-pretty" data-testid="sheet-done">
@@ -1394,7 +1490,12 @@ function BookingSheet({
               </p>
             ) : null}
             {view === "moved" ? <p className="text-base">{name} is moved. The old time is free again.</p> : null}
+          </div>
+        </div>
 
+        {/* ------------------------------------------------ bottom: always there, Next at the bottom right */}
+        <footer className="border-t bg-background pb-[env(safe-area-inset-bottom)]">
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-2 px-4 py-2">
             {error ? (
               error.fix === null ? (
                 <div data-testid="sheet-error">
@@ -1409,12 +1510,6 @@ function BookingSheet({
                 </div>
               )
             ) : null}
-          </div>
-        </div>
-
-        {/* ------------------------------------------------ bottom: always there, Next at the bottom right */}
-        <footer className="border-t bg-background pb-[env(safe-area-inset-bottom)]">
-          <div className="mx-auto flex w-full max-w-2xl flex-col gap-2 px-4 py-2">
             {heldAt && !done && view !== "moved" && lost && !held ? (
               <div role="alert" className="flex flex-col gap-2 rounded-md border border-foreground/60 px-3 py-2" data-testid="sheet-hold-lost">
                 <p className="text-sm font-semibold text-pretty">{lost.text}</p>
@@ -1448,9 +1543,11 @@ function BookingSheet({
               uploading={photosBusy}
               need={need}
               held={held}
+              stepBack={stepBack}
               canBook={problems.length === 0 && held}
               bookLabel={heldAt ? bookButtonLabel(heldAt) : "Book"}
               onBack={back}
+              onLetGo={() => (held ? setLetGoOpen(true) : void letGo())}
               onNext={() => (need && isScreen(view) ? showMissing(view, view === "address" ? readAddressForm(draft) : draft) : void advance())}
               onMove={() => void confirmMove()}
               onClose={() => {
@@ -1577,9 +1674,11 @@ function BottomBar({
   uploading,
   need,
   held,
+  stepBack,
   canBook,
   bookLabel,
   onBack,
+  onLetGo,
   onNext,
   onMove,
   onClose,
@@ -1596,9 +1695,15 @@ function BottomBar({
   // Whether the time is still held: once it runs out, Hold it again is the
   // one gold button, and Next steps back.
   held: boolean;
+  // An answer rules booking out: Keep as a lead is the gold button on the
+  // screen, so Next steps back to an outline. It still works.
+  stepBack: boolean;
   canBook: boolean;
   bookLabel: string;
   onBack: () => void;
+  // The first step has nothing to go back to: its corner lets the time go,
+  // asking first, the same as the time menu's Let go.
+  onLetGo: () => void;
   onNext: () => void;
   onMove: () => void;
   onClose: () => void;
@@ -1653,12 +1758,18 @@ function BottomBar({
   // Not ready, on any step Book included: dashed, and a tap goes to what's
   // missing. Book on a time that isn't held can't be tapped at all.
   const notHeldBook = booking && !need && !canBook;
-  const quiet = Boolean(need) || !held;
+  const quiet = Boolean(need) || !held || stepBack;
   return (
     <div className="grid grid-cols-2 gap-3 py-1">
-      <Button type="button" variant="outline" size="lg" className="min-[420px]:h-14 min-[420px]:text-lg" onClick={onBack} disabled={busy || first}>
-        Back
-      </Button>
+      {first ? (
+        <Button type="button" variant="outline" size="lg" className="min-[420px]:h-14 min-[420px]:text-lg" onClick={onLetGo} disabled={busy} data-testid="sheet-let-go-first">
+          Let go
+        </Button>
+      ) : (
+        <Button type="button" variant="outline" size="lg" className="min-[420px]:h-14 min-[420px]:text-lg" onClick={onBack} disabled={busy}>
+          Back
+        </Button>
+      )}
       <Button
         type="button"
         size="lg"
@@ -1668,6 +1779,7 @@ function BottomBar({
         disabled={busy || notHeldBook}
         data-testid="sheet-next"
         data-ready={need ? "no" : "yes"}
+        data-step-back={stepBack ? "yes" : "no"}
       >
         {saving ? (booking ? "Booking" : "Saving") : uploading ? "Uploading photos" : need ?? (booking ? (canBook ? bookLabel : "Time not held") : "Next")}
       </Button>

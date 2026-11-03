@@ -5,6 +5,7 @@ import type {
   PhotoSlot,
   RooflineAreas,
 } from "@/lib/leads/door";
+import type { LeadDraft } from "@/lib/leads/draft";
 import { isQuestionDone, NOT_COLLECTED, type AnswerMap, type CountedQuestion } from "@/lib/leads/questions";
 import type { SoffitColour } from "@/lib/leads/status";
 import { bookingProblems, type PhotoSkip, type ReadinessLead } from "@/lib/schedule/readiness";
@@ -342,4 +343,33 @@ export function savedFingerprint(draft: SheetDraft): string {
   void _skip;
   void _note;
   return JSON.stringify({ ...fields, not_collected: [...fields.not_collected].sort() });
+}
+
+// What Next says on the Photos step while it isn't done: a verb, and how
+// many guided photos are still to take (round 2 polish).
+export function photosNeed(draft: SheetDraft): string | null {
+  if (isScreenComplete("house", draft)) return null;
+  if (draft.skip === "other") return "Add the reason first";
+  const left = 3 - guidedPhotoCount(draft);
+  if (left >= 3) return "Take the photos first";
+  return `${left} more photo${left === 1 ? "" : "s"} first`;
+}
+
+// What Book says while it can't book. An answer that rules booking out
+// isn't something to fix: the homeowner said it, so Book says it can't book
+// yet, and the screen offers Keep as a lead.
+export function bookNeed(draft: SheetDraft): string | null {
+  if (bookingBlockers(draft).length > 0) return "Can't book yet";
+  const problems = draftProblems(draft);
+  return problems.length > 0 ? `Fix ${problems.length} first` : null;
+}
+
+// Keep as a lead: a new person the sheet can't book goes on to New lead with
+// everything entered, in New lead's own draft form.
+export function leadDraftFromSheet(draft: SheetDraft, now: number): LeadDraft {
+  const values: Record<string, string> = {};
+  for (const [name, value] of Object.entries(draftToLeadInput(draft))) {
+    if (typeof value === "string" && value !== "") values[name] = value;
+  }
+  return { savedAt: now, values, extraPhotos: 0, from: "sheet" };
 }

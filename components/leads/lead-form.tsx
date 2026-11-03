@@ -21,8 +21,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Textarea } from "@/components/ui/textarea";
+import { useViewAs } from "@/components/view-as-context";
 import type { PhotoSlot } from "@/lib/leads/door";
-import { defaultsFromDraft, draftFromFormData, draftHasContent, draftKey, draftPhotoPaths, readDraft } from "@/lib/leads/draft";
+import { defaultsFromDraft, draftFromFormData, draftHasContent, draftKey, draftPhotoPaths, readDraft, type LeadDraft } from "@/lib/leads/draft";
+import { takeHandOff } from "@/lib/leads/hand-off";
 import { QUESTION_LABELS, type CountedQuestion } from "@/lib/leads/questions";
 import { ANSWER_OR_NOT_COLLECTED, leadFormDataToInput, unansweredQuestions, type LeadFormErrors } from "@/lib/leads/schema";
 import { PHOTO_BUCKET } from "@/lib/photos";
@@ -96,8 +98,10 @@ export function LeadForm({
   );
   const [neighbourhoodEdited, setNeighbourhoodEdited] = useState(Boolean(defaults?.neighbourhood));
   // A new lead's draft (2026-11-03): kept on the phone while it is typed, so
-  // a reload after the camera or a stray tap doesn't lose the door.
-  const drafting = mode === "create";
+  // a reload after the camera or a stray tap doesn't lose the door. Never
+  // while Keenan views the app as someone: his device keeps nothing of theirs.
+  const { viewingAs } = useViewAs();
+  const drafting = mode === "create" && !viewingAs;
   const storageKey = draftKey(userId);
   const formRef = useRef<HTMLFormElement>(null);
   const pendingRef = useRef(false);
@@ -106,6 +110,8 @@ export function LeadForm({
     defaults: LeadFormDefaults;
     photos: Partial<Record<PhotoSlot, { path: string; preview: string }>>;
     extraPhotos: number;
+    // Handed over by the booking sheet's Keep as a lead.
+    fromSheet: boolean;
   } | null>(null);
   const [formKey, setFormKey] = useState(0);
   const [discardOpen, setDiscardOpen] = useState(false);
@@ -170,18 +176,23 @@ export function LeadForm({
     if (!photosBusy) scheduleSave();
   }, [photosBusy, scheduleSave]);
 
-  // Brings a draft back once, when New lead opens.
+  // Brings a draft back once, when New lead opens: a person the booking
+  // sheet handed over (Keep as a lead), or what was typed before the page
+  // closed.
   useEffect(() => {
-    if (!drafting) return;
+    if (mode !== "create") return;
     let cancelled = false;
     async function bringBack() {
-      let raw: string | null = null;
-      try {
-        raw = localStorage.getItem(storageKey);
-      } catch {
-        return;
+      let draft: LeadDraft | null = takeHandOff(Date.now());
+      if (!draft && drafting) {
+        let raw: string | null = null;
+        try {
+          raw = localStorage.getItem(storageKey);
+        } catch {
+          return;
+        }
+        draft = readDraft(raw, Date.now());
       }
-      const draft = readDraft(raw, Date.now());
       if (!draft) return;
       const paths = Object.entries(draftPhotoPaths(draft)) as [PhotoSlot, string][];
       const photos: Partial<Record<PhotoSlot, { path: string; preview: string }>> = {};
@@ -197,7 +208,7 @@ export function LeadForm({
       }
       if (cancelled) return;
       const restoredDefaults = defaultsFromDraft(draft);
-      setRestored({ defaults: restoredDefaults, photos, extraPhotos: draft.extraPhotos });
+      setRestored({ defaults: restoredDefaults, photos, extraPhotos: draft.extraPhotos, fromSheet: draft.from === "sheet" });
       setBookingBlocked(null);
       setNeighbourhood(restoredDefaults.neighbourhood || sessionNeighbourhood || "");
       setNeighbourhoodEdited(Boolean(restoredDefaults.neighbourhood));
@@ -209,7 +220,7 @@ export function LeadForm({
     return () => {
       cancelled = true;
     };
-  }, [drafting, storageKey, sessionNeighbourhood]);
+  }, [mode, drafting, storageKey, sessionNeighbourhood]);
 
   function startOver() {
     try {
@@ -293,7 +304,9 @@ export function LeadForm({
           data-testid="draft-restored"
         >
           <span className="py-2 text-pretty">
-            Brought back what you entered before the page closed.
+            {restored.fromSheet
+              ? "Kept as a lead, and the time is free again. Add what's left, then save."
+              : "Brought back what you entered before the page closed."}
             {restored.extraPhotos > 0
               ? ` Add the ${restored.extraPhotos === 1 ? "extra photo" : `${restored.extraPhotos} extra photos`} again.`
               : ""}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bookingBlockers,
+  bookNeed,
   canSaveLead,
   DOOR_QUESTIONS,
   draftAnswers,
@@ -10,9 +11,11 @@ import {
   firstScreenToVisit,
   guidedPhotoCount,
   isScreenComplete,
+  leadDraftFromSheet,
   LEARNED_QUESTIONS,
   markScreenNotCollected,
   nextScreen,
+  photosNeed,
   previousScreen,
   PROBLEM_SCREENS,
   savedFingerprint,
@@ -26,6 +29,8 @@ import {
   withAnswer,
   type SheetDraft,
 } from "@/lib/booking/sheet";
+import { defaultsFromDraft, readDraft } from "@/lib/leads/draft";
+import { handOffToNewLead, takeHandOff } from "@/lib/leads/hand-off";
 import { NOT_COLLECTED } from "@/lib/leads/questions";
 import { parseLeadForm } from "@/lib/leads/schema";
 import { sentence, timePhrase } from "@/lib/schedule/meetings";
@@ -282,5 +287,88 @@ describe("Saying the time", () => {
     expect(sentence(`Booked for ${timePhrase(at, "2026-11-12")}`)).toBe("Booked for Sat, Nov 14 at 5:00 p.m.");
     expect(sentence(`Booked for ${timePhrase(at, "2026-11-13")}`)).toBe("Booked for 5:00 p.m. tomorrow.");
     expect(sentence(`Booked for ${timePhrase(at, "2026-11-14")}`)).toBe("Booked for 5:00 p.m. tonight.");
+  });
+});
+
+describe("What Next and Book say (round 2 polish)", () => {
+  it("counts the guided photos still to take, with a verb when none are in", () => {
+    const none = { ...ready(), photo_slots: [] as SheetDraft["photo_slots"] };
+    expect(photosNeed(none)).toBe("Take the photos first");
+    expect(photosNeed({ ...none, photo_slots: ["front"] })).toBe("2 more photos first");
+    expect(photosNeed({ ...none, photo_slots: ["front", "left_corner"] })).toBe("1 more photo first");
+    expect(photosNeed(ready())).toBeNull();
+    expect(photosNeed({ ...none, skip: "other" })).toBe("Add the reason first");
+    expect(photosNeed({ ...none, skip: "other", skip_note: "Dog in the yard" })).toBeNull();
+    expect(photosNeed({ ...none, skip: "homeowner_said_no" })).toBeNull();
+  });
+
+  it("keeps every label short enough for the bottom bar at 390", () => {
+    for (const label of ["Take the photos first", "2 more photos first", "1 more photo first", "Add the reason first", "Can't book yet", "Fix 7 first"]) {
+      expect(label.length).toBeLessThanOrEqual(21);
+    }
+  });
+
+  it("says Book can't book yet while an answer rules it out, and counts what's missing otherwise", () => {
+    expect(bookNeed(ready())).toBeNull();
+    expect(bookNeed({ ...ready(), wants_price: false })).toBe("Can't book yet");
+    expect(bookNeed(withAnswer(ready(), "phone", NOT_COLLECTED))).toBe("Can't book yet");
+    expect(bookNeed({ ...ready(), soffit_colour: null })).toBe("Fix 1 first");
+    expect(bookNeed({ ...ready(), soffit_colour: null, photo_slots: [] })).toBe("Fix 2 first");
+    expect(bookNeed({ ...ready(), soffit_colour: null, owns_home: false })).toBe("Can't book yet");
+  });
+});
+
+describe("Keep as a lead", () => {
+  const person = (): SheetDraft => ({
+    ...emptyDraft(),
+    first_name: "Sarah",
+    last_name: "Chen",
+    phone: "403 555 0177",
+    owns_home: true,
+    wants_price: false,
+  });
+
+  it("hands New lead everything entered, in New lead's own draft form", () => {
+    const handed = leadDraftFromSheet(withAnswer(person(), "christmas_lights_now", NOT_COLLECTED), 1_000);
+    expect(handed.from).toBe("sheet");
+    expect(handed.savedAt).toBe(1_000);
+    expect(handed.extraPhotos).toBe(0);
+    const defaults = defaultsFromDraft(handed);
+    expect(defaults.first_name).toBe("Sarah");
+    expect(defaults.last_name).toBe("Chen");
+    expect(defaults.phone).toBe("403 555 0177");
+    expect(defaults.questions.owns_home).toBe("yes");
+    expect(defaults.questions.wants_price).toBe("not_yet");
+    expect(defaults.questions.christmas_lights_now).toBe(NOT_COLLECTED);
+    expect(defaults.questions.both_decision_makers).toBeNull();
+    expect(defaults.source).toBe("door");
+  });
+
+  it("carries a phone marked Not collected and an address already placed", () => {
+    const placed = {
+      ...withAnswer(person(), "phone", NOT_COLLECTED),
+      address_line: "1 Test Street NW",
+      lat: 51.04,
+      lng: -114.07,
+      position_source: "device" as const,
+      position_accuracy_m: 12,
+    };
+    const defaults = defaultsFromDraft(leadDraftFromSheet(placed, 1_000));
+    expect(defaults.phone_not_collected).toBe(true);
+    expect(defaults.address.addressLine).toBe("1 Test Street NW");
+    expect(defaults.address.lat).toBe(51.04);
+    expect(defaults.address.positionSource).toBe("device");
+    expect(defaults.address.accuracy).toBe(12);
+  });
+
+  it("keeps the hand-off's mark through New lead's storage, and only a recent one", () => {
+    const handed = leadDraftFromSheet(person(), Date.now());
+    expect(readDraft(JSON.stringify(handed), Date.now())?.from).toBe("sheet");
+    expect(readDraft(JSON.stringify({ ...handed, from: undefined }), Date.now())?.from).toBeUndefined();
+    handOffToNewLead(handed);
+    expect(takeHandOff(Date.now())?.values.first_name).toBe("Sarah");
+    expect(takeHandOff(Date.now())).toBeNull();
+    handOffToNewLead({ ...handed, savedAt: Date.now() - 11 * 60_000 });
+    expect(takeHandOff(Date.now())).toBeNull();
   });
 });

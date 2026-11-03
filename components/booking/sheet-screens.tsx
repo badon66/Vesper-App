@@ -37,12 +37,30 @@ type Answer = (question: CountedQuestion, value: string | null) => void;
 // an answer rules booking out, the screen says so, in the plain warning
 // style: a neutral border and a bold first line, never red.
 
-// A note that doesn't block: what an answer means for booking.
-function BookingNote({ title, children, testId }: { title: string; children?: React.ReactNode; testId?: string }) {
+// A note that doesn't block: what an answer means for booking, and, once
+// booking is ruled out, the way on: Keep as a lead, the one gold button.
+function BookingNote({
+  title,
+  children,
+  testId,
+  onKeepAsLead,
+}: {
+  title: string;
+  children?: React.ReactNode;
+  testId?: string;
+  onKeepAsLead?: () => void;
+}) {
   return (
-    <div role="status" className="flex flex-col gap-0.5 rounded-md border border-foreground/60 px-3 py-2 text-sm text-pretty min-[420px]:text-base" data-testid={testId}>
-      <p className="font-semibold">{title}</p>
-      {children ? <p className="text-muted-foreground">{children}</p> : null}
+    <div className="flex flex-col gap-1.5 rounded-md border border-foreground/60 px-3 py-1.5 text-sm text-pretty min-[420px]:text-base" data-testid={testId}>
+      <div role="status" className="flex flex-col gap-0.5">
+        <p className="font-semibold">{title}</p>
+        {children ? <p className="text-muted-foreground">{children}</p> : null}
+      </div>
+      {onKeepAsLead ? (
+        <Button type="button" className="min-[420px]:text-base" onClick={onKeepAsLead} data-testid="keep-as-lead">
+          Keep as a lead
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -54,11 +72,13 @@ export function WhoScreen({
   onChange,
   onAnswer,
   onExisting,
+  onKeepAsLead,
 }: {
   draft: SheetDraft;
   onChange: Change;
   onAnswer: Answer;
   onExisting: (() => void) | null;
+  onKeepAsLead: () => void;
 }) {
   const phoneNotCollected = draft.not_collected.includes("phone");
   return (
@@ -138,8 +158,8 @@ export function WhoScreen({
         />
         {phoneNotCollected ? (
           <div id="sheet-phone-hint">
-            <BookingNote title="Without a number, this time can't be booked." testId="rule-phone">
-              Ask for it before you leave the door.
+            <BookingNote title="Without a number, this time can't be booked." testId="rule-phone" onKeepAsLead={onKeepAsLead}>
+              Ask before you leave the door, or keep them as a lead.
             </BookingNote>
           </div>
         ) : (
@@ -171,34 +191,30 @@ function questionSetup(question: CountedQuestion): { legend: string; options: { 
   return { legend: found?.question ?? QUESTION_LABELS[question], options, columns };
 }
 
-// What the door's answers mean for booking, said the moment it's so, with a
-// way forward that exists: a new person is saved once the steps are done; a
-// saved lead can be let go and given a follow-up day.
+// What the answers mean for booking, said the moment it's so, with the way
+// on: Keep as a lead lets the time go at once; a new person carries on in New
+// lead with everything entered, and a saved lead opens on its page, where a
+// follow-up day is set (round 2 polish).
 const SHORT_NAMES: Partial<Record<CountedQuestion, string>> = {
   owns_home: "owns the home",
   wants_price: "wants a price",
   both_decision_makers: "everyone who decides",
 };
 
-function DoorNote({ draft }: { draft: SheetDraft }) {
-  const blockers = bookingBlockers(draft).filter((question) => question !== "phone");
+export function ruledOutTitle(draft: SheetDraft, withPhone: boolean): string | null {
+  const blockers = bookingBlockers(draft).filter((question) => withPhone || question !== "phone");
   if (blockers.length === 0) return null;
-  const notOwner = draftAnswers(draft).owns_home === "no";
-  const names = blockers.map((question) => SHORT_NAMES[question] ?? QUESTION_LABELS[question]);
+  if (draftAnswers(draft).owns_home === "no") return "Only homeowners can be booked.";
+  const names = blockers.filter((question) => question !== "phone").map((question) => SHORT_NAMES[question] ?? QUESTION_LABELS[question]);
   const listed = names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  const title = notOwner ? "Only homeowners can be booked." : `Booking needs a Yes for ${listed}.`;
-  const body = notOwner
-    ? draft.leadId
-      ? "To keep them as a lead, let the time go."
-      : "To keep them as a lead, finish the steps so they're saved, then let the time go."
-    : draft.leadId
-      ? "To follow up instead, let the time go and set a follow-up day on their lead."
-      : "To follow up instead, finish the steps so they're saved, then let the time go.";
-  return (
-    <BookingNote title={title} testId="door-note">
-      {body}
-    </BookingNote>
-  );
+  const parts = [blockers.includes("phone") ? "a number" : null, names.length > 0 ? `a Yes for ${listed}` : null].filter(Boolean);
+  return `Booking needs ${parts.join(" and ")}.`;
+}
+
+function DoorNote({ draft, onKeepAsLead }: { draft: SheetDraft; onKeepAsLead: () => void }) {
+  const title = ruledOutTitle(draft, false);
+  if (!title) return null;
+  return <BookingNote title={title} testId="door-note" onKeepAsLead={onKeepAsLead} />;
 }
 
 // A screen of counted questions: at the door (owns the home, wants a price,
@@ -209,17 +225,19 @@ export function QuestionsScreen({
   draft,
   onAnswer,
   onMarkRest,
+  onKeepAsLead,
 }: {
   screen: SheetScreen;
   questions: CountedQuestion[];
   draft: SheetDraft;
   onAnswer: Answer;
   onMarkRest: () => void;
+  onKeepAsLead: () => void;
 }) {
   const answers = draftAnswers(draft);
   const open = screenOpenQuestions(screen, draft);
   return (
-    <div className="flex flex-col gap-4 min-[420px]:gap-5">
+    <div className="flex flex-col gap-5 min-[420px]:gap-6">
       {questions.map((question) => {
         const setup = questionSetup(question);
         return (
@@ -236,9 +254,9 @@ export function QuestionsScreen({
           />
         );
       })}
-      {screen === "door" ? <DoorNote draft={draft} /> : null}
+      {screen === "door" ? <DoorNote draft={draft} onKeepAsLead={onKeepAsLead} /> : null}
       {open.length > 0 ? (
-        <Button type="button" variant="link" size="sm" className="-mt-2 self-start px-0 min-[420px]:text-base" onClick={onMarkRest} data-testid="mark-rest">
+        <Button type="button" variant="link" size="sm" className="-mt-3 self-start px-0 min-[420px]:text-base" onClick={onMarkRest} data-testid="mark-rest">
           Mark the rest Not collected
         </Button>
       ) : null}
@@ -313,7 +331,7 @@ export function AddressScreen({
             Soffit colour
           </span>
           <span id="sheet-soffit-note-hint" className="text-sm text-muted-foreground">
-            White is the only stock track colour
+            Look closely: white or off-white?
           </span>
         </div>
         <AnswerGroup
@@ -443,12 +461,14 @@ export function BookScreen({
   heldAt,
   warnings,
   onFix,
+  onKeepAsLead,
 }: {
   draft: SheetDraft;
   name: string;
   heldAt: string | null;
   warnings: string[];
   onFix: (screen: SheetScreen) => void;
+  onKeepAsLead: () => void;
 }) {
   const guided = guidedPhotoCount(draft);
   const notCollected = (key: string) =>
@@ -531,6 +551,8 @@ export function BookScreen({
           ))}
         </ul>
       </section>
+
+      {ruledOutTitle(draft, true) ? <BookingNote title={ruledOutTitle(draft, true) ?? ""} testId="book-ruled-out" onKeepAsLead={onKeepAsLead} /> : null}
 
       {warnings.length > 0 ? (
         <div role="status" className="rounded-md border border-foreground/60 px-3 py-2 text-sm" data-testid="distance-warning">

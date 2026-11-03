@@ -21,6 +21,8 @@ export type LeadDraft = {
   // Extra photos (beyond the four guided ones) aren't brought back; the
   // notice says how many to add again.
   extraPhotos: number;
+  // Handed over by the booking sheet's Keep as a lead, so New lead says so.
+  from?: "sheet";
 };
 
 // What is typed by hand or chosen: the neighbourhood (filled in from the
@@ -68,7 +70,8 @@ export function readDraft(raw: string | null, now: number): LeadDraft | null {
     for (const [name, value] of Object.entries(parsed.values)) {
       if (typeof value === "string" && value.length <= 4000) values[name] = value;
     }
-    const draft = { savedAt: parsed.savedAt, values, extraPhotos: typeof parsed.extraPhotos === "number" ? parsed.extraPhotos : 0 };
+    const draft: LeadDraft = { savedAt: parsed.savedAt, values, extraPhotos: typeof parsed.extraPhotos === "number" ? parsed.extraPhotos : 0 };
+    if (parsed.from === "sheet") draft.from = "sheet";
     return draftHasContent(draft) ? draft : null;
   } catch {
     return null;
