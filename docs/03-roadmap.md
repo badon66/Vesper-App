@@ -4,7 +4,7 @@ One milestone per build session. A milestone is done when every criterion passes
 
 **Focus (Keenan, 2026-11-02).** The app's fundamentals are three things: the setter sessions (knocking, leads and booking), the sales meetings (meeting mode on the iPad), and the shareable quote links for customers. Everything else is parked until Keenan says otherwise: M4 (pipeline board), M6 (sales dashboard), M7 (website lead form and daily email) and the backlog ideas. Parked milestones are not started or planned.
 
-**Current milestone: M5 take 2 and the quote link's take 2, together, after Keenan's first meetings and the first links go out.** The setter side was released on 2026-11-03 (branch `setter-side`, merged on green as Keenan approved): the polished setter screens, the first sign-in welcome and notices for setters. The customer quote link's take 1 was released the same day (merge `947a3fd`); M5 take 1 on 2026-11-02 (merge `b075554`), and the Meetings page the same day (merge `13b737d`).
+**Current milestone: Setter side, round 2, and View as** (Keenan, 2026-11-03; approved, merge on green straight to live). No pay rules change. Then M5 take 2 and the quote link's take 2, together, after Keenan's first meetings and the first links go out. The setter side was released on 2026-11-03 (merge `372ee85`), the customer quote link's take 1 the same day (merge `947a3fd`); M5 take 1 on 2026-11-02 (merge `b075554`), and the Meetings page the same day (merge `13b737d`).
 
 ## M5: Meeting mode (iPad), in two takes
 Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a preview link by 9 am Calgary that day. Keenan approved take 1's direction, pricing and schema up front; the short plan is in `decisions.md`. Meeting mode is customer-facing the whole time: full screen, no tabs, and nothing internal on screen, ever: no costs, margins, setter names, pipeline or other customers.
@@ -38,6 +38,36 @@ Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a previe
 - [ ] Mark presented, accepted or declined; each writes a lead event and moves the lead to `quoted` or `sold`; accepting creates one pending `commission` earning for the lead's assigned setter (none when assigned to the owner) at the commission rate on the total as actually priced before GST; `installed` makes it payable; `lost` voids it; unit tests cover the amount and rounding
 - [ ] A quote can't be marked ready until the lead's track colour is set; the quote stores the colour name and RAL code it used and prints them, and a Custom colour shows as needing powder coating
 - [ ] A deeper impeccable pass with before and after scores, and whatever the first meetings show needs changing
+
+## Setter side, round 2, and View as (Keenan, 2026-11-03; merge on green, approved)
+No pay rules change.
+
+View as you can click through:
+- [ ] Keenan can tap everything while viewing as someone: screens, sheets, menus and every step of the booking sheet, exactly as they would; the gold bar stays
+- [ ] Nothing is ever saved: every write is refused on the server; steps that need a write to continue (holding a time, a photo, a count) are acted out on screen only, and a final save shows "View as: nothing was saved."
+- [ ] The comparison test still matches, and a click-through test proves nothing is written
+
+The questions:
+- [ ] Phone, owns the home, wants a price, everyone who decides, Christmas lights now, looked into it before, which areas and timing each have "Not collected"
+- [ ] A step can't be finished, and a lead can't be saved (New lead included), until every question on it has an answer, Not collected included; "Mark the rest Not collected" does it in one tap; questions in any order
+- [ ] Before you book is unchanged: Not collected for the phone, owns the home, wants a price or everyone who decides blocks booking, with a clear note on what's missing
+- [ ] "N of 8 collected" on Keenan's Tonight, Schedule, the Meetings page and the lead page, and on the setter's own bookings; information only
+
+Photos:
+- [ ] Each slot keeps the big Take photo button and adds a smaller Upload button, with a simple line drawing showing the angle to shoot
+
+The booking sheet:
+- [ ] Header: the wordmark on the left, the held time on the right with a countdown; tapping it opens a small menu at once: Add 5 minutes, Change time, Let go
+- [ ] A hold lasts 5 minutes (a setting) and Add 5 minutes extends it; the timer replaces the check-in grace period; a hold still ends at once on book, let go, another time or leaving the sheet
+- [ ] Under a minute left, the time says so and offers Add 5 minutes; when it runs out the sheet says so and offers to hold it again if it's still free
+- [ ] The steps follow the visit: At the door (name, phone, owns the home, wants a price, everyone who decides), After the door (the rest of what they learned, then the address, the soffit colour and the photos), then Book
+- [ ] Swipe left and right between steps, as well as Back and Next; a counter by the progress bar ("Step 3 of 6, 3 left")
+- [ ] Designed and tested at 430 x 932 and at 390 wide: bigger type and targets, related items grouped, fewer steps
+- [ ] Leaving keeps a draft on that phone; an Unfinished list on Home reopens it where they left off and asks for a time; wiped after 24 hours
+- [ ] No double booking stays a hard rule: the race tests cover the timer and extensions (only the holder extends; an expired hold can't be extended once someone else has the time; two setters racing still get exactly one)
+
+- [ ] Design: impeccable shape, then critique and polish at both phone sizes; plain copy, no em dashes; everything new works in View as
+- [ ] The full suite passes, the branch merges on green, and production is verified
 
 ## Setter side (Keenan, 2026-11-03; merge on green, approved)
 It changes no pay or booking rules.

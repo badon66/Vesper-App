@@ -82,7 +82,8 @@ meeting_slot_minutes int not null default 45
 meeting_slot_count int not null default 4
 distance_warning_km numeric(5,1) not null default 10
 booking_cutoff_minutes int not null default 30  -- setters can hold, book or move into a time until this long before it starts; the owner until it starts
-hold_grace_minutes int not null default 2       -- a hold whose screen stops checking in lets go after this long
+hold_grace_minutes int not null default 2       -- unused since round 2 (2026-11-03); the hold timer below replaced the check-in grace period
+hold_minutes int not null default 5             -- round 2: how long a hold lasts, and what Add 5 minutes adds; the timer is what frees a time
 booking_window_days int not null default 14     -- bookings open tonight and this many evenings ahead
 meeting_host_id uuid references profiles        -- who runs meetings booked from the app: Keenan; empty means the owner
 company jsonb not null               -- name, phone, email, address for PDFs
@@ -144,7 +145,8 @@ track_colour_id uuid references track_colours   -- set by the owner only: one of
 track_ral_code text references ral_classic_colours  -- set by the owner only: Custom, a RAL Classic code (needs powder coating)
 est_feet int
 notes text
-both_decision_makers boolean                    -- unused; M3 keeps the confirmation on the booking instead (meetings.everyone_deciding_present)
+both_decision_makers boolean                    -- round 2: the question "Everyone who decides will be there": Yes true, No false; booking copies it to meetings.everyone_deciding_present
+not_collected text[] not null default '{}'      -- round 2: the questions marked Not collected (phone, owns_home, wants_price, both_decision_makers, christmas_lights_now, looked_into_before, areas_wanted, install_timing); an answered question is never in it (a trigger keeps them apart)
 consent_text boolean not null default false     -- CASL: agreed to texts and emails
 lost_reason text
 lost_at timestamptz
@@ -250,14 +252,14 @@ starts_at timestamptz not null
 holder_id uuid not null references profiles
 lead_id uuid references leads                   -- the lead being booked, once known
 meeting_id uuid references meetings             -- set when the hold is for moving this meeting
-renewed_at timestamptz not null default now()   -- the holder's screen checks in to keep it alive
+renewed_at timestamptz not null default now()   -- round 2: where the hold's timer counts from; it lasts settings.hold_minutes from here, and Add 5 minutes moves it on by that much
 released_at timestamptz                         -- set when the hold ends
 release_reason text                             -- booked, moved, released, switched or lapsed (M3.5: a hold whose time disappears in a day change is released)
 created_at
 unique (host_id, starts_at) where released_at is null
 unique (holder_id) where released_at is null    -- one hold per person
 ```
-A hold is active while `released_at` is empty and `renewed_at` is within `settings.hold_grace_minutes` of now. One that has gone quiet longer has lapsed: the next claim on that time stamps it `lapsed` and takes over, and the holder's next check-in takes the time back only if it is still free. Holds are written only by the booking functions below.
+A hold is active while `released_at` is empty and its timer hasn't run out: `renewed_at` plus `settings.hold_minutes` is still ahead (round 2, 2026-11-03; before, a hold lived while its screen checked in). One that has run out has lapsed: the next claim on that time stamps it `lapsed` and takes over. The holder can add `hold_minutes` to a live hold (`extend_hold`), or take a run-out hold back while the time is still free. Holds are written only by the booking functions below.
 
 ### meetings
 Open times are computed from the evening's own schedule in `day_schedules` when it has one, otherwise the template in settings (days, start, slot length, count), minus anything that overlaps a live meeting, active holds and time blocks, within the booking window and before the cutoff. There is no slots table. After each slot the owner sets the outcome: `qualified`, `not_qualified`, `no_show` or `cancelled`. Sales users can read every meeting, so `outcome_note` must never contain a price.
@@ -293,7 +295,7 @@ Rules, all enforced in the database:
 Every write to `slot_holds`, `meetings` and `earnings` goes through these SECURITY DEFINER functions; no policy lets anyone write those tables directly. Each takes the evening lock (a move takes both evenings, in a fixed order). The server actions call them with the signed-in person's own session.
 - `schedule_board(host, as_sales, viewer)`: every time in the window with its state (open, held, booked, blocked or closed), the holder's name and initials, and a booked time's neighbourhood and setter. Times come from each evening's own schedule or the template. Every live meeting shows at its own start and end, whether or not it still lines up, and template times that overlap any live meeting are left out (migration 20261102051654: before it, a meeting that still lined up could drop off the board after a longer meeting length). Read only; the screens poll it.
 - `set_day_schedule(day, start, minutes, count, scope, host)`: the owner's. Scope `day` gives that evening its own times; `all` updates the template in settings and drops that evening's own times; `usual` drops them only. It takes the evening lock, lets go of holds on times that disappear (stamped `released`), never touches a meeting, and writes Settings only when a value changes. `day_schedule_preview(day, start, minutes, count, scope, host)` lists, read only, the meetings that wouldn't line up and the holds that would let go, for the pop-up's warning.
-- `hold_slot(starts_at, lead, meeting, host)`, `renew_hold()`, `release_hold()`.
+- `hold_slot(starts_at, lead, meeting, host)`, `release_hold()`; round 2: `extend_hold()` (holder only: adds `hold_minutes` to a live hold, or takes a run-out one back while it's still free) and `hold_status()` (the caller's own hold and when it runs out); `renew_hold()` now only reports, like `hold_status()`, and never extends.
 - `book_meeting(lead, starts_at, everyone_deciding_present, photos_skipped, photos_skip_note, host)`.
 - `move_meeting(meeting, new_starts_at)` and `cancel_meeting(meeting, note)`.
 - `set_meeting_outcome(meeting, outcome, reason, note)` and `mark_earnings_paid(ids)`: the owner's (the service role may call them too, for the test suite).
@@ -418,7 +420,7 @@ Sales users collaborate, so they can read the team's leads, meetings and knock s
 | profiles | all | read own row; read `id`, `full_name` and `role` of active profiles through a view `profiles_public` (for pickers and the schedule); read `id` and `full_name` of every profile, deactivated ones included, through a view `profile_names` (so old leads and timelines still show who did what) |
 | track_colours | select, insert, update; never delete | select all (active and retired) |
 | ral_classic_colours | select | select |
-| settings | all | read only the fields the client needs: slot template, `distance_warning_km`, `lost_reasons`, `door_guide`, `booking_cutoff_minutes`, `hold_grace_minutes`, `booking_window_days` and the three step notes, through a view `settings_public` that exposes nothing else |
+| settings | all | read only the fields the client needs: slot template, `distance_warning_km`, `lost_reasons`, `door_guide`, `booking_cutoff_minutes`, `hold_grace_minutes`, `booking_window_days`, the three step notes and (round 2) `hold_minutes`, through a view `settings_public` that exposes nothing else |
 | leads | all | insert as themselves; select all; update where `created_by = auth.uid()` or `assigned_to = auth.uid()`; change status only among `new`, `follow_up`, `lost`; no delete |
 | lead_photos | all | select all; insert for their own leads, with the file inside their own storage folder |
 | lead_events | select and insert; never update or delete | select all; insert `note` events on their own leads |
