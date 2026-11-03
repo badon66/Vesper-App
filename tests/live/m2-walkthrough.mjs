@@ -137,6 +137,8 @@ try {
     });
     if (error) throw new Error(`createUser ${key}: ${error.message}`);
     person.id = data.user.id;
+    // The first sign-in welcome has its own walk-through; this one starts after it.
+    await admin.from("profiles").update({ welcome_done_at: new Date().toISOString() }).eq("id", person.id);
   }
   const bClient = createClient(url, anonKey, noSession);
   await bClient.auth.signInWithPassword({ email: people.b.email, password: people.b.password });

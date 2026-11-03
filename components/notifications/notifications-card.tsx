@@ -13,8 +13,9 @@ import { saveThisDevice, sendTestNotification, switchOffDevice, switchOffThisDev
 // on the home screen (iOS 16.4 or later), and each device turns it on
 // once, from a tap here. Keenan's card (Settings) can make the keys; a
 // setter's card (the bell) says when they aren't set up yet. While Keenan
-// views the app as a setter, the card lists that setter's devices and
-// nothing on it works.
+// views the app as a setter, the card shows what a setter sees before
+// turning them on, lists that setter's own devices, and nothing on it
+// works: his device is never theirs.
 
 // hash: the device's hashed push address, for the member's own devices
 // only, so the page can tell whether this browser is one of them.
@@ -40,7 +41,8 @@ export function Notifications({
   // Keenan's card can make the keys; a setter's says to wait for him.
   owner?: boolean;
   description?: string;
-  // View as: the setter's devices, listed; this device isn't theirs.
+  // View as: the setter's devices, listed; this device isn't theirs, so it
+  // shows as not turned on.
   readOnly?: boolean;
 }) {
   return (
@@ -78,7 +80,7 @@ export function DeviceControls({
   readOnly?: boolean;
   owner?: boolean;
 }) {
-  const [support, setSupport] = useState<Support>("checking");
+  const [support, setSupport] = useState<Support>(readOnly ? "ready" : "checking");
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
   const [subscribed, setSubscribed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -171,11 +173,9 @@ export function DeviceControls({
 
   return (
     <>
-      <div className="flex flex-col gap-3" data-testid="this-device">
+      <div className="flex flex-col gap-3" data-testid="this-device" data-device>
         <p className="font-semibold">This device</p>
-        {readOnly ? (
-          <p className="text-pretty text-muted-foreground">This shows on their own phone: whether notifications are on there.</p>
-        ) : support === "checking" ? (
+        {support === "checking" ? (
           <p className="text-muted-foreground">Checking this device.</p>
         ) : support === "needs_home_screen" ? (
           <p className="text-pretty">
@@ -214,11 +214,9 @@ export function DeviceControls({
         <p className="font-semibold">Devices with notifications on</p>
         {devices.length === 0 ? (
           <p className="text-muted-foreground" data-testid="no-devices">
-            {readOnly
-              ? "None yet."
-              : owner
-                ? "None yet. Turn them on from your phone and from your iPad, and both get every notice."
-                : "None yet. Turn them on from the phone you knock with."}
+            {owner
+              ? "None yet. Turn them on from your phone and from your iPad, and both get every notice."
+              : "None yet. Turn them on from the phone you knock with."}
           </p>
         ) : (
           <ul className="flex flex-col divide-y" data-testid="devices">

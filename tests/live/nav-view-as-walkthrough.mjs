@@ -75,11 +75,26 @@ async function settle(page) {
   await page.locator("[data-loading-screen]").first().waitFor({ state: "detached", timeout: 20000 }).catch(() => {});
 }
 
+// The welcome and Notifications read the phone after they load.
+async function settleDevice(page) {
+  for (const text of ["Checking this phone.", "Checking this device."]) {
+    await page.getByText(text).first().waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+  }
+}
+
 // What a screen shows: its tabs, the text of the screen, and its controls.
+// What a phone itself answers (on the home screen or not, location and
+// notifications allowed or not) is marked data-device: two browsers can't
+// agree on it, so the text and control names around it are compared, while
+// its controls still have to be disabled while viewing.
 function capture(page) {
   return page.evaluate(() => {
     const main = document.querySelector("main");
+    const device = [...(main?.querySelectorAll("[data-device]") ?? [])];
+    const shown = device.map((el) => el.style.display);
+    device.forEach((el) => (el.style.display = "none"));
     const text = (main?.innerText ?? "").replace(/\s+/g, " ").trim();
+    device.forEach((el, i) => (el.style.display = shown[i]));
     const tabs = [...document.querySelectorAll('nav[aria-label="Tabs"]')]
       .filter((nav) => getComputedStyle(nav).display !== "none")
       .flatMap((nav) => [...nav.querySelectorAll("a")].map((a) => a.textContent.trim()));
@@ -88,6 +103,7 @@ function capture(page) {
       .map((el) => ({
         label: (el.getAttribute("aria-label") || el.textContent || el.getAttribute("name") || el.id || "").replace(/\s+/g, " ").trim(),
         disabled: el.matches(":disabled"),
+        device: Boolean(el.closest("[data-device]")),
       }));
     const images = [...(main?.querySelectorAll("img") ?? [])].map((img) => img.getAttribute("alt") ?? "");
     return { text, tabs, controls, images };
@@ -200,6 +216,8 @@ try {
     });
     if (error) throw new Error(`createUser ${key}: ${error.message}`);
     person.id = data.user.id;
+    // The first sign-in welcome has its own walk-through; this one starts after it.
+    await admin.from("profiles").update({ welcome_done_at: new Date().toISOString() }).eq("id", person.id);
     person.client = createClient(url, anonKey, noSession);
     const signedIn = await person.client.auth.signInWithPassword({ email: person.email, password: person.password });
     if (signedIn.error) throw new Error(`sign in ${key}: ${signedIn.error.message}`);
@@ -542,6 +560,11 @@ try {
     ["Meetings", "/app/meetings"],
     ["a lead opened to book", `/app/leads/${leads.later}?book=1`],
     ["My pay", "/app/pay"],
+    ["Notifications", "/app/notifications"],
+    ["the welcome", "/app/welcome"],
+    ["the welcome's location step", "/app/welcome?step=2"],
+    ["the welcome's notifications step", "/app/welcome?step=3"],
+    ["the welcome's door tour", "/app/welcome?step=4"],
     ["Admin", "/app/admin"],
     ["Settings", "/app/admin/settings"],
   ];
@@ -549,11 +572,14 @@ try {
     const visitStart = new Date().toISOString();
     await page.goto(`${base}${path}`);
     await settle(page);
+    await settleDevice(page);
     const real = await capture(page);
     await op.goto(`${base}${path}`);
     await settle(op);
+    await settleDevice(op);
     const viewed = await capture(op);
-    const sameControls = JSON.stringify(real.controls.map((c) => c.label)) === JSON.stringify(viewed.controls.map((c) => c.label));
+    const named = (controls) => JSON.stringify(controls.filter((c) => !c.device).map((c) => c.label));
+    const sameControls = named(real.controls) === named(viewed.controls);
     const sameImages = JSON.stringify(real.images) === JSON.stringify(viewed.images);
     check(
       `View as shows ${label} exactly as the setter sees it`,

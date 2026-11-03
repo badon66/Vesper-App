@@ -77,7 +77,8 @@ export function WelcomeFlow({ step, firstName, publicKey, deviceHashes, readOnly
     notifications: "Turn on notifications",
     tour: "How a door goes",
   };
-  const ready = readOnly || done[key];
+  // Next once the step is done here; until then the honest word is Skip.
+  const ready = Boolean(done[key]);
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-col gap-6 pb-36" data-testid="welcome" data-step={key}>
@@ -238,51 +239,55 @@ function HomeScreenStep({ readOnly, onDone }: { readOnly: boolean; onDone: (done
         Vesper then opens like an app, and on iPhone that&apos;s what lets it send you notifications. Three quick
         things, then how a door goes. Skip anything you like.
       </Why>
-      {shown === "checking" ? <p className="text-muted-foreground">Checking this phone.</p> : null}
-      {shown === "installed" ? (
-        <Done testId="welcome-home-done">Vesper is on your home screen, and you&apos;re in it now.</Done>
-      ) : null}
-      {shown === "iphone" || shown === "iphone-other-browser" ? (
-        <Steps
-          items={[
-            shown === "iphone-other-browser" ? (
+      {/* What this phone needs: it differs from phone to phone. */}
+      <div data-device className="flex flex-col gap-5">
+        {shown === "checking" ? <p className="text-muted-foreground">Checking this phone.</p> : null}
+        {shown === "installed" ? (
+          <Done testId="welcome-home-done">Vesper is on your home screen, and you&apos;re in it now.</Done>
+        ) : null}
+        {shown === "iphone" || shown === "iphone-other-browser" ? (
+          <Steps
+            items={[
+              shown === "iphone-other-browser" ? (
+                <>
+                  Tap <strong>Share</strong> <Share aria-hidden="true" className="inline size-4 align-[-2px]" /> in
+                  the address bar.
+                </>
+              ) : (
+                <>
+                  In Safari, tap <strong>Share</strong>{" "}
+                  <Share aria-hidden="true" className="inline size-4 align-[-2px]" />. If you don&apos;t see it at
+                  the bottom, tap the three dots first.
+                </>
+              ),
               <>
-                Tap <strong>Share</strong> <Share aria-hidden="true" className="inline size-4 align-[-2px]" /> in the
-                address bar.
-              </>
-            ) : (
+                Tap <strong>Add to Home Screen</strong>, then <strong>Add</strong>. You may need to scroll down to find
+                it.
+              </>,
               <>
-                In Safari, tap <strong>Share</strong>{" "}
-                <Share aria-hidden="true" className="inline size-4 align-[-2px]" />. If you don&apos;t see it at the
-                bottom, tap the three dots first.
-              </>
-            ),
-            <>
-              Tap <strong>Add to Home Screen</strong>, then <strong>Add</strong>. You may need to scroll down to find it.
-            </>,
-            <>
-              Open Vesper from its new icon. If it asks, sign in with the same password. The welcome picks up there.
-            </>,
-          ]}
-        />
-      ) : null}
-      {shown === "android" ? (
-        <Steps
-          items={[
-            <>In Chrome, tap the three dots at the top right.</>,
-            <>
-              Tap <strong>Add to Home screen</strong> or <strong>Install app</strong>, then <strong>Install</strong>.
-            </>,
-            <>Open Vesper from its new icon. The welcome picks up there.</>,
-          ]}
-        />
-      ) : null}
-      {shown === "computer" ? (
-        <p className="text-base text-pretty">
-          Do this on the phone you knock with: open Vesper in Safari on an iPhone, or Chrome on Android, and add it to
-          the home screen from there.
-        </p>
-      ) : null}
+                Open Vesper from its new icon. If it asks, sign in with the same password. The welcome picks up there.
+              </>,
+            ]}
+          />
+        ) : null}
+        {shown === "android" ? (
+          <Steps
+            items={[
+              <>In Chrome, tap the three dots at the top right.</>,
+              <>
+                Tap <strong>Add to Home screen</strong> or <strong>Install app</strong>, then <strong>Install</strong>.
+              </>,
+              <>Open Vesper from its new icon. The welcome picks up there.</>,
+            ]}
+          />
+        ) : null}
+        {shown === "computer" ? (
+          <p className="text-base text-pretty">
+            Do this on the phone you knock with: open Vesper in Safari on an iPhone, or Chrome on Android, and add it
+            to the home screen from there.
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -332,7 +337,7 @@ function LocationStep({ readOnly, onDone }: { readOnly: boolean; onDone: (done: 
         At a door on a new street that isn&apos;t on the map yet, <strong className="text-foreground">Use where I&apos;m standing</strong>{" "}
         puts the lead on the map from where you are. Vesper checks your location only when you tap it.
       </Why>
-      <div aria-live="polite" className="flex flex-col gap-3">
+      <div aria-live="polite" data-device className="flex flex-col gap-3">
         {shown === "checking" ? <p className="text-muted-foreground">Checking this phone.</p> : null}
         {shown === "ask" || shown === "asking" ? (
           <>
@@ -414,7 +419,7 @@ function NotificationsStep({
         You&apos;ll hear when Keenan marks one of your bookings, or moves or cancels it. A notice names the street only,
         never the house number or the customer, because it shows on your lock screen.
       </Why>
-      <div aria-live="polite" className="flex flex-col gap-3">
+      <div aria-live="polite" data-device className="flex flex-col gap-3">
         {shown === "checking" ? <p className="text-muted-foreground">Checking this phone.</p> : null}
         {shown === "not-set-up" ? (
           <p className="text-base text-pretty" data-testid="welcome-push-not-set-up">
