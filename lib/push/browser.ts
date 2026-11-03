@@ -78,8 +78,14 @@ type Save = (subscription: unknown, label: string) => Promise<SaveResult>;
 
 export type TurnOnResult = { ok: true } | { ok: false; blocked: boolean; message: string };
 
-export const BLOCKED_MESSAGE =
-  "Notifications are blocked for Vesper on this device. Allow them in the device's Settings, then try again.";
+export const BLOCKED_MESSAGE = "Notifications are blocked for Vesper on this device.";
+
+// Where to allow them again, for this kind of device (2026-11-03).
+export function unblockSteps(): string {
+  return isAppleTouch()
+    ? "To allow them: open Settings, tap Notifications, then Vesper, and turn on Allow Notifications. Then come back and tap Check again."
+    : "To allow them: in Chrome, tap the icon left of the address, then Permissions, and allow Notifications. Then tap Check again.";
+}
 
 // Asks once, then saves this device's push address for the member. A push
 // address made with older keys, or one another Vesper account on this
@@ -103,4 +109,15 @@ export async function turnOnPush(publicKey: string, save: Save): Promise<TurnOnR
     result = await save(subscription.toJSON(), deviceLabel());
   }
   return result.ok ? { ok: true } : { ok: false, blocked: false, message: result.message };
+}
+
+export type PushState = { support: PushSupport; permission: NotificationPermission | null; on: boolean };
+
+// What this browser says now, in one read: whether it can take
+// notifications, what the person allowed, and whether it's on for them.
+export async function readPushState(myDeviceHashes: string[]): Promise<PushState> {
+  const support = pushSupport();
+  if (support !== "ready") return { support, permission: null, on: false };
+  const on = await isOnForMe(myDeviceHashes);
+  return { support, permission: Notification.permission, on };
 }

@@ -1,10 +1,10 @@
 "use client";
 
 import { BellOff, BellRing, Copy, KeyRound } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BLOCKED_MESSAGE, isOnForMe, pushSupport, turnOnPush, type PushSupport } from "@/lib/push/browser";
+import { BLOCKED_MESSAGE, readPushState, turnOnPush, unblockSteps, type PushState, type PushSupport } from "@/lib/push/browser";
 import { sentence } from "@/lib/schedule/meetings";
 import { formatDateTime } from "@/lib/time";
 import { saveThisDevice, sendTestNotification, switchOffDevice, switchOffThisDevice } from "@/app/(app)/app/notifications/actions";
@@ -89,26 +89,32 @@ export function DeviceControls({
   const hashes = devices.flatMap((device) => (device.hash ? [device.hash] : []));
   const hashKey = hashes.join(",");
 
+  // What this device says now: on load, and again from Check again.
+  const apply = useCallback((state: PushState) => {
+    setSupport(state.support);
+    setPermission(state.permission);
+    setSubscribed(state.on);
+  }, []);
+  const hashList = useCallback(() => (hashKey ? hashKey.split(",") : []), [hashKey]);
+  function check() {
+    void readPushState(hashList()).then(apply, () => setSupport("unsupported"));
+  }
+
   useEffect(() => {
     if (readOnly) return;
     let cancelled = false;
-    async function check() {
-      const found = pushSupport();
-      if (found !== "ready") {
-        if (!cancelled) setSupport(found);
-        return;
-      }
-      setPermission(Notification.permission);
-      const on = await isOnForMe(hashKey ? hashKey.split(",") : []);
-      if (cancelled) return;
-      setSubscribed(on);
-      setSupport("ready");
-    }
-    void check().catch(() => !cancelled && setSupport("unsupported"));
+    readPushState(hashList()).then(
+      (state) => {
+        if (!cancelled) apply(state);
+      },
+      () => {
+        if (!cancelled) setSupport("unsupported");
+      },
+    );
     return () => {
       cancelled = true;
     };
-  }, [readOnly, hashKey]);
+  }, [readOnly, hashList, apply]);
 
   async function turnOn() {
     setBusy(true);
@@ -117,7 +123,8 @@ export function DeviceControls({
       const result = await turnOnPush(publicKey, saveThisDevice);
       setPermission(Notification.permission);
       if (!result.ok) {
-        setMessage({ text: result.message, error: true });
+        // Blocked shows its own steps below.
+        if (!result.blocked) setMessage({ text: result.message, error: true });
         return;
       }
       setSubscribed(true);
@@ -196,17 +203,21 @@ export function DeviceControls({
               Switch off here
             </Button>
           </div>
+        ) : permission === "denied" ? (
+          <div className="flex flex-col gap-2" data-testid="push-blocked">
+            <p className="font-semibold text-pretty">{BLOCKED_MESSAGE}</p>
+            <p className="text-pretty text-muted-foreground">{unblockSteps()}</p>
+            <Button type="button" variant="outline" className="self-start" onClick={check} disabled={busy}>
+              Check again
+            </Button>
+          </div>
         ) : (
           <div className="flex flex-col gap-2">
             <Button type="button" className="self-start" onClick={() => void turnOn()} disabled={busy}>
               <BellRing aria-hidden="true" />
               {busy ? "Asking" : "Turn on notifications here"}
             </Button>
-            {permission === "denied" ? (
-              <p className="text-pretty text-muted-foreground">{BLOCKED_MESSAGE}</p>
-            ) : (
-              <p className="text-pretty text-muted-foreground">The device asks once whether Vesper may send notifications.</p>
-            )}
+            <p className="text-pretty text-muted-foreground">The device asks once whether Vesper may send notifications.</p>
           </div>
         )}
       </div>

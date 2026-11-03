@@ -25,7 +25,7 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { profile, viewingAs, viewAsEnded } = await getViewer();
+  const { profile, real, viewingAs, viewAsEnded } = await getViewer();
   const showViewAsBar = viewingAs || viewAsEnded;
 
   return (
@@ -49,7 +49,7 @@ export default async function AppLayout({
               {showsAdminGear(profile.role) ? <AdminGear /> : null}
               {profile.role === "sales" ? <BellLink /> : null}
               <ThemeToggle />
-              <SignOutButton action={signOut} disabled={viewingAs} />
+              <SignOutButton action={signOut} disabled={viewingAs} askKeenan={real.role !== "owner"} />
             </div>
           </div>
         </header>

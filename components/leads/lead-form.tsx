@@ -184,6 +184,8 @@ export function LeadForm({
       setNeighbourhood(restoredDefaults.neighbourhood || sessionNeighbourhood || "");
       setNeighbourhoodEdited(Boolean(restoredDefaults.neighbourhood));
       setFormKey((key) => key + 1);
+      // A reload can reopen the page mid-form: show the notice first.
+      requestAnimationFrame(() => window.scrollTo({ top: 0 }));
     }
     void bringBack();
     return () => {

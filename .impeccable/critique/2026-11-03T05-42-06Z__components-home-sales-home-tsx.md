@@ -45,3 +45,13 @@ Minor: "Sam Rivers (test)'s lead" and "Added by Sam Rivers (test)" on your own t
 # Assessment B: Detector and browser evidence, summary
 
 CLI: `detect --json` on the 21 files of the five screens: no findings (regex pass only on .tsx). In the page (detect.js injected on 8 views, both themes): `nested-cards` at three places (Home's Follow-ups list, the lead page's meeting card inside the Meetings card, My pay's bookings list), all real bordered boxes inside a Card; two advisory stragglers (the photo hint without text-pretty, "This lead is at Met. From here Keenan moves it along."). No contrast, tiny-text or overflow findings; no page errors.
+
+# What happened (2026-11-03)
+
+1. P1, New lead loses everything: fixed. A draft is kept on the phone (fields, answers, guided photos), saved while typing and when the page hides, brought back after a reload with a notice and Start over, and cleared where the save lands; X asks "Discard this lead?" when anything is entered.
+2. P1, counters buried: fixed. The knock session is first on Home; a lead saved while knocking returns Home ("Lead saved. On to the next door.") with the counters on screen.
+3. P2, gold on choices: fixed. Chosen answers are light with a tick everywhere; Call is plain; the New badge is a neutral outline.
+4. P2, the lead page as a record: mostly fixed. What's next leads the page (the meeting, the follow-up day, why it was lost); Before you book is listed with what each item says now and a Fix link; Status and Notes come before the record; Contact and Address are one card. Not done: a fixed bottom bar for Book a meeting (two bars over the tab bar would take a fifth of a phone screen on every lead).
+5. P2, pay undersold: fixed. "Fee if Qualified" on bookings still to come, "Paid, all time", ticks on earned fees, bookings on Home from last night on.
+6. Minor, fixed: "you" for your own lead, booking and timeline; Status not titled twice; "Not set yet."; a lost lead no longer asks for a phone; Lost can't save without a reason; doubled full stops; 14 px badges, list lines, photo hints and pay labels; Sign out asks first; Leads drops its explanation line unless searching or on Everyone. Not changed: the light theme's gold tile edge (the word Open carries it), tab label size.
+7. Detector: the three cards inside cards are flat lists or sections now; the two stragglers have text-pretty.

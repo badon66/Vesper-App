@@ -9,6 +9,7 @@ import { formatMoney, payTotals } from "@/lib/pay/earnings";
 import { formatMeetingTime, MEETING_STATUS_LABELS } from "@/lib/schedule/meetings";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, requestTime } from "@/lib/time";
+import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "My pay",
@@ -53,23 +54,21 @@ export default async function MyPayPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-3" data-testid="pay-totals">
+      {/* Rows, not tiles: a figure in the thousands still fits a phone, and
+          each says what it counts (2026-11-03). Owed now leads. */}
+      <dl className="flex flex-col divide-y rounded-md border" data-testid="pay-totals">
         {[
-          ["Owed now", totals.owedNow],
-          ["Pending install", totals.pendingInstall],
-          ["Paid, all time", totals.paid],
-        ].map(([label, amount]) => (
-          // The figures line up at the bottom even when a label wraps.
-          <div key={label as string} className="flex flex-col justify-between gap-1 rounded-md border p-3">
-            <span className="text-sm leading-tight font-semibold text-muted-foreground">{label}</span>
-            <span className="text-xl font-bold tabular-nums">{formatMoney(amount as number)}</span>
+          { label: "Owed now", amount: totals.owedNow, note: "Fees for meetings Keenan marked Qualified, not paid yet.", lead: true },
+          { label: "Pending install", amount: totals.pendingInstall, note: "Commission on sales waiting for the install.", lead: false },
+          { label: "Paid, all time", amount: totals.paid, note: "Everything Keenan has marked paid since you started.", lead: false },
+        ].map((row) => (
+          <div key={row.label} className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 px-4 py-3">
+            <dt className={row.lead ? "text-base font-bold" : "text-sm font-semibold"}>{row.label}</dt>
+            <dd className={cn("text-right font-bold tabular-nums", row.lead ? "text-2xl" : "text-lg")}>{formatMoney(row.amount)}</dd>
+            <dd className="col-span-2 text-sm text-pretty text-muted-foreground">{row.note}</dd>
           </div>
         ))}
-      </div>
-      <p className="text-sm text-pretty text-muted-foreground">
-        Owed now: fees for meetings Keenan marked Qualified, not paid yet. Pending install: commission on sales
-        waiting for the install. Paid, all time: everything Keenan has marked paid since you started.
-      </p>
+      </dl>
 
       <Card>
         <CardHeader>

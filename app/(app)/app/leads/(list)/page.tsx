@@ -95,11 +95,11 @@ export default async function LeadsPage({
     : groupByStatus(leads).map((group) => ({ key: group.status, title: STATUS_LABELS[group.status], leads: group.leads }));
   const addedLead = addedResult?.data ?? undefined;
 
-  const link = (next: { scope?: "mine" | "everyone"; view?: "active" | "all" }) => {
+  const link = (next: { scope?: "mine" | "everyone"; view?: "active" | "all"; keepSearch?: boolean }) => {
     const target = new URLSearchParams();
     target.set("scope", next.scope ?? (everyone ? "everyone" : "mine"));
     target.set("view", next.view ?? (all ? "all" : "active"));
-    if (q) target.set("q", q);
+    if (q && next.keepSearch !== false) target.set("q", q);
     return `/app/leads?${target.toString()}`;
   };
 
@@ -124,13 +124,25 @@ export default async function LeadsPage({
       ) : null}
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <Switch
-          label="Which leads"
-          options={[
-            { label: "Active", href: link({ view: "active" }), current: !all },
-            { label: "All", href: link({ view: "all" }), current: all },
-          ]}
-        />
+        {/* A search covers every status, so while searching, Active and All
+            give way to the way back (2026-11-03). */}
+        {searching ? (
+          <Link
+            href={link({ keepSearch: false })}
+            className="flex h-[3.375rem] items-center justify-center rounded-md border text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-testid="clear-search"
+          >
+            Clear search: every status shown
+          </Link>
+        ) : (
+          <Switch
+            label="Which leads"
+            options={[
+              { label: "Active", href: link({ view: "active" }), current: !all },
+              { label: "All", href: link({ view: "all" }), current: all },
+            ]}
+          />
+        )}
         <Switch
           label="Whose leads"
           options={[
@@ -177,6 +189,14 @@ export default async function LeadsPage({
               : everyone
                 ? "No one has added a lead yet."
                 : "No leads yet. Tap New lead to add the first one from the door."}
+          {searching && !everyone ? (
+            <>
+              {" "}
+              <Link href={link({ scope: "everyone" })} className="inline-flex min-h-11 items-center font-semibold text-foreground underline underline-offset-4">
+                Search everyone&apos;s leads
+              </Link>
+            </>
+          ) : null}
         </p>
       ) : (
         sections.map((section) => (
@@ -187,6 +207,7 @@ export default async function LeadsPage({
             <ul className="flex flex-col divide-y rounded-md border">
               {section.leads.map((lead) => {
                 const mine = lead.created_by === me.id || lead.assigned_to === me.id;
+                const overdue = lead.status === "follow_up" && lead.follow_up_on !== null && lead.follow_up_on < today;
                 const followUp =
                   lead.status === "follow_up" && lead.follow_up_on
                     ? `${followUpLabel(lead.follow_up_on, today)}. `
@@ -208,7 +229,7 @@ export default async function LeadsPage({
                         {lead.neighbourhood ? `, ${lead.neighbourhood}` : ""}
                       </span>
                       <span className="text-sm text-muted-foreground">
-                        {followUp}
+                        {overdue ? <span className="font-bold text-foreground">{followUp}</span> : followUp}
                         Added {formatDate(lead.created_at)}
                         {everyone && !mine ? ` by ${names.get(lead.created_by) ?? "someone"}, read only` : ""}
                       </span>

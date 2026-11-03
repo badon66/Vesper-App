@@ -48,8 +48,8 @@ export default async function NotificationsPage() {
         <CardHeader>
           <CardTitle>The welcome</CardTitle>
           <CardDescription className="text-pretty">
-            Add Vesper to your home screen, allow location and turn on notifications, then how a door goes, on one
-            screen.
+            Add Vesper to your home screen, allow location and turn on notifications, then a look at how a door
+            goes.
           </CardDescription>
         </CardHeader>
         <CardContent>

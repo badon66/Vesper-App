@@ -23,7 +23,7 @@ import { requireProfile } from "@/lib/auth/profile";
 import { findOutAnswerList, type PhotoSlot } from "@/lib/leads/door";
 import { lostReasons, namesById } from "@/lib/leads/queries";
 import { formatMeetingTime, isLive, positionSourceText, sentence, timePhrase } from "@/lib/schedule/meetings";
-import { leadReadiness } from "@/lib/schedule/readiness";
+import { leadReadiness, READINESS_NAMES, readinessNow } from "@/lib/schedule/readiness";
 import { meetingsForLead } from "@/lib/schedule/queries";
 import {
   HOUSE_TYPE_OPTIONS,
@@ -182,13 +182,13 @@ export default async function LeadPage({
           {session ? `, while knocking in ${session.neighbourhood}` : ""}.
         </p>
         {followUp ? (
-          <p className={followUp < today ? "text-base font-semibold text-destructive" : "text-base font-semibold"} data-testid="lead-next">
+          <p className={followUp < today ? "text-base font-bold" : "text-base font-semibold"} data-testid="lead-next">
             {followUpSentence(followUp, today)}
           </p>
         ) : null}
         {liveMeeting && !justBooked && movedParam !== "1" ? (
           <p className="text-base font-semibold" data-testid="lead-next">
-            <a href="#meetings" className="underline underline-offset-4">
+            <a href="#meetings" className="inline-flex min-h-11 items-center underline underline-offset-4">
               {sentence(`Meeting ${timePhrase(liveMeeting.starts_at)}`)}
             </a>
           </p>
@@ -262,10 +262,23 @@ export default async function LeadPage({
                   ) : (
                     <span role="img" aria-label="Missing" className="mt-0.5 size-4 shrink-0 rounded-full border-2 border-muted-foreground" />
                   )}
-                  <span className="flex flex-col">
-                    <span className={item.ok ? "" : "font-semibold"}>{item.label}</span>
-                    {item.ok ? null : <span className="text-pretty text-muted-foreground">{item.fix}</span>}
-                  </span>
+                  {item.ok ? (
+                    <span>{item.label}</span>
+                  ) : (
+                    <span className="flex flex-1 flex-wrap items-start justify-between gap-x-3">
+                      <span className="flex flex-col">
+                        <span className="font-semibold">{READINESS_NAMES[item.key]}</span>
+                        <span className="text-pretty text-muted-foreground">{readinessNow(item, lead, guidedPhotos)}</span>
+                      </span>
+                      <Link
+                        href={item.key === "photos" ? "#photos" : `/app/leads/${lead.id}/edit`}
+                        aria-label={`Fix: ${READINESS_NAMES[item.key]}`}
+                        className="inline-flex min-h-11 min-w-11 items-center justify-center font-semibold underline underline-offset-4"
+                      >
+                        Fix
+                      </Link>
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -385,7 +398,7 @@ export default async function LeadPage({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="photos" className="scroll-mt-24">
         <CardHeader>
           <CardTitle>Photos</CardTitle>
         </CardHeader>

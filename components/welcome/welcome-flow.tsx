@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { saveThisDevice } from "@/app/(app)/app/notifications/actions";
 import { finishWelcome } from "@/app/(app)/app/welcome/actions";
 import { Button } from "@/components/ui/button";
-import { BLOCKED_MESSAGE, isOnForMe, isStandalone, pushSupport, turnOnPush } from "@/lib/push/browser";
+import { BLOCKED_MESSAGE, isStandalone, readPushState, turnOnPush, unblockSteps } from "@/lib/push/browser";
 import { cn } from "@/lib/utils";
 import { platformOf, WELCOME_STEPS, welcomeHref, type Platform } from "@/lib/welcome";
 
@@ -239,7 +239,7 @@ function HomeScreenStep({ readOnly, onDone }: { readOnly: boolean; onDone: (done
     <div className="flex flex-col gap-5">
       <Why>
         Vesper then opens like an app, and on iPhone that&apos;s what lets it send you notifications. Three quick
-        things, then how a door goes. Skip anything you like.
+        things, then how a door goes. Skip anything you like; the bell at the top opens this again.
       </Why>
       {/* What this phone needs: it differs from phone to phone. */}
       <div data-device className="flex flex-col gap-5">
@@ -381,21 +381,31 @@ function NotificationsStep({
   const [message, setMessage] = useState<string | null>(null);
   const hashKey = deviceHashes.join(",");
 
+  // What this phone says now: on load, and again from Check again.
+  const apply = useCallback((found: { support: string; permission: NotificationPermission | null; on: boolean }) => {
+    if (found.support !== "ready") setState(found.support === "needs_home_screen" ? "needs-home-screen" : "unsupported");
+    else setState(found.permission === "denied" ? "blocked" : found.on ? "on" : "off");
+  }, []);
+  const hashList = useCallback(() => (hashKey ? hashKey.split(",") : []), [hashKey]);
+  function check() {
+    void readPushState(hashList()).then(apply, () => setState("unsupported"));
+  }
+
   useEffect(() => {
     if (readOnly || !publicKey) return;
     let cancelled = false;
-    async function check() {
-      const support = pushSupport();
-      if (support !== "ready") return setState(support === "needs_home_screen" ? "needs-home-screen" : "unsupported");
-      if (Notification.permission === "denied") return setState("blocked");
-      const on = await isOnForMe(hashKey ? hashKey.split(",") : []);
-      if (!cancelled) setState(on ? "on" : "off");
-    }
-    void check().catch(() => !cancelled && setState("unsupported"));
+    readPushState(hashList()).then(
+      (found) => {
+        if (!cancelled) apply(found);
+      },
+      () => {
+        if (!cancelled) setState("unsupported");
+      },
+    );
     return () => {
       cancelled = true;
     };
-  }, [readOnly, publicKey, hashKey]);
+  }, [readOnly, publicKey, hashList, apply]);
 
   useEffect(() => onDone(state === "on"), [state, onDone]);
 
@@ -450,7 +460,15 @@ function NotificationsStep({
           </>
         ) : null}
         {shown === "on" ? <Done testId="welcome-push-done">Notifications are on for this phone.</Done> : null}
-        {shown === "blocked" ? <p className="text-base text-pretty">{BLOCKED_MESSAGE}</p> : null}
+        {shown === "blocked" ? (
+          <>
+            <p className="text-base font-semibold text-pretty">{BLOCKED_MESSAGE}</p>
+            <p className="text-sm text-pretty text-muted-foreground">{unblockSteps()}</p>
+            <Button type="button" variant="outline" size="lg" className="self-start" onClick={check}>
+              Check again
+            </Button>
+          </>
+        ) : null}
         {message ? (
           <p role="alert" className="text-sm font-semibold text-destructive">
             {message}

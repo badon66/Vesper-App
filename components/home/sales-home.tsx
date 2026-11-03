@@ -173,8 +173,8 @@ export async function SalesHome({
                       </span>
                       <span
                         className={cn(
-                          "text-xs font-semibold",
-                          label.startsWith("Overdue") ? "text-destructive" : "text-foreground",
+                          "text-sm text-foreground",
+                          label.startsWith("Overdue") ? "font-bold" : "font-semibold",
                         )}
                       >
                         {label}

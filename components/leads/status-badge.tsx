@@ -6,7 +6,7 @@ export function StatusBadge({ status, className }: { status: LeadStatus; classNa
     <span
       className={cn(
         "inline-flex items-center rounded-full border px-2.5 py-0.5 text-sm font-semibold whitespace-nowrap",
-        status === "new" && "border-primary text-foreground",
+        status === "new" && "border-foreground/60 text-foreground",
         status === "lost" && "text-muted-foreground",
         status !== "new" && status !== "lost" && "bg-secondary text-secondary-foreground",
         className,

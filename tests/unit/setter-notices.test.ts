@@ -198,3 +198,21 @@ describe("who gets a notice", () => {
     expect(notice.body).not.toMatch(/\b12\b/);
   });
 });
+
+// Before you book on a lead's page says what the lead says now, never the
+// needed answer as if it were given (2026-11-03).
+describe("Before you book on a lead", async () => {
+  const { leadReadiness, readinessNow, READINESS_NAMES } = await import("@/lib/schedule/readiness");
+  const lead = { phone: null, owns_home: false, wants_price: null, soffit_colour: null, lat: null, lng: null };
+  const items = leadReadiness(lead, 2);
+  const now = (key: string) => readinessNow(items.find((item) => item.key === key)!, lead, 2);
+
+  it("names each missing item and what it says now", () => {
+    expect(now("phone")).toBe("No phone number yet.");
+    expect(now("owns_home")).toBe("They said they don't own it. Booking needs Yes.");
+    expect(now("wants_price")).toBe("Not asked yet. Booking needs Yes.");
+    expect(now("photos")).toBe("2 of 3 taken. Or say why when you book.");
+    expect(READINESS_NAMES.wants_price).toBe("Wants a price");
+    expect(Object.values(READINESS_NAMES).join(" ")).not.toMatch(/: Yes/);
+  });
+});
