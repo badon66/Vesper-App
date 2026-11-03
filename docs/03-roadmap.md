@@ -4,7 +4,7 @@ One milestone per build session. A milestone is done when every criterion passes
 
 **Focus (Keenan, 2026-11-02).** The app's fundamentals are three things: the setter sessions (knocking, leads and booking), the sales meetings (meeting mode on the iPad), and the shareable quote links for customers. Everything else is parked until Keenan says otherwise: M4 (pipeline board), M6 (sales dashboard), M7 (website lead form and daily email) and the backlog ideas. Parked milestones are not started or planned.
 
-**Current milestone: the setter side** (Keenan, 2026-11-03; approved to merge on green straight to live). Zane and the other setters are about to use the app every night, so their side has to feel finished before M5 take 2. Then M5 take 2 and the quote link's take 2, together, after Keenan's first meetings and the first links go out. The customer quote link's take 1 was released on 2026-11-03 (merge `947a3fd`); M5 take 1 on 2026-11-02 (merge `b075554`), and the Meetings page the same day (merge `13b737d`).
+**Current milestone: M5 take 2 and the quote link's take 2, together, after Keenan's first meetings and the first links go out.** The setter side was released on 2026-11-03 (branch `setter-side`, merged on green as Keenan approved): the polished setter screens, the first sign-in welcome and notices for setters. The customer quote link's take 1 was released the same day (merge `947a3fd`); M5 take 1 on 2026-11-02 (merge `b075554`), and the Meetings page the same day (merge `13b737d`).
 
 ## M5: Meeting mode (iPad), in two takes
 Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a preview link by 9 am Calgary that day. Keenan approved take 1's direction, pricing and schema up front; the short plan is in `decisions.md`. Meeting mode is customer-facing the whole time: full screen, no tabs, and nothing internal on screen, ever: no costs, margins, setter names, pipeline or other customers.
@@ -48,7 +48,7 @@ It changes no pay or booking rules.
 - [x] A notice never carries another setter's details, a customer's name, a house number or a phone number, since it shows on a lock screen
 - [x] Setters turn their notifications on or off from a Notifications card they can reach, without Keenan's Settings
 - [x] Everything new works in View as; plain copy, no em dashes
-- [ ] The full suite passes, the branch merges on green, and production is verified
+- [x] The full suite passes, the branch merges on green, and production is verified
 
 ## Customer quote link
 After a meeting, Keenan sends the homeowner a private link to their quote: a public page with no login, opened by an unguessable token, reading the same lead, runs, prices and mockup as meeting mode. One source of truth.
