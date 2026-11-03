@@ -49,6 +49,7 @@ type Settings = {
   meeting_slot_count: number;
   booking_cutoff_minutes: number;
   hold_grace_minutes: number;
+  hold_minutes: number;
   booking_window_days: number;
   booking_pay: number;
 };
@@ -196,7 +197,7 @@ beforeAll(async () => {
   jpeg = await sharp({ create: { width: 64, height: 48, channels: 3, background: "#132e3f" } }).jpeg().toBuffer();
   const { data: s, error: settingsError } = await admin
     .from("settings")
-    .select("meeting_days, meeting_start, meeting_slot_minutes, meeting_slot_count, booking_cutoff_minutes, hold_grace_minutes, booking_window_days, booking_pay")
+    .select("meeting_days, meeting_start, meeting_slot_minutes, meeting_slot_count, booking_cutoff_minutes, hold_grace_minutes, hold_minutes, booking_window_days, booking_pay")
     .eq("id", 1)
     .single();
   if (settingsError || !s) throw new Error(`settings: ${settingsError?.message}`);
@@ -384,16 +385,21 @@ describe("holds: no double booking", () => {
     expect(seen).toMatchObject({ state: "booked", neighbourhood: "TEST (automated)", setter_name: users.a.name });
   });
 
-  it("a hold lets go after the grace period, and someone else can then take the time", async () => {
+  // Round 2 (Keenan, 2026-11-03): a hold is a timer, settings.hold_minutes
+  // long, that only its holder can add to. The tests run a hold out by
+  // moving its start back, with the service role standing in for time.
+  const runOut = (personId: string) =>
+    admin
+      .from("slot_holds")
+      .update({ renewed_at: new Date(Date.now() - (settings.hold_minutes + 1) * 60_000).toISOString() })
+      .eq("holder_id", personId)
+      .is("released_at", null);
+  const expiry = (data: unknown) => new Date(String((data as { expires_at?: string })?.expires_at)).getTime();
+
+  it("a hold runs out after its timer, and someone else can then take the time", async () => {
     const at = take();
     expect((await hold(users.a, at)).error).toBeNull();
-    const quietFor = `${settings.hold_grace_minutes + 1} minutes`;
-    const lapsed = await admin
-      .from("slot_holds")
-      .update({ renewed_at: new Date(Date.now() - (settings.hold_grace_minutes + 1) * 60_000).toISOString() })
-      .eq("holder_id", users.a.id)
-      .is("released_at", null);
-    expect(lapsed.error, quietFor).toBeNull();
+    expect((await runOut(users.a.id)).error).toBeNull();
     expect((await slotState(users.b, at))?.state).toBe("open");
     expect((await hold(users.b, at)).error).toBeNull();
     const { data: old } = await admin
@@ -403,25 +409,82 @@ describe("holds: no double booking", () => {
       .eq("starts_at", at)
       .single();
     expect(old?.release_reason).toBe("lapsed");
-    const renewed = await users.a.client.rpc("renew_hold");
-    expect(renewed.data).toMatchObject({ status: "none" });
+    // Once someone else has it, Add 5 minutes can't bring it back.
+    const extended = await users.a.client.rpc("extend_hold");
+    expect(["none", "lost"]).toContain((extended.data as { status: string }).status);
+    expect(await activeHolds(users.a.id)).toHaveLength(0);
+    expect((await slotState(users.a, at))?.state).toBe("held");
     await users.b.client.rpc("release_hold");
   });
 
-  it("a hold that went quiet comes back to its holder if nobody else took the time", async () => {
+  it("holding a time again keeps its timer; only Add 5 minutes adds to it", async () => {
+    const at = take();
+    const first = await hold(users.a, at);
+    expect(first.error).toBeNull();
+    const again = await hold(users.a, at);
+    expect(again.error).toBeNull();
+    expect(Math.abs(expiry(again.data) - expiry(first.data))).toBeLessThan(1000);
+    const added = await users.a.client.rpc("extend_hold");
+    expect(added.data).toMatchObject({ status: "held" });
+    expect(Math.round((expiry(added.data) - expiry(first.data)) / 60_000)).toBe(settings.hold_minutes);
+    const status = await users.a.client.rpc("hold_status");
+    expect(status.data).toMatchObject({ status: "held" });
+    expect(Math.abs(expiry(status.data) - expiry(added.data))).toBeLessThan(1000);
+    await users.a.client.rpc("release_hold");
+  });
+
+  it("only the holder can extend a hold", async () => {
+    const at = take();
+    const held = await hold(users.a, at);
+    expect(held.error).toBeNull();
+    const byOther = await users.b.client.rpc("extend_hold");
+    expect(byOther.data).toMatchObject({ status: "none" });
+    const byStranger = await anon.rpc("extend_hold");
+    expect(byStranger.error).not.toBeNull();
+    const status = await users.a.client.rpc("hold_status");
+    expect(Math.abs(expiry(status.data) - expiry(held.data))).toBeLessThan(1000);
+    await users.a.client.rpc("release_hold");
+  });
+
+  it("a run-out hold comes back to its holder with Add 5 minutes while the time is still free", async () => {
     const at = take();
     expect((await hold(users.a, at)).error).toBeNull();
-    await admin
-      .from("slot_holds")
-      .update({ renewed_at: new Date(Date.now() - (settings.hold_grace_minutes + 1) * 60_000).toISOString() })
-      .eq("holder_id", users.a.id)
-      .is("released_at", null);
-    const renewed = await users.a.client.rpc("renew_hold");
-    expect(renewed.data).toMatchObject({ status: "held", retaken: true });
+    await runOut(users.a.id);
+    expect((await users.a.client.rpc("hold_status")).data).toMatchObject({ status: "expired" });
+    // The old check-in only reports now: it never keeps a hold alive.
+    expect((await users.a.client.rpc("renew_hold")).data).toMatchObject({ status: "lost" });
+    expect((await users.a.client.rpc("hold_status")).data).toMatchObject({ status: "expired" });
+    const back = await users.a.client.rpc("extend_hold");
+    expect(back.data).toMatchObject({ status: "held", retaken: true });
+    expect(expiry(back.data) - Date.now()).toBeGreaterThan((settings.hold_minutes - 1) * 60_000);
     expect((await slotState(users.b, at))?.state).toBe("held");
-    const kept = await users.a.client.rpc("renew_hold");
-    expect(kept.data).toMatchObject({ status: "held" });
     await users.a.client.rpc("release_hold");
+  });
+
+  it("a run-out hold raced by someone else holding it: exactly one gets the time, every round", async () => {
+    for (let round = 0; round < 10; round += 1) {
+      const at = take();
+      expect((await hold(users.a, at)).error).toBeNull();
+      await runOut(users.a.id);
+      const [extended, grabbed] = await Promise.all([users.a.client.rpc("extend_hold"), hold(users.b, at)]);
+      const { data: live } = await admin
+        .from("slot_holds")
+        .select("holder_id")
+        .eq("starts_at", at)
+        .is("released_at", null);
+      expect(live ?? [], `round ${round}`).toHaveLength(1);
+      const winner = live?.[0]?.holder_id;
+      if (winner === users.a.id) {
+        expect(extended.data, `round ${round}`).toMatchObject({ status: "held" });
+        expect(grabbed.error, `round ${round}`).not.toBeNull();
+      } else {
+        expect(winner, `round ${round}`).toBe(users.b.id);
+        expect(grabbed.error, `round ${round}`).toBeNull();
+        expect(["none", "lost"], `round ${round}`).toContain((extended.data as { status: string }).status);
+      }
+      await users.a.client.rpc("release_hold");
+      await users.b.client.rpc("release_hold");
+    }
   });
 
   it("one hold per person: a second time lets the first go, even when both are tapped at once", async () => {
