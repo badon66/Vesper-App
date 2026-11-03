@@ -33,6 +33,7 @@ import {
 } from "@/components/booking/sheet-screens";
 import { NoteText } from "@/components/booking/step-notes";
 import { Wordmark } from "@/components/brand/wordmark";
+import { ViewAsBar } from "@/components/view-as-bar";
 import { TimePicker } from "@/components/schedule/time-picker";
 import { Button } from "@/components/ui/button";
 import { DialogPanel } from "@/components/ui/dialog-panel";
@@ -239,7 +240,7 @@ function BookingSheet({
   onClosed: () => void;
 }) {
   const router = useRouter();
-  const { viewingAs } = useViewAs();
+  const { viewingAs, name: viewedName } = useViewAs();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -483,6 +484,18 @@ function BookingSheet({
       window.removeEventListener("online", wake);
     };
   }, [viewingAs, heldAt, holding, done, view, explainLost]);
+
+  // While a run-out time is offered again, it is checked every few seconds,
+  // so "It's still free" never outlives someone else picking it.
+  const offeringAgain = Boolean(lost?.canHoldAgain);
+  useEffect(() => {
+    if (viewingAs || !heldAt || !offeringAgain || done) return;
+    const startsAt = heldAt;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void explainLost(startsAt, true);
+    }, 5_000);
+    return () => window.clearInterval(timer);
+  }, [viewingAs, heldAt, offeringAgain, done, explainLost]);
 
   // Back after a reload with the hold gone: say so, as a run-out would.
   useEffect(() => {
@@ -1059,6 +1072,8 @@ function BookingSheet({
       <div className="flex h-dvh flex-col">
         {/* ------------------------------------------------ top: the wordmark, the held time, the steps */}
         <header className="border-b pt-[env(safe-area-inset-top)]">
+          {/* The sheet covers the app's gold bar, so it carries its own. */}
+          {viewingAs ? <ViewAsBar name={viewedName ?? "someone"} ended={false} /> : null}
           <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3 px-4 py-2">
             <Wordmark className="text-sm min-[420px]:text-base" />
             {done || view === "moved" ? (
@@ -1307,7 +1322,7 @@ function BookingSheet({
             ) : null}
             {held && phase === "under_a_minute" && !done && view !== "moved" ? (
               <div className="flex items-center justify-between gap-3 rounded-md border-2 border-foreground px-3 py-1.5" data-testid="hold-warning">
-                <p className="text-sm font-semibold text-pretty">Under a minute left on {heldAt ? formatTime(heldAt) : "this time"}.</p>
+                <p className="text-sm font-semibold text-pretty">{sentence(`Under a minute left on ${heldAt ? formatTime(heldAt) : "this time"}`)}</p>
                 <Button type="button" size="sm" variant="outline" disabled={extending} onClick={() => void addMinutes()}>
                   Add {holdMinutes} minutes
                 </Button>

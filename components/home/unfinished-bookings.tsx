@@ -18,27 +18,15 @@ const thisMinute = () => Math.floor(Date.now() / 60_000);
 // Unfinished bookings on Home (round 2, Keenan, 2026-11-03): what a setter
 // entered in the booking sheet and left, kept on this phone for 24 hours.
 // Tapping one reopens the sheet, asks for a time, then picks up where they
-// left off. Nothing shows when there are none. While Keenan views the app as
-// someone, their drafts are on their own phone, and this says so.
+// left off. Nothing shows when there are none, and nothing while Keenan
+// views the app as someone: their drafts are on their own phone.
 export function UnfinishedBookings({ userId }: { userId: string }) {
-  const { viewingAs, name } = useViewAs();
+  const { viewingAs } = useViewAs();
   const raw = useSyncExternalStore(subscribeDrafts, () => rawDrafts(userId), () => null);
   const minute = useSyncExternalStore(subscribeMinute, thisMinute, () => 0);
   const drafts = useMemo(() => (minute === 0 ? [] : readDrafts(raw, minute * 60_000 + 59_999)), [raw, minute]);
 
-  if (viewingAs) {
-    return (
-      <section aria-labelledby="unfinished-heading" className="flex flex-col gap-1" data-testid="unfinished">
-        <h2 id="unfinished-heading" className="text-lg font-bold">
-          Unfinished
-        </h2>
-        <p className="text-sm text-pretty text-muted-foreground">
-          Bookings {name ?? "they"} started and left stay on their own phone, so none show here.
-        </p>
-      </section>
-    );
-  }
-  if (drafts.length === 0) return null;
+  if (viewingAs || drafts.length === 0) return null;
 
   return (
     <section aria-labelledby="unfinished-heading" className="flex flex-col gap-3" data-testid="unfinished">

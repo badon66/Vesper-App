@@ -10,6 +10,7 @@ import { finishWelcome } from "@/app/(app)/app/welcome/actions";
 import { Button } from "@/components/ui/button";
 import { BLOCKED_MESSAGE, isStandalone, readPushState, turnOnPush, unblockSteps } from "@/lib/push/browser";
 import { cn } from "@/lib/utils";
+import { VIEW_AS_NOTHING_SAVED } from "@/lib/view-as";
 import { platformOf, WELCOME_STEPS, welcomeHref, type Platform } from "@/lib/welcome";
 
 // A setter's first sign-in (Keenan, 2026-11-03; shaped in
@@ -301,6 +302,8 @@ type LocationState = "checking" | "ask" | "asking" | "allowed" | "blocked" | "no
 
 function LocationStep({ readOnly, onDone }: { readOnly: boolean; onDone: (done: boolean) => void }) {
   const [state, setState] = useState<LocationState>("checking");
+  // View as: the setter's phone would ask; Keenan's never does.
+  const [actedOut, setActedOut] = useState(false);
 
   useEffect(() => {
     if (readOnly) return;
@@ -324,6 +327,10 @@ function LocationStep({ readOnly, onDone }: { readOnly: boolean; onDone: (done: 
   useEffect(() => onDone(state === "allowed"), [state, onDone]);
 
   function ask() {
+    if (readOnly) {
+      setActedOut(true);
+      return;
+    }
     setState("asking");
     navigator.geolocation.getCurrentPosition(
       () => setState("allowed"),
@@ -348,6 +355,7 @@ function LocationStep({ readOnly, onDone }: { readOnly: boolean; onDone: (done: 
               {shown === "asking" ? "Asking" : "Allow location"}
             </Button>
             <p className="text-sm text-pretty text-muted-foreground">Your phone asks once. Choose Allow.</p>
+            {actedOut ? <ActionMessage text={VIEW_AS_NOTHING_SAVED} /> : null}
           </>
         ) : null}
         {shown === "allowed" ? <Done testId="welcome-location-done">Location is allowed on this phone.</Done> : null}
@@ -412,6 +420,11 @@ function NotificationsStep({
 
   async function turnOn() {
     if (!publicKey) return;
+    // View as: no permission prompt on Keenan's device, nothing saved.
+    if (readOnly) {
+      setMessage(VIEW_AS_NOTHING_SAVED);
+      return;
+    }
     setState("asking");
     setMessage(null);
     try {

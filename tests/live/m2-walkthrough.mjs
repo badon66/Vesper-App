@@ -221,22 +221,50 @@ try {
   check("the phone shows in the local format as soon as it is typed", (await page.inputValue("#lead-phone")) === "(403) 555-0199", await page.inputValue("#lead-phone"));
 
   const legends = (await page.getByTestId("find-out").locator("legend").allTextContents()).map((t) => t.trim());
-  check("Find out asks the seven questions in order", JSON.stringify(legends) === JSON.stringify(["Owns the home", "Wants a price", "Soffit colour", "Christmas lights now", "Looked into it before", "Which areas", "Timing"]), legends.join(", "));
+  check(
+    "Find out asks the questions in the order of the door, then the soffit",
+    JSON.stringify(legends) === JSON.stringify(["Owns the home", "Wants a price", "Everyone who decides will be there", "Christmas lights now", "Looked into it before", "Which areas", "Timing", "Soffit colour"]),
+    legends.join(", "),
+  );
   const offeredSoffit = (await question(page, "Soffit colour").locator("label").allTextContents()).map((t) => t.trim());
   check("the soffit question offers White, Off-white or cream, Other and Not sure", JSON.stringify(offeredSoffit) === JSON.stringify(["White", "Off-white or cream", "Other", "Not sure"]), offeredSoffit.join(", "));
+  const withNotCollected = await page.getByTestId("find-out").locator("fieldset").evaluateAll((sets) =>
+    sets.map((set) => [set.querySelector("legend")?.textContent?.trim(), Boolean(set.querySelector('input[value="not_collected"]'))]),
+  );
+  check(
+    "every counted question offers Not collected, and the soffit keeps Not sure instead",
+    withNotCollected.every(([legend, offered]) => (legend === "Soffit colour" ? !offered : offered)) && (await page.getByTestId("phone-not-collected").count()) === 1,
+    JSON.stringify(withNotCollected),
+  );
+  // Answered out of order, as at a real door.
+  await answer(page, "Timing", "Before Christmas");
   await answer(page, "Owns the home", "Yes");
+  await answer(page, "Which areas", "Front and sides");
   await answer(page, "Wants a price", "Yes");
+  await answer(page, "Everyone who decides will be there", "Yes");
   await answer(page, "Soffit colour", "Off-white or cream");
   await answer(page, "Christmas lights now", "Hires someone");
   await answer(page, "Looked into it before", "Got quotes");
-  await answer(page, "Which areas", "Front and sides");
-  await answer(page, "Timing", "Before Christmas");
-  check("each answer takes one tap", (await checkedValue(page, "Christmas lights now")) === "hires" && (await checkedValue(page, "Owns the home")) === "yes");
+  check("each answer takes one tap, in any order", (await checkedValue(page, "Christmas lights now")) === "hires" && (await checkedValue(page, "Owns the home")) === "yes");
   await answer(page, "Christmas lights now", "Hires someone");
   check("tapping an answer again clears it", (await checkedValue(page, "Christmas lights now")) === "");
 
   const slotLabels = await page.getByRole("list", { name: "Guided photos" }).locator("li").evaluateAll((items) => items.map((item) => item.querySelector("p").textContent.trim()));
   check("the photos are four labelled slots: Front, Left corner, Right corner, Soffit close-up", JSON.stringify(slotLabels) === JSON.stringify(["Front", "Left corner", "Right corner", "Soffit close-up"]), slotLabels.join(", "));
+  const slotParts = await Promise.all(
+    ["Front", "Left corner", "Right corner", "Soffit close-up"].map(async (label) => [
+      await page.getByRole("button", { name: `Take photo, ${label}` }).count(),
+      await page.getByRole("button", { name: `Upload a photo from the phone, ${label}` }).count(),
+    ]),
+  );
+  check(
+    "each slot keeps the big Take photo button, adds a smaller Upload button, and shows a line drawing of the angle",
+    slotParts.every(([take, upload]) => take === 1 && upload === 1) && (await page.locator("main svg[data-guide]").count()) === 4,
+    JSON.stringify(slotParts),
+  );
+  const takeBox = await page.getByRole("button", { name: "Take photo, Front" }).boundingBox();
+  const uploadBox = await page.getByRole("button", { name: "Upload a photo from the phone, Front" }).boundingBox();
+  check("Upload is the smaller of the two", takeBox && uploadBox && uploadBox.width < takeBox.width, `${uploadBox?.width} vs ${takeBox?.width}`);
   check("the hint sits under the slots", (await page.getByText(SLOT_HINT, { exact: true }).count()) === 1);
   const slotPath = (slot) => page.locator(`input[name="photo_slot_${slot}"]`).inputValue({ timeout: 30000 });
   await page.setInputFiles('[data-testid="slot-input-front"]', fixture);
@@ -250,7 +278,9 @@ try {
     return input && input.value && input.value !== first;
   }, firstFront, { timeout: 30000 });
   check("a retake replaces the slot's photo", (await page.locator('input[name="photo_slot_front"]').count()) === 1);
-  await page.setInputFiles('[data-testid="slot-input-left_corner"]', fixture);
+  // Upload takes a photo already on the phone (the input with no camera).
+  check("Upload opens the phone's photos, not the camera", (await page.locator('[data-testid="slot-upload-left_corner"]').getAttribute("capture")) === null);
+  await page.setInputFiles('[data-testid="slot-upload-left_corner"]', fixture);
   await slotPath("left_corner");
   await page.setInputFiles('[data-testid="slot-input-right_corner"]', fixture);
   await slotPath("right_corner");
@@ -264,6 +294,17 @@ try {
   const saveBox = await save.boundingBox();
   check("Save sits in the lower half of the screen, within thumb reach", saveBox !== null && saveBox.y > viewport.height / 2 && saveBox.y + saveBox.height <= viewport.height, saveBox ? `${Math.round(saveBox.y)} of ${viewport.height}` : "missing");
   await page.screenshot({ path: `${out}/m2-new-lead.png`, fullPage: false });
+  // The cleared question has neither an answer nor Not collected: Save says so first.
+  await save.click();
+  const stillOpen = (await page.getByTestId("questions-still-open").innerText({ timeout: 10000 }).catch(() => "")).trim();
+  check(
+    "Save is refused while a question has no answer, naming it, and nothing is saved",
+    stillOpen === "Christmas lights now needs an answer, or mark it Not collected." && new URL(page.url()).pathname === "/app/leads/new",
+    stillOpen,
+  );
+  check("the open question says what it needs", (await question(page, "Christmas lights now").getByText("Answer this, or mark it Not collected.").count()) === 1);
+  await question(page, "Christmas lights now").getByText("Not collected", { exact: true }).click();
+  check("Not collected is one tap, and the notice goes once nothing is open", (await checkedValue(page, "Christmas lights now")) === "not_collected" && (await page.getByTestId("questions-still-open").count()) === 0);
   await save.click();
   await page.waitForURL("**/app?added=*", { timeout: 30000 });
   await settle(page);
@@ -276,7 +317,7 @@ try {
 
   const { data: typedLead } = await admin
     .from("leads")
-    .select("id, created_by, knock_session_id, phone, lat, lng, place_id, neighbourhood, address_line, status, house_type, soffit_colour, owns_home, wants_price, christmas_lights_now, looked_into_before, areas_wanted, install_timing, track_colour_id, track_ral_code")
+    .select("id, created_by, knock_session_id, phone, lat, lng, place_id, neighbourhood, address_line, status, house_type, soffit_colour, owns_home, wants_price, both_decision_makers, christmas_lights_now, looked_into_before, areas_wanted, install_timing, not_collected, track_colour_id, track_ral_code")
     .eq("created_by", people.a.id)
     .eq("address_line", TYPED_ADDRESS)
     .single();
@@ -289,15 +330,28 @@ try {
   const savedAnswers = {
     owns_home: typedLead?.owns_home,
     wants_price: typedLead?.wants_price,
+    both_decision_makers: typedLead?.both_decision_makers,
     soffit_colour: typedLead?.soffit_colour,
     christmas_lights_now: typedLead?.christmas_lights_now,
     looked_into_before: typedLead?.looked_into_before,
     areas_wanted: typedLead?.areas_wanted,
     install_timing: typedLead?.install_timing,
+    not_collected: typedLead?.not_collected,
   };
   check(
-    "the Find out answers are saved, and the cleared one is left empty",
-    JSON.stringify(savedAnswers) === JSON.stringify({ owns_home: true, wants_price: true, soffit_colour: "off_white", christmas_lights_now: null, looked_into_before: "got_quotes", areas_wanted: "front_and_sides", install_timing: "before_christmas" }),
+    "the answers are saved, everyone who decides included, and the one marked Not collected is stored as such",
+    JSON.stringify(savedAnswers) ===
+      JSON.stringify({
+        owns_home: true,
+        wants_price: true,
+        both_decision_makers: true,
+        soffit_colour: "off_white",
+        christmas_lights_now: null,
+        looked_into_before: "got_quotes",
+        areas_wanted: "front_and_sides",
+        install_timing: "before_christmas",
+        not_collected: ["christmas_lights_now"],
+      }),
     JSON.stringify(savedAnswers),
   );
   check("a setter's new lead has no track colour", typedLead?.track_colour_id === null && typedLead?.track_ral_code === null);
@@ -358,10 +412,13 @@ try {
   check("the extra photo shows under More photos", (await page.locator('img[alt="Extra photo 1 of the house"]').count()) === 1);
   const answersShown = (await page.getByTestId("find-out-answers").innerText()).replace(/\s+/g, " ").trim();
   check(
-    "the lead page shows the Find out answers, and Not answered for the cleared one",
-    answersShown === "Owns the home Yes Wants a price Yes Soffit colour Off-white or cream Christmas lights now Not answered Looked into it before Got quotes Which areas Front and sides Timing Before Christmas",
+    "the lead page lists the eight questions in order, with Not collected where it was marked, then the soffit",
+    answersShown ===
+      "Phone (403) 555-0199 Owns the home Yes Wants a price Yes Everyone who decides will be there Yes Christmas lights now Not collected Looked into it before Got quotes Which areas Front and sides Timing Before Christmas Soffit colour Off-white or cream",
     answersShown,
   );
+  const completeness = (await page.getByTestId("completeness").innerText()).trim();
+  check("the lead page says how complete the lead is: 7 of 8 collected", completeness === "7 of 8 collected", completeness);
   const trackShown = (await page.getByTestId("track-colour").innerText()).replace(/\s+/g, " ").trim();
   check("a setter sees the track colour is not set, and that Keenan sets it", trackShown.startsWith("Not set yet") && trackShown.includes("Keenan sets the track colour."), trackShown);
   check("a setter gets no track colour controls", (await page.getByTestId("track-colour-form").count()) === 0 && (await page.getByRole("button", { name: "Save track colour" }).count()) === 0);
@@ -415,24 +472,34 @@ try {
   const prefilled = [
     await checkedValue(page, "Owns the home"),
     await checkedValue(page, "Wants a price"),
+    await checkedValue(page, "Everyone who decides will be there"),
     await checkedValue(page, "Soffit colour"),
     await checkedValue(page, "Christmas lights now"),
     await checkedValue(page, "Looked into it before"),
     await checkedValue(page, "Which areas"),
     await checkedValue(page, "Timing"),
   ];
-  check("Edit lead opens with the saved answers", JSON.stringify(prefilled) === JSON.stringify(["yes", "yes", "off_white", "", "got_quotes", "front_and_sides", "before_christmas"]), prefilled.join(", "));
+  check(
+    "Edit lead opens with the saved answers, Not collected included",
+    JSON.stringify(prefilled) === JSON.stringify(["yes", "yes", "yes", "off_white", "not_collected", "got_quotes", "front_and_sides", "before_christmas"]),
+    prefilled.join(", "),
+  );
   check("Edit lead has no photo slots; photos are added on the lead page", (await page.getByRole("list", { name: "Guided photos" }).count()) === 0);
   await answer(page, "Christmas lights now", "None");
-  await answer(page, "Timing", "Before Christmas");
+  await question(page, "Timing").getByText("Not collected", { exact: true }).click();
   await checkTapTargets(page, "Edit lead with Find out");
   await page.getByRole("button", { name: "Save changes" }).click();
   await page.waitForURL(`**/app/leads/${typedLead.id}`, { timeout: 30000 });
   await settle(page);
-  await page.getByText("Updated Find out: Christmas lights now and timing.").waitFor({ timeout: 20000 }).catch(() => {});
-  check("the timeline names the changed questions, not the answers", (await page.getByText("Updated Find out: Christmas lights now and timing.").count()) === 1);
-  const { data: edited } = await admin.from("leads").select("christmas_lights_now, install_timing, owns_home").eq("id", typedLead.id).single();
-  check("the changed answers are saved and the cleared one is emptied", edited?.christmas_lights_now === "none" && edited?.install_timing === null && edited?.owns_home === true, JSON.stringify(edited));
+  const editedLine = "Updated Find out: Christmas lights now, timing and what wasn't collected.";
+  await page.getByText(editedLine).waitFor({ timeout: 20000 }).catch(() => {});
+  check("the timeline names the changed questions, not the answers", (await page.getByText(editedLine).count()) === 1);
+  const { data: edited } = await admin.from("leads").select("christmas_lights_now, install_timing, owns_home, not_collected").eq("id", typedLead.id).single();
+  check(
+    "an answer replaces Not collected, and a question marked Not collected is stored as such",
+    edited?.christmas_lights_now === "none" && edited?.install_timing === null && edited?.owns_home === true && JSON.stringify(edited?.not_collected) === JSON.stringify(["install_timing"]),
+    JSON.stringify(edited),
+  );
 
   // 5c. Once Keenan sets a custom track colour, the setter sees it by name.
   // The service role stands in for him here; the walk-through never signs in as him.
@@ -468,6 +535,7 @@ try {
     check("picking a suggestion fills the address, neighbourhood and map position", Boolean(picked.address && picked.neighbourhood && picked.lat && picked.lng && picked.place), JSON.stringify({ suggestion, ...picked, place: picked.place ? "set" : "" }));
     note(`Google gave "${picked.neighbourhood}" as the neighbourhood for "${suggestion}"${picked.neighbourhood === TEST_PLACE ? ", which is the knock session fallback" : ""}.`);
     await page.fill("#lead-first_name", TEST_LEAD);
+    await page.getByTestId("mark-rest").click();
     await page.getByRole("button", { name: "Save lead" }).click();
     await page.waitForURL("**/app?added=*", { timeout: 30000 });
     await settle(page);

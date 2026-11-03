@@ -206,6 +206,7 @@ try {
     tonightText.includes("11:00 p.m.") && tonightText.includes(`${TEST_LEAD} Tonight`) && tonightText.includes(`2 ${street} Crescent SW`) && !tonightText.includes("No mockup") && !tonightText.includes("No track colour"),
     tonightText.slice(0, 160),
   );
+  check("each meeting says how complete its lead is (round 2)", /\b\d of 8 collected\b/.test(tonightText), tonightText.match(/\d of 8 collected/)?.[0] ?? "missing");
   check(
     "its Start opens meeting mode fresh, with a full page load",
     (await tonightItem.getByRole("link", { name: `Start the meeting with ${TEST_LEAD} Tonight` }).getAttribute("href")) === `/meeting/${tonightLead}#start`,
