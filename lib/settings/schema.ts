@@ -100,7 +100,7 @@ export const settingsFormSchema = z.object({
   meeting_slot_minutes: wholeNumber(15, 180),
   meeting_slot_count: wholeNumber(1, 12),
   booking_cutoff_minutes: wholeNumber(0, 240),
-  hold_grace_minutes: wholeNumber(1, 30),
+  hold_minutes: wholeNumber(1, 30),
   booking_window_days: wholeNumber(1, 60),
   distance_warning_km: z.preprocess(
     blankToUndefined,
@@ -217,7 +217,7 @@ export function settingsFormDataToInput(
     meeting_slot_minutes: text("meeting_slot_minutes"),
     meeting_slot_count: text("meeting_slot_count"),
     booking_cutoff_minutes: text("booking_cutoff_minutes"),
-    hold_grace_minutes: text("hold_grace_minutes"),
+    hold_minutes: text("hold_minutes"),
     booking_window_days: text("booking_window_days"),
     distance_warning_km: text("distance_warning_km"),
     lost_reasons: text("lost_reasons"),
@@ -260,7 +260,7 @@ export function settingsUpdateFromValues(v: SettingsFormValues): SettingsUpdate 
     meeting_slot_minutes: v.meeting_slot_minutes,
     meeting_slot_count: v.meeting_slot_count,
     booking_cutoff_minutes: v.booking_cutoff_minutes,
-    hold_grace_minutes: v.hold_grace_minutes,
+    hold_minutes: v.hold_minutes,
     booking_window_days: v.booking_window_days,
     distance_warning_km: v.distance_warning_km,
     lost_reasons: v.lost_reasons,
@@ -304,7 +304,7 @@ export type SettingsFormDefaults = {
   meeting_slot_minutes: string;
   meeting_slot_count: string;
   booking_cutoff_minutes: string;
-  hold_grace_minutes: string;
+  hold_minutes: string;
   booking_window_days: string;
   distance_warning_km: string;
   lost_reasons: string;
@@ -347,7 +347,7 @@ export function settingsRowToFormDefaults(row: SettingsRow): SettingsFormDefault
     meeting_slot_minutes: String(row.meeting_slot_minutes),
     meeting_slot_count: String(row.meeting_slot_count),
     booking_cutoff_minutes: String(row.booking_cutoff_minutes),
-    hold_grace_minutes: String(row.hold_grace_minutes),
+    hold_minutes: String(row.hold_minutes),
     booking_window_days: String(row.booking_window_days),
     distance_warning_km: String(row.distance_warning_km),
     lost_reasons: row.lost_reasons.join("\n"),
