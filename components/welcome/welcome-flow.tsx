@@ -53,6 +53,8 @@ export function WelcomeFlow({ step, firstName, publicKey, deviceHashes, readOnly
   const locationDone = useCallback((value: boolean) => markDone("location", value), [markDone]);
   const pushDone = useCallback((value: boolean) => markDone("notifications", value), [markDone]);
 
+  // Stays on "One moment" until Home opens; on a failure it says why and
+  // the buttons work again.
   async function finish() {
     setFinishing(true);
     setError(null);
@@ -60,13 +62,13 @@ export function WelcomeFlow({ step, firstName, publicKey, deviceHashes, readOnly
       const result = await finishWelcome();
       if (!result.ok) {
         setError(result.message);
+        setFinishing(false);
         return;
       }
       router.replace("/app");
       router.refresh();
     } catch {
       setError("That didn't save. Check your signal and try again.");
-    } finally {
       setFinishing(false);
     }
   }
@@ -121,7 +123,7 @@ export function WelcomeFlow({ step, firstName, publicKey, deviceHashes, readOnly
                 onClick={() => void finish()}
                 data-testid="welcome-skip-all"
               >
-                Skip the welcome
+                {finishing ? "One moment" : "Skip the welcome"}
               </Button>
             )}
           </div>
