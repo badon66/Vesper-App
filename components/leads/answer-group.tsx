@@ -102,7 +102,7 @@ export function AnswerGroup<T extends string>({
   const marked = value === NOT_COLLECTED;
   return (
     <fieldset
-      className={cn("flex flex-col rounded-md", notCollected ? "gap-3" : "gap-2")}
+      className={cn("flex flex-col rounded-md", notCollected ? "gap-1.5" : "gap-2")}
       aria-describedby={[describedBy, error ? `${name}-error` : null].filter(Boolean).join(" ") || undefined}
       data-question={name}
     >
@@ -139,15 +139,19 @@ export function AnswerGroup<T extends string>({
             key={option.value}
             data-answer={option.value}
             className={cn(
-              "group flex min-h-12 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 text-center text-base font-semibold leading-tight transition-colors has-[:checked]:border-foreground has-[:checked]:bg-foreground has-[:checked]:text-background has-[:disabled]:cursor-not-allowed has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
+              "group flex min-h-12 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-2 py-1 text-center text-base font-semibold leading-tight transition-colors has-[:checked]:border-foreground has-[:checked]:bg-foreground has-[:checked]:text-background has-[:disabled]:cursor-not-allowed has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
               columns === 4 && "max-[419px]:text-sm",
               size === "sheet" && "min-[420px]:min-h-14",
               size === "sheet" && (columns === 4 ? "min-[420px]:text-base" : "min-[420px]:text-lg"),
             )}
           >
             {radio(option.value)}
-            <Check aria-hidden="true" className="hidden size-4 shrink-0 group-has-[:checked]:block" />
-            {option.label}
+            {/* The tick runs in the words' own line, so choosing an answer
+                never pushes its words onto another line (round 2 polish). */}
+            <span>
+              <Check aria-hidden="true" className="mr-1 hidden size-4 align-[-0.15em] group-has-[:checked]:inline-block" />
+              {option.label}
+            </span>
           </label>
         ))}
       </div>

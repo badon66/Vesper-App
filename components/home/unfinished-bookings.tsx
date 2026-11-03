@@ -31,12 +31,21 @@ const thisMinute = () => Math.floor(Date.now() / 60_000);
 // left off. Nothing shows when there are none, and nothing while Keenan
 // views the app as someone: their drafts are on their own phone.
 export function UnfinishedBookings({ userId }: { userId: string }) {
-  const { viewingAs } = useViewAs();
+  const { viewingAs, name } = useViewAs();
   const raw = useSyncExternalStore(subscribeDrafts, () => rawDrafts(userId), () => null);
   const minute = useSyncExternalStore(subscribeMinute, thisMinute, () => 0);
   const drafts = useMemo(() => (minute === 0 ? [] : readDrafts(raw, minute * 60_000 + 59_999)), [raw, minute]);
 
-  if (viewingAs || drafts.length === 0) return null;
+  // Keenan is told why there's no list. It's what a phone holds, so the View
+  // as comparison leaves it out, like the welcome's device steps.
+  if (viewingAs) {
+    return (
+      <p className="text-sm text-pretty text-muted-foreground" data-device data-testid="unfinished-view-as">
+        Unfinished bookings stay on {name ? `${name}'s` : "their"} phone, so they don&apos;t show here.
+      </p>
+    );
+  }
+  if (drafts.length === 0) return null;
 
   return (
     <section aria-labelledby="unfinished-heading" className="flex flex-col gap-3" data-testid="unfinished">

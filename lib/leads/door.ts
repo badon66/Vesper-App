@@ -182,17 +182,19 @@ export function findOutAnsweredCount(answers: FindOutAnswers): number {
 }
 
 // The four guided photos.
-export const PHOTO_SLOTS: { slot: PhotoSlot; label: string; hint: string }[] = [
-  { slot: "front", label: "Front", hint: "Straight on, whole house in frame" },
-  { slot: "left_corner", label: "Left corner", hint: "Angled so the left side's roofline shows" },
-  { slot: "right_corner", label: "Right corner", hint: "Angled so the right side's roofline shows" },
-  { slot: "soffit", label: "Soffit close-up", hint: "Close enough to see its colour" },
+// Each has a hint, and a few words for the booking sheet's tiles: where to
+// stand, as you face the house.
+export const PHOTO_SLOTS: { slot: PhotoSlot; label: string; hint: string; short: string }[] = [
+  { slot: "front", label: "Front", hint: "Straight on, whole house in frame", short: "Straight on" },
+  { slot: "left_corner", label: "Left corner", hint: "Angled so the left side's roofline shows", short: "From the front left" },
+  { slot: "right_corner", label: "Right corner", hint: "Angled so the right side's roofline shows", short: "From the front right" },
+  { slot: "soffit", label: "Soffit close-up", hint: "Close enough to see its colour", short: "Optional, for its colour" },
 ];
 
 export const PHOTO_SLOT_HINT =
   "Hold the phone sideways and get the whole roofline in. At night, hold still while night mode finishes.";
 // The booking sheet's one line: the drawings show the angles.
-export const PHOTO_SLOT_HINT_SHORT = "Hold the phone sideways. At night, hold still until it's taken.";
+export const PHOTO_SLOT_HINT_SHORT = "Hold it sideways. At night, hold still.";
 
 export function photoSlotLabel(slot: PhotoSlot): string {
   return PHOTO_SLOTS.find((item) => item.slot === slot)?.label ?? slot;

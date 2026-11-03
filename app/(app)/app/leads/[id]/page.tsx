@@ -392,7 +392,7 @@ export default async function LeadPage({
           <CardDescription>{completenessLabel(lead)}. Not collected doesn&apos;t count.</CardDescription>
         </CardHeader>
         <CardContent>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm" data-testid="find-out-answers">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-[auto_1fr]" data-testid="find-out-answers">
             {leadAnswerList(lead).map((item) => (
               <Fragment key={item.key}>
                 <dt className="text-muted-foreground">{item.question}</dt>

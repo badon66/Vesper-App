@@ -194,7 +194,7 @@ export function PhotoSlots({
     return (
       <div className="flex flex-col gap-2">
         <ul className="grid grid-cols-2 gap-2 rounded-md min-[420px]:gap-3" aria-label="Guided photos">
-          {PHOTO_SLOTS.map(({ slot, label, hint }) => {
+          {PHOTO_SLOTS.map(({ slot, label, hint, short }) => {
             const local = taken[slot];
             const src = local?.preview ?? saved[slot];
             const failed = local?.status === "failed";
@@ -216,7 +216,7 @@ export function PhotoSlots({
                   aria-label={`${action}, ${label}`}
                   aria-describedby={`slot-hint-${slot}`}
                   onClick={() => (failed && local ? void upload(slot, local.attempt, local.source) : inputs.current[slot]?.click())}
-                  className="relative flex aspect-[4/3] w-full overflow-hidden rounded-md border bg-muted text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
+                  className="relative flex aspect-[4/3] w-full overflow-hidden rounded-md border bg-muted text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed min-[420px]:aspect-[6/5]"
                 >
                   {src ? (
                     <>
@@ -236,10 +236,24 @@ export function PhotoSlots({
                     <span className="flex size-full flex-col justify-between p-2 pb-0">
                       {/* Room on the right for Upload, in the top corner. */}
                       <span className="pr-16 text-sm leading-tight font-semibold text-pretty min-[420px]:text-base min-[420px]:leading-tight">{name}</span>
-                      <PhotoGuide slot={slot} className="mx-auto h-10 w-auto min-[420px]:h-14" />
-                      <span className="flex min-h-11 items-center gap-1.5 text-sm leading-tight font-semibold min-[420px]:text-base min-[420px]:leading-tight">
+                      {/* The drawing shows the angle; on a wide phone a few
+                          words say it too. The whole tile is the button, so
+                          its Take photo line needn't be tall. */}
+                      <span className="flex flex-col items-center gap-1">
+                        <PhotoGuide slot={slot} className="h-12 w-auto min-[420px]:h-14" />
+                        <span className="hidden text-center text-sm leading-tight text-muted-foreground min-[420px]:block">{short}</span>
+                      </span>
+                      <span className="flex min-h-8 items-center gap-1.5 pb-1.5 text-sm leading-tight font-semibold min-[420px]:text-base min-[420px]:leading-tight">
                         <Camera aria-hidden="true" className="size-5 shrink-0" />
-                        {optional ? "Take photo, optional" : "Take photo"}
+                        {/* On a wide phone the few words above say Optional. */}
+                        {optional ? (
+                          <>
+                            <span className="min-[420px]:hidden">Take photo, optional</span>
+                            <span className="hidden min-[420px]:inline">Take photo</span>
+                          </>
+                        ) : (
+                          "Take photo"
+                        )}
                       </span>
                     </span>
                   )}
