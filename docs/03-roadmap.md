@@ -41,13 +41,13 @@ Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a previe
 
 ## Setter side (Keenan, 2026-11-03; merge on green, approved)
 It changes no pay or booking rules.
-- [ ] An impeccable critique as a setter at phone size of Home, Leads, the lead page, New lead and My pay; what it finds fixed with adapt, clarify and polish; before and after scores in the report
-- [ ] The first time a setter signs in, a short welcome in three steps, each skippable and never shown again once done: add Vesper to the home screen (with the iPhone steps), allow location (for "Use where I'm standing"), turn on notifications; then a one-screen tour of the door flow: the knock session, picking a time, the booking sheet
-- [ ] Keenan can reset the welcome for a setter from People
-- [ ] Setters get a push when Keenan marks one of their bookings Qualified ("Your booking on [street] was qualified. $20 added to My pay."), and a short note with the reason when he marks it Not qualified, No-show or Cancelled, or moves or cancels it
-- [ ] A notice never carries another setter's details, a customer's name, a house number or a phone number, since it shows on a lock screen
-- [ ] Setters turn their notifications on or off from a Notifications card they can reach, without Keenan's Settings
-- [ ] Everything new works in View as; plain copy, no em dashes
+- [x] An impeccable critique as a setter at phone size of Home, Leads, the lead page, New lead and My pay; what it finds fixed with adapt, clarify and polish; before and after scores in the report
+- [x] The first time a setter signs in, a short welcome in three steps, each skippable and never shown again once done: add Vesper to the home screen (with the iPhone steps), allow location (for "Use where I'm standing"), turn on notifications; then a one-screen tour of the door flow: the knock session, picking a time, the booking sheet
+- [x] Keenan can reset the welcome for a setter from People
+- [x] Setters get a push when Keenan marks one of their bookings Qualified ("Your booking on [street] was qualified. $20 added to My pay."), and a short note with the reason when he marks it Not qualified, No-show or Cancelled, or moves or cancels it
+- [x] A notice never carries another setter's details, a customer's name, a house number or a phone number, since it shows on a lock screen
+- [x] Setters turn their notifications on or off from a Notifications card they can reach, without Keenan's Settings
+- [x] Everything new works in View as; plain copy, no em dashes
 - [ ] The full suite passes, the branch merges on green, and production is verified
 
 ## Customer quote link
