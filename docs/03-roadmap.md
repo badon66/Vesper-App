@@ -43,28 +43,28 @@ Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a previe
 No pay rules change.
 
 View as you can click through:
-- [ ] Keenan can tap everything while viewing as someone: screens, sheets, menus and every step of the booking sheet, exactly as they would; the gold bar stays
-- [ ] Nothing is ever saved: every write is refused on the server; steps that need a write to continue (holding a time, a photo, a count) are acted out on screen only, and a final save shows "View as: nothing was saved."
-- [ ] The comparison test still matches, and a click-through test proves nothing is written
+- [x] Keenan can tap everything while viewing as someone: screens, sheets, menus and every step of the booking sheet, exactly as they would; the gold bar stays
+- [x] Nothing is ever saved: every write is refused on the server; steps that need a write to continue (holding a time, a photo, a count) are acted out on screen only, and a final save shows "View as: nothing was saved."
+- [x] The comparison test still matches, and a click-through test proves nothing is written
 
 The questions:
-- [ ] Phone, owns the home, wants a price, everyone who decides, Christmas lights now, looked into it before, which areas and timing each have "Not collected"
-- [ ] A step can't be finished, and a lead can't be saved (New lead included), until every question on it has an answer, Not collected included; "Mark the rest Not collected" does it in one tap; questions in any order
-- [ ] Before you book is unchanged: Not collected for the phone, owns the home, wants a price or everyone who decides blocks booking, with a clear note on what's missing
-- [ ] "N of 8 collected" on Keenan's Tonight, Schedule, the Meetings page and the lead page, and on the setter's own bookings; information only
+- [x] Phone, owns the home, wants a price, everyone who decides, Christmas lights now, looked into it before, which areas and timing each have "Not collected"
+- [x] A step can't be finished, and a lead can't be saved (New lead included), until every question on it has an answer, Not collected included; "Mark the rest Not collected" does it in one tap; questions in any order
+- [x] Before you book is unchanged: Not collected for the phone, owns the home, wants a price or everyone who decides blocks booking, with a clear note on what's missing
+- [x] "N of 8 collected" on Keenan's Tonight, Schedule, the Meetings page and the lead page, and on the setter's own bookings; information only
 
 Photos:
-- [ ] Each slot keeps the big Take photo button and adds a smaller Upload button, with a simple line drawing showing the angle to shoot
+- [x] Each slot keeps the big Take photo button and adds a smaller Upload button, with a simple line drawing showing the angle to shoot
 
 The booking sheet:
-- [ ] Header: the wordmark on the left, the held time on the right with a countdown; tapping it opens a small menu at once: Add 5 minutes, Change time, Let go
-- [ ] A hold lasts 5 minutes (a setting) and Add 5 minutes extends it; the timer replaces the check-in grace period; a hold still ends at once on book, let go, another time or leaving the sheet
-- [ ] Under a minute left, the time says so and offers Add 5 minutes; when it runs out the sheet says so and offers to hold it again if it's still free
-- [ ] The steps follow the visit: At the door (name, phone, owns the home, wants a price, everyone who decides), After the door (the rest of what they learned, then the address, the soffit colour and the photos), then Book
-- [ ] Swipe left and right between steps, as well as Back and Next; a counter by the progress bar ("Step 3 of 6, 3 left")
-- [ ] Designed and tested at 430 x 932 and at 390 wide: bigger type and targets, related items grouped, fewer steps
-- [ ] Leaving keeps a draft on that phone; an Unfinished list on Home reopens it where they left off and asks for a time; wiped after 24 hours
-- [ ] No double booking stays a hard rule: the race tests cover the timer and extensions (only the holder extends; an expired hold can't be extended once someone else has the time; two setters racing still get exactly one)
+- [x] Header: the wordmark on the left, the held time on the right with a countdown; tapping it opens a small menu at once: Add 5 minutes, Change time, Let go
+- [x] A hold lasts 5 minutes (a setting) and Add 5 minutes extends it; the timer replaces the check-in grace period; a hold still ends at once on book, let go, another time or leaving the sheet
+- [x] Under a minute left, the time says so and offers Add 5 minutes; when it runs out the sheet says so and offers to hold it again if it's still free
+- [x] The steps follow the visit: At the door (name, phone, owns the home, wants a price, everyone who decides), After the door (the rest of what they learned, then the address, the soffit colour and the photos), then Book
+- [x] Swipe left and right between steps, as well as Back and Next; a counter by the progress bar ("Step 3 of 6, 3 left")
+- [x] Designed and tested at 430 x 932 and at 390 wide: bigger type and targets, related items grouped, fewer steps
+- [x] Leaving keeps a draft on that phone; an Unfinished list on Home reopens it where they left off and asks for a time; wiped after 24 hours
+- [x] No double booking stays a hard rule: the race tests cover the timer and extensions (only the holder extends; an expired hold can't be extended once someone else has the time; two setters racing still get exactly one)
 
 - [ ] Design: impeccable shape, then critique and polish at both phone sizes; plain copy, no em dashes; everything new works in View as
 - [ ] The full suite passes, the branch merges on green, and production is verified
