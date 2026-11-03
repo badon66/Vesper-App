@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { ActionMessage } from "@/components/action-message";
 import { changeLeadStatus } from "@/app/(app)/app/leads/actions";
 import { ChoiceGroup } from "@/components/leads/choice-group";
 import { Button } from "@/components/ui/button";
@@ -107,11 +108,7 @@ export function StatusControl({
           onChange={setLostReason}
         />
       ) : null}
-      {error ? (
-        <p role="alert" className="text-sm font-medium text-destructive">
-          {error}
-        </p>
-      ) : null}
+      <ActionMessage text={error} />
       <Button type="submit" size="lg" disabled={pending || unchanged || needsReason}>
         {pending
           ? "Saving"

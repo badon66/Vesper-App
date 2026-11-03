@@ -9,10 +9,11 @@ import {
   type DuplicateLead,
   type LeadFormState,
 } from "@/app/(app)/app/leads/actions";
+import { ActionMessage } from "@/components/action-message";
 import { FieldError } from "@/components/field-error";
 import { AddressField, type AddressDefaults } from "@/components/leads/address-field";
 import { ChoiceGroup } from "@/components/leads/choice-group";
-import { FindOutFields } from "@/components/leads/find-out-fields";
+import { LeadQuestions, type QuestionDefaults } from "@/components/leads/find-out-fields";
 import { PhotoPicker } from "@/components/leads/photo-picker";
 import { PhotoSlots } from "@/components/leads/photo-slots";
 import { Button } from "@/components/ui/button";
@@ -20,8 +21,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Textarea } from "@/components/ui/textarea";
-import type { FindOutField, PhotoSlot } from "@/lib/leads/door";
+import type { PhotoSlot } from "@/lib/leads/door";
 import { defaultsFromDraft, draftFromFormData, draftHasContent, draftKey, draftPhotoPaths, readDraft } from "@/lib/leads/draft";
+import { QUESTION_LABELS, type CountedQuestion } from "@/lib/leads/questions";
+import { ANSWER_OR_NOT_COLLECTED, leadFormDataToInput, unansweredQuestions, type LeadFormErrors } from "@/lib/leads/schema";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -30,7 +33,6 @@ import {
   type HouseType,
   type LeadSource,
 } from "@/lib/leads/status";
-import { formatPhone, normalizePhone } from "@/lib/phone";
 import type { PickedAddress } from "@/lib/places";
 
 export type LeadFormDefaults = {
@@ -40,8 +42,9 @@ export type LeadFormDefaults = {
   email: string;
   neighbourhood: string;
   house_type: HouseType | null;
-  // The Find out answers as the form holds them.
-  find_out: Record<FindOutField, string | null>;
+  // The answers as the form holds them: a choice, Not collected, or nothing.
+  questions: QuestionDefaults;
+  phone_not_collected: boolean;
   soffit_note: string;
   notes: string;
   source: LeadSource;
@@ -50,9 +53,10 @@ export type LeadFormDefaults = {
 
 const initialState: LeadFormState = {};
 
-const NOTHING_FOUND_OUT: Record<FindOutField, string | null> = {
+const NOTHING_FOUND_OUT: QuestionDefaults = {
   owns_home: null,
   wants_price: null,
+  both_decision_makers: null,
   soffit_colour: null,
   christmas_lights_now: null,
   looked_into_before: null,
@@ -61,9 +65,10 @@ const NOTHING_FOUND_OUT: Record<FindOutField, string | null> = {
 };
 
 // One screen for a new lead at the door, and the same form for editing.
-// Address and first name are the only required fields; the Find out
-// questions and the photos follow the door process and are all optional.
-// Save sits at the bottom of the screen, within reach of a thumb.
+// It needs a first name, an address, and every question answered or marked
+// Not collected (round 2); the soffit colour and the photos follow the door
+// process and are optional. Save sits at the bottom of the screen, within
+// reach of a thumb.
 export function LeadForm({
   mode,
   action,
@@ -109,8 +114,12 @@ export function LeadForm({
   const [extrasBusy, setExtrasBusy] = useState(false);
   const photosBusy = slotsBusy || extrasBusy;
   const [duplicates, setDuplicates] = useState<DuplicateLead[]>([]);
-  const [phoneError, setPhoneError] = useState<string | null>(null);
-  const errors = state.errors ?? {};
+  // The questions still open, once Save was tapped with some open: checked
+  // before sending, and updated as they're answered.
+  const [openNow, setOpenNow] = useState<CountedQuestion[] | null>(null);
+  const openErrors: LeadFormErrors = Object.fromEntries((openNow ?? []).map((question) => [question, ANSWER_OR_NOT_COLLECTED]));
+  const errors: LeadFormErrors = { ...(state.errors ?? {}), ...openErrors };
+  const openCount = openNow?.length ?? 0;
 
   useEffect(() => {
     pendingRef.current = pending;
@@ -201,6 +210,7 @@ export function LeadForm({
     }
     setRestored(null);
     setDuplicates([]);
+    setOpenNow(null);
     setNeighbourhood(sessionNeighbourhood ?? "");
     setNeighbourhoodEdited(false);
     setFormKey((key) => key + 1);
@@ -237,22 +247,22 @@ export function LeadForm({
   }
 
   // Submitting through a transition keeps everything typed if the server
-  // sends back a correction.
+  // sends back a correction. A question with neither an answer nor Not
+  // collected stops it first, and the first one comes into view.
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const submitter = (event.nativeEvent as SubmitEvent).submitter;
-    const formData = new FormData(event.currentTarget, submitter);
-    startTransition(() => formAction(formData));
-  }
-
-  function onPhoneBlur(event: React.FocusEvent<HTMLInputElement>) {
-    const result = normalizePhone(event.currentTarget.value);
-    if (!result.ok) {
-      setPhoneError(result.error);
+    const form = event.currentTarget;
+    const formData = new FormData(form, submitter);
+    const open = unansweredQuestions(leadFormDataToInput(formData));
+    setOpenNow(open.length > 0 ? open : null);
+    if (open.length > 0) {
+      const first = form.querySelector<HTMLElement>(open[0] === "phone" ? "#lead-phone" : `[data-question="${open[0]}"] input`);
+      first?.scrollIntoView({ block: "center" });
+      first?.focus({ preventScroll: true });
       return;
     }
-    setPhoneError(null);
-    if (result.e164) event.currentTarget.value = formatPhone(result.e164);
+    startTransition(() => formAction(formData));
   }
 
   return (
@@ -362,26 +372,13 @@ export function LeadForm({
         </div>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="lead-phone">Phone</Label>
-        <Input
-          id="lead-phone"
-          name="phone"
-          type="tel"
-          inputMode="tel"
-          autoComplete="off"
-          defaultValue={shown?.phone}
-          onBlur={onPhoneBlur}
-          aria-invalid={errors.phone || phoneError ? true : undefined}
-          aria-describedby="lead-phone-error"
-        />
-        <FieldError id="lead-phone-error" message={phoneError ?? errors.phone} />
-      </div>
-
-      <FindOutFields
-        defaults={shown?.find_out ?? NOTHING_FOUND_OUT}
+      <LeadQuestions
+        defaults={shown?.questions ?? NOTHING_FOUND_OUT}
+        phone={shown?.phone ?? ""}
+        phoneNotCollected={shown?.phone_not_collected ?? false}
         soffitNote={shown?.soffit_note ?? ""}
         errors={errors}
+        onOpenChange={(open) => setOpenNow((current) => (current === null ? null : open.length > 0 ? open : null))}
       />
 
       {mode === "create" ? (
@@ -439,11 +436,15 @@ export function LeadForm({
 
       <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:left-20">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-2">
-          {state.error ? (
-            <p role="alert" className="text-sm font-medium text-destructive">
-              {state.error}
+          {openCount > 0 ? (
+            <p role="alert" className="text-sm font-medium text-pretty text-destructive" data-testid="questions-still-open">
+              {openCount === 1
+                ? `${QUESTION_LABELS[(openNow ?? [])[0]]} needs an answer, or mark it Not collected.`
+                : `${openCount} questions need an answer, or mark them Not collected.`}
             </p>
-          ) : null}
+          ) : (
+            <ActionMessage text={state.error} />
+          )}
           {mode === "create" ? (
             <div className="flex gap-2">
               <Button type="button" variant="outline" size="lg" className="w-12 shrink-0 px-0" aria-label="Cancel" onClick={leave}>

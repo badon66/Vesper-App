@@ -35,6 +35,8 @@ const COUNTED = [
   "address_line",
   "house_type",
   "soffit_note",
+  "both_decision_makers",
+  "phone_not_collected",
   ...FIND_OUT_FIELDS,
   ...PHOTO_SLOTS.map(({ slot }) => slotFieldName(slot)),
 ];
@@ -93,7 +95,11 @@ export function defaultsFromDraft(draft: LeadDraft): LeadFormDefaults {
     email: v.email ?? "",
     neighbourhood: v.neighbourhood ?? "",
     house_type: oneOf<HouseType>(HOUSE_TYPE_OPTIONS, v.house_type),
-    find_out: Object.fromEntries(FIND_OUT_FIELDS.map((field) => [field, v[field] ? v[field] : null])) as Record<FindOutField, string | null>,
+    questions: {
+      ...(Object.fromEntries(FIND_OUT_FIELDS.map((field) => [field, v[field] ? v[field] : null])) as Record<FindOutField, string | null>),
+      both_decision_makers: v.both_decision_makers ? v.both_decision_makers : null,
+    },
+    phone_not_collected: v.phone_not_collected === "1",
     soffit_note: v.soffit_note ?? "",
     notes: v.notes ?? "",
     source: oneOf<LeadSource>(SOURCE_OPTIONS, v.source) ?? "door",

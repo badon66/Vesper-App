@@ -4,6 +4,7 @@ import { CircleCheck, Share } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { ActionMessage } from "@/components/action-message";
 import { saveThisDevice } from "@/app/(app)/app/notifications/actions";
 import { finishWelcome } from "@/app/(app)/app/welcome/actions";
 import { Button } from "@/components/ui/button";
@@ -108,9 +109,9 @@ export function WelcomeFlow({ step, firstName, publicKey, deviceHashes, readOnly
       <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background px-4 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:left-20">
         <div className="mx-auto flex w-full max-w-xl flex-col gap-2">
           {error ? (
-            <p role="alert" className="text-sm font-semibold text-destructive" data-testid="welcome-error">
-              {error}
-            </p>
+            <div data-testid="welcome-error">
+              <ActionMessage text={error} className="font-semibold" />
+            </div>
           ) : null}
           <div className="flex min-h-11 items-center">
             {last ? null : (
@@ -469,11 +470,7 @@ function NotificationsStep({
             </Button>
           </>
         ) : null}
-        {message ? (
-          <p role="alert" className="text-sm font-semibold text-destructive">
-            {message}
-          </p>
-        ) : null}
+        <ActionMessage text={message} className="font-semibold" />
       </div>
     </div>
   );

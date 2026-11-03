@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { ActionMessage } from "@/components/action-message";
 import { addLeadNote } from "@/app/(app)/app/leads/actions";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -30,11 +31,7 @@ export function NoteForm({ leadId }: { leadId: string }) {
       <input type="hidden" name="id" value={leadId} />
       <Label htmlFor="lead-note">Add a note</Label>
       <Textarea id="lead-note" name="text" rows={3} />
-      {error ? (
-        <p role="alert" className="text-sm font-medium text-destructive">
-          {error}
-        </p>
-      ) : null}
+      <ActionMessage text={error} />
       <Button type="submit" variant="outline" size="lg" disabled={pending}>
         {pending ? "Saving" : "Add note"}
       </Button>

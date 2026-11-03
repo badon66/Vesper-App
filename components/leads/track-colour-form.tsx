@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { ActionMessage } from "@/components/action-message";
 import { setTrackColour, type TrackColourState } from "@/app/(app)/app/leads/actions";
 import { AnswerGroup } from "@/components/leads/answer-group";
 import { RalCodeField } from "@/components/ral-code-field";
@@ -75,11 +76,7 @@ export function TrackColourForm({
           emptyHint="From the RAL K7 book. A custom colour needs powder coating."
         />
       ) : null}
-      {state.error && !state.errors ? (
-        <p role="alert" className="text-sm font-medium text-destructive">
-          {state.error}
-        </p>
-      ) : null}
+      <ActionMessage text={state.error && !state.errors ? state.error : null} />
       {state.ok ? (
         <p role="status" className="text-sm text-muted-foreground">
           Saved.

@@ -44,6 +44,10 @@ const FIND_OUT_LABELS: Record<string, string> = {
   looked_into_before: "looked into it before",
   areas_wanted: "which areas",
   install_timing: "timing",
+  // Round 2: the question asked at the door, and the questions marked Not
+  // collected (which change with the answers).
+  both_decision_makers: "everyone who decides",
+  not_collected: "what wasn't collected",
 };
 
 const PHOTO_SLOT_VALUES: readonly string[] = ["front", "left_corner", "right_corner", "soffit"];

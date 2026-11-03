@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { z } from "zod";
+import { UnfinishedBookings } from "@/components/home/unfinished-bookings";
 import { KnockCard } from "@/components/knock/knock-card";
 import { ClearLeadDraft } from "@/components/leads/clear-lead-draft";
 import { MeetingCard } from "@/components/schedule/meeting-card";
@@ -84,6 +85,8 @@ export async function SalesHome({
           </Link>
         </div>
       ) : null}
+
+      <UnfinishedBookings userId={profile.id} />
 
       <KnockCard key={session?.id ?? "none"} session={session} lastNeighbourhood={last} />
 

@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { z } from "zod";
+import type { QuestionDefaults } from "@/components/leads/find-out-fields";
 import { LeadForm } from "@/components/leads/lead-form";
 import { NotForYourRole } from "@/components/not-for-your-role";
 import { requireProfile } from "@/lib/auth/profile";
 import { getPublicEnv } from "@/lib/env";
-import { findOutChoices } from "@/lib/leads/door";
+import { answersOf } from "@/lib/leads/questions";
 import { formatPhone } from "@/lib/phone";
 import { createClient } from "@/lib/supabase/server";
 import { updateLead } from "../../actions";
@@ -13,6 +14,21 @@ import { updateLead } from "../../actions";
 export const metadata: Metadata = {
   title: "Edit lead",
 };
+
+// The lead's answers as the form holds them, Not collected included.
+function questionDefaults(lead: Parameters<typeof answersOf>[0] & { soffit_colour: string | null }): QuestionDefaults {
+  const answers = answersOf(lead);
+  return {
+    owns_home: answers.owns_home ?? null,
+    wants_price: answers.wants_price ?? null,
+    both_decision_makers: answers.both_decision_makers ?? null,
+    soffit_colour: lead.soffit_colour,
+    christmas_lights_now: answers.christmas_lights_now ?? null,
+    looked_into_before: answers.looked_into_before ?? null,
+    areas_wanted: answers.areas_wanted ?? null,
+    install_timing: answers.install_timing ?? null,
+  };
+}
 
 export default async function EditLeadPage({ params }: { params: Promise<{ id: string }> }) {
   const me = await requireProfile();
@@ -44,7 +60,8 @@ export default async function EditLeadPage({ params }: { params: Promise<{ id: s
           email: lead.email ?? "",
           neighbourhood: lead.neighbourhood ?? "",
           house_type: lead.house_type,
-          find_out: findOutChoices(lead),
+          questions: questionDefaults(lead),
+          phone_not_collected: (lead.not_collected ?? []).includes("phone") && !lead.phone,
           soffit_note: lead.soffit_note ?? "",
           notes: lead.notes ?? "",
           source: lead.source,

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { ActionMessage } from "@/components/action-message";
 import { cancelBooking } from "@/app/(app)/app/schedule/actions";
 import { MoveBookingButton } from "@/components/booking/book-buttons";
 import { Button } from "@/components/ui/button";
@@ -72,11 +73,7 @@ export function BookingActions({
           </div>
         </div>
       )}
-      {message ? (
-        <p role="alert" className="text-sm font-medium text-destructive">
-          {message}
-        </p>
-      ) : null}
+      <ActionMessage text={message} />
     </div>
   );
 }

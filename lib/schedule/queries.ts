@@ -66,8 +66,10 @@ export async function activeHoldOf(supabase: Client, personId: string, holdMinut
 
 const MEETING_COLUMNS =
   "id, lead_id, host_id, setter_id, booked_by, starts_at, ends_at, status, photos_skipped, photos_skip_note, outcome_reason, outcome_note, outcome_at, outcome_by, rebooked_as, created_at";
+// The counted questions come along so each card can say how complete the
+// lead is ("6 of 8 collected", round 2).
 const LEAD_COLUMNS =
-  "id, first_name, last_name, address_line, city, neighbourhood, phone, lat, lng, notes, position_source, position_accuracy_m, status, created_by, assigned_to";
+  "id, first_name, last_name, address_line, city, neighbourhood, phone, lat, lng, notes, position_source, position_accuracy_m, status, created_by, assigned_to, owns_home, wants_price, both_decision_makers, christmas_lights_now, looked_into_before, areas_wanted, install_timing, not_collected";
 
 export type MeetingRow = Pick<
   Database["public"]["Tables"]["meetings"]["Row"],
@@ -105,6 +107,14 @@ export type MeetingLead = Pick<
   | "status"
   | "created_by"
   | "assigned_to"
+  | "owns_home"
+  | "wants_price"
+  | "both_decision_makers"
+  | "christmas_lights_now"
+  | "looked_into_before"
+  | "areas_wanted"
+  | "install_timing"
+  | "not_collected"
 >;
 export type MeetingWithLead = MeetingRow & { lead: MeetingLead };
 

@@ -8,6 +8,7 @@ import {
   type KnockBumpResult,
   type KnockState,
 } from "@/app/(app)/app/knock-actions";
+import { ActionMessage } from "@/components/action-message";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -18,8 +19,10 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useViewAs } from "@/components/view-as-context";
 import { submitKeepingValues } from "@/lib/forms/submit";
 import { formatTime } from "@/lib/time";
+import { VIEW_AS_NOTHING_SAVED } from "@/lib/view-as";
 
 export type KnockSessionView = {
   id: string;
@@ -36,6 +39,8 @@ const sentenceEnd = (text: string) => (text.endsWith(".") ? text : `${text}.`);
 const ZERO: Counts = { doors: 0, conversations: 0 };
 const initialState: KnockState = {};
 
+// While Keenan views the app as a setter (round 2), starting, counting and
+// ending are acted out on this screen only, and it says nothing was saved.
 export function KnockCard({
   session,
   lastNeighbourhood,
@@ -43,14 +48,44 @@ export function KnockCard({
   session: KnockSessionView | null;
   lastNeighbourhood: string | null;
 }) {
-  return session ? (
-    <ActiveSession session={session} />
+  const { viewingAs } = useViewAs();
+  const [actedOut, setActedOut] = useState<{ session: KnockSessionView | null } | null>(null);
+  const shown = viewingAs && actedOut ? actedOut.session : session;
+  return shown ? (
+    <ActiveSession
+      key={shown.id}
+      session={shown}
+      actedOut={viewingAs}
+      onActedOutEnd={() => setActedOut({ session: null })}
+    />
   ) : (
-    <StartSession lastNeighbourhood={lastNeighbourhood} />
+    <StartSession
+      lastNeighbourhood={lastNeighbourhood}
+      onActedOutStart={
+        viewingAs
+          ? (neighbourhood) =>
+              setActedOut({
+                session: {
+                  id: "view-as",
+                  neighbourhood: neighbourhood || "this neighbourhood",
+                  started_at: new Date().toISOString(),
+                  doors_knocked: 0,
+                  conversations: 0,
+                },
+              })
+          : null
+      }
+    />
   );
 }
 
-function StartSession({ lastNeighbourhood }: { lastNeighbourhood: string | null }) {
+function StartSession({
+  lastNeighbourhood,
+  onActedOutStart,
+}: {
+  lastNeighbourhood: string | null;
+  onActedOutStart: ((neighbourhood: string) => void) | null;
+}) {
   const [state, formAction, pending] = useActionState(startKnockSession, initialState);
   return (
     <Card>
@@ -62,7 +97,17 @@ function StartSession({ lastNeighbourhood }: { lastNeighbourhood: string | null 
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={submitKeepingValues(formAction)} className="flex flex-col gap-3">
+        <form
+          onSubmit={(event) => {
+            if (onActedOutStart) {
+              event.preventDefault();
+              onActedOutStart(String(new FormData(event.currentTarget).get("neighbourhood") ?? "").trim());
+              return;
+            }
+            submitKeepingValues(formAction)(event);
+          }}
+          className="flex flex-col gap-3"
+        >
           <Label htmlFor="knock-neighbourhood">Neighbourhood</Label>
           <Input
             id="knock-neighbourhood"
@@ -71,11 +116,7 @@ function StartSession({ lastNeighbourhood }: { lastNeighbourhood: string | null 
             autoComplete="off"
             autoCapitalize="words"
           />
-          {state.error ? (
-            <p role="alert" className="text-sm font-medium text-destructive">
-              {state.error}
-            </p>
-          ) : null}
+          <ActionMessage text={state.error} />
           <Button type="submit" size="lg" disabled={pending}>
             {pending ? "Starting" : "Start knocking"}
           </Button>
@@ -88,7 +129,16 @@ function StartSession({ lastNeighbourhood }: { lastNeighbourhood: string | null 
 // The counters change the moment a button is tapped. Taps are queued and
 // sent one batch at a time; a failed batch goes back in the queue and is
 // retried, so fast tapping never loses a count.
-function ActiveSession({ session }: { session: KnockSessionView }) {
+function ActiveSession({
+  session,
+  actedOut,
+  onActedOutEnd,
+}: {
+  session: KnockSessionView;
+  // View as: the counts change on screen only.
+  actedOut: boolean;
+  onActedOutEnd: () => void;
+}) {
   const [shown, setShown] = useState<Counts>({
     doors: session.doors_knocked,
     conversations: session.conversations,
@@ -119,6 +169,12 @@ function ActiveSession({ session }: { session: KnockSessionView }) {
   function tap(kind: keyof Counts, delta: 1 | -1) {
     if (stopped.current) return;
     if (total()[kind] + delta < 0) return;
+    if (actedOut) {
+      confirmed.current = { ...confirmed.current, [kind]: confirmed.current[kind] + delta };
+      setShown(total());
+      setNote(VIEW_AS_NOTHING_SAVED);
+      return;
+    }
     queued.current = { ...queued.current, [kind]: queued.current[kind] + delta };
     setShown(total());
     void flush();
@@ -190,11 +246,23 @@ function ActiveSession({ session }: { session: KnockSessionView }) {
             onUndo={() => tap("conversations", -1)}
           />
         </div>
-        <p aria-live="polite" className="text-sm text-muted-foreground">
-          {note ?? (saving ? "Saving" : "All taps saved.")}
-        </p>
+        {note === VIEW_AS_NOTHING_SAVED ? (
+          <ActionMessage text={note} />
+        ) : (
+          <p aria-live="polite" className="text-sm text-muted-foreground">
+            {note ?? (saving ? "Saving" : "All taps saved.")}
+          </p>
+        )}
         {confirmEnd ? (
-          <form action={endAction} className="flex flex-col gap-3">
+          <form
+            action={endAction}
+            onSubmit={(event) => {
+              if (!actedOut) return;
+              event.preventDefault();
+              onActedOutEnd();
+            }}
+            className="flex flex-col gap-3"
+          >
             <input type="hidden" name="id" value={session.id} />
             <p className="text-sm font-semibold">
               End this session? You can start a new one any time.
@@ -212,11 +280,7 @@ function ActiveSession({ session }: { session: KnockSessionView }) {
                 Keep going
               </Button>
             </div>
-            {endState.error ? (
-              <p role="alert" className="text-sm font-medium text-destructive">
-                {endState.error}
-              </p>
-            ) : null}
+            <ActionMessage text={endState.error} />
           </form>
         ) : (
           <Button type="button" variant="outline" onClick={() => setConfirmEnd(true)}>

@@ -221,6 +221,19 @@ export function parseLeadForm(
   return { ok: false, errors };
 }
 
+// The counted questions a form's input leaves with neither an answer nor
+// Not collected, in the order they're asked. The form checks this before
+// sending; the server checks it again in parseLeadForm.
+export function unansweredQuestions(input: Record<string, unknown>): CountedQuestion[] {
+  return COUNTED_QUESTIONS.filter((question) => {
+    if (question === "phone") {
+      const marked = input.phone_not_collected === "1" || input.phone_not_collected === true;
+      return String(input.phone ?? "").trim() === "" && !marked;
+    }
+    return String(input[question] ?? "").trim() === "";
+  });
+}
+
 export function leadFormDataToInput(formData: FormData): Record<string, unknown> {
   const text = (name: string) => String(formData.get(name) ?? "");
   return {
