@@ -51,6 +51,8 @@ try {
   });
   if (created.error) throw new Error("createUser: " + created.error.message);
   userId = created.data.user.id;
+  // The first sign-in welcome has its own walk-through; this one starts after it.
+  await admin.from("profiles").update({ welcome_done_at: new Date().toISOString() }).eq("id", userId);
   check("a. created with email confirmed", created.data.user.email_confirmed_at != null);
   const { data: prof } = await admin.from("profiles").select("role, active, full_name").eq("id", userId).single();
   check("a. trigger made a sales profile from app_metadata", prof?.role === "sales" && prof?.active && prof?.full_name === "Live Test", JSON.stringify(prof));
@@ -111,6 +113,7 @@ try {
 
   // g. sign out and the redirect back
   await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByTestId("sign-out").getByRole("button", { name: "Sign out" }).click();
   await page.waitForURL("**/login**", { timeout: 20000 });
   await page.goto(`${base}/app`);
   check("g. signed out, /app redirects to login with next", /\/login\?next=%2Fapp$/.test(page.url()), page.url());

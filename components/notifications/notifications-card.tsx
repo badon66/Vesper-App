@@ -1,29 +1,28 @@
 "use client";
 
 import { BellOff, BellRing, Copy, KeyRound } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { BLOCKED_MESSAGE, readPushState, turnOnPush, unblockSteps, type PushState, type PushSupport } from "@/lib/push/browser";
+import { sentence } from "@/lib/schedule/meetings";
 import { formatDateTime } from "@/lib/time";
-import { saveThisDevice, sendTestNotification, switchOffDevice, switchOffThisDevice } from "./push-actions";
+import { saveThisDevice, sendTestNotification, switchOffDevice, switchOffThisDevice } from "@/app/(app)/app/notifications/actions";
 
-// Notifications (Keenan, 2026-11-02): a push to his phone and iPad when a
-// customer taps Book my install, with their name and the option they
-// picked. Standard web push from the installed app: on iPhone and iPad it
-// works from the Vesper icon on the home screen (iOS 16.4 or later), and
-// each device turns it on once, from a tap here.
+// Notifications (2026-11-02; setters from 2026-11-03): standard web push
+// from the installed app. On iPhone and iPad it works from the Vesper icon
+// on the home screen (iOS 16.4 or later), and each device turns it on
+// once, from a tap here. Keenan's card (Settings) can make the keys; a
+// setter's card (the bell) says when they aren't set up yet. While Keenan
+// views the app as a setter, the card shows what a setter sees before
+// turning them on, lists that setter's own devices, and nothing on it
+// works: his device is never theirs.
 
-export type DeviceRow = { id: string; label: string; createdAt: string; lastSentAt: string | null };
+// hash: the device's hashed push address, for the member's own devices
+// only, so the page can tell whether this browser is one of them.
+export type DeviceRow = { id: string; label: string; createdAt: string; lastSentAt: string | null; hash?: string };
 
-type Support = "checking" | "ready" | "needs_home_screen" | "unsupported";
-
-function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
-  const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
-  const binary = atob(padded);
-  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
+type Support = "checking" | PushSupport;
 
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = "";
@@ -31,77 +30,101 @@ function bytesToBase64Url(bytes: Uint8Array): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function deviceLabel(): string {
-  const ua = navigator.userAgent;
-  if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return "iPad";
-  if (/iPhone/.test(ua)) return "iPhone";
-  if (/Android/.test(ua)) return "Android phone";
-  return "Computer";
-}
-
-export function Notifications({ publicKey, devices }: { publicKey: string | null; devices: DeviceRow[] }) {
+export function Notifications({
+  publicKey,
+  devices,
+  owner = true,
+  description,
+  readOnly = false,
+}: {
+  publicKey: string | null;
+  devices: DeviceRow[];
+  // Keenan's card can make the keys; a setter's says to wait for him.
+  owner?: boolean;
+  description?: string;
+  // View as: the setter's devices, listed; this device isn't theirs, so it
+  // shows as not turned on.
+  readOnly?: boolean;
+}) {
   return (
     <Card id="notifications" className="scroll-mt-24" data-testid="notifications">
       <CardHeader>
         <CardTitle>Notifications</CardTitle>
-        <CardDescription>
-          A notification on your phone and iPad when a customer taps Book my install on their quote link, with their
-          name and the option they picked.
+        <CardDescription className="text-pretty">
+          {description ??
+            "A notification on your phone and iPad when a customer taps Book my install on their quote link, with their name and the option they picked."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5 text-sm">
-        {publicKey ? <DeviceControls publicKey={publicKey} devices={devices} /> : <KeySetup />}
+        {publicKey ? (
+          <DeviceControls publicKey={publicKey} devices={devices} readOnly={readOnly} owner={owner} />
+        ) : owner ? (
+          <KeySetup />
+        ) : (
+          <p className="text-pretty" data-testid="push-not-set-up">
+            Notifications aren&apos;t set up yet. Keenan turns them on; then you can switch them on here.
+          </p>
+        )}
       </CardContent>
     </Card>
   );
 }
 
-function DeviceControls({ publicKey, devices }: { publicKey: string; devices: DeviceRow[] }) {
-  const [support, setSupport] = useState<Support>("checking");
+export function DeviceControls({
+  publicKey,
+  devices,
+  readOnly = false,
+  owner = true,
+}: {
+  publicKey: string;
+  devices: DeviceRow[];
+  readOnly?: boolean;
+  owner?: boolean;
+}) {
+  const [support, setSupport] = useState<Support>(readOnly ? "ready" : "checking");
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
   const [subscribed, setSubscribed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const hashes = devices.flatMap((device) => (device.hash ? [device.hash] : []));
+  const hashKey = hashes.join(",");
+
+  // What this device says now: on load, and again from Check again.
+  const apply = useCallback((state: PushState) => {
+    setSupport(state.support);
+    setPermission(state.permission);
+    setSubscribed(state.on);
+  }, []);
+  const hashList = useCallback(() => (hashKey ? hashKey.split(",") : []), [hashKey]);
+  function check() {
+    void readPushState(hashList()).then(apply, () => setSupport("unsupported"));
+  }
 
   useEffect(() => {
+    if (readOnly) return;
     let cancelled = false;
-    async function check() {
-      const pushable = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
-      if (!pushable) {
-        const apple = /iPhone|iPad|Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1;
-        if (!cancelled) setSupport(apple ? "needs_home_screen" : "unsupported");
-        return;
-      }
-      setPermission(Notification.permission);
-      const registration = await navigator.serviceWorker.getRegistration();
-      const existing = registration ? await registration.pushManager.getSubscription() : null;
-      if (cancelled) return;
-      setSubscribed(Boolean(existing) && Notification.permission === "granted");
-      setSupport("ready");
-    }
-    void check().catch(() => !cancelled && setSupport("unsupported"));
+    readPushState(hashList()).then(
+      (state) => {
+        if (!cancelled) apply(state);
+      },
+      () => {
+        if (!cancelled) setSupport("unsupported");
+      },
+    );
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [readOnly, hashList, apply]);
 
   async function turnOn() {
     setBusy(true);
     setMessage(null);
     try {
-      const answer = await Notification.requestPermission();
-      setPermission(answer);
-      if (answer !== "granted") {
-        setMessage({ text: "Notifications are blocked for Vesper on this device. Allow them in the device's Settings, then try again.", error: true });
-        return;
-      }
-      const registration = await navigator.serviceWorker.ready;
-      const subscription =
-        (await registration.pushManager.getSubscription()) ??
-        (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToBytes(publicKey) }));
-      const result = await saveThisDevice(subscription.toJSON(), deviceLabel());
+      const result = await turnOnPush(publicKey, saveThisDevice);
+      setPermission(Notification.permission);
       if (!result.ok) {
-        setMessage({ text: result.message, error: true });
+        // Blocked shows its own steps below.
+        if (!result.blocked) setMessage({ text: result.message, error: true });
         return;
       }
       setSubscribed(true);
@@ -158,14 +181,14 @@ function DeviceControls({ publicKey, devices }: { publicKey: string; devices: De
 
   return (
     <>
-      <div className="flex flex-col gap-3" data-testid="this-device">
+      <div className="flex flex-col gap-3" data-testid="this-device" data-device>
         <p className="font-semibold">This device</p>
         {support === "checking" ? (
           <p className="text-muted-foreground">Checking this device.</p>
         ) : support === "needs_home_screen" ? (
           <p className="text-pretty">
-            On iPhone and iPad, notifications work from the Vesper app on your home screen. Open Vesper from its icon on
-            the home screen, come back to Settings, and turn them on there.
+            On iPhone and iPad, notifications work from the Vesper icon on your home screen. Open Vesper from there,
+            come back to this page and turn them on.
           </p>
         ) : support === "unsupported" ? (
           <p className="text-pretty">This browser can&apos;t take notifications. Use the Vesper app on your phone or iPad.</p>
@@ -180,19 +203,21 @@ function DeviceControls({ publicKey, devices }: { publicKey: string; devices: De
               Switch off here
             </Button>
           </div>
+        ) : permission === "denied" ? (
+          <div className="flex flex-col gap-2" data-testid="push-blocked">
+            <p className="font-semibold text-pretty">{BLOCKED_MESSAGE}</p>
+            <p className="text-pretty text-muted-foreground">{unblockSteps()}</p>
+            <Button type="button" variant="outline" className="self-start" onClick={check} disabled={busy}>
+              Check again
+            </Button>
+          </div>
         ) : (
           <div className="flex flex-col gap-2">
             <Button type="button" className="self-start" onClick={() => void turnOn()} disabled={busy}>
               <BellRing aria-hidden="true" />
-              Turn on notifications here
+              {busy ? "Asking" : "Turn on notifications here"}
             </Button>
-            {permission === "denied" ? (
-              <p className="text-pretty text-muted-foreground">
-                Notifications are blocked for Vesper on this device. Allow them in the device&apos;s Settings first.
-              </p>
-            ) : (
-              <p className="text-pretty text-muted-foreground">The device asks once whether Vesper may send notifications.</p>
-            )}
+            <p className="text-pretty text-muted-foreground">The device asks once whether Vesper may send notifications.</p>
           </div>
         )}
       </div>
@@ -201,7 +226,9 @@ function DeviceControls({ publicKey, devices }: { publicKey: string; devices: De
         <p className="font-semibold">Devices with notifications on</p>
         {devices.length === 0 ? (
           <p className="text-muted-foreground" data-testid="no-devices">
-            None yet. Turn them on from your phone and from your iPad, and both get every notice.
+            {owner
+              ? "None yet. Turn them on from your phone and from your iPad, and both get every notice."
+              : "None yet. Turn them on from the phone you knock with."}
           </p>
         ) : (
           <ul className="flex flex-col divide-y" data-testid="devices">
@@ -210,8 +237,8 @@ function DeviceControls({ publicKey, devices }: { publicKey: string; devices: De
                 <span>
                   <span className="font-semibold">{device.label}</span>
                   <span className="block text-muted-foreground">
-                    Added {formatDateTime(device.createdAt)}
-                    {device.lastSentAt ? `. Last notice ${formatDateTime(device.lastSentAt)}` : ""}.
+                    {sentence(`Added ${formatDateTime(device.createdAt)}`)}
+                    {device.lastSentAt ? ` ${sentence(`Last notice ${formatDateTime(device.lastSentAt)}`)}` : ""}
                   </span>
                 </span>
                 <Button type="button" variant="ghost" size="sm" onClick={() => void remove(device.id)} disabled={busy}>

@@ -22,9 +22,8 @@ export default async function NewLeadPage() {
         <div>
           <h1 className="text-2xl font-bold">New lead</h1>
           <p className="mt-1 text-sm text-pretty text-muted-foreground">
-            {session
-              ? `This lead links to your knock session in ${session.neighbourhood}.`
-              : "Only the address and first name are needed to save."}
+            Only the address and first name are needed to save; the rest helps you book.
+            {session ? ` It links to your knock session in ${session.neighbourhood}.` : ""}
           </p>
         </div>
         <StepNotes notes={notes} />

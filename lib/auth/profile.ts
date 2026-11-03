@@ -8,7 +8,7 @@ import type { Database } from "@/types/database";
 
 export type SessionProfile = Pick<
   Database["public"]["Tables"]["profiles"]["Row"],
-  "id" | "email" | "full_name" | "phone" | "role" | "active"
+  "id" | "email" | "full_name" | "phone" | "role" | "active" | "welcome_done_at"
 >;
 
 type SessionLookup =
@@ -33,7 +33,7 @@ export const getSession = cache(async (): Promise<SessionLookup> => {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, email, full_name, phone, role, active")
+    .select("id, email, full_name, phone, role, active, welcome_done_at")
     .eq("id", userId)
     .maybeSingle();
   if (!profile) return { status: "no_profile", userId };
@@ -84,7 +84,7 @@ export const getViewer = cache(async (): Promise<Viewer> => {
   const supabase = await createClient();
   const { data: target } = await supabase
     .from("profiles")
-    .select("id, email, full_name, phone, role, active")
+    .select("id, email, full_name, phone, role, active, welcome_done_at")
     .eq("id", cookie.targetId)
     .maybeSingle();
   if (!target || target.role === "owner" || !target.active) {

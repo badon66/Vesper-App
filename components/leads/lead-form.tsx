@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import {
   findLeadsAtPlace,
   type DuplicateLead,
@@ -17,8 +18,12 @@ import { PhotoSlots } from "@/components/leads/photo-slots";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Textarea } from "@/components/ui/textarea";
-import type { FindOutField } from "@/lib/leads/door";
+import type { FindOutField, PhotoSlot } from "@/lib/leads/door";
+import { defaultsFromDraft, draftFromFormData, draftHasContent, draftKey, draftPhotoPaths, readDraft } from "@/lib/leads/draft";
+import { PHOTO_BUCKET } from "@/lib/photos";
+import { createClient } from "@/lib/supabase/client";
 import {
   HOUSE_TYPE_OPTIONS,
   SOURCE_OPTIONS,
@@ -80,16 +85,146 @@ export function LeadForm({
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
   const [, startTransition] = useTransition();
+  const router = useRouter();
   const [neighbourhood, setNeighbourhood] = useState(
     defaults?.neighbourhood ?? sessionNeighbourhood ?? "",
   );
   const [neighbourhoodEdited, setNeighbourhoodEdited] = useState(Boolean(defaults?.neighbourhood));
+  // A new lead's draft (2026-11-03): kept on the phone while it is typed, so
+  // a reload after the camera or a stray tap doesn't lose the door.
+  const drafting = mode === "create";
+  const storageKey = draftKey(userId);
+  const formRef = useRef<HTMLFormElement>(null);
+  const pendingRef = useRef(false);
+  const saveTimer = useRef<number | null>(null);
+  const [restored, setRestored] = useState<{
+    defaults: LeadFormDefaults;
+    photos: Partial<Record<PhotoSlot, { path: string; preview: string }>>;
+    extraPhotos: number;
+  } | null>(null);
+  const [formKey, setFormKey] = useState(0);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const shown = restored?.defaults ?? defaults;
   const [slotsBusy, setSlotsBusy] = useState(false);
   const [extrasBusy, setExtrasBusy] = useState(false);
   const photosBusy = slotsBusy || extrasBusy;
   const [duplicates, setDuplicates] = useState<DuplicateLead[]>([]);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const errors = state.errors ?? {};
+
+  useEffect(() => {
+    pendingRef.current = pending;
+  }, [pending]);
+
+  // Saved while typing, and at once when the phone hides the page (the
+  // camera opening, another app). Never while the lead is being sent; the
+  // page the save lands on clears it.
+  const saveNow = useCallback(() => {
+    if (!drafting || pendingRef.current || !formRef.current) return;
+    const draft = draftFromFormData(new FormData(formRef.current), Date.now());
+    try {
+      if (draftHasContent(draft)) localStorage.setItem(storageKey, JSON.stringify(draft));
+      else localStorage.removeItem(storageKey);
+    } catch {
+      // Private browsing or full storage: the form still works.
+    }
+  }, [drafting, storageKey]);
+  const scheduleSave = useCallback(() => {
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(saveNow, 300);
+  }, [saveNow]);
+
+  useEffect(() => {
+    if (!drafting) return;
+    const onHide = () => {
+      if (document.visibilityState === "hidden") saveNow();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", saveNow);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", saveNow);
+      if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    };
+  }, [drafting, saveNow]);
+
+  // A photo's path is a hidden field once it has uploaded.
+  useEffect(() => {
+    if (!photosBusy) scheduleSave();
+  }, [photosBusy, scheduleSave]);
+
+  // Brings a draft back once, when New lead opens.
+  useEffect(() => {
+    if (!drafting) return;
+    let cancelled = false;
+    async function bringBack() {
+      let raw: string | null = null;
+      try {
+        raw = localStorage.getItem(storageKey);
+      } catch {
+        return;
+      }
+      const draft = readDraft(raw, Date.now());
+      if (!draft) return;
+      const paths = Object.entries(draftPhotoPaths(draft)) as [PhotoSlot, string][];
+      const photos: Partial<Record<PhotoSlot, { path: string; preview: string }>> = {};
+      if (paths.length > 0) {
+        const { data } = await createClient()
+          .storage.from(PHOTO_BUCKET)
+          .createSignedUrls(paths.map(([, path]) => path), 3600)
+          .catch(() => ({ data: null }));
+        for (const [slot, path] of paths) {
+          const signed = data?.find((item) => item.path === path)?.signedUrl;
+          if (signed) photos[slot] = { path, preview: signed };
+        }
+      }
+      if (cancelled) return;
+      const restoredDefaults = defaultsFromDraft(draft);
+      setRestored({ defaults: restoredDefaults, photos, extraPhotos: draft.extraPhotos });
+      setNeighbourhood(restoredDefaults.neighbourhood || sessionNeighbourhood || "");
+      setNeighbourhoodEdited(Boolean(restoredDefaults.neighbourhood));
+      setFormKey((key) => key + 1);
+      // A reload can reopen the page mid-form: show the notice first.
+      requestAnimationFrame(() => window.scrollTo({ top: 0 }));
+    }
+    void bringBack();
+    return () => {
+      cancelled = true;
+    };
+  }, [drafting, storageKey, sessionNeighbourhood]);
+
+  function startOver() {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch {
+      // Nothing kept, nothing to clear.
+    }
+    setRestored(null);
+    setDuplicates([]);
+    setNeighbourhood(sessionNeighbourhood ?? "");
+    setNeighbourhoodEdited(false);
+    setFormKey((key) => key + 1);
+  }
+
+  // X leaves at once when nothing is entered; otherwise it asks first.
+  function leave() {
+    const form = formRef.current;
+    if (form && draftHasContent(draftFromFormData(new FormData(form), Date.now()))) {
+      setDiscardOpen(true);
+      return;
+    }
+    router.push(cancelHref);
+  }
+
+  function discard() {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch {
+      // Nothing kept.
+    }
+    setDiscardOpen(false);
+    router.push(cancelHref);
+  }
 
   function onPicked(picked: PickedAddress | null) {
     if (!picked) {
@@ -98,6 +233,7 @@ export function LeadForm({
     }
     if (!neighbourhoodEdited && picked.neighbourhood) setNeighbourhood(picked.neighbourhood);
     findLeadsAtPlace(picked.placeId, leadId ?? null).then(setDuplicates, () => setDuplicates([]));
+    scheduleSave();
   }
 
   // Submitting through a transition keeps everything typed if the server
@@ -120,12 +256,37 @@ export function LeadForm({
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6 pb-36">
+    <form
+      key={formKey}
+      ref={formRef}
+      onSubmit={onSubmit}
+      onChange={drafting ? scheduleSave : undefined}
+      noValidate
+      className="flex flex-col gap-6 pb-36"
+    >
       {leadId ? <input type="hidden" name="id" value={leadId} /> : null}
+
+      {restored ? (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-x-3 rounded-md border border-primary bg-accent px-4 py-1 text-sm text-accent-foreground"
+          data-testid="draft-restored"
+        >
+          <span className="py-2 text-pretty">
+            Brought back what you entered before the page closed.
+            {restored.extraPhotos > 0
+              ? ` Add the ${restored.extraPhotos === 1 ? "extra photo" : `${restored.extraPhotos} extra photos`} again.`
+              : ""}
+          </span>
+          <Button type="button" variant="ghost" size="sm" onClick={startOver}>
+            Start over
+          </Button>
+        </div>
+      ) : null}
 
       <AddressField
         apiKey={mapsKey}
-        defaults={defaults?.address}
+        defaults={shown?.address}
         fallbackNeighbourhood={sessionNeighbourhood}
         error={errors.address_line}
         onPicked={onPicked}
@@ -179,7 +340,7 @@ export function LeadForm({
           <Input
             id="lead-first_name"
             name="first_name"
-            defaultValue={defaults?.first_name}
+            defaultValue={shown?.first_name}
             autoComplete="off"
             autoCapitalize="words"
             aria-invalid={errors.first_name ? true : undefined}
@@ -192,7 +353,7 @@ export function LeadForm({
           <Input
             id="lead-last_name"
             name="last_name"
-            defaultValue={defaults?.last_name}
+            defaultValue={shown?.last_name}
             autoComplete="off"
             autoCapitalize="words"
             aria-invalid={errors.last_name ? true : undefined}
@@ -209,7 +370,7 @@ export function LeadForm({
           type="tel"
           inputMode="tel"
           autoComplete="off"
-          defaultValue={defaults?.phone}
+          defaultValue={shown?.phone}
           onBlur={onPhoneBlur}
           aria-invalid={errors.phone || phoneError ? true : undefined}
           aria-describedby="lead-phone-error"
@@ -218,8 +379,8 @@ export function LeadForm({
       </div>
 
       <FindOutFields
-        defaults={defaults?.find_out ?? NOTHING_FOUND_OUT}
-        soffitNote={defaults?.soffit_note ?? ""}
+        defaults={shown?.find_out ?? NOTHING_FOUND_OUT}
+        soffitNote={shown?.soffit_note ?? ""}
         errors={errors}
       />
 
@@ -228,7 +389,7 @@ export function LeadForm({
           <h2 id="photos-heading" className="text-lg font-bold">
             Photos
           </h2>
-          <PhotoSlots userId={userId} mode="form" onBusyChange={setSlotsBusy} />
+          <PhotoSlots userId={userId} mode="form" onBusyChange={setSlotsBusy} initial={restored?.photos} />
           <PhotoPicker
             userId={userId}
             mode="form"
@@ -243,18 +404,18 @@ export function LeadForm({
         name="house_type"
         legend="House type"
         options={HOUSE_TYPE_OPTIONS}
-        defaultValue={defaults?.house_type}
+        defaultValue={shown?.house_type}
         error={errors.house_type}
       />
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="lead-notes">Notes</Label>
-        <Textarea id="lead-notes" name="notes" rows={3} defaultValue={defaults?.notes} />
+        <Textarea id="lead-notes" name="notes" rows={3} defaultValue={shown?.notes} />
         <FieldError id="lead-notes-error" message={errors.notes} />
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label htmlFor="lead-email">Email (optional)</Label>
+        <Label htmlFor="lead-email">Email</Label>
         <Input
           id="lead-email"
           name="email"
@@ -262,7 +423,7 @@ export function LeadForm({
           inputMode="email"
           autoCapitalize="none"
           autoComplete="off"
-          defaultValue={defaults?.email}
+          defaultValue={shown?.email}
           aria-invalid={errors.email ? true : undefined}
         />
         <FieldError id="lead-email-error" message={errors.email} />
@@ -272,7 +433,7 @@ export function LeadForm({
         name="source"
         legend="Where the lead came from"
         options={SOURCE_OPTIONS}
-        defaultValue={defaults?.source ?? "door"}
+        defaultValue={shown?.source ?? "door"}
         error={errors.source}
       />
 
@@ -285,10 +446,8 @@ export function LeadForm({
           ) : null}
           {mode === "create" ? (
             <div className="flex gap-2">
-              <Button asChild variant="outline" size="lg" className="w-12 shrink-0 px-0">
-                <Link href={cancelHref} aria-label="Cancel">
-                  <X aria-hidden="true" />
-                </Link>
+              <Button type="button" variant="outline" size="lg" className="w-12 shrink-0 px-0" aria-label="Cancel" onClick={leave}>
+                <X aria-hidden="true" />
               </Button>
               <Button
                 type="submit"
@@ -324,6 +483,25 @@ export function LeadForm({
           )}
         </div>
       </div>
+
+      <DialogPanel
+        open={discardOpen}
+        onClose={() => setDiscardOpen(false)}
+        title="Discard this lead?"
+        testId="discard-lead"
+        actions={
+          <>
+            <Button type="button" variant="outline" onClick={discard}>
+              Discard
+            </Button>
+            <Button type="button" onClick={() => setDiscardOpen(false)}>
+              Keep going
+            </Button>
+          </>
+        }
+      >
+        <p className="text-base text-pretty">What you&apos;ve entered isn&apos;t saved yet. Discarding clears it from this phone.</p>
+      </DialogPanel>
     </form>
   );
 }

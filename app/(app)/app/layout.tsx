@@ -2,9 +2,10 @@ import Link from "next/link";
 import { AdminGear } from "@/components/admin-gear";
 import { AppTabs } from "@/components/app-tabs";
 import { BookingSheetHost } from "@/components/booking/booking-sheet";
+import { BellLink } from "@/components/notifications/bell-link";
 import { Wordmark } from "@/components/brand/wordmark";
+import { SignOutButton } from "@/components/sign-out-button";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Button } from "@/components/ui/button";
 import { ViewAsBar } from "@/components/view-as-bar";
 import { getViewer } from "@/lib/auth/profile";
 import { showsAdminGear } from "@/lib/nav";
@@ -24,7 +25,7 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { profile, viewingAs, viewAsEnded } = await getViewer();
+  const { profile, real, viewingAs, viewAsEnded } = await getViewer();
   const showViewAsBar = viewingAs || viewAsEnded;
 
   return (
@@ -46,12 +47,9 @@ export default async function AppLayout({
             </Link>
             <div className="flex items-center gap-1">
               {showsAdminGear(profile.role) ? <AdminGear /> : null}
+              {profile.role === "sales" ? <BellLink /> : null}
               <ThemeToggle />
-              <form action={signOut}>
-                <Button type="submit" variant="ghost" size="sm" disabled={viewingAs}>
-                  Sign out
-                </Button>
-              </form>
+              <SignOutButton action={signOut} disabled={viewingAs} askKeenan={real.role !== "owner"} />
             </div>
           </div>
         </header>

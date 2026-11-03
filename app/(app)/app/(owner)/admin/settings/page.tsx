@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { requireProfile } from "@/lib/auth/profile";
 import { sortTrackColours } from "@/lib/leads/track-colour";
 import { parsePresentation } from "@/lib/presentation";
+import { devicesFor } from "@/lib/push/devices";
 import { pushKeys } from "@/lib/push/send";
 import { settingsRowToFormDefaults } from "@/lib/settings/schema";
 import { createClient } from "@/lib/supabase/server";
 import { ChangePasswordForm } from "./change-password-form";
-import { Notifications } from "./notifications";
+import { Notifications } from "@/components/notifications/notifications-card";
 import { PresentationImages, type PresentationImageItem } from "./presentation-images";
 import { SettingsForm } from "./settings-form";
 import { TrackColours } from "./track-colours";
@@ -16,16 +18,12 @@ export const metadata: Metadata = {
 
 export default async function SettingsPage() {
   const supabase = await createClient();
-  const [{ data: settings, error }, { data: colours }, { data: ral }, { data: deviceRows }] = await Promise.all([
+  const [{ data: settings, error }, { data: colours }, { data: ral }, devices] = await Promise.all([
     supabase.from("settings").select("*").eq("id", 1).single(),
     supabase.from("track_colours").select("id, name, ral_code, sort_order, active"),
     supabase.from("ral_classic_colours").select("code, name"),
-    // Your own devices only (Row Level Security), with notifications on.
-    supabase
-      .from("push_subscriptions")
-      .select("id, label, created_at, last_sent_at")
-      .is("removed_at", null)
-      .order("created_at"),
+    // Keenan's own devices, with notifications on.
+    devicesFor({ profile: await requireProfile(), viewingAs: false }),
   ]);
 
   if (error || !settings) {
@@ -70,15 +68,7 @@ export default async function SettingsPage() {
         gallery={(gallery?.image_paths ?? []).filter(Boolean).flatMap((path) => item(path) ?? [])}
       />
       <TrackColours colours={sortTrackColours(colours ?? [])} ralNames={ralNames} />
-      <Notifications
-        publicKey={pushKeys()?.publicKey ?? null}
-        devices={(deviceRows ?? []).map((row) => ({
-          id: row.id,
-          label: row.label,
-          createdAt: row.created_at,
-          lastSentAt: row.last_sent_at,
-        }))}
-      />
+      <Notifications publicKey={pushKeys()?.publicKey ?? null} devices={devices} />
       <ChangePasswordForm />
     </div>
   );

@@ -9,9 +9,9 @@ import { bookingSheet } from "@/lib/booking/sheet-store";
 // 2026-11-02): a lead's Book a meeting, New lead's Save and book (which lands
 // on the lead page with ?book=1), and a booking's Move.
 
-export function BookLeadButton({ leadId }: { leadId: string }) {
+export function BookLeadButton({ leadId, className = "w-fit" }: { leadId: string; className?: string }) {
   return (
-    <Button type="button" className="w-fit" onClick={() => bookingSheet.open({ kind: "lead", leadId })}>
+    <Button type="button" className={className} onClick={() => bookingSheet.open({ kind: "lead", leadId })}>
       Book a meeting
     </Button>
   );

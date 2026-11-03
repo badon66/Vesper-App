@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Check } from "lucide-react";
 import Link from "next/link";
 import { NotForYourRole } from "@/components/not-for-your-role";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +9,7 @@ import { formatMoney, payTotals } from "@/lib/pay/earnings";
 import { formatMeetingTime, MEETING_STATUS_LABELS } from "@/lib/schedule/meetings";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, requestTime } from "@/lib/time";
+import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "My pay",
@@ -52,22 +54,21 @@ export default async function MyPayPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-3" data-testid="pay-totals">
+      {/* Rows, not tiles: a figure in the thousands still fits a phone, and
+          each says what it counts (2026-11-03). Owed now leads. */}
+      <dl className="flex flex-col divide-y rounded-md border" data-testid="pay-totals">
         {[
-          ["Owed now", totals.owedNow],
-          ["Pending install", totals.pendingInstall],
-          ["Paid", totals.paid],
-        ].map(([label, amount]) => (
-          <div key={label as string} className="flex flex-col gap-1 rounded-md border p-3">
-            <span className="text-xs font-semibold text-muted-foreground">{label}</span>
-            <span className="text-xl font-bold tabular-nums">{formatMoney(amount as number)}</span>
+          { label: "Owed now", amount: totals.owedNow, note: "Fees for meetings Keenan marked Qualified, not paid yet.", lead: true },
+          { label: "Pending install", amount: totals.pendingInstall, note: "Commission on sales waiting for the install.", lead: false },
+          { label: "Paid, all time", amount: totals.paid, note: "Everything Keenan has marked paid since you started.", lead: false },
+        ].map((row) => (
+          <div key={row.label} className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 px-4 py-3">
+            <dt className={row.lead ? "text-base font-bold" : "text-sm font-semibold"}>{row.label}</dt>
+            <dd className={cn("text-right font-bold tabular-nums", row.lead ? "text-2xl" : "text-lg")}>{formatMoney(row.amount)}</dd>
+            <dd className="col-span-2 text-sm text-pretty text-muted-foreground">{row.note}</dd>
           </div>
         ))}
-      </div>
-      <p className="text-sm text-muted-foreground">
-        Owed now: fees for meetings Keenan marked Qualified, not paid yet. Pending install: commission
-        on sales waiting for the install. Paid: everything Keenan has marked paid.
-      </p>
+      </dl>
 
       <Card>
         <CardHeader>
@@ -80,7 +81,7 @@ export default async function MyPayPage() {
               No bookings yet. Book a meeting from Schedule or a lead, and it shows here with its outcome.
             </p>
           ) : (
-            <ul className="flex flex-col divide-y rounded-md border" aria-label="Bookings" data-testid="pay-lines">
+            <ul className="flex flex-col divide-y border-y" aria-label="Bookings" data-testid="pay-lines">
               {(meetings ?? []).map((meeting) => {
                 const lead = meeting.lead as unknown as { id: string; first_name: string; last_name: string | null; address_line: string } | null;
                 const fee = feeByMeeting.get(meeting.id);
@@ -93,15 +94,19 @@ export default async function MyPayPage() {
                     : meeting.status === "not_qualified" && meeting.outcome_reason
                       ? `Not qualified: ${meeting.outcome_reason}`
                       : MEETING_STATUS_LABELS[meeting.status];
+                // A booking still to come, or waiting for Keenan, can still earn.
+                const open = (meeting.status === "booked" || meeting.status === "confirmed") && !fee;
                 const feeText = !fee
-                  ? "No fee"
+                  ? open
+                    ? "Fee if Qualified"
+                    : "No fee"
                   : fee.status === "paid"
                     ? `${formatMoney(fee.amount)} paid${fee.paid_at ? ` ${formatDate(fee.paid_at)}` : ""}`
                     : fee.status === "void"
                       ? "Fee voided"
                       : `${formatMoney(fee.amount)} owed`;
                 return (
-                  <li key={meeting.id} className="flex flex-col gap-0.5 px-4 py-3 text-sm">
+                  <li key={meeting.id} className="flex flex-col gap-0.5 px-1 py-3 text-sm">
                     <span className="font-semibold">{formatMeetingTime(meeting.starts_at)}</span>
                     {lead ? (
                       <Link href={`/app/leads/${lead.id}`} className="inline-flex min-h-11 w-fit items-center underline underline-offset-4">
@@ -109,7 +114,10 @@ export default async function MyPayPage() {
                       </Link>
                     ) : null}
                     <span>{outcome}</span>
-                    <span className="font-semibold">{feeText}</span>
+                    <span className={open ? "text-muted-foreground" : "flex items-center gap-1.5 font-semibold"}>
+                      {fee && fee.status !== "void" ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
+                      {feeText}
+                    </span>
                   </li>
                 );
               })}
@@ -124,9 +132,9 @@ export default async function MyPayPage() {
             <CardTitle>Commission</CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="flex flex-col divide-y rounded-md border">
+            <ul className="flex flex-col divide-y border-y">
               {commissions.map((line) => (
-                <li key={line.id} className="flex justify-between px-4 py-3 text-sm">
+                <li key={line.id} className="flex justify-between px-1 py-3 text-sm">
                   <span>{formatDate(line.created_at)}</span>
                   <span className="font-semibold">
                     {formatMoney(line.amount)} {line.status === "paid" ? "paid" : line.payable_at ? "owed" : "pending install"}

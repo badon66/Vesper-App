@@ -4,7 +4,7 @@ One milestone per build session. A milestone is done when every criterion passes
 
 **Focus (Keenan, 2026-11-02).** The app's fundamentals are three things: the setter sessions (knocking, leads and booking), the sales meetings (meeting mode on the iPad), and the shareable quote links for customers. Everything else is parked until Keenan says otherwise: M4 (pipeline board), M6 (sales dashboard), M7 (website lead form and daily email) and the backlog ideas. Parked milestones are not started or planned.
 
-**Current milestone: M5 take 2 and the quote link's take 2, together, after Keenan's first meetings and the first links go out.** The customer quote link's take 1 was released on 2026-11-03 (branch `quote-link-take-1`, after Keenan reviewed the preview on Todd Dean's quote and said "push the changes"). M5 take 1 was released on 2026-11-02 (merge `b075554`), and the Meetings page the same day (merge `13b737d`).
+**Current milestone: M5 take 2 and the quote link's take 2, together, after Keenan's first meetings and the first links go out.** The setter side was released on 2026-11-03 (branch `setter-side`, merged on green as Keenan approved): the polished setter screens, the first sign-in welcome and notices for setters. The customer quote link's take 1 was released the same day (merge `947a3fd`); M5 take 1 on 2026-11-02 (merge `b075554`), and the Meetings page the same day (merge `13b737d`).
 
 ## M5: Meeting mode (iPad), in two takes
 Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a preview link by 9 am Calgary that day. Keenan approved take 1's direction, pricing and schema up front; the short plan is in `decisions.md`. Meeting mode is customer-facing the whole time: full screen, no tabs, and nothing internal on screen, ever: no costs, margins, setter names, pipeline or other customers.
@@ -38,6 +38,17 @@ Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a previe
 - [ ] Mark presented, accepted or declined; each writes a lead event and moves the lead to `quoted` or `sold`; accepting creates one pending `commission` earning for the lead's assigned setter (none when assigned to the owner) at the commission rate on the total as actually priced before GST; `installed` makes it payable; `lost` voids it; unit tests cover the amount and rounding
 - [ ] A quote can't be marked ready until the lead's track colour is set; the quote stores the colour name and RAL code it used and prints them, and a Custom colour shows as needing powder coating
 - [ ] A deeper impeccable pass with before and after scores, and whatever the first meetings show needs changing
+
+## Setter side (Keenan, 2026-11-03; merge on green, approved)
+It changes no pay or booking rules.
+- [x] An impeccable critique as a setter at phone size of Home, Leads, the lead page, New lead and My pay; what it finds fixed with adapt, clarify and polish; before and after scores in the report
+- [x] The first time a setter signs in, a short welcome in three steps, each skippable and never shown again once done: add Vesper to the home screen (with the iPhone steps), allow location (for "Use where I'm standing"), turn on notifications; then a one-screen tour of the door flow: the knock session, picking a time, the booking sheet
+- [x] Keenan can reset the welcome for a setter from People
+- [x] Setters get a push when Keenan marks one of their bookings Qualified ("Your booking on [street] was qualified. $20 added to My pay."), and a short note with the reason when he marks it Not qualified, No-show or Cancelled, or moves or cancels it
+- [x] A notice never carries another setter's details, a customer's name, a house number or a phone number, since it shows on a lock screen
+- [x] Setters turn their notifications on or off from a Notifications card they can reach, without Keenan's Settings
+- [x] Everything new works in View as; plain copy, no em dashes
+- [x] The full suite passes, the branch merges on green, and production is verified
 
 ## Customer quote link
 After a meeting, Keenan sends the homeowner a private link to their quote: a public page with no login, opened by an unguessable token, reading the same lead, runs, prices and mockup as meeting mode. One source of truth.

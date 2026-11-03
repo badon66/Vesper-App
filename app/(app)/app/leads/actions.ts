@@ -107,7 +107,10 @@ export async function createLead(
   if (formData.get("intent") === "book") {
     redirect(`/app/leads/${lead.id}?book=1${photosFailed ? "&photos=failed" : ""}`);
   }
-  redirect(photosFailed ? `/app/leads/${lead.id}?photos=failed` : `/app/leads?added=${lead.id}`);
+  if (photosFailed) redirect(`/app/leads/${lead.id}?photos=failed`);
+  // While a setter is knocking, the next thing is the next door: back to
+  // Home and its counters (2026-11-03). Otherwise to Leads.
+  redirect(session && me.role === "sales" ? `/app?added=${lead.id}` : `/app/leads?added=${lead.id}`);
 }
 
 export async function updateLead(

@@ -82,3 +82,35 @@ export const PROBLEM_LABELS: Record<string, string> = {
   map_position: "A map position",
   everyone_deciding_present: "Confirm everyone who decides will be at the meeting",
 };
+
+// The same list on a lead's own page (2026-11-03): an item that isn't met
+// says what the lead says now and what booking needs, never the needed
+// answer as if it were given.
+export const READINESS_NAMES: Record<ReadinessKey, string> = {
+  phone: "Phone number",
+  owns_home: "Owns the home",
+  wants_price: "Wants a price",
+  soffit_colour: "Soffit colour",
+  photos: "Front, Left corner and Right corner photos",
+  map_position: "Map position",
+  everyone_deciding_present: "Everyone who decides",
+};
+
+export function readinessNow(item: ReadinessItem, lead: ReadinessLead, guidedPhotos: number): string {
+  switch (item.key) {
+    case "phone":
+      return "No phone number yet.";
+    case "owns_home":
+      return lead.owns_home === false ? "They said they don't own it. Booking needs Yes." : "Not asked yet. Booking needs Yes.";
+    case "wants_price":
+      return lead.wants_price === false ? "They said not yet. Booking needs Yes." : "Not asked yet. Booking needs Yes.";
+    case "soffit_colour":
+      return "Not answered yet. Not sure is fine.";
+    case "photos":
+      return `${Math.min(guidedPhotos, 3)} of 3 taken. Or say why when you book.`;
+    case "map_position":
+      return "None yet. Pick the address from the suggestions, or use where you're standing at the door.";
+    default:
+      return item.fix;
+  }
+}

@@ -4,9 +4,11 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   resetPassword,
+  resetWelcome,
   setPersonActive,
   startViewAs,
   type ResetPasswordState,
+  type ResetWelcomeState,
   type SetActiveState,
   type ViewAsState,
 } from "./actions";
@@ -15,19 +17,24 @@ import { PasswordBox } from "./password-box";
 const noActive: SetActiveState = {};
 const noReset: ResetPasswordState = {};
 const noViewAs: ViewAsState = {};
+const noWelcome: ResetWelcomeState = {};
 
 export function PersonActions({
   id,
   name,
   active,
+  welcomeDone = false,
 }: {
   id: string;
   name: string;
   active: boolean;
+  // A setter who has finished the first sign-in welcome can be shown it again.
+  welcomeDone?: boolean;
 }) {
   const [activeState, activeAction, activePending] = useActionState(setPersonActive, noActive);
   const [resetState, resetAction, resetPending] = useActionState(resetPassword, noReset);
   const [viewAsState, viewAsAction, viewAsPending] = useActionState(startViewAs, noViewAs);
+  const [welcomeState, welcomeAction, welcomePending] = useActionState(resetWelcome, noWelcome);
   const [confirmingReset, setConfirmingReset] = useState(false);
 
   return (
@@ -74,6 +81,14 @@ export function PersonActions({
             {resetPending ? "Resetting" : "Reset password"}
           </Button>
         )}
+        {active && welcomeDone ? (
+          <form action={welcomeAction}>
+            <input type="hidden" name="id" value={id} />
+            <Button type="submit" variant="outline" size="sm" disabled={welcomePending} data-testid="reset-welcome">
+              {welcomePending ? "Resetting" : "Reset welcome"}
+            </Button>
+          </form>
+        ) : null}
         <form action={activeAction}>
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="active" value={active ? "false" : "true"} />
@@ -95,6 +110,16 @@ export function PersonActions({
       {activeState.error ? (
         <p role="alert" className="text-xs font-medium text-destructive">
           {activeState.error}
+        </p>
+      ) : null}
+      {welcomeState.error ? (
+        <p role="alert" className="text-xs font-medium text-destructive">
+          {welcomeState.error}
+        </p>
+      ) : null}
+      {welcomeState.done?.id === id ? (
+        <p role="status" className="text-xs font-medium">
+          {welcomeState.done.fullName} sees the welcome the next time they open Home.
         </p>
       ) : null}
       {resetState.error ? (

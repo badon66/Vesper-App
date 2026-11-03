@@ -22,6 +22,7 @@ import {
 } from "@/lib/meeting/state";
 import type { PresentationKind } from "@/lib/presentation";
 import { formatMoney } from "@/lib/pricing";
+import { sentence } from "@/lib/schedule/meetings";
 import { calgaryDateOf, formatDateTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -554,7 +555,7 @@ function ColourScreen({
       <div className="flex max-w-xl flex-col gap-3">
         {confirmedTonight && confirmation ? (
           <p className="text-lg font-semibold" data-testid="colour-confirmed">
-            Confirmed with initials {confirmation.initials}, {formatDateTime(confirmation.at)}.
+            {sentence(`Confirmed with initials ${confirmation.initials}, ${formatDateTime(confirmation.at)}`)}
           </p>
         ) : (
           <>
@@ -563,7 +564,7 @@ function ColourScreen({
             </p>
             {confirmation ? (
               <p className="text-sm text-muted-foreground">
-                Last confirmed with initials {confirmation.initials}, {formatDateTime(confirmation.at)}.
+                {sentence(`Last confirmed with initials ${confirmation.initials}, ${formatDateTime(confirmation.at)}`)}
               </p>
             ) : null}
             <div className="flex items-end gap-3">

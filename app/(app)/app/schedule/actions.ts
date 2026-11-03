@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { z } from "zod";
 import {
   NotAllowedError,
@@ -11,6 +12,7 @@ import {
   requireSalesSideForAction,
   type SessionProfile,
 } from "@/lib/auth/profile";
+import { notifyCancelled, notifyMoved, notifyOutcome } from "@/lib/push/setter-notices";
 import { bookingMessage, errorCode } from "@/lib/schedule/messages";
 import { OUTCOMES } from "@/lib/schedule/meetings";
 import { createClient } from "@/lib/supabase/server";
@@ -166,6 +168,8 @@ export async function moveBooking(meetingId: string, startsAt: string): Promise<
   const { error } = await supabase.rpc("move_meeting", { p_meeting_id: meeting.data, p_new_starts_at: at.data });
   if (error) return failed(error);
   refreshSchedule(before?.lead_id);
+  // Keenan moving a setter's booking tells that setter, after the answer.
+  if (me.role === "owner") after(() => notifyMoved(supabase, meeting.data, me.id, at.data).catch(() => undefined));
   return { ok: true };
 }
 
@@ -182,6 +186,7 @@ export async function cancelBooking(meetingId: string, note: string): Promise<Ac
   });
   if (error) return failed(error);
   refreshSchedule(before?.lead_id);
+  if (me.role === "owner") after(() => notifyCancelled(supabase, meeting.data, me.id).catch(() => undefined));
   return { ok: true };
 }
 
@@ -222,6 +227,14 @@ export async function setOutcome(_previous: ActionResult | null, formData: FormD
   if (error) return failed(error);
   refreshSchedule(before?.lead_id);
   revalidatePath("/app/admin/pay");
+  // The setter hears about it on their phone: the reason only when it came
+  // from the list, never a note typed by hand (CLAUDE.md).
+  after(() =>
+    notifyOutcome(supabase, meeting_id, me.id, outcome, {
+      text: outcome === "not_qualified" ? finalReason : null,
+      listed: outcome === "not_qualified" && reason !== "Other",
+    }).catch(() => undefined),
+  );
   return { ok: true };
 }
 

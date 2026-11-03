@@ -9,14 +9,9 @@ import { readSubscription, unseal } from "@/lib/push/seal";
 // arrive sealed (from the database or the member's own rows) and are
 // opened here, the only place that holds the key.
 
-export type PushNotice = {
-  title: string;
-  body: string;
-  // Where a tap on the notification opens, inside the app.
-  url: string;
-  // Notices with the same tag replace each other on the device.
-  tag?: string;
-};
+import type { PushNotice } from "@/lib/push/send-types";
+
+export type { PushNotice };
 
 export type PushTarget = { id: string; sealed: string };
 

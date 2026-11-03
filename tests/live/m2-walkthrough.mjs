@@ -137,6 +137,8 @@ try {
     });
     if (error) throw new Error(`createUser ${key}: ${error.message}`);
     person.id = data.user.id;
+    // The first sign-in welcome has its own walk-through; this one starts after it.
+    await admin.from("profiles").update({ welcome_done_at: new Date().toISOString() }).eq("id", person.id);
   }
   const bClient = createClient(url, anonKey, noSession);
   await bClient.auth.signInWithPassword({ email: people.b.email, password: people.b.password });
@@ -263,12 +265,14 @@ try {
   check("Save sits in the lower half of the screen, within thumb reach", saveBox !== null && saveBox.y > viewport.height / 2 && saveBox.y + saveBox.height <= viewport.height, saveBox ? `${Math.round(saveBox.y)} of ${viewport.height}` : "missing");
   await page.screenshot({ path: `${out}/m2-new-lead.png`, fullPage: false });
   await save.click();
-  await page.waitForURL("**/app/leads?added=*", { timeout: 30000 });
+  await page.waitForURL("**/app?added=*", { timeout: 30000 });
   await settle(page);
   const seconds = (Date.now() - started) / 1000;
-  check("save returns to Leads", true, `${seconds.toFixed(1)} s for the scripted flow`);
+  check("while knocking, save returns Home to the counters", true, `${seconds.toFixed(1)} s for the scripted flow`);
   check("the scripted new-lead flow takes well under 30 seconds", seconds < 30, `${seconds.toFixed(1)} s`);
-  await page.getByText("Lead saved.").waitFor({ timeout: 10000 });
+  await page.getByTestId("lead-saved").waitFor({ timeout: 10000 });
+  const doorsBox = await page.getByRole("button", { name: /^Add one to doors/ }).first().boundingBox().catch(() => null);
+  check("Home names the saved lead and shows the counters without scrolling", doorsBox !== null && doorsBox.y + doorsBox.height <= viewport.height, doorsBox ? `${Math.round(doorsBox.y)}` : "missing");
 
   const { data: typedLead } = await admin
     .from("leads")
@@ -311,6 +315,10 @@ try {
   }
 
   // 4. Leads: grouping, search, Everyone.
+  await page.getByRole("navigation", { name: "Tabs" }).filter({ visible: true }).getByRole("link", { name: "Leads", exact: true }).click();
+  await page.waitForURL((u) => new URL(u).pathname === "/app/leads", { timeout: 20000 });
+  await settle(page);
+  check("the saved lead is on Leads too", (await page.getByText(TYPED_ADDRESS).count()) >= 1);
   await checkTapTargets(page, "Leads");
   await page.screenshot({ path: `${out}/m2-leads.png`, fullPage: true });
   await page.fill('input[name="q"]', "TEST LEAD");
@@ -373,16 +381,15 @@ try {
   await page.getByRole("button", { name: "Save status" }).click();
   await page.getByText("Moved from New to Follow up.").waitFor({ timeout: 20000 });
   const followEntry = page.locator("li", { hasText: "Moved from New to Follow up." });
-  check("a status change shows in the timeline with who and when", (await followEntry.innerText()).includes("Live Test A,"), (await followEntry.innerText()).replace(/\n/g, " | "));
+  check("a status change shows in the timeline with who and when, your own as You", (await followEntry.innerText()).includes("You,"), (await followEntry.innerText()).replace(/\n/g, " | "));
   await page.fill("#lead-note", "TEST note (automated). Come back Thursday.");
   await page.getByRole("button", { name: "Add note" }).click();
   await page.getByText("TEST note (automated). Come back Thursday.").waitFor({ timeout: 20000 });
   check("a note shows in the timeline", true);
   const statusAgain = page.locator("fieldset").filter({ has: page.locator("legend", { hasText: /^Status$/ }) });
   await statusAgain.getByText("Lost", { exact: true }).click();
-  await page.getByRole("button", { name: "Save status" }).click();
-  await page.getByText("Pick a reason for Lost.").waitFor({ timeout: 20000 });
-  check("Lost asks for a reason", true);
+  const waiting = page.getByRole("button", { name: "Pick why it was lost" });
+  check("Lost asks for a reason before it can be saved", (await waiting.count()) === 1 && (await waiting.isDisabled()));
   await page.locator("fieldset", { hasText: "Why was it lost?" }).getByText("Price", { exact: true }).click();
   await page.getByRole("button", { name: "Save status" }).click();
   await page.getByText("Moved from Follow up to Lost. Reason: price.").waitFor({ timeout: 20000 });
@@ -462,7 +469,7 @@ try {
     note(`Google gave "${picked.neighbourhood}" as the neighbourhood for "${suggestion}"${picked.neighbourhood === TEST_PLACE ? ", which is the knock session fallback" : ""}.`);
     await page.fill("#lead-first_name", TEST_LEAD);
     await page.getByRole("button", { name: "Save lead" }).click();
-    await page.waitForURL("**/app/leads?added=*", { timeout: 30000 });
+    await page.waitForURL("**/app?added=*", { timeout: 30000 });
     await settle(page);
     const { data: googleLead } = await admin
       .from("leads")
@@ -483,7 +490,8 @@ try {
     check("picking an address that already has a lead shows who has it", (await warning.innerText()).includes(TEST_LEAD) && (await warning.innerText()).includes("added by Live Test A"), (await warning.innerText()).replace(/\n/g, " | "));
     check("the warning links to that lead", (await warning.getByRole("link").getAttribute("href")) === `/app/leads/${googleLead?.id}`);
     await page.screenshot({ path: `${out}/m2-duplicate-warning.png`, fullPage: false });
-    await page.getByRole("link", { name: "Cancel" }).click();
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await page.getByTestId("discard-lead").getByRole("button", { name: "Discard" }).click();
     await page.waitForURL("**/app/leads", { timeout: 20000 });
     await settle(page);
 

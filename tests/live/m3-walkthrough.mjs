@@ -235,6 +235,8 @@ try {
     });
     if (error) throw new Error(`createUser ${key}: ${error.message}`);
     person.id = data.user.id;
+    // The first sign-in welcome has its own walk-through; this one starts after it.
+    await admin.from("profiles").update({ welcome_done_at: new Date().toISOString() }).eq("id", person.id);
     person.client = createClient(url, anonKey, noSession);
     const signedIn = await person.client.auth.signInWithPassword({ email: person.email, password: person.password });
     if (signedIn.error) throw new Error(`sign in ${key}: ${signedIn.error.message}`);
@@ -272,8 +274,8 @@ try {
   const bookingsY = await pageA.getByTestId("my-bookings").boundingBox();
   const dueY = await pageA.getByRole("heading", { name: "Follow-ups due" }).boundingBox().catch(() => null);
   check(
-    "Home runs top to bottom: tonight's open times, my bookings, the knock session, follow-ups due",
-    JSON.stringify(homeOrder) === JSON.stringify(["tonight-times", "my-bookings"]) && timesY && bookingsY && knockY && dueY && timesY.y < bookingsY.y && bookingsY.y < knockY.y && knockY.y < dueY.y,
+    "Home runs top to bottom: the knock session, tonight's open times, my bookings, follow-ups due",
+    JSON.stringify(homeOrder) === JSON.stringify(["tonight-times", "my-bookings"]) && timesY && bookingsY && knockY && dueY && knockY.y < timesY.y && timesY.y < bookingsY.y && bookingsY.y < dueY.y,
   );
   const tonight = (byDay.get(today) ?? []).filter((row) => row.state === "open");
   const homeDay = (await pageA.getByTestId("picker-day").first().innerText()).trim();
@@ -672,9 +674,9 @@ try {
   await pageA.waitForURL("**/app/pay", { timeout: 20000 });
   await settle(pageA);
   const totals = (await pageA.getByTestId("pay-totals").innerText()).replace(/\s+/g, " ");
-  check("My pay shows owed now, pending install and paid", totals.includes(`Owed now $${fee}`) && totals.includes("Pending install $0.00") && totals.includes("Paid $0.00"), totals);
+  check("My pay shows owed now, pending install and paid", totals.includes(`Owed now $${fee}`) && totals.includes("Pending install $0.00") && totals.includes("Paid, all time $0.00"), totals);
   const lines = (await pageA.getByTestId("pay-lines").innerText()).replace(/\s+/g, " ");
-  check("each booking shows how it went and its fee", lines.includes(`Qualified $${fee} owed`) && lines.includes("Cancelled No fee") && lines.includes("Upcoming No fee"), lines.slice(0, 200));
+  check("each booking shows how it went and its fee", lines.includes(`Qualified $${fee} owed`) && lines.includes("Cancelled No fee") && lines.includes("Upcoming Fee if Qualified"), lines.slice(0, 200));
   check("My pay never shows anyone else's bookings", !lines.includes("9 Far Test Way"));
   await checkTapTargets(pageA, "My pay");
   await pageA.screenshot({ path: `${out}/m3-my-pay.png`, fullPage: true });

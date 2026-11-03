@@ -114,6 +114,8 @@ try {
   });
   if (createError) throw new Error(`createUser: ${createError.message}`);
   setter.id = created.user.id;
+  // The first sign-in welcome has its own walk-through; this one starts after it.
+  await admin.from("profiles").update({ welcome_done_at: new Date().toISOString() }).eq("id", setter.id);
   const { data: ownerRow } = await admin.from("profiles").select("id").eq("role", "owner").single();
   const ownerId = ownerRow.id;
   const { data: colour } = await admin.from("track_colours").select("id, name").eq("active", true).order("sort_order").limit(1).single();

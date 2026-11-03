@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Form from "next/form";
 import Link from "next/link";
+import { ClearLeadDraft } from "@/components/leads/clear-lead-draft";
 import { StatusBadge } from "@/components/leads/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { requireProfile } from "@/lib/auth/profile";
 import { ACTIVE_STATUSES, followUpLabel, groupByAttention } from "@/lib/leads/attention";
-import { formatMeetingTime } from "@/lib/schedule/meetings";
+import { formatMeetingTime, sentence } from "@/lib/schedule/meetings";
 import { namesById } from "@/lib/leads/queries";
 import { cleanSearch, searchFilter } from "@/lib/leads/search";
 import { groupByStatus, leadName, STATUS_LABELS, type LeadStatus } from "@/lib/leads/status";
@@ -76,7 +77,7 @@ export default async function LeadsPage({
     query = query.order("created_at", { ascending: false }).limit(LIMIT);
   }
   const addedQuery = added
-    ? supabase.from("leads").select("id, first_name, last_name").eq("id", added).maybeSingle()
+    ? supabase.from("leads").select("id, first_name, last_name, created_by").eq("id", added).maybeSingle()
     : null;
   const [{ data, error }, addedResult] = await Promise.all([query, addedQuery]);
   if (error) throw new Error("Leads could not be loaded.");
@@ -94,11 +95,11 @@ export default async function LeadsPage({
     : groupByStatus(leads).map((group) => ({ key: group.status, title: STATUS_LABELS[group.status], leads: group.leads }));
   const addedLead = addedResult?.data ?? undefined;
 
-  const link = (next: { scope?: "mine" | "everyone"; view?: "active" | "all" }) => {
+  const link = (next: { scope?: "mine" | "everyone"; view?: "active" | "all"; keepSearch?: boolean }) => {
     const target = new URLSearchParams();
     target.set("scope", next.scope ?? (everyone ? "everyone" : "mine"));
     target.set("view", next.view ?? (all ? "all" : "active"));
-    if (q) target.set("q", q);
+    if (q && next.keepSearch !== false) target.set("q", q);
     return `/app/leads?${target.toString()}`;
   };
 
@@ -106,6 +107,7 @@ export default async function LeadsPage({
     <div className="flex flex-col gap-5">
       <h1 className="text-2xl font-bold">Leads</h1>
 
+      {addedLead && addedLead.created_by === me.id ? <ClearLeadDraft userId={me.id} /> : null}
       {addedLead ? (
         <div
           role="status"
@@ -122,13 +124,25 @@ export default async function LeadsPage({
       ) : null}
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <Switch
-          label="Which leads"
-          options={[
-            { label: "Active", href: link({ view: "active" }), current: !all },
-            { label: "All", href: link({ view: "all" }), current: all },
-          ]}
-        />
+        {/* A search covers every status, so while searching, Active and All
+            give way to the way back (2026-11-03). */}
+        {searching ? (
+          <Link
+            href={link({ keepSearch: false })}
+            className="flex h-[3.375rem] items-center justify-center rounded-md border text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-testid="clear-search"
+          >
+            Clear search: every status shown
+          </Link>
+        ) : (
+          <Switch
+            label="Which leads"
+            options={[
+              { label: "Active", href: link({ view: "active" }), current: !all },
+              { label: "All", href: link({ view: "all" }), current: all },
+            ]}
+          />
+        )}
         <Switch
           label="Whose leads"
           options={[
@@ -155,14 +169,14 @@ export default async function LeadsPage({
         </Button>
       </Form>
 
-      <p className="text-sm text-muted-foreground">
-        {searching
-          ? "Search covers every status, lost and closed leads included."
-          : all
-            ? "Every lead, grouped by status, newest first."
-            : "New, Follow up and Meeting booked, what needs attention first."}
-        {everyone ? " Everyone's leads, so you can check an address before knocking. You can open them but only change your own." : ""}
-      </p>
+      {/* One short line only when it tells something the switches don't. */}
+      {searching || everyone ? (
+        <p className="text-sm text-pretty text-muted-foreground">
+          {searching ? "Search covers every status, lost and closed leads included." : ""}
+          {searching && everyone ? " " : ""}
+          {everyone ? "Everyone's leads, to check an address before knocking. You can change only your own." : ""}
+        </p>
+      ) : null}
 
       {sections.length === 0 ? (
         <p className="rounded-md border px-4 py-6 text-sm text-muted-foreground">
@@ -175,6 +189,14 @@ export default async function LeadsPage({
               : everyone
                 ? "No one has added a lead yet."
                 : "No leads yet. Tap New lead to add the first one from the door."}
+          {searching && !everyone ? (
+            <>
+              {" "}
+              <Link href={link({ scope: "everyone" })} className="inline-flex min-h-11 items-center font-semibold text-foreground underline underline-offset-4">
+                Search everyone&apos;s leads
+              </Link>
+            </>
+          ) : null}
         </p>
       ) : (
         sections.map((section) => (
@@ -185,11 +207,12 @@ export default async function LeadsPage({
             <ul className="flex flex-col divide-y rounded-md border">
               {section.leads.map((lead) => {
                 const mine = lead.created_by === me.id || lead.assigned_to === me.id;
+                const overdue = lead.status === "follow_up" && lead.follow_up_on !== null && lead.follow_up_on < today;
                 const followUp =
                   lead.status === "follow_up" && lead.follow_up_on
                     ? `${followUpLabel(lead.follow_up_on, today)}. `
                     : meetingAt.has(lead.id)
-                      ? `Meeting ${formatMeetingTime(meetingAt.get(lead.id) as string)}. `
+                      ? `${sentence(`Meeting ${formatMeetingTime(meetingAt.get(lead.id) as string)}`)} `
                       : "";
                 return (
                   <li key={lead.id}>
@@ -205,8 +228,8 @@ export default async function LeadsPage({
                         {lead.address_line}
                         {lead.neighbourhood ? `, ${lead.neighbourhood}` : ""}
                       </span>
-                      <span className="text-xs text-muted-foreground">
-                        {followUp}
+                      <span className="text-sm text-muted-foreground">
+                        {overdue ? <span className="font-bold text-foreground">{followUp}</span> : followUp}
                         Added {formatDate(lead.created_at)}
                         {everyone && !mine ? ` by ${names.get(lead.created_by) ?? "someone"}, read only` : ""}
                       </span>
