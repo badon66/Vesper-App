@@ -806,6 +806,7 @@ export type Database = {
           phone: string | null
           role: Database["public"]["Enums"]["user_role"]
           updated_at: string
+          welcome_done_at: string | null
         }
         Insert: {
           active?: boolean
@@ -817,6 +818,7 @@ export type Database = {
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           updated_at?: string
+          welcome_done_at?: string | null
         }
         Update: {
           active?: boolean
@@ -828,6 +830,7 @@ export type Database = {
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           updated_at?: string
+          welcome_done_at?: string | null
         }
         Relationships: []
       }
@@ -1683,6 +1686,7 @@ export type Database = {
       }
       default_meeting_host: { Args: never; Returns: string }
       end_user_sessions: { Args: { target_user: string }; Returns: number }
+      finish_welcome: { Args: never; Returns: string }
       hold_grace: { Args: never; Returns: string }
       hold_slot: {
         Args: {
@@ -1711,6 +1715,22 @@ export type Database = {
       move_meeting: {
         Args: { p_meeting_id: string; p_new_starts_at: string }
         Returns: string
+      }
+      push_devices_for_member: {
+        Args: { p_profile_id: string }
+        Returns: {
+          created_at: string
+          id: string
+          label: string
+          last_sent_at: string
+        }[]
+      }
+      push_targets_for_member: {
+        Args: { p_profile_id: string }
+        Returns: {
+          id: string
+          sealed: string
+        }[]
       }
       quote_for_customer: { Args: { p_token: string }; Returns: Json }
       quote_link_book: {
@@ -1810,6 +1830,7 @@ export type Database = {
       }
       remove_time_block: { Args: { p_block_id: string }; Returns: undefined }
       renew_hold: { Args: never; Returns: Json }
+      reset_welcome: { Args: { p_profile_id: string }; Returns: boolean }
       resolve_meeting_host: { Args: { p_host: string }; Returns: string }
       revoke_quote_link: { Args: { p_lead_id: string }; Returns: boolean }
       schedule_board: {
