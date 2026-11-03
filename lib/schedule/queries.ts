@@ -10,7 +10,8 @@ type Client = Awaited<ReturnType<typeof createClient>>;
 export type BookingSettings = {
   windowDays: number;
   cutoffMinutes: number;
-  graceMinutes: number;
+  // Round 2: how long a hold lasts, and what Add 5 minutes adds.
+  holdMinutes: number;
   slotMinutes: number;
   distanceKm: number;
 };
@@ -19,12 +20,12 @@ export type BookingSettings = {
 export async function bookingSettings(supabase: Client): Promise<BookingSettings> {
   const { data } = await supabase
     .from("settings_public")
-    .select("booking_window_days, booking_cutoff_minutes, hold_grace_minutes, meeting_slot_minutes, distance_warning_km")
+    .select("booking_window_days, booking_cutoff_minutes, hold_minutes, meeting_slot_minutes, distance_warning_km")
     .maybeSingle();
   return {
     windowDays: data?.booking_window_days ?? 14,
     cutoffMinutes: data?.booking_cutoff_minutes ?? 30,
-    graceMinutes: data?.hold_grace_minutes ?? 2,
+    holdMinutes: data?.hold_minutes ?? 5,
     slotMinutes: data?.meeting_slot_minutes ?? 45,
     distanceKm: Number(data?.distance_warning_km ?? 10),
   };
@@ -49,9 +50,10 @@ export async function fetchBoard(
 
 export type ActiveHold = { startsAt: string; leadId: string | null; meetingId: string | null };
 
-// The hold a person has right now, if it has not lapsed.
-export async function activeHoldOf(supabase: Client, personId: string, graceMinutes: number): Promise<ActiveHold | null> {
-  const since = new Date(Date.now() - graceMinutes * 60_000).toISOString();
+// The hold a person has right now, if its timer hasn't run out: it lasts
+// holdMinutes from renewed_at (round 2).
+export async function activeHoldOf(supabase: Client, personId: string, holdMinutes: number): Promise<ActiveHold | null> {
+  const since = new Date(Date.now() - holdMinutes * 60_000).toISOString();
   const { data } = await supabase
     .from("slot_holds")
     .select("starts_at, lead_id, meeting_id")
@@ -64,8 +66,10 @@ export async function activeHoldOf(supabase: Client, personId: string, graceMinu
 
 const MEETING_COLUMNS =
   "id, lead_id, host_id, setter_id, booked_by, starts_at, ends_at, status, photos_skipped, photos_skip_note, outcome_reason, outcome_note, outcome_at, outcome_by, rebooked_as, created_at";
+// The counted questions come along so each card can say how complete the
+// lead is ("6 of 8 collected", round 2).
 const LEAD_COLUMNS =
-  "id, first_name, last_name, address_line, city, neighbourhood, phone, lat, lng, notes, position_source, position_accuracy_m, status, created_by, assigned_to";
+  "id, first_name, last_name, address_line, city, neighbourhood, phone, lat, lng, notes, position_source, position_accuracy_m, status, created_by, assigned_to, owns_home, wants_price, both_decision_makers, christmas_lights_now, looked_into_before, areas_wanted, install_timing, not_collected";
 
 export type MeetingRow = Pick<
   Database["public"]["Tables"]["meetings"]["Row"],
@@ -103,6 +107,14 @@ export type MeetingLead = Pick<
   | "status"
   | "created_by"
   | "assigned_to"
+  | "owns_home"
+  | "wants_price"
+  | "both_decision_makers"
+  | "christmas_lights_now"
+  | "looked_into_before"
+  | "areas_wanted"
+  | "install_timing"
+  | "not_collected"
 >;
 export type MeetingWithLead = MeetingRow & { lead: MeetingLead };
 

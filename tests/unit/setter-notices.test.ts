@@ -215,4 +215,18 @@ describe("Before you book on a lead", async () => {
     expect(READINESS_NAMES.wants_price).toBe("Wants a price");
     expect(Object.values(READINESS_NAMES).join(" ")).not.toMatch(/: Yes/);
   });
+
+  it("says Not collected plainly, and what booking needs instead (round 2)", () => {
+    const marked = { ...lead, owns_home: null, not_collected: ["phone", "owns_home", "both_decision_makers"] };
+    const markedItems = leadReadiness(marked, 3);
+    const said = (key: string) => readinessNow(markedItems.find((item) => item.key === key)!, marked, 3);
+    expect(said("phone")).toBe("Not collected. Booking needs a number.");
+    expect(said("owns_home")).toBe("Not collected. Booking needs Yes.");
+    expect(said("everyone_deciding_present")).toBe("Not collected. Booking needs Yes.");
+    expect(said("wants_price")).toBe("Not asked yet. Booking needs Yes.");
+    const no = { ...lead, both_decision_makers: false };
+    expect(readinessNow(leadReadiness(no, 3).find((item) => item.key === "everyone_deciding_present")!, no, 3)).toBe(
+      "They said no. Booking needs everyone who decides there.",
+    );
+  });
 });

@@ -61,6 +61,9 @@ describe("a new lead's draft", () => {
         place_id: "abc",
         position_source: "picked",
         owns_home: "yes",
+        install_timing: "not_collected",
+        both_decision_makers: "no",
+        phone_not_collected: "1",
         house_type: "bungalow",
         source: "nonsense",
       },
@@ -76,8 +79,12 @@ describe("a new lead's draft", () => {
       positionSource: "picked",
       accuracy: null,
     });
-    expect(defaults.find_out.owns_home).toBe("yes");
-    expect(defaults.find_out.wants_price).toBeNull();
+    expect(defaults.questions.owns_home).toBe("yes");
+    expect(defaults.questions.wants_price).toBeNull();
+    // Not collected and the everyone-who-decides answer come back as they were (round 2).
+    expect(defaults.questions.install_timing).toBe("not_collected");
+    expect(defaults.questions.both_decision_makers).toBe("no");
+    expect(defaults.phone_not_collected).toBe(true);
     expect(defaults.house_type).toBe("bungalow");
     expect(defaults.source).toBe("door");
   });

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MeetingItem, type MeetingItemData } from "@/components/meetings/meeting-item";
+import { completenessLabel } from "@/lib/leads/questions";
 import { StartMeeting } from "@/components/meetings/start-meeting";
 import { TonightList } from "@/components/meetings/tonight-list";
 import { NotForYourRole } from "@/components/not-for-your-role";
@@ -73,6 +74,7 @@ export default async function MeetingsPage() {
     outcome: MARKED.has(meeting.status) ? `Marked ${MEETING_STATUS_LABELS[meeting.status]}` : null,
     missingMockup: !hasMockup.has(meeting.lead_id),
     missingColour: !hasColour.has(meeting.lead_id),
+    completeness: completenessLabel(meeting.lead),
     next: meeting.id === nextTonight,
     changedAt: new Date(changedAt.get(meeting.lead_id) ?? settingsChanged).toISOString(),
   });

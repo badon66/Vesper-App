@@ -9,8 +9,7 @@ import {
   ReadOnlyError,
   requireOwnerForAction,
   requireSalesSideForAction,
-  type SessionProfile,
-} from "@/lib/auth/profile";
+  type SessionProfile, requireSalesSideForRead} from "@/lib/auth/profile";
 import type { PhotoSlot } from "@/lib/leads/door";
 import { lostReasons, namesById, openKnockSession } from "@/lib/leads/queries";
 import {
@@ -50,6 +49,18 @@ async function salesSide(): Promise<SessionProfile | string> {
   } catch (e) {
     if (e instanceof ReadOnlyError) return VIEW_AS_READ_ONLY;
     if (e instanceof NotAllowedError) return NOT_FOR_ROLE;
+    throw e;
+  }
+}
+
+// For the actions that only read: every setter may see every lead, and
+// while Keenan views the app as someone they read for him too (round 2).
+async function canRead(): Promise<boolean> {
+  try {
+    await requireSalesSideForRead();
+    return true;
+  } catch (e) {
+    if (e instanceof NotAllowedError) return false;
     throw e;
   }
 }
@@ -306,8 +317,7 @@ export async function findLeadsAtPlace(
   placeId: string,
   excludeLeadId: string | null,
 ): Promise<DuplicateLead[]> {
-  const me = await salesSide();
-  if (typeof me === "string") return [];
+  if (!(await canRead())) return [];
   const place = z.string().trim().min(1).max(300).safeParse(placeId);
   if (!place.success) return [];
 
@@ -389,8 +399,7 @@ export async function findLeadsNear(
   lng: number,
   excludeLeadId: string | null,
 ): Promise<(DuplicateLead & { metres: number })[]> {
-  const me = await salesSide();
-  if (typeof me === "string") return [];
+  if (!(await canRead())) return [];
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || !inCalgaryArea(lat, lng)) return [];
   const supabase = await createClient();
   const { data } = await supabase

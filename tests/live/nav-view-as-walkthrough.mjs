@@ -5,8 +5,11 @@
 // step notes, Track colours list and track colour card (looked at, never
 // saved), and View as compared screen by screen with what a real test
 // setter sees, including a lead with Find out answers, guided photos and a
-// track colour, the Schedule without Keenan's tools, and a lead's Book a
-// meeting that can't open the booking sheet while viewing.
+// track colour and the Schedule without Keenan's tools. Then View as you can
+// click through (round 2): the booking sheet from a tapped time to Book,
+// its time menu, a photo, the knock counters, New lead's Save, a status,
+// Notifications and the welcome, every write refused or acted out, and a
+// check that nothing at all was written.
 //
 // Two throwaway setters do the setter side; their leads are named
 // "TEST LEAD (automated)" and everything they make is deleted at the end.
@@ -194,6 +197,9 @@ async function removeEverythingOf(id) {
 
 await mkdir(out, { recursive: true });
 const browser = await chromium.launch();
+// A photo to tap through the sheet and New lead with while viewing.
+const fixture = `${out}/view-as-fixture.jpg`;
+await sharp({ create: { width: 800, height: 600, channels: 3, background: "#5b7083" } }).jpeg({ quality: 80 }).toFile(fixture);
 const { defaultBrowserType, ...iphone } = devices["iPhone 14"];
 void defaultBrowserType;
 const setterContext = await browser.newContext(iphone);
@@ -435,7 +441,12 @@ try {
   const emailsBefore = await accountEmails();
   const { data: ownerOpen } = await admin.from("knock_sessions").select("started_at").eq("user_id", ownerId).is("ended_at", null);
   const staleOwnerSession = (ownerOpen ?? []).some((session) => calendarDay.format(new Date(session.started_at)) !== today);
-  const ownerContext = await browser.newContext(iphone);
+  // Location is allowed so "Use where I'm standing" can be tapped through.
+  const ownerContext = await browser.newContext({
+    ...iphone,
+    geolocation: { latitude: 51.0447, longitude: -114.0719, accuracy: 10 },
+    permissions: ["geolocation"],
+  });
   ownerSession = await openOwnerSession({ url, anonKey, admin, base, context: ownerContext });
   ownerPage = await ownerContext.newPage();
   const op = ownerPage;
@@ -589,7 +600,10 @@ try {
     if (label === "their own lead") {
       check(
         "View as shows the lead's Find out answers, its three slot photos and its track colour",
-        viewed.text.includes("Owns the home Yes Wants a price Not yet Soffit colour Not sure Christmas lights now Not answered Looked into it before Not answered Which areas Full wrap Timing New year") &&
+        viewed.text.includes(
+          "Phone Not answered Owns the home Yes Wants a price Not yet Everyone who decides will be there Not answered Christmas lights now Not answered Looked into it before Not answered Which areas Full wrap Timing New year Soffit colour Not sure",
+        ) &&
+          viewed.text.includes("4 of 8 collected") &&
           ["Front photo of the house", "Left corner photo of the house", "Right corner photo of the house"].every((alt) => viewed.images.includes(alt)) &&
           viewed.text.includes("Custom, RAL 7016 Anthracite grey Needs powder coating.") &&
           viewed.text.includes("Keenan sets the track colour."),
@@ -603,9 +617,10 @@ try {
     }
     if (label === "New lead") {
       check(
-        "View as shows New lead with the ? step notes, the seven questions and the four photo slots",
+        "View as shows New lead with the ? step notes, the questions with Not collected and the four photo slots",
         (await op.getByTestId("step-notes").count()) === 1 &&
-          (await op.getByTestId("find-out").locator("legend").count()) === 7 &&
+          (await op.getByTestId("find-out").locator("legend").count()) === 8 &&
+          (await op.getByTestId("find-out").locator('input[value="not_collected"]').count()) === 7 &&
           (await op.getByRole("list", { name: "Guided photos" }).locator("li").count()) === 4,
       );
     }
@@ -613,16 +628,21 @@ try {
       check("View as shows the setter's Schedule without Keenan's Block time and pencil", (await op.getByTestId("owner-schedule-tools").count()) === 0);
     }
     if (label === "a lead opened to book") {
+      await op.getByTestId("booking-sheet").waitFor({ timeout: 15000 }).catch(() => {});
       await op.waitForTimeout(1500);
       // Only holds made during this visit count: Keenan's own earlier holds are his data.
       const { count: viewHolds } = await admin.from("slot_holds").select("id", { count: "exact", head: true }).in("holder_id", [ownerId, a.id]).gte("created_at", visitStart);
       check(
-        "View as never opens the booking sheet, even from a link that would, and holds nothing",
-        (await op.getByTestId("booking-sheet").count()) === 0 && viewHolds === 0 && (await page.getByTestId("booking-sheet").count()) === 1,
+        "View as opens the booking sheet just as it opens for the setter, on the times, and holds nothing",
+        (await op.locator('[data-testid="booking-sheet"][data-view="times"]').count()) === 1 && viewHolds === 0 && (await page.getByTestId("booking-sheet").count()) === 1,
         `${viewHolds} holds`,
       );
+      check("the sheet carries the gold View as bar, since it covers the app's", (await op.getByTestId("booking-sheet").getByText("Viewing as Nav Test A. Read only.").count()) === 1);
     }
-    check(`every control on ${label} is disabled while viewing`, viewed.controls.every((c) => c.disabled), viewed.controls.filter((c) => !c.disabled).map((c) => c.label).join(", "));
+    // Round 2: every control works as the setter's own, so Keenan can click
+    // through; the server refuses the writes.
+    const states = (controls) => JSON.stringify(controls.filter((c) => !c.device).map((c) => [c.label, c.disabled]));
+    check(`the controls on ${label} work as they do for the setter: the same ones, none switched off for View as`, states(real.controls) === states(viewed.controls), states(viewed.controls).slice(0, 160));
     if (label === "My pay") {
       check("View as shows the setter's own pay and nobody else's", viewed.text.includes("Owed now $") && !viewed.text.includes("Nav Test B") && !/Price per foot|Booking pay/.test(viewed.text));
     } else {
@@ -631,18 +651,205 @@ try {
   }
   check("View as keeps owner screens from the setter's view", (await op.getByRole("heading", { name: "Not for your role" }).count()) === 1);
 
-  // A write forced past the disabled screen is refused by the server.
+  // ---------------------------------------------------------------- View as you can click through (round 2)
+  // Keenan taps through what Nav Test A would. Each write is refused on the
+  // server or acted out on screen, calmly, and the footprint shows nothing
+  // at all was written: leads, timeline, holds, meetings, knock sessions,
+  // photos, the welcome and notification devices.
+  const everyLead = Object.values(leads);
+  const clickFootprint = async () =>
+    JSON.stringify(
+      await Promise.all([
+        admin.from("leads").select("id, updated_at, status, not_collected").in("created_by", [a.id, ownerId]).order("id").then((r) => r.data),
+        admin.from("lead_events").select("id").in("lead_id", everyLead).order("id").then((r) => r.data),
+        admin.from("slot_holds").select("id, released_at, renewed_at").in("holder_id", [a.id, ownerId]).order("id").then((r) => r.data),
+        admin.from("meetings").select("id, status, starts_at").in("lead_id", everyLead).order("id").then((r) => r.data),
+        admin.from("knock_sessions").select("id, doors_knocked, conversations, ended_at").in("user_id", [a.id, ownerId]).order("id").then((r) => r.data),
+        admin.from("lead_photos").select("id").in("lead_id", everyLead).order("id").then((r) => r.data),
+        admin.storage.from(BUCKET).list(a.id, { limit: 1000 }).then((r) => (r.data ?? []).map((file) => file.name).sort()),
+        admin.storage.from(BUCKET).list(ownerId, { limit: 1000 }).then((r) => (r.data ?? []).map((file) => file.name).sort()),
+        admin.from("profiles").select("welcome_done_at").eq("id", a.id).single().then((r) => r.data),
+        admin.from("push_subscriptions").select("id").in("profile_id", [a.id, ownerId]).then((r) => r.data),
+      ]),
+    );
+  const clickBefore = await clickFootprint();
+  const calm = (root) => root.getByTestId("view-as-nothing-saved").first().innerText({ timeout: 10000 }).then((text) => text.trim()).catch(() => "");
+  const sheetOf = op.getByTestId("booking-sheet");
+  const sheetView = (view) => op.locator(`[data-testid="booking-sheet"][data-view="${view}"]`).waitFor({ timeout: 20000 });
+  const pickIn = (legend, choice) =>
+    op
+      .locator('[data-testid="booking-sheet"] fieldset')
+      .filter({ has: op.locator("legend", { hasText: new RegExp(`^${legend}$`) }) })
+      .getByText(choice, { exact: true })
+      .click();
+  const sheetNext = () => op.getByTestId("sheet-next").click();
+  const leftOnSheet = async () => {
+    const text = (await op.getByTestId("sheet-countdown").innerText().catch(() => "")).trim();
+    const match = /^(\d+):(\d{2}) left$/.exec(text);
+    return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+  };
+
+  // The booking sheet, from a tapped time on Schedule.
+  await op.goto(`${base}/app/schedule`);
+  await settle(op);
+  await op.getByRole("group", { name: "Evenings" }).getByRole("button").last().click();
+  await op.waitForTimeout(500);
+  await op.locator('main [data-testid="time-picker"] [data-state="open"]').first().click();
+  await sheetView("who");
+  const actedLeft = await leftOnSheet();
+  check(
+    "tapping an open time while viewing opens the sheet with its hold acted out: the time and a countdown, nothing held",
+    (await op.getByTestId("sheet-held").getAttribute("data-held")) === "yes" && actedLeft !== null && actedLeft > 200,
+    `${actedLeft} s`,
+  );
+  await op.fill("#sheet-first-name", "View as (test)");
+  await op.fill("#sheet-phone", "403 555 0101");
+  await sheetNext();
+  await sheetView("door");
+  await pickIn("Owns the home", "Yes");
+  await pickIn("Wants a price", "Yes");
+  await pickIn("Everyone who decides will be there", "Yes");
+  await sheetNext();
+  await sheetView("learned");
+  await op.getByTestId("mark-rest").click();
+  await sheetNext();
+  await sheetView("address");
+  check("every step of the sheet works while viewing, with nothing saved between them", true);
+  await op.fill("#lead-address", "1 View As Test Way NW (TEST)");
+  await op.getByTestId("sheet-heading").click();
+  await sheetOf.getByRole("button", { name: "Use where I'm standing" }).click();
+  await sheetOf.getByText(/accurate to about 10 m/).first().waitFor({ timeout: 15000 });
+  await pickIn("Soffit colour", "White");
+  await sheetNext();
+  await sheetView("house");
+  check("the photo step opens even though nothing was saved, with each slot ready", (await sheetOf.getByRole("button", { name: "Take photo, Front" }).count()) === 1);
+  await op.setInputFiles('[data-testid="booking-sheet"] [data-testid="slot-input-front"]', fixture);
+  await sheetOf.locator('img[alt="Front photo of the house"]').waitFor({ timeout: 10000 }).catch(() => {});
+  const photoNote = await calm(sheetOf);
+  check("a photo taken while viewing shows on screen only, with a calm note", photoNote === "View as: nothing was saved." && (await sheetOf.locator('img[alt="Front photo of the house"]').count()) === 1, photoNote);
+  await op.setInputFiles('[data-testid="booking-sheet"] [data-testid="slot-upload-left_corner"]', fixture);
+  await op.setInputFiles('[data-testid="booking-sheet"] [data-testid="slot-input-right_corner"]', fixture);
+  await op.waitForTimeout(500);
+  await sheetNext();
+  await sheetView("book");
+  const actedTicks = await sheetOf.getByTestId("readiness").locator("li").evaluateAll((items) => items.map((item) => item.getAttribute("data-ok")));
+  check("Before you book reads as it would for the setter, the acted-out photos included", actedTicks.length === 7 && actedTicks.every((tick) => tick === "yes"), actedTicks.join(","));
+  // The time's menu: Add 5 minutes is acted out too.
+  const beforeAdd = await leftOnSheet();
+  await op.getByTestId("sheet-held").click();
+  await op.getByTestId("hold-menu").getByRole("menuitem", { name: /^Add \d+ minutes$/ }).click();
+  await op.waitForTimeout(600);
+  const afterAdd = await leftOnSheet();
+  check("Add 5 minutes is acted out: the countdown moves on, nothing is held", beforeAdd !== null && afterAdd !== null && afterAdd > beforeAdd + 200, `${beforeAdd} then ${afterAdd}`);
+  await sheetNext();
+  const bookNote = await calm(sheetOf);
+  check("Book, the final save, says calmly that nothing was saved", bookNote === "View as: nothing was saved." && (await op.locator('[data-testid="booking-sheet"][data-view="book"]').count()) === 1, bookNote);
+  await op.screenshot({ path: `${out}/r2-view-as-book.png` });
+  await op.getByTestId("sheet-held").click();
+  await op.getByTestId("hold-menu").getByRole("menuitem", { name: "Let go" }).click();
+  await op.getByTestId("sheet-let-go").getByRole("button", { name: "Let go", exact: true }).click();
+  await sheetOf.waitFor({ state: "detached", timeout: 15000 });
+  const viewDrafts = await op.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("vesper:sheet-drafts:") || key.startsWith("vesper.booking-sheet.")));
+  check("leaving the sheet while viewing keeps no draft on Keenan's phone", viewDrafts.length === 0, viewDrafts.join(", "));
+
+  // Keep as a lead while viewing: nothing is held, so nothing is let go, and
+  // New lead opens with the person, kept in memory only.
+  await op.goto(`${base}/app/schedule`);
+  await settle(op);
+  await op.getByRole("group", { name: "Evenings" }).getByRole("button").last().click();
+  await op.waitForTimeout(500);
+  await op.locator('main [data-testid="time-picker"] [data-state="open"]').first().click();
+  await sheetView("who");
+  await op.fill("#sheet-first-name", "View as keep (test)");
+  await op.fill("#sheet-phone", "403 555 0102");
+  await sheetNext();
+  await sheetView("door");
+  await pickIn("Owns the home", "Yes");
+  await pickIn("Wants a price", "Not yet");
+  await sheetOf.getByTestId("keep-as-lead").click();
+  await op.waitForURL("**/app/leads/new", { timeout: 30000 });
+  await settle(op);
+  const keptNotice = (await op.getByTestId("draft-restored").innerText().catch(() => "")).replace(/\s+/g, " ").trim();
+  const keptStored = await op.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("vesper:new-lead-draft:") || key.startsWith("vesper:sheet-drafts:")));
+  check(
+    "Keep as a lead works while viewing: New lead opens with the person, and nothing is kept on Keenan's phone",
+    keptNotice.startsWith("Kept as a lead") && (await op.inputValue("#lead-first_name")) === "View as keep (test)" && keptStored.length === 0,
+    `${keptNotice} | ${keptStored.join(", ")}`,
+  );
+
+  // Home: the knock counters are acted out, and the Unfinished list says where drafts live.
+  await op.goto(`${base}/app`);
+  await settle(op);
+  const doorsBefore = Number((await op.getByRole("button", { name: /^Add one to doors, now (\d+)/ }).getAttribute("aria-label")).match(/now (\d+)/)[1]);
+  await op.getByRole("button", { name: /^Add one to doors/ }).click();
+  await op.getByRole("button", { name: /^Add one to doors/ }).click();
+  const doorsAfter = Number((await op.getByRole("button", { name: /^Add one to doors, now (\d+)/ }).getAttribute("aria-label")).match(/now (\d+)/)[1]);
+  const knockNote = await calm(op.locator("main"));
+  check("the knock counters count on screen while viewing, and say nothing was saved", doorsAfter === doorsBefore + 2 && knockNote === "View as: nothing was saved.", `${doorsBefore} then ${doorsAfter}; ${knockNote}`);
+  check("Home shows no Unfinished list while viewing: a setter's drafts stay on their own phone", (await op.getByTestId("unfinished").count()) === 0);
+  check(
+    "and Home says why, for Keenan",
+    (await op.getByTestId("unfinished-view-as").innerText().catch(() => "")).trim() === "Unfinished bookings stay on Nav Test A's phone, so they don't show here.",
+  );
+
+  // New lead: Save is refused calmly; a photo is acted out.
+  await op.goto(`${base}/app/leads/new`);
+  await settle(op);
+  await op.fill("#lead-address", "2 View As Test Way NW (TEST)");
+  await op.keyboard.press("Escape");
+  await op.fill("#lead-first_name", "View as (test)");
+  await op.getByTestId("mark-rest").click();
+  await op.setInputFiles('[data-testid="slot-input-front"]', fixture);
+  await op.locator('main img[alt="Front photo of the house"]').waitFor({ timeout: 10000 }).catch(() => {});
+  await op.getByRole("button", { name: "Save lead" }).click();
+  await op.waitForTimeout(1500);
+  const saveNotes = await op.locator("main").getByTestId("view-as-nothing-saved").allInnerTexts();
+  check(
+    "New lead's Save says calmly that nothing was saved, and stays on the form with everything entered",
+    saveNotes.some((text) => text.trim() === "View as: nothing was saved.") && new URL(op.url()).pathname === "/app/leads/new" && (await op.inputValue("#lead-first_name")) === "View as (test)",
+    saveNotes.join(" | "),
+  );
+  check("nothing in it reads as an error", (await op.locator("main").getByRole("alert").count()) === 0);
+
+  // A note and a status on the setter's own lead: refused calmly by the server.
   await op.goto(`${base}/app/leads/${leads.dueToday}`);
   await settle(op);
-  await op.evaluate(() => document.querySelector("main fieldset[disabled]")?.removeAttribute("disabled"));
-  await op.fill("#lead-note", "TEST forced note (automated)");
-  const [refused] = await Promise.all([
-    op.waitForResponse((response) => response.request().method() === "POST", { timeout: 20000 }),
-    op.getByRole("button", { name: "Add note" }).click(),
-  ]);
-  await op.waitForTimeout(1000);
-  const { count: forcedNotes } = await admin.from("lead_events").select("id", { count: "exact", head: true }).eq("lead_id", leads.dueToday).eq("type", "note");
-  check("a write forced through while viewing is refused, and nothing is saved", refused.status() === 403 && forcedNotes === 0, `status ${refused.status()}, notes ${forcedNotes}`);
+  await op.fill("#lead-note", "TEST View as note (automated)");
+  await op.getByRole("button", { name: "Add note" }).click();
+  const noteNote = await calm(op.locator("main"));
+  check("a note sent while viewing reaches the server, which refuses it calmly", noteNote === "View as: nothing was saved.", noteNote);
+  const viewStatus = op.locator("main fieldset").filter({ has: op.locator("legend", { hasText: /^Status$/ }) });
+  await viewStatus.getByText("Lost", { exact: true }).click();
+  await op.locator("main fieldset", { hasText: "Why was it lost?" }).getByText("Price", { exact: true }).click();
+  await op.getByRole("button", { name: "Save status" }).click();
+  await op.waitForTimeout(1500);
+  check("a status change is refused the same way", (await op.locator("main").getByTestId("view-as-nothing-saved").count()) >= 1 && (await op.locator("main").getByRole("alert").count()) === 0);
+
+  // Notifications: no permission prompt, nothing saved.
+  await op.goto(`${base}/app/notifications`);
+  await settle(op);
+  const turnOn = op.getByRole("button", { name: /Turn on notifications here/ });
+  if ((await turnOn.count()) === 1) {
+    await turnOn.click();
+    check("turning notifications on while viewing asks the device nothing and says nothing was saved", (await calm(op.locator("main"))) === "View as: nothing was saved.");
+  } else {
+    note("Notifications aren't set up on this site (no keys), so its switch was not clicked through.");
+  }
+
+  // The welcome: Skip is refused calmly.
+  await op.goto(`${base}/app/welcome`);
+  await settle(op);
+  await op.getByTestId("welcome-skip-all").click();
+  await op.waitForTimeout(1500);
+  check("skipping the welcome while viewing says calmly that nothing was saved", (await calm(op.locator("main"))) === "View as: nothing was saved." && new URL(op.url()).pathname === "/app/welcome");
+
+  // The proxy still refuses any plain write that isn't one of the app's own actions.
+  const plainWrite = await op.evaluate(async () => {
+    const response = await fetch("/app/leads", { method: "POST", body: "x" });
+    return { status: response.status, text: (await response.text()).trim() };
+  });
+  check("a plain write that isn't one of the app's actions is refused at the door", plainWrite.status === 403 && plainWrite.text === "View as: nothing was saved.", JSON.stringify(plainWrite));
+  check("clicking through View as wrote nothing at all", (await clickFootprint()) === clickBefore);
 
   // Exit goes back to People and ends View as.
   await op.goto(`${base}/app`);

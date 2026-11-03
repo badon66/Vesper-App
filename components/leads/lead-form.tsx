@@ -9,10 +9,11 @@ import {
   type DuplicateLead,
   type LeadFormState,
 } from "@/app/(app)/app/leads/actions";
+import { ActionMessage } from "@/components/action-message";
 import { FieldError } from "@/components/field-error";
 import { AddressField, type AddressDefaults } from "@/components/leads/address-field";
 import { ChoiceGroup } from "@/components/leads/choice-group";
-import { FindOutFields } from "@/components/leads/find-out-fields";
+import { bookingRuledOut, LeadQuestions, type QuestionDefaults } from "@/components/leads/find-out-fields";
 import { PhotoPicker } from "@/components/leads/photo-picker";
 import { PhotoSlots } from "@/components/leads/photo-slots";
 import { Button } from "@/components/ui/button";
@@ -20,8 +21,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Textarea } from "@/components/ui/textarea";
-import type { FindOutField, PhotoSlot } from "@/lib/leads/door";
-import { defaultsFromDraft, draftFromFormData, draftHasContent, draftKey, draftPhotoPaths, readDraft } from "@/lib/leads/draft";
+import { useViewAs } from "@/components/view-as-context";
+import type { PhotoSlot } from "@/lib/leads/door";
+import { defaultsFromDraft, draftFromFormData, draftHasContent, draftKey, draftPhotoPaths, readDraft, type LeadDraft } from "@/lib/leads/draft";
+import { takeHandOff } from "@/lib/leads/hand-off";
+import { QUESTION_LABELS, type CountedQuestion } from "@/lib/leads/questions";
+import { ANSWER_OR_NOT_COLLECTED, leadFormDataToInput, unansweredQuestions, type LeadFormErrors } from "@/lib/leads/schema";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -30,7 +35,6 @@ import {
   type HouseType,
   type LeadSource,
 } from "@/lib/leads/status";
-import { formatPhone, normalizePhone } from "@/lib/phone";
 import type { PickedAddress } from "@/lib/places";
 
 export type LeadFormDefaults = {
@@ -40,8 +44,9 @@ export type LeadFormDefaults = {
   email: string;
   neighbourhood: string;
   house_type: HouseType | null;
-  // The Find out answers as the form holds them.
-  find_out: Record<FindOutField, string | null>;
+  // The answers as the form holds them: a choice, Not collected, or nothing.
+  questions: QuestionDefaults;
+  phone_not_collected: boolean;
   soffit_note: string;
   notes: string;
   source: LeadSource;
@@ -50,9 +55,10 @@ export type LeadFormDefaults = {
 
 const initialState: LeadFormState = {};
 
-const NOTHING_FOUND_OUT: Record<FindOutField, string | null> = {
+const NOTHING_FOUND_OUT: QuestionDefaults = {
   owns_home: null,
   wants_price: null,
+  both_decision_makers: null,
   soffit_colour: null,
   christmas_lights_now: null,
   looked_into_before: null,
@@ -61,9 +67,10 @@ const NOTHING_FOUND_OUT: Record<FindOutField, string | null> = {
 };
 
 // One screen for a new lead at the door, and the same form for editing.
-// Address and first name are the only required fields; the Find out
-// questions and the photos follow the door process and are all optional.
-// Save sits at the bottom of the screen, within reach of a thumb.
+// It needs a first name, an address, and every question answered or marked
+// Not collected (round 2); the soffit colour and the photos follow the door
+// process and are optional. Save sits at the bottom of the screen, within
+// reach of a thumb.
 export function LeadForm({
   mode,
   action,
@@ -91,8 +98,10 @@ export function LeadForm({
   );
   const [neighbourhoodEdited, setNeighbourhoodEdited] = useState(Boolean(defaults?.neighbourhood));
   // A new lead's draft (2026-11-03): kept on the phone while it is typed, so
-  // a reload after the camera or a stray tap doesn't lose the door.
-  const drafting = mode === "create";
+  // a reload after the camera or a stray tap doesn't lose the door. Never
+  // while Keenan views the app as someone: his device keeps nothing of theirs.
+  const { viewingAs } = useViewAs();
+  const drafting = mode === "create" && !viewingAs;
   const storageKey = draftKey(userId);
   const formRef = useRef<HTMLFormElement>(null);
   const pendingRef = useRef(false);
@@ -101,6 +110,8 @@ export function LeadForm({
     defaults: LeadFormDefaults;
     photos: Partial<Record<PhotoSlot, { path: string; preview: string }>>;
     extraPhotos: number;
+    // Handed over by the booking sheet's Keep as a lead.
+    fromSheet: boolean;
   } | null>(null);
   const [formKey, setFormKey] = useState(0);
   const [discardOpen, setDiscardOpen] = useState(false);
@@ -109,8 +120,20 @@ export function LeadForm({
   const [extrasBusy, setExtrasBusy] = useState(false);
   const photosBusy = slotsBusy || extrasBusy;
   const [duplicates, setDuplicates] = useState<DuplicateLead[]>([]);
-  const [phoneError, setPhoneError] = useState<string | null>(null);
-  const errors = state.errors ?? {};
+  // The questions still open, once Save was tapped with some open: checked
+  // before sending, and updated as they're answered.
+  const [openNow, setOpenNow] = useState<CountedQuestion[] | null>(null);
+  // Save and book steps back while the answers rule booking out (a phone or
+  // a booking question Not collected, a No or a Not yet): the sheet would
+  // hold a time it can't book.
+  const [bookingBlocked, setBookingBlocked] = useState<boolean | null>(null);
+  const markRestRef = useRef<(() => void) | null>(null);
+  const blocked =
+    bookingBlocked ??
+    bookingRuledOut(shown?.questions ?? NOTHING_FOUND_OUT, Boolean(shown?.phone_not_collected) && !(shown?.phone ?? "").trim());
+  const openErrors: LeadFormErrors = Object.fromEntries((openNow ?? []).map((question) => [question, ANSWER_OR_NOT_COLLECTED]));
+  const errors: LeadFormErrors = { ...(state.errors ?? {}), ...openErrors };
+  const openCount = openNow?.length ?? 0;
 
   useEffect(() => {
     pendingRef.current = pending;
@@ -153,18 +176,23 @@ export function LeadForm({
     if (!photosBusy) scheduleSave();
   }, [photosBusy, scheduleSave]);
 
-  // Brings a draft back once, when New lead opens.
+  // Brings a draft back once, when New lead opens: a person the booking
+  // sheet handed over (Keep as a lead), or what was typed before the page
+  // closed.
   useEffect(() => {
-    if (!drafting) return;
+    if (mode !== "create") return;
     let cancelled = false;
     async function bringBack() {
-      let raw: string | null = null;
-      try {
-        raw = localStorage.getItem(storageKey);
-      } catch {
-        return;
+      let draft: LeadDraft | null = takeHandOff(Date.now());
+      if (!draft && drafting) {
+        let raw: string | null = null;
+        try {
+          raw = localStorage.getItem(storageKey);
+        } catch {
+          return;
+        }
+        draft = readDraft(raw, Date.now());
       }
-      const draft = readDraft(raw, Date.now());
       if (!draft) return;
       const paths = Object.entries(draftPhotoPaths(draft)) as [PhotoSlot, string][];
       const photos: Partial<Record<PhotoSlot, { path: string; preview: string }>> = {};
@@ -180,7 +208,8 @@ export function LeadForm({
       }
       if (cancelled) return;
       const restoredDefaults = defaultsFromDraft(draft);
-      setRestored({ defaults: restoredDefaults, photos, extraPhotos: draft.extraPhotos });
+      setRestored({ defaults: restoredDefaults, photos, extraPhotos: draft.extraPhotos, fromSheet: draft.from === "sheet" });
+      setBookingBlocked(null);
       setNeighbourhood(restoredDefaults.neighbourhood || sessionNeighbourhood || "");
       setNeighbourhoodEdited(Boolean(restoredDefaults.neighbourhood));
       setFormKey((key) => key + 1);
@@ -191,7 +220,7 @@ export function LeadForm({
     return () => {
       cancelled = true;
     };
-  }, [drafting, storageKey, sessionNeighbourhood]);
+  }, [mode, drafting, storageKey, sessionNeighbourhood]);
 
   function startOver() {
     try {
@@ -201,6 +230,8 @@ export function LeadForm({
     }
     setRestored(null);
     setDuplicates([]);
+    setOpenNow(null);
+    setBookingBlocked(null);
     setNeighbourhood(sessionNeighbourhood ?? "");
     setNeighbourhoodEdited(false);
     setFormKey((key) => key + 1);
@@ -237,22 +268,22 @@ export function LeadForm({
   }
 
   // Submitting through a transition keeps everything typed if the server
-  // sends back a correction.
+  // sends back a correction. A question with neither an answer nor Not
+  // collected stops it first, and the first one comes into view.
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const submitter = (event.nativeEvent as SubmitEvent).submitter;
-    const formData = new FormData(event.currentTarget, submitter);
-    startTransition(() => formAction(formData));
-  }
-
-  function onPhoneBlur(event: React.FocusEvent<HTMLInputElement>) {
-    const result = normalizePhone(event.currentTarget.value);
-    if (!result.ok) {
-      setPhoneError(result.error);
+    const form = event.currentTarget;
+    const formData = new FormData(form, submitter);
+    const open = unansweredQuestions(leadFormDataToInput(formData));
+    setOpenNow(open.length > 0 ? open : null);
+    if (open.length > 0) {
+      const first = form.querySelector<HTMLElement>(open[0] === "phone" ? "#lead-phone" : `[data-question="${open[0]}"] input`);
+      first?.scrollIntoView({ block: "center" });
+      first?.focus({ preventScroll: true });
       return;
     }
-    setPhoneError(null);
-    if (result.e164) event.currentTarget.value = formatPhone(result.e164);
+    startTransition(() => formAction(formData));
   }
 
   return (
@@ -273,7 +304,9 @@ export function LeadForm({
           data-testid="draft-restored"
         >
           <span className="py-2 text-pretty">
-            Brought back what you entered before the page closed.
+            {restored.fromSheet
+              ? "Kept as a lead, and the time is free again. Add what's left, then save."
+              : "Brought back what you entered before the page closed."}
             {restored.extraPhotos > 0
               ? ` Add the ${restored.extraPhotos === 1 ? "extra photo" : `${restored.extraPhotos} extra photos`} again.`
               : ""}
@@ -362,26 +395,15 @@ export function LeadForm({
         </div>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="lead-phone">Phone</Label>
-        <Input
-          id="lead-phone"
-          name="phone"
-          type="tel"
-          inputMode="tel"
-          autoComplete="off"
-          defaultValue={shown?.phone}
-          onBlur={onPhoneBlur}
-          aria-invalid={errors.phone || phoneError ? true : undefined}
-          aria-describedby="lead-phone-error"
-        />
-        <FieldError id="lead-phone-error" message={phoneError ?? errors.phone} />
-      </div>
-
-      <FindOutFields
-        defaults={shown?.find_out ?? NOTHING_FOUND_OUT}
+      <LeadQuestions
+        defaults={shown?.questions ?? NOTHING_FOUND_OUT}
+        phone={shown?.phone ?? ""}
+        phoneNotCollected={shown?.phone_not_collected ?? false}
         soffitNote={shown?.soffit_note ?? ""}
         errors={errors}
+        onOpenChange={(open) => setOpenNow((current) => (current === null ? null : open.length > 0 ? open : null))}
+        onBookingChange={setBookingBlocked}
+        markRestRef={markRestRef}
       />
 
       {mode === "create" ? (
@@ -439,9 +461,23 @@ export function LeadForm({
 
       <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:left-20">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-2">
-          {state.error ? (
-            <p role="alert" className="text-sm font-medium text-destructive">
-              {state.error}
+          {openCount > 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-x-3">
+              <p role="alert" className="text-sm font-medium text-pretty text-destructive" data-testid="questions-still-open">
+                {openCount === 1
+                  ? `${QUESTION_LABELS[(openNow ?? [])[0]]} needs an answer, or mark it Not collected.`
+                  : `${openCount} questions need an answer, or mark them Not collected.`}
+              </p>
+              <Button type="button" variant="link" size="sm" className="px-0" onClick={() => markRestRef.current?.()} data-testid="mark-rest-by-save">
+                Mark the rest Not collected
+              </Button>
+            </div>
+          ) : (
+            <ActionMessage text={state.error} />
+          )}
+          {mode === "create" && blocked && openCount === 0 && !state.error ? (
+            <p className="text-sm text-pretty text-muted-foreground" data-testid="booking-ruled-out">
+              Booking needs a number and a Yes for owns the home, wants a price and everyone who decides, so this one saves as a lead.
             </p>
           ) : null}
           {mode === "create" ? (
@@ -453,7 +489,7 @@ export function LeadForm({
                 type="submit"
                 name="intent"
                 value="save"
-                variant="outline"
+                variant={blocked ? "default" : "outline"}
                 size="lg"
                 className="flex-1 px-3"
                 disabled={pending || photosBusy}
@@ -464,9 +500,10 @@ export function LeadForm({
                 type="submit"
                 name="intent"
                 value="book"
+                variant={blocked ? "outline" : "default"}
                 size="lg"
                 className="flex-1 px-3"
-                disabled={pending || photosBusy}
+                disabled={pending || photosBusy || blocked}
               >
                 Save and book
               </Button>

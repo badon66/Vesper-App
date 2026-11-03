@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useActionState, useState } from "react";
+import { ActionMessage } from "@/components/action-message";
 import { setOutcome } from "@/app/(app)/app/schedule/actions";
 import { AnswerGroup } from "@/components/leads/answer-group";
 import { Button } from "@/components/ui/button";
@@ -74,11 +75,7 @@ export function OutcomeForm({
           <Input id={`note-${meetingId}`} name="note" maxLength={500} />
         </div>
       ) : null}
-      {state && !state.ok ? (
-        <p role="alert" className="text-sm font-medium text-destructive">
-          {state.message}
-        </p>
-      ) : null}
+      <ActionMessage text={state && !state.ok ? state.message : null} />
       <Button type="submit" className="min-h-11 w-full sm:w-fit" disabled={pending || !outcome}>
         {pending ? "Saving" : "Save outcome"}
       </Button>

@@ -81,6 +81,10 @@ describe("describeEvent", () => {
         payload: { fields: ["areas_wanted", "christmas_lights_now", "phone", "wants_price"] },
       }),
     ).toBe("Changed the phone. Updated Find out: which areas, Christmas lights now and wants a price.");
+    // Round 2: everyone who decides, and what was marked Not collected.
+    expect(
+      describeEvent({ ...base, type: "edited", payload: { fields: ["both_decision_makers", "not_collected"] } }),
+    ).toBe("Updated Find out: everyone who decides and what wasn't collected.");
   });
 
   it("names a track colour change once", () => {

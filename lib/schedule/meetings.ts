@@ -39,6 +39,24 @@ export function timePhrase(startsAt: string, today: string = calgaryToday()): st
   return formatMeetingTime(startsAt);
 }
 
+// The held time in the booking sheet's header, with its day (round 2):
+// "Tonight, 5:00 p.m.", "Tomorrow, 5:00 p.m.", "Tue, Nov 17, 5:00 p.m.".
+export function heldTimeLabel(startsAt: string, today: string = calgaryToday()): string {
+  const day = calgaryDateOf(startsAt);
+  if (day === today) return `Tonight, ${formatTime(startsAt)}`;
+  if (day === addDays(today, 1)) return `Tomorrow, ${formatTime(startsAt)}`;
+  return `${formatDay(day)}, ${formatTime(startsAt)}`;
+}
+
+// The Book button: the time, and the weekday when it isn't tonight.
+export function bookButtonLabel(startsAt: string, today: string = calgaryToday()): string {
+  const day = calgaryDateOf(startsAt);
+  if (day === today) return `Book ${formatTime(startsAt)}`;
+  if (day === addDays(today, 1)) return `Book tomorrow ${formatTime(startsAt)}`;
+  const weekday = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", weekday: "short" }).format(new Date(`${day}T12:00:00Z`));
+  return `Book ${weekday} ${formatTime(startsAt)}`;
+}
+
 // Ends a sentence once: times already end in "p.m."
 export function sentence(text: string): string {
   return text.endsWith(".") ? text : `${text}.`;

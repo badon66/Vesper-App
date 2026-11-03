@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { ActionMessage } from "@/components/action-message";
 import { setLeadPosition } from "@/app/(app)/app/leads/actions";
 import { UseMyPosition } from "@/components/leads/use-my-position";
 
@@ -24,11 +25,7 @@ export function LeadPosition({ leadId }: { leadId: string }) {
         }
       />
       {pending ? <p className="text-sm text-muted-foreground">Saving the position.</p> : null}
-      {message ? (
-        <p role="alert" className="text-sm font-medium text-destructive">
-          {message}
-        </p>
-      ) : null}
+      <ActionMessage text={message} />
     </div>
   );
 }

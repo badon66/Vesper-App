@@ -20,7 +20,8 @@ import { ScrollToHash } from "@/components/scroll-to-hash";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth/profile";
-import { findOutAnswerList, type PhotoSlot } from "@/lib/leads/door";
+import { leadAnswerList, type PhotoSlot } from "@/lib/leads/door";
+import { completenessLabel } from "@/lib/leads/questions";
 import { lostReasons, namesById } from "@/lib/leads/queries";
 import { formatMeetingTime, isLive, positionSourceText, sentence, timePhrase } from "@/lib/schedule/meetings";
 import { leadReadiness, READINESS_NAMES, readinessNow } from "@/lib/schedule/readiness";
@@ -180,6 +181,11 @@ export default async function LeadPage({
         <p className="text-sm text-muted-foreground">
           Added by {lead.created_by === me.id ? "you" : owner} on {formatDate(lead.created_at)}
           {session ? `, while knocking in ${session.neighbourhood}` : ""}.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          <a href="#find-out" className="inline-flex min-h-11 items-center underline underline-offset-4" data-testid="completeness">
+            {completenessLabel(lead)}
+          </a>
         </p>
         {followUp ? (
           <p className={followUp < today ? "text-base font-bold" : "text-base font-semibold"} data-testid="lead-next">
@@ -380,17 +386,18 @@ export default async function LeadPage({
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="find-out" className="scroll-mt-24">
         <CardHeader>
           <CardTitle>Find out</CardTitle>
+          <CardDescription>{completenessLabel(lead)}. Not collected doesn&apos;t count.</CardDescription>
         </CardHeader>
         <CardContent>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm" data-testid="find-out-answers">
-            {findOutAnswerList(lead).map((item) => (
-              <Fragment key={item.field}>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-[auto_1fr]" data-testid="find-out-answers">
+            {leadAnswerList(lead).map((item) => (
+              <Fragment key={item.key}>
                 <dt className="text-muted-foreground">{item.question}</dt>
-                <dd className={item.answer ? "font-semibold" : "text-muted-foreground"}>
-                  {item.answer ?? "Not answered"}
+                <dd className={item.state === "answered" ? "font-semibold" : "text-muted-foreground"} data-state={item.state} data-question={item.key}>
+                  {item.state === "answered" ? item.answer : item.state === "not_collected" ? "Not collected" : "Not answered"}
                 </dd>
               </Fragment>
             ))}

@@ -149,6 +149,19 @@ export class NotAllowedError extends Error {
   }
 }
 
+// For server actions that only read (round 2): who the screen is for. While
+// Keenan views the app as someone, that is the person being viewed, so the
+// action reads as they would; it never writes. Sales side only.
+export async function requireSalesSideForRead(): Promise<{ profile: SessionProfile; viewingAs: boolean }> {
+  const session = await getSession();
+  if (session.status !== "ok" || !isSalesSide(session.profile)) {
+    throw new NotAllowedError();
+  }
+  const viewer = await getViewer();
+  if (!isSalesSide(viewer.profile)) throw new NotAllowedError();
+  return { profile: viewer.profile, viewingAs: viewer.viewingAs };
+}
+
 // For server actions on leads and knock sessions.
 export async function requireSalesSideForAction(): Promise<SessionProfile> {
   const session = await getSession();

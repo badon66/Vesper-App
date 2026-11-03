@@ -5,43 +5,62 @@ import type {
   PhotoSlot,
   RooflineAreas,
 } from "@/lib/leads/door";
+import type { LeadDraft } from "@/lib/leads/draft";
+import { isQuestionDone, NOT_COLLECTED, type AnswerMap, type CountedQuestion } from "@/lib/leads/questions";
 import type { SoffitColour } from "@/lib/leads/status";
 import { bookingProblems, type PhotoSkip, type ReadinessLead } from "@/lib/schedule/readiness";
 
-// The booking sheet (Keenan, 2026-11-02): one full-screen sheet with three
-// steps that follow the door process. This module is the sheet's logic with
-// no screen in it: which screens each step has, when a screen is done, where
-// Next and Back go, and which screen fixes each Before you book item.
+// The booking sheet (Keenan, 2026-11-02; round 2, 2026-11-03): one
+// full-screen sheet whose steps follow the visit. This module is the
+// sheet's logic with no screen in it: which screens each part of the visit
+// has, when a screen is done, where Next and Back go, and which screen
+// fixes each Before you book item.
 
-export type SheetScreen = "who" | "find1" | "find2" | "everyone" | "address" | "soffit" | "photos" | "book";
+export type SheetScreen = "who" | "door" | "learned" | "address" | "house" | "book";
 export type StepKey = "door" | "after" | "book";
 
+// At the door: only what is needed face to face to book. After the door,
+// on the sidewalk: the rest of what they learned, the house (its address
+// and soffit colour), then its photos. Then Book.
 export const STEPS: { key: StepKey; label: string; screens: SheetScreen[] }[] = [
-  { key: "door", label: "At the door", screens: ["who", "find1", "find2", "everyone"] },
-  { key: "after", label: "After the door", screens: ["address", "soffit", "photos"] },
+  { key: "door", label: "At the door", screens: ["who", "door"] },
+  { key: "after", label: "After the door", screens: ["learned", "address", "house"] },
   { key: "book", label: "Book", screens: ["book"] },
 ];
 
 export const SCREENS: SheetScreen[] = STEPS.flatMap((step) => step.screens);
 
-// Each screen's question, as its heading.
+// Each screen's title.
 export const SCREEN_TITLES: Record<SheetScreen, string> = {
   who: "Who are we meeting?",
-  find1: "Find out, 1 of 2",
-  find2: "Find out, 2 of 2",
-  everyone: "Will everyone who decides be there?",
-  address: "Where's the house?",
-  soffit: "What colour is the soffit?",
-  photos: "Photos of the house",
+  door: "Three questions to book",
+  learned: "What else did you learn?",
+  address: "The house",
+  house: "Photos",
   book: "Ready to book?",
+};
+
+// The counted questions each screen asks.
+export const DOOR_QUESTIONS: CountedQuestion[] = ["owns_home", "wants_price", "both_decision_makers"];
+export const LEARNED_QUESTIONS: CountedQuestion[] = ["christmas_lights_now", "looked_into_before", "areas_wanted", "install_timing"];
+export const SCREEN_QUESTIONS: Partial<Record<SheetScreen, CountedQuestion[]>> = {
+  who: ["phone"],
+  door: DOOR_QUESTIONS,
+  learned: LEARNED_QUESTIONS,
 };
 
 export function stepOf(screen: SheetScreen): StepKey {
   return STEPS.find((step) => step.screens.includes(screen))?.key ?? "door";
 }
 
+// "Step 3 of 6, 3 left".
+export function stepCount(screen: SheetScreen): { number: number; total: number; left: number } {
+  const number = SCREENS.indexOf(screen) + 1;
+  return { number, total: SCREENS.length, left: SCREENS.length - number };
+}
+
 // Everything the sheet asks, held on the phone until the lead is saved.
-// Unanswered choices are null, as in the lead form.
+// Unanswered choices are null; questions marked Not collected are listed.
 export type SheetDraft = {
   leadId: string | null;
   first_name: string;
@@ -53,7 +72,9 @@ export type SheetDraft = {
   looked_into_before: LookedIntoBefore | null;
   areas_wanted: RooflineAreas | null;
   install_timing: InstallTiming | null;
-  everyone: boolean;
+  // "Everyone who decides will be there": Yes true, No false.
+  everyone: boolean | null;
+  not_collected: CountedQuestion[];
   address_line: string;
   city: string;
   postal_code: string;
@@ -83,7 +104,8 @@ export function emptyDraft(): SheetDraft {
     looked_into_before: null,
     areas_wanted: null,
     install_timing: null,
-    everyone: false,
+    everyone: null,
+    not_collected: [],
     address_line: "",
     city: "Calgary",
     postal_code: "",
@@ -107,6 +129,84 @@ export function guidedPhotoCount(draft: SheetDraft): number {
   return GUIDED.filter((slot) => draft.photo_slots.includes(slot)).length;
 }
 
+const yesNo = (value: boolean | null, no: string) => (value === null ? null : value ? "yes" : no);
+
+// The counted questions' answers as the screens hold them: the answer's
+// value, NOT_COLLECTED, or nothing yet.
+export function draftAnswers(draft: SheetDraft): AnswerMap {
+  const raw: Record<CountedQuestion, string | null> = {
+    phone: draft.phone.trim() === "" ? null : draft.phone,
+    owns_home: yesNo(draft.owns_home, "no"),
+    wants_price: yesNo(draft.wants_price, "not_yet"),
+    both_decision_makers: yesNo(draft.everyone, "no"),
+    christmas_lights_now: draft.christmas_lights_now,
+    looked_into_before: draft.looked_into_before,
+    areas_wanted: draft.areas_wanted,
+    install_timing: draft.install_timing,
+  };
+  const out: AnswerMap = {};
+  for (const [question, value] of Object.entries(raw) as [CountedQuestion, string | null][]) {
+    out[question] = isQuestionDone(value) ? value : draft.not_collected.includes(question) ? NOT_COLLECTED : null;
+  }
+  return out;
+}
+
+// One answer from a screen: a value, NOT_COLLECTED, or null to clear it.
+// The phone's number is typed, so here it only takes Not collected or null.
+export function withAnswer(draft: SheetDraft, question: CountedQuestion, value: string | null): SheetDraft {
+  const marked = value === NOT_COLLECTED;
+  const not_collected = marked
+    ? Array.from(new Set([...draft.not_collected, question]))
+    : draft.not_collected.filter((item) => item !== question);
+  const answer = marked ? null : value;
+  const next: SheetDraft = { ...draft, not_collected };
+  switch (question) {
+    case "phone":
+      return marked ? { ...next, phone: "" } : next;
+    case "owns_home":
+      return { ...next, owns_home: answer === null ? null : answer === "yes" };
+    case "wants_price":
+      return { ...next, wants_price: answer === null ? null : answer === "yes" };
+    case "both_decision_makers":
+      return { ...next, everyone: answer === null ? null : answer === "yes" };
+    case "christmas_lights_now":
+      return { ...next, christmas_lights_now: answer as ChristmasLightsNow | null };
+    case "looked_into_before":
+      return { ...next, looked_into_before: answer as LookedIntoBefore | null };
+    case "areas_wanted":
+      return { ...next, areas_wanted: answer as RooflineAreas | null };
+    case "install_timing":
+      return { ...next, install_timing: answer as InstallTiming | null };
+  }
+}
+
+// The questions a booking needs a real answer to; Not collected, No or Not
+// yet on any of them means the time can't be booked.
+export const BOOKING_QUESTIONS: CountedQuestion[] = ["phone", "owns_home", "wants_price", "both_decision_makers"];
+
+// Which of them, as things stand, rule booking out: answered No or Not
+// yet, or marked Not collected. Blank ones aren't listed: they're still open.
+export function bookingBlockers(draft: SheetDraft): CountedQuestion[] {
+  const answers = draftAnswers(draft);
+  return BOOKING_QUESTIONS.filter((question) => {
+    const value = answers[question];
+    if (value === NOT_COLLECTED) return true;
+    if (question === "phone") return false;
+    return value === "no" || value === "not_yet";
+  });
+}
+
+// The questions on a screen that still need an answer or Not collected.
+export function screenOpenQuestions(screen: SheetScreen, draft: SheetDraft): CountedQuestion[] {
+  const answers = draftAnswers(draft);
+  return (SCREEN_QUESTIONS[screen] ?? []).filter((question) => !isQuestionDone(answers[question]));
+}
+
+// "Mark the rest Not collected" on a screen.
+export function markScreenNotCollected(screen: SheetScreen, draft: SheetDraft): SheetDraft {
+  return screenOpenQuestions(screen, draft).reduce((current, question) => withAnswer(current, question, NOT_COLLECTED), draft);
+}
+
 export function readinessLead(draft: SheetDraft): ReadinessLead {
   return {
     phone: draft.phone.trim() === "" ? null : draft.phone,
@@ -115,35 +215,38 @@ export function readinessLead(draft: SheetDraft): ReadinessLead {
     soffit_colour: draft.soffit_colour,
     lat: draft.lat,
     lng: draft.lng,
+    both_decision_makers: draft.everyone,
+    not_collected: draft.not_collected,
   };
 }
 
 // Before you book, worked out from the draft: the same codes the database
-// checks again when booking.
+// checks again when booking. Not collected is never an answer here.
 export function draftProblems(draft: SheetDraft): string[] {
   return bookingProblems(readinessLead(draft), guidedPhotoCount(draft), {
-    everyone: draft.everyone,
+    everyone: draft.everyone === true,
     skip: draft.skip,
     skipNote: draft.skip_note,
   });
 }
 
-// When a screen has everything it asks for.
+// The address is in with a map position.
+export function addressPlaced(draft: SheetDraft): boolean {
+  return draft.address_line.trim() !== "" && draft.lat !== null && draft.lng !== null;
+}
+
+// When a screen has everything it asks for. A question counts once it has
+// an answer or is marked Not collected.
 export function isScreenComplete(screen: SheetScreen, draft: SheetDraft): boolean {
   switch (screen) {
     case "who":
-      return draft.first_name.trim() !== "" && draft.phone.trim() !== "";
-    case "find1":
-      return draft.owns_home !== null && draft.wants_price !== null && draft.christmas_lights_now !== null;
-    case "find2":
-      return draft.looked_into_before !== null && draft.areas_wanted !== null && draft.install_timing !== null;
-    case "everyone":
-      return draft.everyone;
+      return draft.first_name.trim() !== "" && screenOpenQuestions("who", draft).length === 0;
+    case "door":
+    case "learned":
+      return screenOpenQuestions(screen, draft).length === 0;
     case "address":
-      return draft.address_line.trim() !== "" && draft.lat !== null && draft.lng !== null;
-    case "soffit":
-      return draft.soffit_colour !== null;
-    case "photos":
+      return addressPlaced(draft) && draft.soffit_colour !== null;
+    case "house":
       return guidedPhotoCount(draft) >= 3 || (draft.skip !== null && (draft.skip !== "other" || draft.skip_note.trim() !== ""));
     case "book":
       return draftProblems(draft).length === 0;
@@ -175,13 +278,13 @@ export function firstScreenToVisit(draft: SheetDraft): SheetScreen {
 // The screen that fixes each Before you book item.
 export const PROBLEM_SCREENS: Record<string, SheetScreen> = {
   phone: "who",
-  owns_home: "find1",
-  wants_price: "find1",
-  everyone_deciding_present: "everyone",
+  owns_home: "door",
+  wants_price: "door",
+  everyone_deciding_present: "door",
   map_position: "address",
-  soffit_colour: "soffit",
-  photos: "photos",
-  photos_skip_note: "photos",
+  soffit_colour: "address",
+  photos: "house",
+  photos_skip_note: "house",
 };
 
 // The lead can be saved once it has a first name and an address: the
@@ -194,11 +297,13 @@ export function canSaveLead(draft: SheetDraft): boolean {
 // sheet doesn't ask about go in blank; the server writes only the sheet's own
 // columns on an existing lead.
 export function draftToLeadInput(draft: SheetDraft): Record<string, unknown> {
-  const yesNo = (value: boolean | null, no: string) => (value === null ? "" : value ? "yes" : no);
+  const answers = draftAnswers(draft);
+  const answer = (question: CountedQuestion) => answers[question] ?? "";
   return {
     first_name: draft.first_name,
     last_name: draft.last_name,
     phone: draft.phone,
+    phone_not_collected: draft.not_collected.includes("phone") ? "1" : "",
     email: "",
     address_line: draft.address_line,
     city: draft.city || "Calgary",
@@ -212,12 +317,13 @@ export function draftToLeadInput(draft: SheetDraft): Record<string, unknown> {
     house_type: "",
     soffit_colour: draft.soffit_colour ?? "",
     soffit_note: draft.soffit_note,
-    owns_home: yesNo(draft.owns_home, "no"),
-    wants_price: yesNo(draft.wants_price, "not_yet"),
-    christmas_lights_now: draft.christmas_lights_now ?? "",
-    looked_into_before: draft.looked_into_before ?? "",
-    areas_wanted: draft.areas_wanted ?? "",
-    install_timing: draft.install_timing ?? "",
+    owns_home: answer("owns_home"),
+    wants_price: answer("wants_price"),
+    both_decision_makers: answer("both_decision_makers"),
+    christmas_lights_now: answer("christmas_lights_now"),
+    looked_into_before: answer("looked_into_before"),
+    areas_wanted: answer("areas_wanted"),
+    install_timing: answer("install_timing"),
     notes: "",
     source: "door",
     photo_paths: [],
@@ -229,13 +335,41 @@ export function draftToLeadInput(draft: SheetDraft): Record<string, unknown> {
 }
 
 // The fields a save sends, so the sheet can tell whether anything changed
-// since the last save.
+// since the last save. The photo skip is the booking's own choice.
 export function savedFingerprint(draft: SheetDraft): string {
-  const { leadId: _lead, everyone: _everyone, photo_slots: _photos, skip: _skip, skip_note: _note, ...fields } = draft;
+  const { leadId: _lead, photo_slots: _photos, skip: _skip, skip_note: _note, ...fields } = draft;
   void _lead;
-  void _everyone;
   void _photos;
   void _skip;
   void _note;
-  return JSON.stringify(fields);
+  return JSON.stringify({ ...fields, not_collected: [...fields.not_collected].sort() });
+}
+
+// What Next says on the Photos step while it isn't done: a verb, and how
+// many guided photos are still to take (round 2 polish).
+export function photosNeed(draft: SheetDraft): string | null {
+  if (isScreenComplete("house", draft)) return null;
+  if (draft.skip === "other") return "Add the reason first";
+  const left = 3 - guidedPhotoCount(draft);
+  if (left >= 3) return "Take the photos first";
+  return `${left} more photo${left === 1 ? "" : "s"} first`;
+}
+
+// What Book says while it can't book. An answer that rules booking out
+// isn't something to fix: the homeowner said it, so Book says it can't book
+// yet, and the screen offers Keep as a lead.
+export function bookNeed(draft: SheetDraft): string | null {
+  if (bookingBlockers(draft).length > 0) return "Can't book yet";
+  const problems = draftProblems(draft);
+  return problems.length > 0 ? `Fix ${problems.length} first` : null;
+}
+
+// Keep as a lead: a new person the sheet can't book goes on to New lead with
+// everything entered, in New lead's own draft form.
+export function leadDraftFromSheet(draft: SheetDraft, now: number): LeadDraft {
+  const values: Record<string, string> = {};
+  for (const [name, value] of Object.entries(draftToLeadInput(draft))) {
+    if (typeof value === "string" && value !== "") values[name] = value;
+  }
+  return { savedAt: now, values, extraPhotos: 0, from: "sheet" };
 }

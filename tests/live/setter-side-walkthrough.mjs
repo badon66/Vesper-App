@@ -8,8 +8,10 @@
 //   - Keenan's Reset welcome shows in People, seen through the one-time
 //     owner session (rule 10), which only views: the reset itself is made
 //     by the service role standing in for him, as in the other suites;
-//   - View as shows the welcome and Notifications read only, never sends
-//     Keenan into the setter's welcome, and refuses a forced write.
+//   - View as shows the welcome and Notifications as the setter has them,
+//     never sends Keenan into the setter's welcome, and lets him tap
+//     through them (round 2): every write is refused calmly and nothing is
+//     saved.
 // A real phone's push service can't be reached from here: the unit tests
 // cover what a setter's notice says and who gets it. Everything made here
 // is removed at the end, and nothing of the owner's may change.
@@ -352,26 +354,30 @@ try {
   await op.goto(`${base}/app/welcome`);
   await settle(op);
   check(
-    "View as shows the welcome read only, under the gold bar",
+    "View as shows the welcome as the setter has it, under the gold bar, with its buttons live",
     (await op.getByRole("status").filter({ hasText: `Viewing as ${setter.name}. Read only.` }).count()) === 1 &&
-      (await op.getByTestId("welcome-skip-all").isDisabled()) &&
+      !(await op.getByTestId("welcome-skip-all").isDisabled()) &&
       (await op.getByTestId("welcome-how").innerText()).includes("Add to Home Screen"),
   );
   await op.getByTestId("welcome-next").click();
   await op.waitForURL("**/app/welcome?step=2");
   await settle(op);
-  check("Keenan can page through it with View as", (await op.getByTestId("welcome-title").innerText()) === "Allow location" && (await op.getByTestId("welcome-allow-location").isDisabled()));
+  await op.getByTestId("welcome-allow-location").click();
+  check(
+    "Keenan can page through it and tap Allow location: his own phone is never asked, and nothing is saved",
+    (await op.getByTestId("welcome-title").innerText()) === "Allow location" &&
+      (await op.locator("main").getByTestId("view-as-nothing-saved").innerText({ timeout: 5000 }).catch(() => "")) === "View as: nothing was saved.",
+  );
   await op.goto(`${base}/app/welcome?step=4`);
   await settle(op);
-  check("Done is off while viewing", await op.getByTestId("welcome-done").isDisabled());
-  // A write forced past the disabled screen is refused by the server.
-  await op.evaluate(() => document.querySelector("main fieldset[disabled]")?.removeAttribute("disabled"));
-  const [refused] = await Promise.all([
-    op.waitForResponse((response) => response.request().method() === "POST", { timeout: 20000 }),
-    op.getByTestId("welcome-done").click(),
-  ]);
-  await op.waitForTimeout(800);
-  check("finishing the welcome while viewing is refused, and nothing is saved", refused.status() === 403 && (await welcomeOf()) === null, `status ${refused.status()}`);
+  // Done is a final save: the server refuses it, and the screen says so calmly.
+  await op.getByTestId("welcome-done").click();
+  const doneNote = (await op.getByTestId("welcome-error").innerText({ timeout: 15000 }).catch(() => "")).trim();
+  check(
+    "finishing the welcome while viewing is refused calmly, and nothing is saved",
+    doneNote === "View as: nothing was saved." && (await op.getByTestId("welcome-error").getByRole("alert").count()) === 0 && (await welcomeOf()) === null && path(op) === "/app/welcome?step=4",
+    `${doneNote} at ${path(op)}`,
+  );
 
   await op.goto(`${base}/app/notifications`);
   await settle(op);
@@ -384,12 +390,13 @@ try {
     );
   } else {
     const viewedDevices = await op.getByTestId("devices").innerText().catch(() => "");
+    await op.getByRole("button", { name: "Send a test notification" }).click();
+    const testNote = (await op.locator("main").getByTestId("view-as-nothing-saved").innerText({ timeout: 5000 }).catch(() => "")).trim();
+    await op.getByRole("button", { name: "Switch off" }).first().click();
     check(
-      "View as lists the setter's own devices on Notifications, and nothing on it works",
-      viewedDevices.includes("iPhone") &&
-        (await op.getByRole("button", { name: "Send a test notification" }).isDisabled()) &&
-        (await op.getByRole("button", { name: "Switch off" }).first().isDisabled()),
-      viewedDevices,
+      "View as lists the setter's own devices on Notifications; a test or a switch-off is acted out calmly, and nothing is sent or saved",
+      viewedDevices.includes("iPhone") && testNote === "View as: nothing was saved.",
+      `${viewedDevices} | ${testNote}`,
     );
   }
   check("View as never shows a device's push address", !(await op.content()).includes(DEVICE_SEALED));

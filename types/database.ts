@@ -444,6 +444,7 @@ export type Database = {
           lost_at: string | null
           lost_reason: string | null
           neighbourhood: string | null
+          not_collected: string[]
           notes: string | null
           owns_home: boolean | null
           phone: string | null
@@ -495,6 +496,7 @@ export type Database = {
           lost_at?: string | null
           lost_reason?: string | null
           neighbourhood?: string | null
+          not_collected?: string[]
           notes?: string | null
           owns_home?: boolean | null
           phone?: string | null
@@ -546,6 +548,7 @@ export type Database = {
           lost_at?: string | null
           lost_reason?: string | null
           neighbourhood?: string | null
+          not_collected?: string[]
           notes?: string | null
           owns_home?: boolean | null
           phone?: string | null
@@ -1166,6 +1169,7 @@ export type Database = {
           gst_number: string | null
           gst_rate: number
           hold_grace_minutes: number
+          hold_minutes: number
           id: number
           lost_reasons: string[]
           meeting_days: number[]
@@ -1202,6 +1206,7 @@ export type Database = {
           gst_number?: string | null
           gst_rate?: number
           hold_grace_minutes?: number
+          hold_minutes?: number
           id: number
           lost_reasons?: string[]
           meeting_days?: number[]
@@ -1238,6 +1243,7 @@ export type Database = {
           gst_number?: string | null
           gst_rate?: number
           hold_grace_minutes?: number
+          hold_minutes?: number
           id?: number
           lost_reasons?: string[]
           meeting_days?: number[]
@@ -1560,6 +1566,7 @@ export type Database = {
           distance_warning_km: number | null
           door_guide: string | null
           hold_grace_minutes: number | null
+          hold_minutes: number | null
           lost_reasons: string[] | null
           meeting_days: number[] | null
           meeting_slot_count: number | null
@@ -1575,6 +1582,7 @@ export type Database = {
           distance_warning_km?: number | null
           door_guide?: string | null
           hold_grace_minutes?: number | null
+          hold_minutes?: number | null
           lost_reasons?: string[] | null
           meeting_days?: number[] | null
           meeting_slot_count?: number | null
@@ -1590,6 +1598,7 @@ export type Database = {
           distance_warning_km?: number | null
           door_guide?: string | null
           hold_grace_minutes?: number | null
+          hold_minutes?: number | null
           lost_reasons?: string[] | null
           meeting_days?: number[] | null
           meeting_slot_count?: number | null
@@ -1686,6 +1695,7 @@ export type Database = {
       }
       default_meeting_host: { Args: never; Returns: string }
       end_user_sessions: { Args: { target_user: string }; Returns: number }
+      extend_hold: { Args: never; Returns: Json }
       finish_welcome: { Args: never; Returns: string }
       hold_grace: { Args: never; Returns: string }
       hold_slot: {
@@ -1697,6 +1707,7 @@ export type Database = {
         }
         Returns: Json
       }
+      hold_status: { Args: never; Returns: Json }
       is_owner: { Args: never; Returns: boolean }
       is_sales_side: { Args: never; Returns: boolean }
       is_template_slot:

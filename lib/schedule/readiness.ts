@@ -10,6 +10,10 @@ export type ReadinessLead = {
   soffit_colour: string | null;
   lat: number | null;
   lng: number | null;
+  // Round 2: "Everyone who decides will be there", asked at the door, and
+  // what was marked Not collected (never an answer here).
+  both_decision_makers?: boolean | null;
+  not_collected?: string[] | null;
 };
 
 export type ReadinessKey =
@@ -54,6 +58,12 @@ export function leadReadiness(lead: ReadinessLead, guidedPhotos: number): Readin
       ok: lead.lat !== null && lead.lng !== null,
       fix: "Pick the address from the suggestions, or use where you're standing at the door.",
     },
+    {
+      key: "everyone_deciding_present",
+      label: "Everyone who decides will be there: Yes",
+      ok: lead.both_decision_makers === true,
+      fix: "Everyone who decides on the house must be at the meeting.",
+    },
   ];
 }
 
@@ -61,8 +71,9 @@ export type BookingChoices = { everyone: boolean; skip: PhotoSkip | null; skipNo
 
 // The same codes the database uses (booking_problems), in the same order.
 export function bookingProblems(lead: ReadinessLead, guidedPhotos: number, choices: BookingChoices): string[] {
+  // The photos and everyone-who-decides come from the booking itself.
   const problems = leadReadiness(lead, guidedPhotos)
-    .filter((item) => !item.ok && item.key !== "photos")
+    .filter((item) => !item.ok && item.key !== "photos" && item.key !== "everyone_deciding_present")
     .map((item) => item.key as string);
   if (guidedPhotos < 3) {
     if (!choices.skip) problems.push("photos");
@@ -97,13 +108,28 @@ export const READINESS_NAMES: Record<ReadinessKey, string> = {
 };
 
 export function readinessNow(item: ReadinessItem, lead: ReadinessLead, guidedPhotos: number): string {
+  const notCollected = (lead.not_collected ?? []).includes(item.key === "everyone_deciding_present" ? "both_decision_makers" : item.key);
   switch (item.key) {
     case "phone":
-      return "No phone number yet.";
+      return notCollected ? "Not collected. Booking needs a number." : "No phone number yet.";
     case "owns_home":
-      return lead.owns_home === false ? "They said they don't own it. Booking needs Yes." : "Not asked yet. Booking needs Yes.";
+      return lead.owns_home === false
+        ? "They said they don't own it. Booking needs Yes."
+        : notCollected
+          ? "Not collected. Booking needs Yes."
+          : "Not asked yet. Booking needs Yes.";
     case "wants_price":
-      return lead.wants_price === false ? "They said not yet. Booking needs Yes." : "Not asked yet. Booking needs Yes.";
+      return lead.wants_price === false
+        ? "They said not yet. Booking needs Yes."
+        : notCollected
+          ? "Not collected. Booking needs Yes."
+          : "Not asked yet. Booking needs Yes.";
+    case "everyone_deciding_present":
+      return lead.both_decision_makers === false
+        ? "They said no. Booking needs everyone who decides there."
+        : notCollected
+          ? "Not collected. Booking needs Yes."
+          : "Not asked yet. Booking needs Yes.";
     case "soffit_colour":
       return "Not answered yet. Not sure is fine.";
     case "photos":

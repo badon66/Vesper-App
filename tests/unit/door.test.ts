@@ -101,3 +101,33 @@ describe("Guided photos", () => {
     expect(slotFieldName("left_corner")).toBe("photo_slot_left_corner");
   });
 });
+
+describe("The lead page's answers (round 2)", async () => {
+  const { leadAnswerList } = await import("@/lib/leads/door");
+  it("lists the eight counted questions in the order asked, then the soffit, each answered, Not collected or open", () => {
+    const rows = leadAnswerList({
+      phone: null,
+      owns_home: true,
+      wants_price: false,
+      both_decision_makers: false,
+      soffit_colour: null,
+      soffit_note: null,
+      christmas_lights_now: null,
+      looked_into_before: "got_quotes",
+      areas_wanted: null,
+      install_timing: null,
+      not_collected: ["phone", "areas_wanted"],
+    });
+    expect(rows.map((row) => [row.key, row.state, row.answer])).toEqual([
+      ["phone", "not_collected", null],
+      ["owns_home", "answered", "Yes"],
+      ["wants_price", "answered", "Not yet"],
+      ["both_decision_makers", "answered", "No"],
+      ["christmas_lights_now", "open", null],
+      ["looked_into_before", "answered", "Got quotes"],
+      ["areas_wanted", "not_collected", null],
+      ["install_timing", "open", null],
+      ["soffit_colour", "open", null],
+    ]);
+  });
+});

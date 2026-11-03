@@ -19,6 +19,8 @@ export type MeetingItemData = {
   outcome: string | null;
   missingMockup: boolean;
   missingColour: boolean;
+  // "6 of 8 collected" (round 2): information only.
+  completeness: string;
   next: boolean;
   // The latest change to anything its meeting page shows (the lead, its
   // mockup, Settings), so an older save counts as out of date.
@@ -50,6 +52,9 @@ export function MeetingItem({
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <p className={cn("font-semibold text-pretty", compact ? "text-base" : "text-lg")}>{item.name}</p>
         <p className="text-pretty text-muted-foreground">{item.address}</p>
+        <p className="text-sm text-muted-foreground" data-testid="completeness">
+          {item.completeness}
+        </p>
         {item.host ? <p className="text-sm text-muted-foreground">Host: {item.host}</p> : null}
         {item.outcome ? <p className="text-sm font-semibold">{item.outcome}</p> : null}
         {item.missingMockup || item.missingColour ? (

@@ -1,12 +1,20 @@
-// View as: the owner sees the app exactly as another member sees it, read
-// only. The cookie only names who the owner is looking at. The server decides
-// on every request whether to honour it (lib/auth/profile.ts), and proxy.ts
-// refuses every request that could change something while it is set.
+// View as: the owner sees the app exactly as another member sees it, and
+// can click through it (round 2, Keenan, 2026-11-03), with nothing ever
+// saved. The cookie only names who the owner is looking at. The server
+// decides on every request whether to honour it (lib/auth/profile.ts); every
+// server action's own guard refuses a write while it is set, and proxy.ts
+// refuses every other request that could change something.
 
 export const VIEW_AS_COOKIE = "vesper_view_as";
 export const VIEW_AS_MAX_AGE_SECONDS = 2 * 60 * 60;
 export const VIEW_AS_EXIT_PATH = "/app/view-as/exit";
-export const VIEW_AS_READ_ONLY = "View as is read only. Exit it to make changes.";
+// What a refused write says while viewing: calmly, never as an error.
+export const VIEW_AS_READ_ONLY = "View as: nothing was saved.";
+export const VIEW_AS_NOTHING_SAVED = VIEW_AS_READ_ONLY;
+
+export function isViewAsRefusal(message: string | null | undefined): boolean {
+  return message === VIEW_AS_READ_ONLY;
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -27,11 +35,14 @@ export function parseViewAsCookie(value: string | null | undefined): ViewAsCooki
   return { ownerId, targetId };
 }
 
-// While View as is on, only reading is allowed. Server actions are POSTs, so
-// refusing everything but GET and HEAD refuses every action; leaving View as
-// is the one exception.
-export function refusedWhileViewing(method: string, pathname: string): boolean {
+// While View as is on, nothing may change. Reading is allowed. A server
+// action is let through to its own guard (round 2): every action that writes
+// refuses while viewing, and one that only reads reads as the viewed person,
+// which is what lets Keenan click through. Any other request that isn't a
+// read is refused here; leaving View as is the one exception.
+export function refusedWhileViewing(method: string, pathname: string, serverAction = false): boolean {
   if (method === "GET" || method === "HEAD") return false;
+  if (serverAction) return false;
   return pathname !== VIEW_AS_EXIT_PATH;
 }
 

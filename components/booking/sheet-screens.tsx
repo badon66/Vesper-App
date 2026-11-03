@@ -3,34 +3,84 @@
 import { Check } from "lucide-react";
 import { useState, type RefObject } from "react";
 import { AddressField } from "@/components/leads/address-field";
-import { AnswerGroup } from "@/components/leads/answer-group";
+import { AnswerGroup, NotCollectedToggle } from "@/components/leads/answer-group";
 import { PhotoSlots } from "@/components/leads/photo-slots";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { guidedPhotoCount, PROBLEM_SCREENS, readinessLead, type SheetDraft, type SheetScreen } from "@/lib/booking/sheet";
-import { FIND_OUT_QUESTIONS, yesNoChoice, type FindOutField, type PhotoSlot } from "@/lib/leads/door";
+import {
+  bookingBlockers,
+  draftAnswers,
+  guidedPhotoCount,
+  PROBLEM_SCREENS,
+  readinessLead,
+  screenOpenQuestions,
+  type SheetDraft,
+  type SheetScreen,
+} from "@/lib/booking/sheet";
+import { FIND_OUT_QUESTIONS, type PhotoSlot } from "@/lib/leads/door";
+import { EVERYONE_OPTIONS, NOT_COLLECTED, NOT_COLLECTED_LABEL, QUESTION_LABELS, type CountedQuestion } from "@/lib/leads/questions";
 import type { DuplicateLead } from "@/app/(app)/app/leads/actions";
 import type { PickedAddress } from "@/lib/places";
 import { SOFFIT_OPTIONS, type SoffitColour } from "@/lib/leads/status";
 import { formatPhone, normalizePhone } from "@/lib/phone";
-import { timePhrase } from "@/lib/schedule/meetings";
-import { leadReadiness, PHOTO_SKIP_OPTIONS, type PhotoSkip } from "@/lib/schedule/readiness";
+import { formatMeetingTime } from "@/lib/schedule/meetings";
+import { leadReadiness, PHOTO_SKIP_OPTIONS, READINESS_NAMES, type PhotoSkip } from "@/lib/schedule/readiness";
 import { cn } from "@/lib/utils";
 
 type Change = (patch: Partial<SheetDraft>) => void;
+type Answer = (question: CountedQuestion, value: string | null) => void;
 
-// ---------------------------------------------------------------- At the door
+// The booking sheet's screens (round 2, Keenan, 2026-11-03). Each question
+// takes an answer or Not collected; a screen's "Mark the rest Not collected"
+// answers what's left in one tap. Answers grow on a wide phone. The moment
+// an answer rules booking out, the screen says so, in the plain warning
+// style: a neutral border and a bold first line, never red.
+
+// A note that doesn't block: what an answer means for booking, and, once
+// booking is ruled out, the way on: Keep as a lead, the one gold button.
+function BookingNote({
+  title,
+  children,
+  testId,
+  onKeepAsLead,
+}: {
+  title: string;
+  children?: React.ReactNode;
+  testId?: string;
+  onKeepAsLead?: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5 rounded-md border border-foreground/60 px-3 py-1.5 text-sm text-pretty min-[420px]:text-base" data-testid={testId}>
+      <div role="status" className="flex flex-col gap-0.5">
+        <p className="font-semibold">{title}</p>
+        {children ? <p className="text-muted-foreground">{children}</p> : null}
+      </div>
+      {onKeepAsLead ? (
+        <Button type="button" className="min-[420px]:text-base" onClick={onKeepAsLead} data-testid="keep-as-lead">
+          Keep as a lead
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- At the door: who
 
 export function WhoScreen({
   draft,
   onChange,
+  onAnswer,
   onExisting,
+  onKeepAsLead,
 }: {
   draft: SheetDraft;
   onChange: Change;
+  onAnswer: Answer;
   onExisting: (() => void) | null;
+  onKeepAsLead: () => void;
 }) {
+  const phoneNotCollected = draft.not_collected.includes("phone");
   return (
     <div className="flex flex-col gap-4">
       {onExisting ? (
@@ -42,12 +92,15 @@ export function WhoScreen({
       ) : null}
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
-          <Label htmlFor="sheet-first-name">First name</Label>
+          <Label htmlFor="sheet-first-name" className="min-[420px]:text-base">
+            First name
+          </Label>
           <Input
             id="sheet-first-name"
             autoComplete="off"
             autoCapitalize="words"
             enterKeyHint="next"
+            className="min-[420px]:h-14 min-[420px]:text-lg"
             onKeyDown={(event) => nextField(event, "sheet-last-name")}
             value={draft.first_name}
             maxLength={80}
@@ -55,12 +108,15 @@ export function WhoScreen({
           />
         </div>
         <div className="flex flex-col gap-2">
-          <Label htmlFor="sheet-last-name">Last name</Label>
+          <Label htmlFor="sheet-last-name" className="min-[420px]:text-base">
+            Last name
+          </Label>
           <Input
             id="sheet-last-name"
             autoComplete="off"
             autoCapitalize="words"
             enterKeyHint="next"
+            className="min-[420px]:h-14 min-[420px]:text-lg"
             onKeyDown={(event) => nextField(event, "sheet-phone")}
             value={draft.last_name}
             maxLength={80}
@@ -68,16 +124,31 @@ export function WhoScreen({
           />
         </div>
       </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="sheet-phone">Phone</Label>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="sheet-phone" className="min-[420px]:text-base">
+            Phone
+          </Label>
+          <NotCollectedToggle
+            pressed={phoneNotCollected}
+            size="sheet"
+            label="Phone: Not collected"
+            testId="sheet-phone-not-collected"
+            onToggle={() => onAnswer("phone", phoneNotCollected ? null : NOT_COLLECTED)}
+          />
+        </div>
         <Input
           id="sheet-phone"
           type="tel"
           inputMode="tel"
           enterKeyHint="done"
           autoComplete="off"
+          className="min-[420px]:h-14 min-[420px]:text-lg"
           value={draft.phone}
           maxLength={40}
+          disabled={phoneNotCollected}
+          placeholder={phoneNotCollected ? NOT_COLLECTED_LABEL : undefined}
+          aria-describedby="sheet-phone-hint"
           onChange={(event) => onChange({ phone: event.target.value })}
           onKeyDown={(event) => nextField(event, null)}
           onBlur={(event) => {
@@ -85,7 +156,17 @@ export function WhoScreen({
             if (phone.ok && phone.e164) onChange({ phone: formatPhone(phone.e164) });
           }}
         />
-        <p className="text-sm text-muted-foreground">Needed to confirm the meeting.</p>
+        {phoneNotCollected ? (
+          <div id="sheet-phone-hint">
+            <BookingNote title="Without a number, this time can't be booked." testId="rule-phone" onKeepAsLead={onKeepAsLead}>
+              Ask before you leave the door, or keep them as a lead.
+            </BookingNote>
+          </div>
+        ) : (
+          <p id="sheet-phone-hint" className="-mt-1 text-sm text-muted-foreground min-[420px]:text-base">
+            Needed to book and to confirm the meeting.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -99,169 +180,188 @@ function nextField(event: React.KeyboardEvent<HTMLInputElement>, id: string | nu
   else event.currentTarget.blur();
 }
 
-// The Find out questions on one screen, as one-tap answers.
-export function FindOutScreen({ fields, draft, onChange }: { fields: FindOutField[]; draft: SheetDraft; onChange: Change }) {
+// ---------------------------------------------------------------- the questions
+
+function questionSetup(question: CountedQuestion): { legend: string; options: { value: string; label: string }[]; columns: 2 | 3 | 4 } {
+  if (question === "both_decision_makers") return { legend: QUESTION_LABELS.both_decision_makers, options: EVERYONE_OPTIONS, columns: 2 };
+  const found = FIND_OUT_QUESTIONS.find((item) => item.field === question);
+  const options = found?.options ?? [];
+  // One row of answers: two, three or four across.
+  const columns = Math.min(Math.max(options.length, 2), 4) as 2 | 3 | 4;
+  return { legend: found?.question ?? QUESTION_LABELS[question], options, columns };
+}
+
+// What the answers mean for booking, said the moment it's so, with the way
+// on: Keep as a lead lets the time go at once; a new person carries on in New
+// lead with everything entered, and a saved lead opens on its page, where a
+// follow-up day is set (round 2 polish).
+const SHORT_NAMES: Partial<Record<CountedQuestion, string>> = {
+  owns_home: "owns the home",
+  wants_price: "wants a price",
+  both_decision_makers: "everyone who decides",
+};
+
+export function ruledOutTitle(draft: SheetDraft, withPhone: boolean): string | null {
+  const blockers = bookingBlockers(draft).filter((question) => withPhone || question !== "phone");
+  if (blockers.length === 0) return null;
+  if (draftAnswers(draft).owns_home === "no") return "Only homeowners can be booked.";
+  const names = blockers.filter((question) => question !== "phone").map((question) => SHORT_NAMES[question] ?? QUESTION_LABELS[question]);
+  const listed = names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  const parts = [blockers.includes("phone") ? "a number" : null, names.length > 0 ? `a Yes for ${listed}` : null].filter(Boolean);
+  return `Booking needs ${parts.join(" and ")}.`;
+}
+
+function DoorNote({ draft, onKeepAsLead }: { draft: SheetDraft; onKeepAsLead: () => void }) {
+  const title = ruledOutTitle(draft, false);
+  if (!title) return null;
+  return <BookingNote title={title} testId="door-note" onKeepAsLead={onKeepAsLead} />;
+}
+
+// A screen of counted questions: at the door (owns the home, wants a price,
+// everyone who decides) or after it (what else they learned).
+export function QuestionsScreen({
+  screen,
+  questions,
+  draft,
+  onAnswer,
+  onMarkRest,
+  onKeepAsLead,
+}: {
+  screen: SheetScreen;
+  questions: CountedQuestion[];
+  draft: SheetDraft;
+  onAnswer: Answer;
+  onMarkRest: () => void;
+  onKeepAsLead: () => void;
+}) {
+  const answers = draftAnswers(draft);
+  const open = screenOpenQuestions(screen, draft);
   return (
-    <div className="flex flex-col gap-4">
-      {fields.includes("owns_home") ? (
-        <p className="-mt-2 text-sm text-pretty text-muted-foreground">Booking needs a Yes to Owns the home and Wants a price.</p>
-      ) : null}
-      {fields.map((field) => {
-        const question = FIND_OUT_QUESTIONS.find((item) => item.field === field);
-        if (!question) return null;
-        const value =
-          field === "owns_home"
-            ? yesNoChoice(draft.owns_home, "no")
-            : field === "wants_price"
-              ? yesNoChoice(draft.wants_price, "not_yet")
-              : ((draft[field as keyof SheetDraft] as string | null) ?? null);
-        const rule =
-          field === "owns_home" && draft.owns_home === false
-            ? "Only homeowners can be booked. Keep talking, or let the time go and set a follow-up day."
-            : field === "wants_price" && draft.wants_price === false
-              ? "Book once they want a price. Until then, let the time go and set a follow-up day."
-              : null;
+    <div className="flex flex-col gap-5 min-[420px]:gap-6">
+      {questions.map((question) => {
+        const setup = questionSetup(question);
         return (
-          <div key={field} className="flex flex-col gap-1">
-            <AnswerGroup
-              name={`sheet-${field}`}
-              legend={question.question}
-              options={question.options}
-              columns={question.columns === 4 ? 4 : question.columns}
-              value={value}
-              onChange={(next) => {
-                if (field === "owns_home") onChange({ owns_home: next === null ? null : next === "yes" });
-                else if (field === "wants_price") onChange({ wants_price: next === null ? null : next === "yes" });
-                else onChange({ [field]: next } as Partial<SheetDraft>);
-              }}
-            />
-            {rule ? (
-              <p className="text-sm text-pretty text-muted-foreground" data-testid={`rule-${field}`}>
-                {rule}
-              </p>
-            ) : null}
-          </div>
+          <AnswerGroup
+            key={question}
+            name={`sheet-${question}`}
+            legend={setup.legend}
+            options={setup.options}
+            columns={setup.columns}
+            value={answers[question] ?? null}
+            notCollected
+            size="sheet"
+            onChange={(next) => onAnswer(question, next)}
+          />
         );
       })}
+      {screen === "door" ? <DoorNote draft={draft} onKeepAsLead={onKeepAsLead} /> : null}
+      {open.length > 0 ? (
+        <Button type="button" variant="link" size="sm" className="-mt-3 self-start px-0 min-[420px]:text-base" onClick={onMarkRest} data-testid="mark-rest">
+          Mark the rest Not collected
+        </Button>
+      ) : null}
     </div>
   );
 }
 
-export function EveryoneScreen({ draft, onChange }: { draft: SheetDraft; onChange: Change }) {
-  return (
-    <div className="flex flex-col gap-4">
-      <p className="text-base text-pretty text-muted-foreground">
-        Ask who else decides on the house, and that they can be at the meeting.
-      </p>
-      <button
-        type="button"
-        aria-pressed={draft.everyone}
-        onClick={() => onChange({ everyone: !draft.everyone })}
-        data-testid="sheet-everyone"
-        className={cn(
-          "flex min-h-20 w-full items-center gap-4 rounded-md border px-4 py-3 text-left text-lg font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          draft.everyone ? "border-foreground bg-foreground text-background" : "border-input bg-background",
-        )}
-      >
-        <span
-          aria-hidden="true"
-          className={cn(
-            "flex size-7 shrink-0 items-center justify-center rounded-md border-2",
-            draft.everyone ? "border-background" : "border-input",
-          )}
-        >
-          {draft.everyone ? <Check className="size-5" /> : null}
-        </span>
-        Yes, everyone who decides will be there
-      </button>
-    </div>
-  );
-}
+// ---------------------------------------------------------------- After the door: the house
 
-// ---------------------------------------------------------------- After the door
-
+// The house's address and its soffit colour, together: both are a look at
+// the house from the sidewalk.
 export function AddressScreen({
   draft,
   formRef,
   apiKey,
   duplicates,
   onPicked,
+  onEdited,
+  onChange,
 }: {
   draft: SheetDraft;
   formRef: RefObject<HTMLFormElement | null>;
   apiKey: string | null;
   duplicates: DuplicateLead[];
   onPicked: (picked: PickedAddress | null) => void;
+  onEdited: (value: { addressLine: string; positioned: boolean }) => void;
+  onChange: Change;
 }) {
   return (
-    <form ref={formRef} onSubmit={(event) => event.preventDefault()} className="flex flex-col gap-3">
-      <AddressField
-        apiKey={apiKey}
-        linkLeads={false}
-        leadId={draft.leadId}
-        fallbackNeighbourhood={draft.neighbourhood || null}
-        onPicked={onPicked}
-        defaults={{
-          addressLine: draft.address_line,
-          city: draft.city,
-          postalCode: draft.postal_code || null,
-          lat: draft.lat,
-          lng: draft.lng,
-          placeId: draft.place_id,
-          positionSource: draft.position_source,
-          accuracy: draft.position_accuracy_m,
-        }}
-      />
-      {duplicates.length > 0 ? (
-        <div role="status" className="rounded-md border border-foreground/60 px-3 py-2 text-sm" data-testid="sheet-duplicates">
-          <p className="font-semibold">This address already has a lead.</p>
-          <ul className="mt-1 flex flex-col gap-1">
-            {duplicates.map((duplicate) => (
-              <li key={duplicate.id} className="text-pretty">
-                <span className="font-semibold">{duplicate.name}</span>
-                <span className="text-muted-foreground">
-                  {" "}
-                  · {duplicate.status}, added by {duplicate.addedBy} on {duplicate.addedOn}
-                </span>
-              </li>
-            ))}
-          </ul>
+    <form ref={formRef} onSubmit={(event) => event.preventDefault()} className="flex flex-col gap-5">
+      <div className="flex flex-col gap-3">
+        <AddressField
+          apiKey={apiKey}
+          linkLeads={false}
+          leadId={draft.leadId}
+          place="house"
+          fallbackNeighbourhood={draft.neighbourhood || null}
+          onPicked={onPicked}
+          onEdited={onEdited}
+          defaults={{
+            addressLine: draft.address_line,
+            city: draft.city,
+            postalCode: draft.postal_code || null,
+            lat: draft.lat,
+            lng: draft.lng,
+            placeId: draft.place_id,
+            positionSource: draft.position_source,
+            accuracy: draft.position_accuracy_m,
+          }}
+        />
+        {duplicates.length > 0 ? (
+          <div role="status" className="rounded-md border border-foreground/60 px-3 py-2 text-sm" data-testid="sheet-duplicates">
+            <p className="font-semibold">This address already has a lead.</p>
+            <ul className="mt-1 flex flex-col gap-1">
+              {duplicates.map((duplicate) => (
+                <li key={duplicate.id} className="text-pretty">
+                  <span className="font-semibold">{duplicate.name}</span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · {duplicate.status}, added by {duplicate.addedBy} on {duplicate.addedOn}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+
+      <section className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <span aria-hidden="true" className="text-sm font-semibold min-[420px]:text-base">
+            Soffit colour
+          </span>
+          <span id="sheet-soffit-note-hint" className="text-sm text-muted-foreground">
+            Look closely: white or off-white?
+          </span>
         </div>
-      ) : null}
+        <AnswerGroup
+          name="sheet-soffit"
+          legend="Soffit colour"
+          hideLegend
+          describedBy="sheet-soffit-note-hint"
+          options={SOFFIT_OPTIONS}
+          columns={2}
+          size="sheet"
+          value={draft.soffit_colour}
+          onChange={(next) => onChange({ soffit_colour: next as SoffitColour | null })}
+        />
+        {draft.soffit_colour === "other" ? (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="sheet-soffit-note">Which colour?</Label>
+            <Input
+              id="sheet-soffit-note"
+              value={draft.soffit_note}
+              maxLength={200}
+              onChange={(event) => onChange({ soffit_note: event.target.value })}
+            />
+          </div>
+        ) : null}
+      </section>
     </form>
   );
 }
 
-export function SoffitScreen({ draft, onChange }: { draft: SheetDraft; onChange: Change }) {
-  return (
-    <div className="flex flex-col gap-4">
-      <AnswerGroup
-        name="sheet-soffit"
-        legend="Soffit colour"
-        hideLegend
-        options={SOFFIT_OPTIONS}
-        columns={2}
-        value={draft.soffit_colour}
-        onChange={(next) => onChange({ soffit_colour: next as SoffitColour | null })}
-      />
-      {draft.soffit_colour === "other" ? (
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="sheet-soffit-note">Which colour?</Label>
-          <Input
-            id="sheet-soffit-note"
-            value={draft.soffit_note}
-            maxLength={200}
-            onChange={(event) => onChange({ soffit_note: event.target.value })}
-          />
-        </div>
-      ) : null}
-      <p className="text-sm text-pretty text-muted-foreground">
-        White is the only stock track colour, so off-white matters. Not sure is fine.
-      </p>
-    </div>
-  );
-}
-
+// The four guided photos, as large tiles: each tile is its Take photo button.
 export function PhotosScreen({
   draft,
   userId,
@@ -271,6 +371,7 @@ export function PhotosScreen({
   skipOpen,
   onSkipOpen,
   onAddress,
+  local,
 }: {
   draft: SheetDraft;
   userId: string;
@@ -280,24 +381,26 @@ export function PhotosScreen({
   skipOpen: boolean;
   onSkipOpen: () => void;
   onAddress: () => void;
+  // View as: the photos are acted out on screen and attach to nothing.
+  local: boolean;
 }) {
   const complete = guidedPhotoCount(draft) >= 3;
+  const canTake = Boolean(draft.leadId) || local;
   return (
-    <div className="flex flex-col gap-3">
-      {!draft.leadId ? (
+    <div className="flex flex-col gap-4">
+      {!canTake ? (
         <div className="flex flex-col items-start gap-2">
           <p className="text-sm text-pretty text-muted-foreground">Photos attach to the person once they&apos;re saved, which happens when the address is in.</p>
           <Button type="button" variant="outline" size="sm" onClick={onAddress}>
             Add the address
           </Button>
         </div>
-      ) : null}
-      {draft.leadId ? (
+      ) : (
         <PhotoSlots
           userId={userId}
-          mode="attach"
+          mode={local ? "form" : "attach"}
           layout="tiles"
-          leadId={draft.leadId}
+          leadId={draft.leadId ?? undefined}
           saved={photos}
           onBusyChange={onBusyChange}
           onTakenChange={(slots) => {
@@ -305,7 +408,7 @@ export function PhotosScreen({
             if (merged.length !== draft.photo_slots.length) onChange({ photo_slots: merged });
           }}
         />
-      ) : null}
+      )}
       {complete ? null : skipOpen || draft.skip ? (
         <div className="flex flex-col gap-3" data-testid="sheet-photo-skip">
           <AnswerGroup
@@ -328,7 +431,7 @@ export function PhotosScreen({
           ) : null}
         </div>
       ) : (
-        <Button type="button" variant="link" size="sm" className="self-start px-0" onClick={onSkipOpen}>
+        <Button type="button" variant="link" size="sm" className="self-start px-0 min-[420px]:text-base" onClick={onSkipOpen}>
           Can&apos;t get the photos?
         </Button>
       )}
@@ -344,56 +447,74 @@ function shownPhone(typed: string): string {
   return phone.ok && phone.e164 ? formatPhone(phone.e164) : typed;
 }
 
+// What each Before you book item needs, said for a Not collected answer.
+const NEEDS: Record<string, string> = {
+  phone: "Booking needs a number.",
+  owns_home: "Booking needs Yes.",
+  wants_price: "Booking needs Yes.",
+  everyone_deciding_present: "Booking needs Yes.",
+};
+
 export function BookScreen({
   draft,
   name,
   heldAt,
   warnings,
   onFix,
+  onKeepAsLead,
 }: {
   draft: SheetDraft;
   name: string;
   heldAt: string | null;
   warnings: string[];
   onFix: (screen: SheetScreen) => void;
+  onKeepAsLead: () => void;
 }) {
   const guided = guidedPhotoCount(draft);
-  const ruledOut = (key: string) => (key === "owns_home" && draft.owns_home === false) || (key === "wants_price" && draft.wants_price === false);
-  const items = [
-    ...leadReadiness(readinessLead(draft), guided).map((item) => ({
-      key: item.key as string,
-      label: item.label,
-      ok:
-        item.key === "photos"
-          ? guided >= 3 || (draft.skip !== null && (draft.skip !== "other" || draft.skip_note.trim() !== ""))
-          : item.ok,
-      done:
-        item.key === "photos" && guided < 3 && draft.skip
-          ? `Photos skipped: ${PHOTO_SKIP_OPTIONS.find((option) => option.value === draft.skip)?.label ?? ""}`
-          : item.key === "owns_home" && draft.owns_home === false
-            ? "Owns the home: No. Only homeowners can be booked."
-            : item.key === "wants_price" && draft.wants_price === false
-              ? "Wants a price: Not yet. Book once they want one."
-              : null,
-    })),
-    { key: "everyone_deciding_present", label: "Everyone who decides will be there", ok: draft.everyone, done: null },
-  ];
+  const notCollected = (key: string) =>
+    draft.not_collected.includes((key === "everyone_deciding_present" ? "both_decision_makers" : key) as CountedQuestion);
+  const ruledOut = (key: string) =>
+    (key === "owns_home" && draft.owns_home === false) ||
+    (key === "wants_price" && draft.wants_price === false) ||
+    (key === "everyone_deciding_present" && draft.everyone === false);
+  const items = leadReadiness(readinessLead(draft), guided).map((item) => {
+    const ok =
+      item.key === "photos"
+        ? guided >= 3 || (draft.skip !== null && (draft.skip !== "other" || draft.skip_note.trim() !== ""))
+        : item.ok;
+    const shown = ok
+      ? item.key === "photos" && guided < 3 && draft.skip
+        ? `Photos skipped: ${PHOTO_SKIP_OPTIONS.find((option) => option.value === draft.skip)?.label ?? ""}`
+        : item.label
+      : ruledOut(item.key)
+        ? item.key === "owns_home"
+          ? "Owns the home: No. Only homeowners can be booked."
+          : item.key === "wants_price"
+            ? "Wants a price: Not yet. Book once they want one."
+            : "Everyone who decides: No. Book once they can all be there."
+        : notCollected(item.key)
+          ? `${READINESS_NAMES[item.key]}: ${NOT_COLLECTED_LABEL}`
+          : item.label;
+    const note = !ok && !ruledOut(item.key) && notCollected(item.key) ? NEEDS[item.key] : null;
+    return { key: item.key as string, label: item.label, ok, shown, note };
+  });
   // In the order of the screens that ask for them.
   const order = ["phone", "owns_home", "wants_price", "everyone_deciding_present", "map_position", "soffit_colour", "photos"];
   items.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+  const answers = draftAnswers(draft);
   return (
     <div className="flex flex-col gap-4">
-      <div data-testid="sheet-summary">
-        <p className="text-lg font-bold text-balance">{name}</p>
-        <p className="text-sm text-pretty text-muted-foreground">
+      <div data-testid="sheet-summary" className="flex flex-col gap-0.5">
+        <p className="text-lg font-bold text-balance min-[420px]:text-xl">{name}</p>
+        {heldAt ? <p className="text-base font-semibold min-[420px]:text-lg">{formatMeetingTime(heldAt)}</p> : null}
+        <p className="text-sm text-pretty text-muted-foreground min-[420px]:text-base">
           {[draft.address_line, draft.neighbourhood].filter(Boolean).join(", ") || "No address yet"}
-          {draft.phone ? ` · ${shownPhone(draft.phone)}` : ""}
+          {draft.phone ? ` · ${shownPhone(draft.phone)}` : answers.phone === NOT_COLLECTED ? " · phone not collected" : ""}
         </p>
-        {heldAt ? <p className="text-sm font-semibold">{timePhrase(heldAt)}</p> : null}
       </div>
 
       <section aria-labelledby="sheet-ready-heading" className="flex flex-col gap-1">
-        <h3 id="sheet-ready-heading" className="text-sm font-bold">
+        <h3 id="sheet-ready-heading" className="text-sm font-bold min-[420px]:text-base">
           Before you book
         </h3>
         <ul className="flex flex-col" data-testid="readiness">
@@ -402,14 +523,18 @@ export function BookScreen({
               key={item.key}
               className={cn("flex items-center justify-between gap-3", item.ok ? "min-h-8" : "min-h-12")}
               data-ok={item.ok ? "yes" : "no"}
+              data-item={item.key}
             >
-              <span className="flex items-center gap-2 text-sm">
+              <span className="flex items-start gap-2 text-sm min-[420px]:text-base">
                 {item.ok ? (
-                  <Check role="img" aria-label="Done" className="size-4 shrink-0" />
+                  <Check role="img" aria-label="Done" className="mt-0.5 size-4 shrink-0" />
                 ) : (
-                  <span role="img" aria-label="Missing" className="size-4 shrink-0 rounded-full border-2 border-muted-foreground" />
+                  <span role="img" aria-label="Missing" className="mt-0.5 size-4 shrink-0 rounded-full border-2 border-muted-foreground" />
                 )}
-                <span className={item.ok ? "" : "font-semibold"}>{item.done ?? item.label}</span>
+                <span className="flex flex-col">
+                  <span className={item.ok ? "" : "font-semibold"}>{item.shown}</span>
+                  {item.note ? <span className="text-muted-foreground">{item.note}</span> : null}
+                </span>
               </span>
               {!item.ok ? (
                 <Button
@@ -417,7 +542,7 @@ export function BookScreen({
                   variant="outline"
                   size="sm"
                   onClick={() => onFix(PROBLEM_SCREENS[item.key] ?? "who")}
-                  aria-label={ruledOut(item.key) ? `Change answer: ${item.label.split(":")[0]}` : `Fix: ${item.label}`}
+                  aria-label={ruledOut(item.key) ? `Change answer: ${READINESS_NAMES[item.key as keyof typeof READINESS_NAMES]}` : `Fix: ${item.label}`}
                 >
                   {ruledOut(item.key) ? "Change answer" : "Fix"}
                 </Button>
@@ -426,6 +551,8 @@ export function BookScreen({
           ))}
         </ul>
       </section>
+
+      {ruledOutTitle(draft, true) ? <BookingNote title={ruledOutTitle(draft, true) ?? ""} testId="book-ruled-out" onKeepAsLead={onKeepAsLead} /> : null}
 
       {warnings.length > 0 ? (
         <div role="status" className="rounded-md border border-foreground/60 px-3 py-2 text-sm" data-testid="distance-warning">

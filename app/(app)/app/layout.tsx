@@ -7,6 +7,7 @@ import { Wordmark } from "@/components/brand/wordmark";
 import { SignOutButton } from "@/components/sign-out-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ViewAsBar } from "@/components/view-as-bar";
+import { ViewAsProvider } from "@/components/view-as-context";
 import { getViewer } from "@/lib/auth/profile";
 import { showsAdminGear } from "@/lib/nav";
 import { cn } from "@/lib/utils";
@@ -18,8 +19,9 @@ import { signOut } from "./actions";
 //
 // The tabs live here, in the layout every screen shares, so moving between
 // tabs never reloads them. While the owner is viewing the app as someone,
-// every screen renders as that person and sits inside a disabled fieldset:
-// no button, field or choice works, while links and tabs still do.
+// every screen renders as that person and can be clicked through (round 2,
+// Keenan, 2026-11-03): screens read the View as context, act out what needs
+// a write to go on, and every write is refused on the server.
 export default async function AppLayout({
   children,
 }: {
@@ -29,6 +31,7 @@ export default async function AppLayout({
   const showViewAsBar = viewingAs || viewAsEnded;
 
   return (
+    <ViewAsProvider viewingAs={viewingAs} name={viewingAs ? profile.full_name : null}>
     <div className="flex min-h-dvh flex-col lg:pl-20">
       <div
         className={cn(
@@ -55,16 +58,11 @@ export default async function AppLayout({
         </header>
       </div>
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-10">
-        {viewingAs ? (
-          <fieldset disabled className="m-0 min-w-0 border-0 p-0">
-            {children}
-          </fieldset>
-        ) : (
-          children
-        )}
+        {children}
       </main>
       <AppTabs role={profile.role} />
-      <BookingSheetHost enabled={!viewingAs && !viewAsEnded} userId={profile.id} />
+      <BookingSheetHost enabled={!viewAsEnded} userId={profile.id} />
     </div>
+    </ViewAsProvider>
   );
 }

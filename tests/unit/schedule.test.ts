@@ -153,8 +153,8 @@ describe("Before you book", () => {
     expect(bookingProblems(ready, 2, { everyone: true, skip: "other", skipNote: "Dog in the yard" })).toEqual([]);
   });
 
-  it("shows the lead's own items as a checklist", () => {
-    const items = leadReadiness({ ...ready, phone: null }, 3);
+  it("shows the lead's own items as a checklist, everyone who decides included", () => {
+    const items = leadReadiness({ ...ready, phone: null, both_decision_makers: true }, 3);
     expect(items.map((item) => [item.key, item.ok])).toEqual([
       ["phone", false],
       ["owns_home", true],
@@ -162,7 +162,9 @@ describe("Before you book", () => {
       ["soffit_colour", true],
       ["photos", true],
       ["map_position", true],
+      ["everyone_deciding_present", true],
     ]);
+    expect(leadReadiness(ready, 3).find((item) => item.key === "everyone_deciding_present")?.ok).toBe(false);
   });
 });
 

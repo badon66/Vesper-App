@@ -13,6 +13,7 @@ import {
   timePhrase,
 } from "@/lib/schedule/meetings";
 import type { MeetingWithLead } from "@/lib/schedule/queries";
+import { completenessLabel } from "@/lib/leads/questions";
 import { leadName } from "@/lib/leads/status";
 import { formatPhone } from "@/lib/phone";
 import { formatDateTime, formatTime } from "@/lib/time";
@@ -100,6 +101,10 @@ export function MeetingCard({
             {meeting.setter_id === meeting.booked_by
               ? `${whose(meeting.setter_id)} lead`
               : `${whose(meeting.setter_id)} lead, booked by ${by(meeting.booked_by)}`}
+            <span aria-hidden="true"> · </span>
+            <span className="whitespace-nowrap" data-testid="completeness">
+              {completenessLabel(lead)}
+            </span>
           </p>
         </div>
       ) : null}

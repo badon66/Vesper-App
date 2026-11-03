@@ -22,7 +22,7 @@ export default async function NewLeadPage() {
         <div>
           <h1 className="text-2xl font-bold">New lead</h1>
           <p className="mt-1 text-sm text-pretty text-muted-foreground">
-            Only the address and first name are needed to save; the rest helps you book.
+            Saving needs the address, a first name, and an answer or Not collected for each question.
             {session ? ` It links to your knock session in ${session.neighbourhood}.` : ""}
           </p>
         </div>

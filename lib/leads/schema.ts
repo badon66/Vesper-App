@@ -3,6 +3,7 @@ import { PHOTO_SLOTS, slotFieldName, type PhotoSlot } from "@/lib/leads/door";
 import { GPS_MAX_ACCURACY_M, inCalgaryArea } from "@/lib/geo";
 import { OFFERED_SOFFIT_COLOURS } from "@/lib/leads/status";
 import { normalizePhone } from "@/lib/phone";
+import { COUNTED_QUESTIONS, NOT_COLLECTED, type CountedQuestion } from "@/lib/leads/questions";
 import { MAX_PHOTOS_PER_FORM, PHOTO_PATH_PATTERN } from "@/lib/photos";
 import { Constants, type Database } from "@/types/database";
 
@@ -111,6 +112,8 @@ export const leadFormSchema = z
     soffit_note: optionalText(200, "Soffit note"),
     owns_home: optionalYesNo("no"),
     wants_price: optionalYesNo("not_yet"),
+    // Round 2: "Everyone who decides will be there".
+    both_decision_makers: optionalYesNo("no"),
     christmas_lights_now: optionalEnum(Constants.public.Enums.christmas_lights_now),
     looked_into_before: optionalEnum(Constants.public.Enums.looked_into_before),
     areas_wanted: optionalEnum(Constants.public.Enums.roofline_areas),
@@ -165,15 +168,45 @@ export const leadFormSchema = z
     };
   });
 
-export type LeadFormValues = z.output<typeof leadFormSchema>;
+// Round 2 (Keenan, 2026-11-03): every counted question needs an answer or
+// Not collected before a lead saves, and what was marked Not collected is
+// stored as such.
+export type LeadFormValues = z.output<typeof leadFormSchema> & { not_collected: CountedQuestion[] };
 export type LeadFormField = keyof z.input<typeof leadFormSchema>;
 export type LeadFormErrors = Partial<Record<LeadFormField, string>>;
+
+export const ANSWER_OR_NOT_COLLECTED = "Answer this, or mark it Not collected.";
 
 export function parseLeadForm(
   input: Record<string, unknown>,
 ): { ok: true; values: LeadFormValues } | { ok: false; errors: LeadFormErrors } {
-  const result = leadFormSchema.safeParse(input);
-  if (result.success) return { ok: true, values: result.data };
+  // Not collected travels as its own word (and the phone as its own flag):
+  // it becomes an empty answer plus a mark, before the answers are checked.
+  const marked = new Set<CountedQuestion>();
+  const cleaned: Record<string, unknown> = { ...input };
+  for (const question of COUNTED_QUESTIONS) {
+    if (question === "phone") continue;
+    if (cleaned[question] === NOT_COLLECTED) {
+      marked.add(question);
+      cleaned[question] = "";
+    }
+  }
+  const phoneMarked = input.phone_not_collected === "1" || input.phone_not_collected === true;
+  if (phoneMarked && String(input.phone ?? "").trim() === "") marked.add("phone");
+  delete cleaned.phone_not_collected;
+
+  const result = leadFormSchema.safeParse(cleaned);
+  if (result.success) {
+    const values = result.data;
+    const errors: LeadFormErrors = {};
+    for (const question of COUNTED_QUESTIONS) {
+      const value = values[question];
+      if ((value === null || value === undefined) && !marked.has(question)) errors[question] = ANSWER_OR_NOT_COLLECTED;
+    }
+    if (Object.keys(errors).length > 0) return { ok: false, errors };
+    const notCollected = COUNTED_QUESTIONS.filter((question) => marked.has(question) && (values[question] === null || values[question] === undefined));
+    return { ok: true, values: { ...values, not_collected: notCollected } };
+  }
   const errors: LeadFormErrors = {};
   for (const issue of result.error.issues) {
     const field = issue.path[0] as LeadFormField | undefined;
@@ -186,6 +219,19 @@ export function parseLeadForm(
     errors[key] ??= issue.message;
   }
   return { ok: false, errors };
+}
+
+// The counted questions a form's input leaves with neither an answer nor
+// Not collected, in the order they're asked. The form checks this before
+// sending; the server checks it again in parseLeadForm.
+export function unansweredQuestions(input: Record<string, unknown>): CountedQuestion[] {
+  return COUNTED_QUESTIONS.filter((question) => {
+    if (question === "phone") {
+      const marked = input.phone_not_collected === "1" || input.phone_not_collected === true;
+      return String(input.phone ?? "").trim() === "" && !marked;
+    }
+    return String(input[question] ?? "").trim() === "";
+  });
 }
 
 export function leadFormDataToInput(formData: FormData): Record<string, unknown> {
@@ -209,6 +255,8 @@ export function leadFormDataToInput(formData: FormData): Record<string, unknown>
     soffit_note: text("soffit_note"),
     owns_home: text("owns_home"),
     wants_price: text("wants_price"),
+    both_decision_makers: text("both_decision_makers"),
+    phone_not_collected: text("phone_not_collected"),
     christmas_lights_now: text("christmas_lights_now"),
     looked_into_before: text("looked_into_before"),
     areas_wanted: text("areas_wanted"),
@@ -244,10 +292,12 @@ export function leadColumnsFromValues(values: LeadFormValues): LeadUpdate {
     soffit_note: values.soffit_note,
     owns_home: values.owns_home,
     wants_price: values.wants_price,
+    both_decision_makers: values.both_decision_makers,
     christmas_lights_now: values.christmas_lights_now,
     looked_into_before: values.looked_into_before,
     areas_wanted: values.areas_wanted,
     install_timing: values.install_timing,
+    not_collected: values.not_collected,
     notes: values.notes,
     source: values.source,
   };

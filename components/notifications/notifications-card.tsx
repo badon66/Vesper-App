@@ -2,12 +2,14 @@
 
 import { BellOff, BellRing, Copy, KeyRound } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { ActionMessage } from "@/components/action-message";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BLOCKED_MESSAGE, readPushState, turnOnPush, unblockSteps, type PushState, type PushSupport } from "@/lib/push/browser";
 import { sentence } from "@/lib/schedule/meetings";
 import { formatDateTime } from "@/lib/time";
 import { saveThisDevice, sendTestNotification, switchOffDevice, switchOffThisDevice } from "@/app/(app)/app/notifications/actions";
+import { isViewAsRefusal, VIEW_AS_NOTHING_SAVED } from "@/lib/view-as";
 
 // Notifications (2026-11-02; setters from 2026-11-03): standard web push
 // from the installed app. On iPhone and iPad it works from the Vesper icon
@@ -117,6 +119,11 @@ export function DeviceControls({
   }, [readOnly, hashList, apply]);
 
   async function turnOn() {
+    // View as: no permission prompt, nothing saved.
+    if (readOnly) {
+      setMessage({ text: VIEW_AS_NOTHING_SAVED, error: false });
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
@@ -137,6 +144,11 @@ export function DeviceControls({
   }
 
   async function turnOff() {
+    // View as: no permission prompt, nothing saved.
+    if (readOnly) {
+      setMessage({ text: VIEW_AS_NOTHING_SAVED, error: false });
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
@@ -156,6 +168,11 @@ export function DeviceControls({
   }
 
   async function test() {
+    // View as: no permission prompt, nothing saved.
+    if (readOnly) {
+      setMessage({ text: VIEW_AS_NOTHING_SAVED, error: false });
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
@@ -169,6 +186,10 @@ export function DeviceControls({
   }
 
   async function remove(id: string) {
+    if (readOnly) {
+      setMessage({ text: VIEW_AS_NOTHING_SAVED, error: false });
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
@@ -253,8 +274,10 @@ export function DeviceControls({
         </Button>
       </div>
 
-      {message ? (
-        <p role={message.error ? "alert" : "status"} className={message.error ? "font-semibold text-destructive" : "font-semibold"}>
+      {message && (message.error || isViewAsRefusal(message.text)) ? (
+        <ActionMessage text={message.text} className="text-base font-semibold" />
+      ) : message ? (
+        <p role="status" className="font-semibold">
           {message.text}
         </p>
       ) : null}
@@ -301,11 +324,7 @@ function KeySetup() {
         <KeyRound aria-hidden="true" />
         {keys ? "Make new keys" : "Make the keys"}
       </Button>
-      {error ? (
-        <p role="alert" className="font-semibold text-destructive">
-          {error}
-        </p>
-      ) : null}
+      <ActionMessage text={error} className="text-base font-semibold" />
       {keys ? (
         <div className="flex flex-col gap-4">
           {[

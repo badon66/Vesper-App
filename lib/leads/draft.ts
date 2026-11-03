@@ -21,6 +21,8 @@ export type LeadDraft = {
   // Extra photos (beyond the four guided ones) aren't brought back; the
   // notice says how many to add again.
   extraPhotos: number;
+  // Handed over by the booking sheet's Keep as a lead, so New lead says so.
+  from?: "sheet";
 };
 
 // What is typed by hand or chosen: the neighbourhood (filled in from the
@@ -35,6 +37,8 @@ const COUNTED = [
   "address_line",
   "house_type",
   "soffit_note",
+  "both_decision_makers",
+  "phone_not_collected",
   ...FIND_OUT_FIELDS,
   ...PHOTO_SLOTS.map(({ slot }) => slotFieldName(slot)),
 ];
@@ -66,7 +70,8 @@ export function readDraft(raw: string | null, now: number): LeadDraft | null {
     for (const [name, value] of Object.entries(parsed.values)) {
       if (typeof value === "string" && value.length <= 4000) values[name] = value;
     }
-    const draft = { savedAt: parsed.savedAt, values, extraPhotos: typeof parsed.extraPhotos === "number" ? parsed.extraPhotos : 0 };
+    const draft: LeadDraft = { savedAt: parsed.savedAt, values, extraPhotos: typeof parsed.extraPhotos === "number" ? parsed.extraPhotos : 0 };
+    if (parsed.from === "sheet") draft.from = "sheet";
     return draftHasContent(draft) ? draft : null;
   } catch {
     return null;
@@ -93,7 +98,11 @@ export function defaultsFromDraft(draft: LeadDraft): LeadFormDefaults {
     email: v.email ?? "",
     neighbourhood: v.neighbourhood ?? "",
     house_type: oneOf<HouseType>(HOUSE_TYPE_OPTIONS, v.house_type),
-    find_out: Object.fromEntries(FIND_OUT_FIELDS.map((field) => [field, v[field] ? v[field] : null])) as Record<FindOutField, string | null>,
+    questions: {
+      ...(Object.fromEntries(FIND_OUT_FIELDS.map((field) => [field, v[field] ? v[field] : null])) as Record<FindOutField, string | null>),
+      both_decision_makers: v.both_decision_makers ? v.both_decision_makers : null,
+    },
+    phone_not_collected: v.phone_not_collected === "1",
     soffit_note: v.soffit_note ?? "",
     notes: v.notes ?? "",
     source: oneOf<LeadSource>(SOURCE_OPTIONS, v.source) ?? "door",

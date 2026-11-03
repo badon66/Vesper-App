@@ -30,18 +30,23 @@ export async function proxy(request: NextRequest) {
   const { response, user } = await updateSession(request);
 
   // View as: while this signed-in owner's View as cookie is set, nothing
-  // under /app may change anything, so every server action is refused before
-  // it runs. A cookie that is malformed or belongs to another account is
-  // dropped instead. Whether the owner may view at all is decided by the
+  // under /app may change anything. Server actions go on to their own guard,
+  // which refuses every write while viewing (round 2: Keenan clicks
+  // through, nothing is saved); any other request that isn't a read is
+  // refused here. A cookie that is malformed or belongs to another account
+  // is dropped instead. Whether the owner may view at all is decided by the
   // server on every request (lib/auth/profile.ts).
   const viewAsValue = request.cookies.get(VIEW_AS_COOKIE)?.value;
   if (viewAsValue !== undefined) {
     const viewAs = parseViewAsCookie(viewAsValue);
     if (!user || !viewAs || viewAs.ownerId !== user.sub) {
       response.cookies.delete(VIEW_AS_COOKIE);
-    } else if ((pathname.startsWith("/app") || pathname.startsWith("/meeting")) && refusedWhileViewing(request.method, pathname)) {
+    } else if (
+      (pathname.startsWith("/app") || pathname.startsWith("/meeting")) &&
+      refusedWhileViewing(request.method, pathname, request.headers.has("next-action"))
+    ) {
       return withCookies(
-        new NextResponse("View as is read only. Exit it to make changes.", { status: 403 }),
+        new NextResponse("View as: nothing was saved.", { status: 403 }),
         response,
       );
     }

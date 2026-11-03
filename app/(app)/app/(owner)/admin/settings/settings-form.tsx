@@ -294,8 +294,8 @@ export function SettingsForm({
           <Field name="booking_cutoff_minutes" label="Booking cutoff (minutes)" hint="Setters can hold, book or move into a time until this long before it starts. You can until it starts." errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="numeric" min="0" max="240" step="5" defaultValue={defaults.booking_cutoff_minutes} />}
           </Field>
-          <Field name="hold_grace_minutes" label="Hold grace period (minutes)" hint="A held time lets go after this long when the setter's phone stops checking in." errors={errors}>
-            {(p) => <Input {...p} type="number" inputMode="numeric" min="1" max="30" defaultValue={defaults.hold_grace_minutes} />}
+          <Field name="hold_minutes" label="Hold length (minutes)" hint="A tapped time is held this long, with a countdown. Adding time adds this much again. The timer is what frees a time." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="numeric" min="1" max="30" defaultValue={defaults.hold_minutes} />}
           </Field>
           <Field name="booking_window_days" label="Booking window (days ahead)" hint="Tonight plus this many evenings can be booked." errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="numeric" min="1" max="60" defaultValue={defaults.booking_window_days} />}

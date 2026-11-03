@@ -6,20 +6,22 @@ import {
   NotAllowedError,
   ReadOnlyError,
   requireSalesSideForAction,
+  requireSalesSideForRead,
   type SessionProfile,
 } from "@/lib/auth/profile";
 import type { SheetDraft } from "@/lib/booking/sheet";
 import { type PhotoSlot } from "@/lib/leads/door";
+import { COUNTED_QUESTIONS, type CountedQuestion } from "@/lib/leads/questions";
 import { followUpLabel } from "@/lib/leads/attention";
 import { openKnockSession } from "@/lib/leads/queries";
 import { leadColumnsFromValues, parseLeadForm, type LeadFormErrors } from "@/lib/leads/schema";
 import { leadName, STATUS_LABELS } from "@/lib/leads/status";
 import { PHOTO_BUCKET } from "@/lib/photos";
-import { toBoardSlots, type BoardSlot } from "@/lib/schedule/board";
+import type { BoardSlot } from "@/lib/schedule/board";
 import { distanceWarnings, formatKm } from "@/lib/schedule/distance";
 import { isLive } from "@/lib/schedule/meetings";
 import { bookingMessage, errorCode } from "@/lib/schedule/messages";
-import { bookingSettings, meetingsOnDay } from "@/lib/schedule/queries";
+import { bookingSettings, fetchBoard, meetingsOnDay } from "@/lib/schedule/queries";
 import { createClient } from "@/lib/supabase/server";
 import { calgaryDateOf, calgaryToday, formatTime } from "@/lib/time";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
@@ -27,7 +29,8 @@ import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 // The booking sheet's reads and writes (Keenan, 2026-11-02). Every one runs
 // with the signed-in person's own session, so Row Level Security and the
 // booking functions decide, exactly as for the rest of the app. While the
-// owner views the app as someone, every one of them is refused.
+// owner views the app as someone (round 2), the reads read as that person,
+// so he can click through, and every write is refused.
 
 type Refused = { ok: false; error: string };
 
@@ -37,6 +40,20 @@ async function salesSide(): Promise<SessionProfile | Refused> {
   } catch (e) {
     if (e instanceof ReadOnlyError) return { ok: false, error: VIEW_AS_READ_ONLY };
     if (e instanceof NotAllowedError) return { ok: false, error: "Not for your role." };
+    throw e;
+  }
+}
+
+// For the reads: who the sheet is for, the viewed person while viewing.
+async function reader(): Promise<SessionProfile | Refused> {
+  return (await viewer()).profile;
+}
+
+async function viewer(): Promise<{ profile: SessionProfile | Refused; viewingAs: boolean }> {
+  try {
+    return await requireSalesSideForRead();
+  } catch (e) {
+    if (e instanceof NotAllowedError) return { profile: { ok: false, error: "Not for your role." }, viewingAs: false };
     throw e;
   }
 }
@@ -54,27 +71,29 @@ const mine = (me: SessionProfile, lead: { created_by: string; assigned_to: strin
 
 export type SheetNotes = { door: string; after: string; book: string };
 export type SheetContext =
-  | { ok: true; board: BoardSlot[]; today: string; windowDays: number; asSales: boolean; notes: SheetNotes }
+  | { ok: true; board: BoardSlot[]; today: string; windowDays: number; asSales: boolean; notes: SheetNotes; holdMinutes: number }
   | Refused;
 
 // What the sheet needs when it opens: the board for its time picker and the
 // step notes behind "?".
 export async function sheetContext(): Promise<SheetContext> {
-  const me = await salesSide();
+  const { profile: me, viewingAs } = await viewer();
   if (refused(me)) return me;
   const supabase = await createClient();
   const asSales = me.role !== "owner";
-  const [settings, { data: board }, { data: notes }] = await Promise.all([
+  // While Keenan views the app as a setter, the board reads as theirs.
+  const [settings, board, { data: notes }] = await Promise.all([
     bookingSettings(supabase),
-    supabase.rpc("schedule_board", { p_as_sales: asSales }),
+    fetchBoard(supabase, me, viewingAs ? "owner" : me.role),
     supabase.from("settings_public").select("step_note_at_door, step_note_after_door, step_note_book").maybeSingle(),
   ]);
   return {
     ok: true,
-    board: toBoardSlots(board ?? []),
+    board,
     today: calgaryToday(),
     windowDays: settings.windowDays,
     asSales,
+    holdMinutes: settings.holdMinutes,
     notes: {
       door: notes?.step_note_at_door ?? "",
       after: notes?.step_note_after_door ?? "",
@@ -96,7 +115,7 @@ export type SheetLead =
 
 // A lead to book, as the sheet's draft, with signed links to its guided photos.
 export async function sheetLead(leadId: string): Promise<SheetLead> {
-  const me = await salesSide();
+  const me = await reader();
   if (refused(me)) return me;
   const leadIdParsed = id.safeParse(leadId);
   if (!leadIdParsed.success) return { ok: false, error: "That lead was not found." };
@@ -145,7 +164,10 @@ export async function sheetLead(leadId: string): Promise<SheetLead> {
       looked_into_before: lead.looked_into_before,
       areas_wanted: lead.areas_wanted,
       install_timing: lead.install_timing,
-      everyone: false,
+      everyone: lead.both_decision_makers,
+      not_collected: (lead.not_collected ?? []).filter((item): item is CountedQuestion =>
+        (COUNTED_QUESTIONS as string[]).includes(item),
+      ),
       address_line: lead.address_line,
       city: lead.city,
       postal_code: lead.postal_code ?? "",
@@ -169,7 +191,7 @@ export type BookableLead = { id: string; name: string; address: string; status: 
 // "Existing lead instead": the person's own New and Follow up leads (every
 // one, for Keenan), newest first.
 export async function sheetBookableLeads(): Promise<{ ok: true; leads: BookableLead[] } | Refused> {
-  const me = await salesSide();
+  const me = await reader();
   if (refused(me)) return me;
   const supabase = await createClient();
   let query = supabase
@@ -309,7 +331,7 @@ export async function bookFromSheet(input: {
 
 // The straight-line distance warning for a lead at a time, for the Book screen.
 export async function sheetDistanceWarnings(leadId: string, startsAt: string): Promise<string[]> {
-  const me = await salesSide();
+  const me = await reader();
   if (refused(me)) return [];
   const leadIdParsed = id.safeParse(leadId);
   const at = instant.safeParse(startsAt);

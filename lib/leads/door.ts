@@ -1,4 +1,6 @@
+import { COUNTED_QUESTIONS, QUESTION_LABELS, questionState, type CountedQuestion, type QuestionState } from "@/lib/leads/questions";
 import { SOFFIT_LABELS, SOFFIT_OPTIONS, type SoffitColour } from "@/lib/leads/status";
+import { formatPhone } from "@/lib/phone";
 import type { Database } from "@/types/database";
 
 // The door process (Keenan, 2026-10-31): open, find out, photos, book.
@@ -136,20 +138,63 @@ export function findOutAnswerList(
   });
 }
 
+// Round 2 (Keenan, 2026-11-03): the lead page lists the eight counted
+// questions in the order they're asked, each answered, Not collected or not
+// asked yet, then the soffit colour.
+export type LeadAnswers = FindOutAnswers & {
+  phone: string | null;
+  both_decision_makers: boolean | null;
+  not_collected: string[] | null;
+};
+
+export type LeadAnswerRow = {
+  key: CountedQuestion | "soffit_colour";
+  question: string;
+  answer: string | null;
+  state: QuestionState;
+};
+
+export function leadAnswerList(lead: LeadAnswers): LeadAnswerRow[] {
+  const listed = new Map(findOutAnswerList(lead).map((item) => [item.field, item.answer]));
+  const shown: Record<CountedQuestion, string | null> = {
+    phone: lead.phone ? formatPhone(lead.phone) : null,
+    owns_home: listed.get("owns_home") ?? null,
+    wants_price: listed.get("wants_price") ?? null,
+    both_decision_makers: lead.both_decision_makers === null ? null : lead.both_decision_makers ? "Yes" : "No",
+    christmas_lights_now: listed.get("christmas_lights_now") ?? null,
+    looked_into_before: listed.get("looked_into_before") ?? null,
+    areas_wanted: listed.get("areas_wanted") ?? null,
+    install_timing: listed.get("install_timing") ?? null,
+  };
+  const rows: LeadAnswerRow[] = COUNTED_QUESTIONS.map((key) => ({
+    key,
+    question: QUESTION_LABELS[key],
+    answer: shown[key],
+    state: questionState(lead, key),
+  }));
+  const soffit = listed.get("soffit_colour") ?? null;
+  rows.push({ key: "soffit_colour", question: "Soffit colour", answer: soffit, state: soffit ? "answered" : "open" });
+  return rows;
+}
+
 export function findOutAnsweredCount(answers: FindOutAnswers): number {
   return findOutAnswerList(answers).filter((item) => item.answer !== null).length;
 }
 
 // The four guided photos.
-export const PHOTO_SLOTS: { slot: PhotoSlot; label: string; hint: string }[] = [
-  { slot: "front", label: "Front", hint: "Straight on, whole house in frame" },
-  { slot: "left_corner", label: "Left corner", hint: "Angled so the left side's roofline shows" },
-  { slot: "right_corner", label: "Right corner", hint: "Angled so the right side's roofline shows" },
-  { slot: "soffit", label: "Soffit close-up", hint: "Close enough to see its colour" },
+// Each has a hint, and a few words for the booking sheet's tiles: where to
+// stand, as you face the house.
+export const PHOTO_SLOTS: { slot: PhotoSlot; label: string; hint: string; short: string }[] = [
+  { slot: "front", label: "Front", hint: "Straight on, whole house in frame", short: "Straight on" },
+  { slot: "left_corner", label: "Left corner", hint: "Angled so the left side's roofline shows", short: "From the front left" },
+  { slot: "right_corner", label: "Right corner", hint: "Angled so the right side's roofline shows", short: "From the front right" },
+  { slot: "soffit", label: "Soffit close-up", hint: "Close enough to see its colour", short: "Optional, for its colour" },
 ];
 
 export const PHOTO_SLOT_HINT =
   "Hold the phone sideways and get the whole roofline in. At night, hold still while night mode finishes.";
+// The booking sheet's one line: the drawings show the angles.
+export const PHOTO_SLOT_HINT_SHORT = "Hold it sideways. At night, hold still.";
 
 export function photoSlotLabel(slot: PhotoSlot): string {
   return PHOTO_SLOTS.find((item) => item.slot === slot)?.label ?? slot;

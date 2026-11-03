@@ -123,6 +123,7 @@ describe("settings", () => {
       "distance_warning_km",
       "door_guide",
       "hold_grace_minutes",
+      "hold_minutes",
       "lost_reasons",
       "meeting_days",
       "meeting_slot_count",

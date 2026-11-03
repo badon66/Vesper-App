@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { attachLeadPhotos } from "@/app/(app)/app/leads/actions";
 import { Button } from "@/components/ui/button";
+import { useViewAs } from "@/components/view-as-context";
 import { MAX_PHOTOS_PER_FORM, PHOTO_BUCKET, photoPath, shrinkPhoto } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/client";
+import { VIEW_AS_NOTHING_SAVED } from "@/lib/view-as";
 
 type Item = {
   key: string;
@@ -14,12 +16,15 @@ type Item = {
   preview: string;
   source: Blob;
   path?: string;
+  // View as: shown on this screen only, never uploaded.
+  actedOut?: boolean;
 };
 
 // Takes extra photos, beyond the four guided ones, with the phone camera,
 // shrinks each one in the browser and uploads it straight away into the
 // setter's own folder. In a lead form the uploaded paths travel with the
 // form; on a lead page each photo is attached to the lead as soon as it is up.
+// While Keenan views the app as someone, a photo shows on screen only.
 export function PhotoPicker({
   userId,
   mode,
@@ -34,6 +39,7 @@ export function PhotoPicker({
   onBusyChange?: (busy: boolean) => void;
 }) {
   const router = useRouter();
+  const { viewingAs } = useViewAs();
   const [items, setItems] = useState<Item[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -96,6 +102,10 @@ export function PhotoPicker({
     }
     for (const file of chosen) {
       const key = crypto.randomUUID();
+      if (viewingAs) {
+        setItems((list) => [...list, { key, status: "done", preview: preview(file), source: file, actedOut: true }]);
+        continue;
+      }
       setItems((list) => [...list, { key, status: "working", preview: preview(file), source: file }]);
       void upload(key, file);
     }
@@ -135,9 +145,9 @@ export function PhotoPicker({
                   Didn&apos;t upload. Tap to try again.
                 </button>
               ) : null}
-              {item.status === "done" && mode === "form" ? (
+              {item.status === "done" && (mode === "form" || item.actedOut) ? (
                 <>
-                  <input type="hidden" name="photo_paths" value={item.path} />
+                  {item.path ? <input type="hidden" name="photo_paths" value={item.path} /> : null}
                   <button
                     type="button"
                     aria-label="Remove photo"
@@ -172,6 +182,11 @@ export function PhotoPicker({
       {message ? (
         <p role="alert" className="text-sm font-medium text-destructive">
           {message}
+        </p>
+      ) : null}
+      {items.some((item) => item.actedOut) ? (
+        <p role="status" className="text-sm font-medium text-pretty" data-testid="view-as-nothing-saved">
+          {VIEW_AS_NOTHING_SAVED}
         </p>
       ) : null}
     </div>
