@@ -66,7 +66,7 @@ The booking sheet:
 - [x] Leaving keeps a draft on that phone; an Unfinished list on Home reopens it where they left off and asks for a time; wiped after 24 hours
 - [x] No double booking stays a hard rule: the race tests cover the timer and extensions (only the holder extends; an expired hold can't be extended once someone else has the time; two setters racing still get exactly one)
 
-- [ ] Design: impeccable shape, then critique and polish at both phone sizes; plain copy, no em dashes; everything new works in View as
+- [x] Design: impeccable shape, then critique and polish at both phone sizes; plain copy, no em dashes; everything new works in View as (28/40 before polish, 31/40 after, then the re-score's P1 and smaller findings worked)
 - [ ] The full suite passes, the branch merges on green, and production is verified
 
 ## Setter side (Keenan, 2026-11-03; merge on green, approved)
