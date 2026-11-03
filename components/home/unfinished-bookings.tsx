@@ -5,8 +5,18 @@ import { useMemo, useSyncExternalStore } from "react";
 import { useViewAs } from "@/components/view-as-context";
 import { draftAge, draftName, readDrafts } from "@/lib/booking/drafts";
 import { rawDrafts, subscribeDrafts } from "@/lib/booking/drafts-browser";
-import { stepCount } from "@/lib/booking/sheet";
+import type { SheetScreen } from "@/lib/booking/sheet";
 import { bookingSheet } from "@/lib/booking/sheet-store";
+
+// Where each draft was left, as the steps are named.
+const STOPPED_AT: Record<SheetScreen, string> = {
+  who: "the name and phone",
+  door: "the three questions",
+  learned: "what they learned",
+  address: "the house",
+  house: "the photos",
+  book: "Book",
+};
 
 // The minute, for each draft's age; it ticks over once a minute.
 function subscribeMinute(onChange: () => void) {
@@ -41,7 +51,7 @@ export function UnfinishedBookings({ userId }: { userId: string }) {
       <ul className="flex flex-col divide-y rounded-md border" aria-label="Unfinished bookings">
         {drafts.map((record) => {
           const address = [record.draft.address_line, record.draft.neighbourhood].filter((part) => part.trim()).join(", ");
-          const { number, total } = stepCount(record.screen);
+          const where = STOPPED_AT[record.screen];
           return (
             <li key={record.id}>
               <button
@@ -55,7 +65,7 @@ export function UnfinishedBookings({ userId }: { userId: string }) {
                   <span className="font-semibold">{draftName(record.draft)}</span>
                   <span className="truncate text-sm text-muted-foreground">{address || "No address yet"}</span>
                   <span className="text-sm text-muted-foreground">
-                    Stopped at step {number} of {total}, {draftAge(record.savedAt, minute * 60_000 + 30_000)}
+                    Stopped at {where}, {draftAge(record.savedAt, minute * 60_000 + 30_000)}
                   </span>
                 </span>
                 <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
