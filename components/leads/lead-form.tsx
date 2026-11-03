@@ -13,7 +13,7 @@ import { ActionMessage } from "@/components/action-message";
 import { FieldError } from "@/components/field-error";
 import { AddressField, type AddressDefaults } from "@/components/leads/address-field";
 import { ChoiceGroup } from "@/components/leads/choice-group";
-import { LeadQuestions, type QuestionDefaults } from "@/components/leads/find-out-fields";
+import { bookingRuledOut, LeadQuestions, type QuestionDefaults } from "@/components/leads/find-out-fields";
 import { PhotoPicker } from "@/components/leads/photo-picker";
 import { PhotoSlots } from "@/components/leads/photo-slots";
 import { Button } from "@/components/ui/button";
@@ -117,6 +117,14 @@ export function LeadForm({
   // The questions still open, once Save was tapped with some open: checked
   // before sending, and updated as they're answered.
   const [openNow, setOpenNow] = useState<CountedQuestion[] | null>(null);
+  // Save and book steps back while the answers rule booking out (a phone or
+  // a booking question Not collected, a No or a Not yet): the sheet would
+  // hold a time it can't book.
+  const [bookingBlocked, setBookingBlocked] = useState<boolean | null>(null);
+  const markRestRef = useRef<(() => void) | null>(null);
+  const blocked =
+    bookingBlocked ??
+    bookingRuledOut(shown?.questions ?? NOTHING_FOUND_OUT, Boolean(shown?.phone_not_collected) && !(shown?.phone ?? "").trim());
   const openErrors: LeadFormErrors = Object.fromEntries((openNow ?? []).map((question) => [question, ANSWER_OR_NOT_COLLECTED]));
   const errors: LeadFormErrors = { ...(state.errors ?? {}), ...openErrors };
   const openCount = openNow?.length ?? 0;
@@ -190,6 +198,7 @@ export function LeadForm({
       if (cancelled) return;
       const restoredDefaults = defaultsFromDraft(draft);
       setRestored({ defaults: restoredDefaults, photos, extraPhotos: draft.extraPhotos });
+      setBookingBlocked(null);
       setNeighbourhood(restoredDefaults.neighbourhood || sessionNeighbourhood || "");
       setNeighbourhoodEdited(Boolean(restoredDefaults.neighbourhood));
       setFormKey((key) => key + 1);
@@ -211,6 +220,7 @@ export function LeadForm({
     setRestored(null);
     setDuplicates([]);
     setOpenNow(null);
+    setBookingBlocked(null);
     setNeighbourhood(sessionNeighbourhood ?? "");
     setNeighbourhoodEdited(false);
     setFormKey((key) => key + 1);
@@ -379,6 +389,8 @@ export function LeadForm({
         soffitNote={shown?.soffit_note ?? ""}
         errors={errors}
         onOpenChange={(open) => setOpenNow((current) => (current === null ? null : open.length > 0 ? open : null))}
+        onBookingChange={setBookingBlocked}
+        markRestRef={markRestRef}
       />
 
       {mode === "create" ? (
@@ -437,14 +449,24 @@ export function LeadForm({
       <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:left-20">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-2">
           {openCount > 0 ? (
-            <p role="alert" className="text-sm font-medium text-pretty text-destructive" data-testid="questions-still-open">
-              {openCount === 1
-                ? `${QUESTION_LABELS[(openNow ?? [])[0]]} needs an answer, or mark it Not collected.`
-                : `${openCount} questions need an answer, or mark them Not collected.`}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-x-3">
+              <p role="alert" className="text-sm font-medium text-pretty text-destructive" data-testid="questions-still-open">
+                {openCount === 1
+                  ? `${QUESTION_LABELS[(openNow ?? [])[0]]} needs an answer, or mark it Not collected.`
+                  : `${openCount} questions need an answer, or mark them Not collected.`}
+              </p>
+              <Button type="button" variant="link" size="sm" className="px-0" onClick={() => markRestRef.current?.()} data-testid="mark-rest-by-save">
+                Mark the rest Not collected
+              </Button>
+            </div>
           ) : (
             <ActionMessage text={state.error} />
           )}
+          {mode === "create" && blocked && openCount === 0 && !state.error ? (
+            <p className="text-sm text-pretty text-muted-foreground" data-testid="booking-ruled-out">
+              Booking needs a number and a Yes for owns the home, wants a price and everyone who decides, so this one saves as a lead.
+            </p>
+          ) : null}
           {mode === "create" ? (
             <div className="flex gap-2">
               <Button type="button" variant="outline" size="lg" className="w-12 shrink-0 px-0" aria-label="Cancel" onClick={leave}>
@@ -454,7 +476,7 @@ export function LeadForm({
                 type="submit"
                 name="intent"
                 value="save"
-                variant="outline"
+                variant={blocked ? "default" : "outline"}
                 size="lg"
                 className="flex-1 px-3"
                 disabled={pending || photosBusy}
@@ -465,9 +487,10 @@ export function LeadForm({
                 type="submit"
                 name="intent"
                 value="book"
+                variant={blocked ? "outline" : "default"}
                 size="lg"
                 className="flex-1 px-3"
-                disabled={pending || photosBusy}
+                disabled={pending || photosBusy || blocked}
               >
                 Save and book
               </Button>

@@ -1,9 +1,8 @@
 "use client";
 
-import { Check } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FieldError } from "@/components/field-error";
-import { AnswerGroup, NOT_COLLECTED_CHIP, NOT_COLLECTED_CHIP_ON } from "@/components/leads/answer-group";
+import { AnswerGroup, NotCollectedToggle } from "@/components/leads/answer-group";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +17,6 @@ import {
 } from "@/lib/leads/questions";
 import { ANSWER_OR_NOT_COLLECTED, type LeadFormErrors } from "@/lib/leads/schema";
 import { formatPhone, normalizePhone } from "@/lib/phone";
-import { cn } from "@/lib/utils";
 
 // The questions on New lead and Edit lead (round 2, Keenan, 2026-11-03):
 // the phone, then what they found out, in the order they're asked at the
@@ -58,6 +56,13 @@ function openOf(answers: QuestionDefaults, phoneTyped: boolean, phoneMarked: boo
   ];
 }
 
+// Whether the answers so far rule booking out: the phone or a booking
+// question marked Not collected, or answered No or Not yet.
+export function bookingRuledOut(answers: QuestionDefaults, phoneMarked: boolean): boolean {
+  const ruledOut = (value: string | null) => value === NOT_COLLECTED || value === "no" || value === "not_yet";
+  return phoneMarked || ruledOut(answers.owns_home) || ruledOut(answers.wants_price) || ruledOut(answers.both_decision_makers);
+}
+
 export function LeadQuestions({
   defaults,
   phone,
@@ -65,6 +70,8 @@ export function LeadQuestions({
   soffitNote,
   errors,
   onOpenChange,
+  onBookingChange,
+  markRestRef,
 }: {
   defaults: QuestionDefaults;
   phone: string;
@@ -73,6 +80,10 @@ export function LeadQuestions({
   errors: LeadFormErrors;
   // The questions still open after each change, for the form's Save check.
   onOpenChange?: (open: CountedQuestion[]) => void;
+  // Whether booking is ruled out, after each change, for Save and book.
+  onBookingChange?: (ruledOut: boolean) => void;
+  // Lets the form's own "Mark the rest Not collected" (by Save) do the same.
+  markRestRef?: React.RefObject<(() => void) | null>;
 }) {
   const [answers, setAnswers] = useState<QuestionDefaults>(defaults);
   const [phoneMarked, setPhoneMarked] = useState(phoneNotCollected && phone.trim() === "");
@@ -90,6 +101,7 @@ export function LeadQuestions({
     if (next.typed !== undefined) setPhoneTyped(typed);
     if (next.marked !== undefined) setPhoneMarked(marked);
     onOpenChange?.(openOf(nextAnswers, typed, marked));
+    onBookingChange?.(bookingRuledOut(nextAnswers, marked));
   }
 
   function markPhone(marked: boolean) {
@@ -104,6 +116,10 @@ export function LeadQuestions({
     if (!phoneTyped && phoneRef.current) phoneRef.current.value = "";
     update(phoneTyped ? { answers: next } : { answers: next, marked: true, typed: false });
   }
+  // The form's own Mark the rest, by Save, runs this one.
+  useEffect(() => {
+    if (markRestRef) markRestRef.current = markRest;
+  });
 
   function onPhoneBlur(event: React.FocusEvent<HTMLInputElement>) {
     const result = normalizePhone(event.currentTarget.value);
@@ -122,21 +138,12 @@ export function LeadQuestions({
       <div className="flex flex-col gap-3" data-question="phone">
         <div className="flex items-center justify-between gap-3">
           <Label htmlFor="lead-phone">Phone</Label>
-          <button
-            type="button"
-            aria-pressed={phoneMarked}
-            aria-label="Phone: Not collected"
-            className={cn(
-              NOT_COLLECTED_CHIP,
-              "outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-              phoneMarked && NOT_COLLECTED_CHIP_ON,
-            )}
-            onClick={() => markPhone(!phoneMarked)}
-            data-testid="phone-not-collected"
-          >
-            {phoneMarked ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
-            {NOT_COLLECTED_LABEL}
-          </button>
+          <NotCollectedToggle
+            pressed={phoneMarked}
+            label="Phone: Not collected"
+            testId="phone-not-collected"
+            onToggle={() => markPhone(!phoneMarked)}
+          />
         </div>
         <Input
           ref={phoneRef}
@@ -157,6 +164,11 @@ export function LeadQuestions({
           aria-describedby="lead-phone-error"
         />
         {phoneMarked ? <input type="hidden" name="phone_not_collected" value="1" /> : null}
+        {phoneMarked ? (
+          <p className="text-sm font-semibold text-pretty" data-testid="phone-not-collected-note">
+            Without a number, they can&apos;t be booked.
+          </p>
+        ) : null}
         <FieldError id="lead-phone-error" message={phoneMessage} />
       </div>
 
