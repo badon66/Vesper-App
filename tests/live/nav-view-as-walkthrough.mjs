@@ -752,6 +752,31 @@ try {
   const viewDrafts = await op.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("vesper:sheet-drafts:") || key.startsWith("vesper.booking-sheet.")));
   check("leaving the sheet while viewing keeps no draft on Keenan's phone", viewDrafts.length === 0, viewDrafts.join(", "));
 
+  // Keep as a lead while viewing: nothing is held, so nothing is let go, and
+  // New lead opens with the person, kept in memory only.
+  await op.goto(`${base}/app/schedule`);
+  await settle(op);
+  await op.getByRole("group", { name: "Evenings" }).getByRole("button").last().click();
+  await op.waitForTimeout(500);
+  await op.locator('main [data-testid="time-picker"] [data-state="open"]').first().click();
+  await sheetView("who");
+  await op.fill("#sheet-first-name", "View as keep (test)");
+  await op.fill("#sheet-phone", "403 555 0102");
+  await sheetNext();
+  await sheetView("door");
+  await pickIn("Owns the home", "Yes");
+  await pickIn("Wants a price", "Not yet");
+  await sheetOf.getByTestId("keep-as-lead").click();
+  await op.waitForURL("**/app/leads/new", { timeout: 30000 });
+  await settle(op);
+  const keptNotice = (await op.getByTestId("draft-restored").innerText().catch(() => "")).replace(/\s+/g, " ").trim();
+  const keptStored = await op.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("vesper:new-lead-draft:") || key.startsWith("vesper:sheet-drafts:")));
+  check(
+    "Keep as a lead works while viewing: New lead opens with the person, and nothing is kept on Keenan's phone",
+    keptNotice.startsWith("Kept as a lead") && (await op.inputValue("#lead-first_name")) === "View as keep (test)" && keptStored.length === 0,
+    `${keptNotice} | ${keptStored.join(", ")}`,
+  );
+
   // Home: the knock counters are acted out, and the Unfinished list says where drafts live.
   await op.goto(`${base}/app`);
   await settle(op);
@@ -762,6 +787,10 @@ try {
   const knockNote = await calm(op.locator("main"));
   check("the knock counters count on screen while viewing, and say nothing was saved", doorsAfter === doorsBefore + 2 && knockNote === "View as: nothing was saved.", `${doorsBefore} then ${doorsAfter}; ${knockNote}`);
   check("Home shows no Unfinished list while viewing: a setter's drafts stay on their own phone", (await op.getByTestId("unfinished").count()) === 0);
+  check(
+    "and Home says why, for Keenan",
+    (await op.getByTestId("unfinished-view-as").innerText().catch(() => "")).trim() === "Unfinished bookings stay on Nav Test A's phone, so they don't show here.",
+  );
 
   // New lead: Save is refused calmly; a photo is acted out.
   await op.goto(`${base}/app/leads/new`);

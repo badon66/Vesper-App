@@ -542,7 +542,7 @@ try {
   await next(pageA);
   await waitView(pageA, "house", 30000);
   scrolls.house = await sheetScrolls(pageA);
-  check("the photos have a step of their own: Step 5 of 6, 1 left", (await stepCounter(pageA)) === "Step 5 of 6, 1 left" && (await nextLabel(pageA)) === "Photos first", await nextLabel(pageA));
+  check("the photos have a step of their own: Step 5 of 6, 1 left", (await stepCounter(pageA)) === "Step 5 of 6, 1 left" && (await nextLabel(pageA)) === "Take the photos first", await nextLabel(pageA));
   const tiles = await Promise.all(
     ["Front", "Left corner", "Right corner", "Soffit close-up"].map(async (label) => [
       await sheet(pageA).getByRole("button", { name: `Take photo, ${label}` }).count(),
@@ -814,8 +814,10 @@ try {
   await sheet(pageA).getByTestId("mark-rest").click();
   const doorNote = (await sheet(pageA).getByTestId("door-note").innerText().catch(() => "")).replace(/\s+/g, " ").trim();
   check(
-    "Mark the rest at the door says at once what it means for booking, and the way to follow up instead",
-    doorNote.startsWith("Booking needs a Yes for owns the home, wants a price and everyone who decides.") && doorNote.includes("set a follow-up day on their lead"),
+    "Mark the rest at the door says at once what it means for booking, offers Keep as a lead, and steps Next back",
+    doorNote.startsWith("Booking needs a Yes for owns the home, wants a price and everyone who decides.") &&
+      doorNote.includes("Keep as a lead") &&
+      (await pageA.getByTestId("sheet-next").getAttribute("data-step-back")) === "yes",
     doorNote,
   );
   await next(pageA);
@@ -835,19 +837,73 @@ try {
   const blocked = pageA.getByTestId("sheet-next");
   check(
     "Not collected never counts where booking needs a real answer: phone, owns the home, wants a price, everyone who decides",
-    missing.length === 4 && (await blocked.innerText()).trim() === "Fix 4 first" && (await blocked.getAttribute("data-ready")) === "no",
+    missing.length === 4 && (await blocked.innerText()).trim() === "Can't book yet" && (await blocked.getAttribute("data-ready")) === "no",
     `${missing.length} missing`,
   );
   const phoneMissing = missing.find((item) => item.startsWith("Phone number")) ?? "";
   check("each says Not collected and what booking needs", phoneMissing.replace(/\s+/g, " ").includes("Phone number: Not collected Booking needs a number."), phoneMissing.replace(/\s+/g, " "));
+  check("Book offers Keep as a lead too, once an answer rules booking out", (await sheet(pageA).getByTestId("book-ruled-out").getByTestId("keep-as-lead").count()) === 1);
   await next(pageA);
   await waitView(pageA, "who");
-  check("Fix 4 first, like each Fix beside an item, goes to the screen that asks for it, with the time still held", (await heldState(pageA)) === "yes");
-  await letGo(pageA);
+  check("Can't book yet, like each Fix beside an item, goes to the screen that asks for it, with the time still held", (await heldState(pageA)) === "yes");
+  await sheet(pageA).getByTestId("keep-as-lead").click();
+  await pageA.waitForURL(`**/app/leads/${lead2}`, { timeout: 30000 });
   const reopenedW = await waitForState(pageB, W, "open");
-  check("letting go from the lead page frees the time on other phones", reopenedW !== null);
+  check("Keep as a lead on a saved lead frees the time on other phones at once and opens their lead, for a follow-up day", reopenedW !== null);
   const { data: lead2Now } = await admin.from("leads").select("not_collected").eq("id", lead2).single();
   check("the lead keeps what was marked Not collected", (lead2Now?.not_collected ?? []).includes("phone") && (lead2Now?.not_collected ?? []).includes("owns_home"), JSON.stringify(lead2Now));
+
+  // ---------------------------------------------------------------- Keep as a lead: a new person the sheet can't book
+  await pageA.goto(`${base}/app/schedule`);
+  await settle(pageA);
+  await chooseEvening(pageA.locator("main"), testDay);
+  await slotButton(pageA, W).click();
+  await waitView(pageA, "who");
+  check("the first step's corner lets the time go, instead of a Back with nowhere to go", ((await pageA.getByTestId("sheet-let-go-first").innerText().catch(() => "")).trim()) === "Let go");
+  await pageA.fill("#sheet-first-name", `${TEST_LEAD} Keep`);
+  await pageA.fill("#sheet-phone", "403 555 0142");
+  await next(pageA);
+  await waitView(pageA, "door");
+  await answer(pageA, "Owns the home", "Yes");
+  await answer(pageA, "Wants a price", "Not yet");
+  check(
+    "a Not yet at the door makes Keep as a lead the gold button and steps Next back",
+    (await sheet(pageA).getByTestId("door-note").getByTestId("keep-as-lead").count()) === 1 && (await pageA.getByTestId("sheet-next").getAttribute("data-step-back")) === "yes",
+  );
+  await sheet(pageA).getByTestId("keep-as-lead").click();
+  await pageA.waitForURL("**/app/leads/new", { timeout: 30000 });
+  await settle(pageA);
+  const kept = await waitForState(pageB, W, "open");
+  check("Keep as a lead lets the time go at once: it is open again on other phones", kept !== null);
+  const keptNotice = (await pageA.getByTestId("draft-restored").innerText().catch(() => "")).replace(/\s+/g, " ").trim();
+  check(
+    "New lead opens with the person and their answers, and says the time is free again",
+    keptNotice.startsWith("Kept as a lead, and the time is free again.") &&
+      (await pageA.inputValue("#lead-first_name")) === `${TEST_LEAD} Keep` &&
+      (await pageA.locator('[data-question="wants_price"] input[value="not_yet"]').isChecked()) &&
+      (await pageA.locator('[data-question="owns_home"] input[value="yes"]').isChecked()),
+    keptNotice,
+  );
+  const sheetDraftsLeft = await pageA.evaluate(() => Object.entries(localStorage).filter(([key, value]) => key.startsWith("vesper:sheet-drafts:") && value.includes("Keep")).length);
+  check("it leaves nothing in Unfinished: the person carries on in New lead", sheetDraftsLeft === 0);
+  await pageA.fill("#lead-address", "308 Keep Test Way NW (TEST)");
+  await pageA.locator("#lead-first_name").click();
+  await pageA.getByRole("button", { name: "Use where I'm standing" }).click();
+  await pageA.getByText(/accurate to about 10 m/).first().waitFor({ timeout: 15000 });
+  await pageA.getByTestId("mark-rest").click();
+  await pageA.getByRole("button", { name: "Save lead" }).click();
+  await pageA.waitForURL((url) => !url.pathname.endsWith("/leads/new"), { timeout: 30000 }).catch(() => {});
+  const { data: keptLead } = await admin
+    .from("leads")
+    .select("status, owns_home, wants_price, phone, lat")
+    .eq("created_by", people.a.id)
+    .eq("first_name", `${TEST_LEAD} Keep`)
+    .maybeSingle();
+  check(
+    "saved from New lead, they're a lead with what was asked at the door: Owns the home Yes, Wants a price Not yet",
+    keptLead?.status === "new" && keptLead?.owns_home === true && keptLead?.wants_price === false && keptLead?.phone === "+14035550142" && keptLead?.lat !== null,
+    JSON.stringify(keptLead),
+  );
 
   // ---------------------------------------------------------------- the distance warning
   await pageB.goto(`${base}/app/leads/${lead3}`);
