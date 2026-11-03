@@ -3,7 +3,8 @@
 import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { holdTime } from "@/app/(app)/app/schedule/actions";
-import { bookingSheet } from "@/lib/booking/sheet-store";
+import { useViewAs } from "@/components/view-as-context";
+import { bookingSheet, type SheetTimer } from "@/lib/booking/sheet-store";
 import {
   eveningLabel,
   eveningsOf,
@@ -30,7 +31,9 @@ export type PickerMode = "book" | "sheet" | "view";
 // holder's initials and cannot be picked; a booked one is greyed out. It
 // reads the board from the database every few seconds, so holds and
 // bookings on other phones show up without a refresh. Tapping a time asks
-// the database to hold it; the database decides.
+// the database to hold it; the database decides. While Keenan views the app
+// as someone, the hold is acted out: the sheet opens as it would, and
+// nothing is held.
 export function TimePicker({
   initial,
   today,
@@ -57,12 +60,13 @@ export function TimePicker({
   meetingId?: string | null;
   initialDay?: string | null;
   tonightOnly?: boolean;
-  onHeld?: (startsAt: string) => void;
+  onHeld?: (startsAt: string, timer: SheetTimer | null) => void;
   onDayChange?: (day: string) => void;
   onBoardChange?: () => void;
   // Keenan taps a blocked time to unblock it, or a booked one to see it.
   onUnavailableTap?: (slot: BoardSlot) => void;
 }) {
+  const { viewingAs } = useViewAs();
   const [slots, setSlots] = useState(initial);
   const evenings = useMemo(() => eveningsOf(slots, today, windowDays), [slots, today, windowDays]);
   const opening = useMemo(() => pickEvening(eveningsOf(initial, today, windowDays), today), [initial, today, windowDays]);
@@ -138,6 +142,11 @@ export function TimePicker({
       return;
     }
     if (mode === "view") return;
+    if (viewingAs) {
+      if (mode === "book") bookingSheet.open({ kind: "book", startsAt: slot.startsAt, timer: null });
+      else onHeld?.(slot.startsAt, null);
+      return;
+    }
     setPending(slot.startsAt);
     try {
       const result = await holdTime(slot.startsAt, { leadId, meetingId });
@@ -145,8 +154,9 @@ export function TimePicker({
         setMessage(result.message);
         return;
       }
-      if (mode === "book") bookingSheet.open({ kind: "book", startsAt: slot.startsAt });
-      else onHeld?.(slot.startsAt);
+      const timer = { expiresAt: result.expiresAt, now: result.now };
+      if (mode === "book") bookingSheet.open({ kind: "book", startsAt: slot.startsAt, timer });
+      else onHeld?.(slot.startsAt, timer);
     } catch {
       setMessage("No signal. Tap the time again.");
     } finally {

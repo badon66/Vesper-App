@@ -17,11 +17,11 @@ import { openKnockSession } from "@/lib/leads/queries";
 import { leadColumnsFromValues, parseLeadForm, type LeadFormErrors } from "@/lib/leads/schema";
 import { leadName, STATUS_LABELS } from "@/lib/leads/status";
 import { PHOTO_BUCKET } from "@/lib/photos";
-import { toBoardSlots, type BoardSlot } from "@/lib/schedule/board";
+import type { BoardSlot } from "@/lib/schedule/board";
 import { distanceWarnings, formatKm } from "@/lib/schedule/distance";
 import { isLive } from "@/lib/schedule/meetings";
 import { bookingMessage, errorCode } from "@/lib/schedule/messages";
-import { bookingSettings, meetingsOnDay } from "@/lib/schedule/queries";
+import { bookingSettings, fetchBoard, meetingsOnDay } from "@/lib/schedule/queries";
 import { createClient } from "@/lib/supabase/server";
 import { calgaryDateOf, calgaryToday, formatTime } from "@/lib/time";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
@@ -46,10 +46,14 @@ async function salesSide(): Promise<SessionProfile | Refused> {
 
 // For the reads: who the sheet is for, the viewed person while viewing.
 async function reader(): Promise<SessionProfile | Refused> {
+  return (await viewer()).profile;
+}
+
+async function viewer(): Promise<{ profile: SessionProfile | Refused; viewingAs: boolean }> {
   try {
-    return (await requireSalesSideForRead()).profile;
+    return await requireSalesSideForRead();
   } catch (e) {
-    if (e instanceof NotAllowedError) return { ok: false, error: "Not for your role." };
+    if (e instanceof NotAllowedError) return { profile: { ok: false, error: "Not for your role." }, viewingAs: false };
     throw e;
   }
 }
@@ -73,18 +77,19 @@ export type SheetContext =
 // What the sheet needs when it opens: the board for its time picker and the
 // step notes behind "?".
 export async function sheetContext(): Promise<SheetContext> {
-  const me = await reader();
+  const { profile: me, viewingAs } = await viewer();
   if (refused(me)) return me;
   const supabase = await createClient();
   const asSales = me.role !== "owner";
-  const [settings, { data: board }, { data: notes }] = await Promise.all([
+  // While Keenan views the app as a setter, the board reads as theirs.
+  const [settings, board, { data: notes }] = await Promise.all([
     bookingSettings(supabase),
-    supabase.rpc("schedule_board", { p_as_sales: asSales }),
+    fetchBoard(supabase, me, viewingAs ? "owner" : me.role),
     supabase.from("settings_public").select("step_note_at_door, step_note_after_door, step_note_book").maybeSingle(),
   ]);
   return {
     ok: true,
-    board: toBoardSlots(board ?? []),
+    board,
     today: calgaryToday(),
     windowDays: settings.windowDays,
     asSales,

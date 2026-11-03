@@ -1,13 +1,16 @@
 "use client";
 
-import { Camera } from "lucide-react";
+import { Camera, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { attachLeadPhotos } from "@/app/(app)/app/leads/actions";
+import { PhotoGuide } from "@/components/leads/photo-guides";
 import { Button } from "@/components/ui/button";
+import { useViewAs } from "@/components/view-as-context";
 import { PHOTO_SLOT_HINT, PHOTO_SLOTS, slotFieldName, type PhotoSlot } from "@/lib/leads/door";
 import { PHOTO_BUCKET, photoPath, shrinkPhoto } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/client";
+import { VIEW_AS_NOTHING_SAVED } from "@/lib/view-as";
 
 type Taken = {
   attempt: number;
@@ -15,15 +18,21 @@ type Taken = {
   preview: string;
   source: Blob;
   path?: string;
+  // View as: shown on this screen only, never uploaded.
+  actedOut?: boolean;
 };
 
-// The four guided photos. Each slot opens the camera, shows the photo once
-// it is taken and offers a retake. Photos are shrunk in the browser and
-// uploaded straight away, like every other photo. In a lead form the
-// uploaded path travels with the form; on a lead page the photo goes into
-// its slot as soon as it is up, and the photo it replaces stays as an extra.
-// The booking sheet uses the tiles layout: each slot is one tap target, so
-// all four fit on a phone screen without scrolling.
+// The four guided photos. Each slot has a big Take photo button that opens
+// the camera, a smaller Upload button for a photo already on the phone, and
+// a line drawing of the angle to shoot (round 2, Keenan, 2026-11-03). It
+// shows the photo once it is taken and offers a retake. Photos are shrunk
+// in the browser and uploaded straight away, like every other photo. In a
+// lead form the uploaded path travels with the form; on a lead page the
+// photo goes into its slot as soon as it is up, and the photo it replaces
+// stays as an extra. The booking sheet uses the tiles layout: each tile is
+// the Take photo button, so all four fit on a phone screen. While Keenan
+// views the app as someone, a photo shows on screen only and nothing is
+// uploaded.
 export function PhotoSlots({
   userId,
   mode,
@@ -50,6 +59,7 @@ export function PhotoSlots({
   initial?: Partial<Record<PhotoSlot, { path: string; preview: string }>>;
 }) {
   const router = useRouter();
+  const { viewingAs } = useViewAs();
   const [taken, setTaken] = useState<Partial<Record<PhotoSlot, Taken>>>(() =>
     Object.fromEntries(
       Object.entries(initial ?? {}).map(([slot, photo]) => [
@@ -59,6 +69,7 @@ export function PhotoSlots({
     ),
   );
   const inputs = useRef<Partial<Record<PhotoSlot, HTMLInputElement | null>>>({});
+  const uploads = useRef<Partial<Record<PhotoSlot, HTMLInputElement | null>>>({});
   const working = useRef(0);
   const attempts = useRef(0);
   const previews = useRef(new Set<string>());
@@ -68,7 +79,7 @@ export function PhotoSlots({
     return () => urls.forEach((url) => URL.revokeObjectURL(url));
   }, []);
 
-  const doneKey = PHOTO_SLOTS.filter(({ slot }) => taken[slot]?.status === "done" && taken[slot]?.path)
+  const doneKey = PHOTO_SLOTS.filter(({ slot }) => taken[slot]?.status === "done" && (taken[slot]?.path || taken[slot]?.actedOut))
     .map(({ slot }) => slot)
     .join(",");
   useEffect(() => {
@@ -120,13 +131,20 @@ export function PhotoSlots({
     }
   }
 
-  function onFile(slot: PhotoSlot, files: FileList | null) {
+  function onFile(slot: PhotoSlot, files: FileList | null, from: HTMLInputElement | null | undefined) {
     const file = files?.[0];
-    const input = inputs.current[slot];
-    if (input) input.value = "";
+    if (from) from.value = "";
     if (!file) return;
     attempts.current += 1;
     const attempt = attempts.current;
+    if (viewingAs) {
+      // Acted out: the photo shows here and goes nowhere.
+      setTaken((all) => ({
+        ...all,
+        [slot]: { attempt, status: "done", preview: preview(file), source: file, actedOut: true },
+      }));
+      return;
+    }
     setTaken((all) => ({
       ...all,
       [slot]: { attempt, status: "working", preview: preview(file), source: file },
@@ -134,26 +152,48 @@ export function PhotoSlots({
     void upload(slot, attempt, file);
   }
 
-  const input = (slot: PhotoSlot) => (
-    <input
-      ref={(element) => {
-        inputs.current[slot] = element;
-      }}
-      type="file"
-      accept="image/*"
-      capture="environment"
-      tabIndex={-1}
-      aria-hidden="true"
-      className="sr-only"
-      data-testid={`slot-input-${slot}`}
-      onChange={(event) => onFile(slot, event.currentTarget.files)}
-    />
+  // Two hidden inputs per slot: the camera, and the phone's photos.
+  const inputsFor = (slot: PhotoSlot) => (
+    <>
+      <input
+        ref={(element) => {
+          inputs.current[slot] = element;
+        }}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        tabIndex={-1}
+        aria-hidden="true"
+        className="sr-only"
+        data-testid={`slot-input-${slot}`}
+        onChange={(event) => onFile(slot, event.currentTarget.files, inputs.current[slot])}
+      />
+      <input
+        ref={(element) => {
+          uploads.current[slot] = element;
+        }}
+        type="file"
+        accept="image/*"
+        tabIndex={-1}
+        aria-hidden="true"
+        className="sr-only"
+        data-testid={`slot-upload-${slot}`}
+        onChange={(event) => onFile(slot, event.currentTarget.files, uploads.current[slot])}
+      />
+    </>
   );
+
+  const actedOut = PHOTO_SLOTS.some(({ slot }) => taken[slot]?.actedOut);
+  const actedOutNote = actedOut ? (
+    <p role="status" className="text-sm font-medium text-pretty" data-testid="view-as-nothing-saved">
+      {VIEW_AS_NOTHING_SAVED}
+    </p>
+  ) : null;
 
   if (layout === "tiles") {
     return (
       <div className="flex flex-col gap-3">
-        <ul className="grid grid-cols-2 gap-3" aria-label="Guided photos">
+        <ul className="grid grid-cols-2 gap-x-3 gap-y-2" aria-label="Guided photos">
           {PHOTO_SLOTS.map(({ slot, label, hint }) => {
             const local = taken[slot];
             const src = local?.preview ?? saved[slot];
@@ -163,13 +203,14 @@ export function PhotoSlots({
             const optional = slot === "soffit";
             const status = local?.status === "working" ? `${label}: uploading` : failed ? `${label}: didn't upload. Tap to try again.` : "";
             return (
-              <li key={slot} data-slot={slot}>
+              <li key={slot} data-slot={slot} className="flex flex-col gap-1">
                 <button
                   type="button"
                   disabled={!canTake}
                   aria-label={`${action}, ${label}`}
+                  aria-describedby={`slot-hint-${slot}`}
                   onClick={() => (failed && local ? void upload(slot, local.attempt, local.source) : inputs.current[slot]?.click())}
-                  className="relative flex aspect-[16/10] w-full overflow-hidden rounded-md border bg-muted text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
+                  className="relative flex aspect-[16/11] w-full overflow-hidden rounded-md border bg-muted text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
                 >
                   {src ? (
                     <>
@@ -188,10 +229,13 @@ export function PhotoSlots({
                       </span>
                     </>
                   ) : (
-                    <span className="flex size-full flex-col items-center justify-center gap-1 px-3 text-center">
-                      <Camera aria-hidden="true" className="size-6 text-muted-foreground" />
-                      <span className="text-sm font-semibold">{label}</span>
-                      <span className="text-xs text-pretty text-muted-foreground">{optional ? `Optional. ${hint}` : hint}</span>
+                    <span className="flex size-full flex-col items-center justify-center gap-0.5 px-2 text-center">
+                      <PhotoGuide slot={slot} className="h-11 w-auto min-[420px]:h-14" />
+                      <span className="text-sm font-semibold min-[420px]:text-base">{label}</span>
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                        <Camera aria-hidden="true" className="size-3.5" />
+                        {optional ? "Take photo, optional" : "Take photo"}
+                      </span>
                     </span>
                   )}
                   {failed ? (
@@ -200,15 +244,33 @@ export function PhotoSlots({
                     </span>
                   ) : null}
                 </button>
+                <span id={`slot-hint-${slot}`} className="sr-only">
+                  {hint}
+                </span>
+                {canTake ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-2 w-fit text-muted-foreground"
+                    aria-label={`Upload a photo from the phone, ${label}`}
+                    onClick={() => uploads.current[slot]?.click()}
+                    data-testid={`slot-upload-button-${slot}`}
+                  >
+                    <Upload aria-hidden="true" className="size-4" />
+                    Upload
+                  </Button>
+                ) : null}
                 <span className="sr-only" aria-live="polite">
                   {status}
                 </span>
-                {canTake ? input(slot) : null}
+                {canTake ? inputsFor(slot) : null}
               </li>
             );
           })}
         </ul>
         {canTake ? <p className="text-xs text-pretty text-muted-foreground">{PHOTO_SLOT_HINT}</p> : null}
+        {actedOutNote}
       </div>
     );
   }
@@ -226,8 +288,8 @@ export function PhotoSlots({
                   // eslint-disable-next-line @next/next/no-img-element -- a local preview, or a private photo behind a short-lived signed link
                   <img src={src} alt={`${label} photo of the house`} className="size-full object-cover" />
                 ) : (
-                  <span className="flex size-full items-center justify-center text-muted-foreground">
-                    <Camera aria-hidden="true" className="size-6" />
+                  <span className="flex size-full items-center justify-center px-3">
+                    <PhotoGuide slot={slot} className="h-3/4 w-auto max-w-full" />
                   </span>
                 )}
                 {local?.status === "working" ? (
@@ -250,7 +312,7 @@ export function PhotoSlots({
                 <p className="text-sm text-pretty text-muted-foreground">{hint}</p>
               </div>
               {canTake ? (
-                <>
+                <div className="flex flex-col gap-1">
                   <Button
                     type="button"
                     variant="outline"
@@ -262,8 +324,20 @@ export function PhotoSlots({
                     <Camera aria-hidden="true" />
                     {src ? "Retake" : "Take photo"}
                   </Button>
-                  {input(slot)}
-                </>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="w-fit text-muted-foreground"
+                    aria-label={`Upload a photo from the phone, ${label}`}
+                    onClick={() => uploads.current[slot]?.click()}
+                    data-testid={`slot-upload-button-${slot}`}
+                  >
+                    <Upload aria-hidden="true" className="size-4" />
+                    Upload
+                  </Button>
+                  {inputsFor(slot)}
+                </div>
               ) : !src ? (
                 <p className="text-xs text-muted-foreground">No photo yet.</p>
               ) : null}
@@ -275,6 +349,7 @@ export function PhotoSlots({
         })}
       </ul>
       {canTake ? <p className="text-sm text-pretty text-muted-foreground">{PHOTO_SLOT_HINT}</p> : null}
+      {actedOutNote}
     </div>
   );
 }

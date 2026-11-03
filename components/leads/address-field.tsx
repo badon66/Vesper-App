@@ -48,6 +48,7 @@ export function AddressField({
   fallbackNeighbourhood,
   error,
   onPicked,
+  onEdited,
   leadId = null,
   linkLeads = true,
   place = "door",
@@ -57,6 +58,9 @@ export function AddressField({
   fallbackNeighbourhood?: string | null;
   error?: string;
   onPicked: (picked: PickedAddress | null) => void;
+  // Each change to the typed address or its map position, so the booking
+  // sheet knows when its address step is done.
+  onEdited?: (value: { addressLine: string; positioned: boolean }) => void;
   leadId?: string | null;
   // Where the person is standing when it's used: a setter at the door, or
   // Keenan at the house for a meeting nobody booked.
@@ -128,15 +132,18 @@ export function AddressField({
 
   function onChange(value: string) {
     setText(value);
-    if (position?.source === "picked") {
+    const dropped = position?.source === "picked";
+    if (dropped) {
       setPosition(null);
       onPicked(null);
     }
+    onEdited?.({ addressLine: value, positioned: !dropped && position !== null });
     search(value);
   }
 
   function useDevicePosition(found: { lat: number; lng: number; accuracy: number }) {
     setPosition({ lat: found.lat, lng: found.lng, placeId: null, source: "device", accuracy: found.accuracy });
+    onEdited?.({ addressLine: text, positioned: true });
     findLeadsNear(found.lat, found.lng, leadId).then(setNearby, () => setNearby([]));
   }
 
@@ -153,6 +160,7 @@ export function AddressField({
       setPosition({ lat: picked.lat, lng: picked.lng, placeId: picked.placeId, source: "picked", accuracy: null });
       setNearby([]);
       onPicked(picked);
+      onEdited?.({ addressLine: picked.addressLine, positioned: true });
     } catch {
       setUnavailable(true);
     } finally {

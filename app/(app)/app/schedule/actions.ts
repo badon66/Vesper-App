@@ -51,7 +51,7 @@ async function owner(): Promise<SessionProfile | ActionResult> {
 const isResult = (value: unknown): value is ActionResult =>
   typeof value === "object" && value !== null && "ok" in value;
 
-function failed(error: { message?: string; hint?: string | null; details?: string | null }): ActionResult {
+function failed(error: { message?: string; hint?: string | null; details?: string | null }): { ok: false; code: string; message: string } {
   return { ok: false, code: errorCode(error), message: bookingMessage(error) };
 }
 
@@ -65,13 +65,24 @@ function refreshSchedule(leadId?: string | null) {
 
 // ---------------------------------------------------------------- holds
 
-// Tapping an open time holds it, for booking a lead or moving a booking.
+// When a hold runs out, by the database's own clock (round 2).
+export type HoldTimer = { expiresAt: string; now: string };
+export type HoldResult = ({ ok: true } & HoldTimer) | { ok: false; code: string; message: string };
+
+function timerOf(data: unknown): HoldTimer | null {
+  const value = data as { expires_at?: unknown; now?: unknown } | null;
+  if (typeof value?.expires_at !== "string" || typeof value.now !== "string") return null;
+  return { expiresAt: new Date(value.expires_at).toISOString(), now: new Date(value.now).toISOString() };
+}
+
+// Tapping an open time holds it, for booking a lead or moving a booking. It
+// lasts the hold length in Settings (round 2: the timer is what frees it).
 export async function holdTime(
   startsAt: string,
   opts: { leadId?: string | null; meetingId?: string | null } = {},
-): Promise<ActionResult> {
+): Promise<HoldResult> {
   const me = await salesSide();
-  if (isResult(me)) return me;
+  if (isResult(me)) return me.ok ? { ok: false, code: "unknown", message: "Try again." } : me;
   const at = instant.safeParse(startsAt);
   const lead = opts.leadId ? id.safeParse(opts.leadId) : null;
   const meeting = opts.meetingId ? id.safeParse(opts.meetingId) : null;
@@ -79,28 +90,56 @@ export async function holdTime(
     return { ok: false, code: "not_a_slot", message: "That isn't one of the meeting times." };
   }
   const supabase = await createClient();
-  const { error } = await supabase.rpc("hold_slot", {
+  const { data, error } = await supabase.rpc("hold_slot", {
     p_starts_at: at.data,
     ...(lead?.success ? { p_lead_id: lead.data } : {}),
     ...(meeting?.success ? { p_meeting_id: meeting.data } : {}),
   });
-  return error ? failed(error) : { ok: true };
+  if (error) return failed(error);
+  const timer = timerOf(data);
+  return timer ? { ok: true, ...timer } : { ok: false, code: "unknown", message: "That didn't hold. Try again." };
+}
+
+export type HoldStatus = { status: "held" | "expired" | "lost" | "none"; startsAt?: string; retaken?: boolean } & Partial<HoldTimer>;
+
+function holdStatusOf(data: unknown): HoldStatus {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return { status: "none" };
+  const value = data as { status?: string; starts_at?: string; retaken?: boolean };
+  const status = value.status === "held" || value.status === "expired" || value.status === "lost" ? value.status : "none";
+  return {
+    status,
+    ...(value.starts_at ? { startsAt: new Date(value.starts_at).toISOString() } : {}),
+    ...(timerOf(data) ?? {}),
+    ...(value.retaken ? { retaken: true } : {}),
+  };
+}
+
+// The caller's own hold and when it runs out. Reading only.
+export async function myHoldStatus(): Promise<HoldStatus> {
+  const me = await salesSide();
+  if (isResult(me)) return { status: "none" };
+  const { data, error } = await (await createClient()).rpc("hold_status");
+  return error ? { status: "none" } : holdStatusOf(data);
+}
+
+// Add 5 minutes (round 2): the hold length again, for the holder only, or
+// the time taken back with a fresh timer while it's still free.
+export async function extendMyHold(): Promise<HoldStatus | { status: "refused"; message: string }> {
+  const me = await salesSide();
+  if (isResult(me)) return { status: "refused", message: me.ok === false ? me.message : "" };
+  const { data, error } = await (await createClient()).rpc("extend_hold");
+  return error ? { status: "none" } : holdStatusOf(data);
 }
 
 export type RenewResult = { status: "held" | "lost" | "none"; startsAt?: string };
 
-// The holder's screen checks in to keep the hold alive.
+// Before round 2 the screen checked in here to keep its hold alive; now it
+// only reports, and a run-out hold reads as lost.
 export async function renewMyHold(): Promise<RenewResult> {
-  const me = await salesSide();
-  if (isResult(me)) return { status: "none" };
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("renew_hold");
-  if (error || !data || typeof data !== "object" || Array.isArray(data)) return { status: "none" };
-  const status = (data as { status?: string }).status;
-  const startsAt = (data as { starts_at?: string }).starts_at;
+  const result = await myHoldStatus();
   return {
-    status: status === "held" || status === "lost" ? status : "none",
-    ...(startsAt ? { startsAt: new Date(startsAt).toISOString() } : {}),
+    status: result.status === "held" ? "held" : result.status === "none" ? "none" : "lost",
+    ...(result.startsAt ? { startsAt: result.startsAt } : {}),
   };
 }
 

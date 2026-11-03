@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { leadColumnsFromValues, leadFormDataToInput, parseLeadForm } from "@/lib/leads/schema";
+import { ANSWER_OR_NOT_COLLECTED, leadColumnsFromValues, leadFormDataToInput, parseLeadForm } from "@/lib/leads/schema";
 
 const me = "3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e";
 const photo = "0b6f6f0e-2c1a-4e8b-9a7d-5c3e2f1a0b9c";
 
+// Every counted question marked Not collected (round 2): the least a lead
+// needs to be saved.
 const blank = {
   first_name: "Dana",
   last_name: "",
   phone: "",
+  phone_not_collected: "1",
   email: "",
   address_line: "123 Evanston Way NW",
   city: "",
@@ -21,12 +24,13 @@ const blank = {
   house_type: "",
   soffit_colour: "",
   soffit_note: "",
-  owns_home: "",
-  wants_price: "",
-  christmas_lights_now: "",
-  looked_into_before: "",
-  areas_wanted: "",
-  install_timing: "",
+  owns_home: "not_collected",
+  wants_price: "not_collected",
+  both_decision_makers: "not_collected",
+  christmas_lights_now: "not_collected",
+  looked_into_before: "not_collected",
+  areas_wanted: "not_collected",
+  install_timing: "not_collected",
   notes: "",
   source: "door",
   photo_paths: [] as string[],
@@ -37,7 +41,7 @@ const blank = {
 };
 
 describe("parseLeadForm", () => {
-  it("needs only a first name and an address; blanks become nothing and the city defaults to Calgary", () => {
+  it("needs a first name, an address and every question answered or Not collected; blanks become nothing and the city defaults to Calgary", () => {
     const result = parseLeadForm(blank);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -88,19 +92,54 @@ describe("parseLeadForm", () => {
     if (!nonsense.ok) expect(nonsense.errors.address_line).toMatch(/pick the address again/i);
   });
 
-  it("leaves every Find out question unanswered when nothing was tapped", () => {
+  it("stores Not collected as such, never as an answer, and the soffit stays optional", () => {
     const result = parseLeadForm(blank);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.values).toMatchObject({
+      phone: null,
       owns_home: null,
       wants_price: null,
+      both_decision_makers: null,
       soffit_colour: null,
       christmas_lights_now: null,
       areas_wanted: null,
       install_timing: null,
       slot_photos: [],
     });
+    expect(result.values.not_collected).toEqual([
+      "phone",
+      "owns_home",
+      "wants_price",
+      "both_decision_makers",
+      "christmas_lights_now",
+      "looked_into_before",
+      "areas_wanted",
+      "install_timing",
+    ]);
+  });
+
+  it("refuses to save while a question has neither an answer nor Not collected, naming each one", () => {
+    const result = parseLeadForm({ ...blank, phone_not_collected: "", wants_price: "", install_timing: "" });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toEqual({
+      phone: ANSWER_OR_NOT_COLLECTED,
+      wants_price: ANSWER_OR_NOT_COLLECTED,
+      install_timing: ANSWER_OR_NOT_COLLECTED,
+    });
+  });
+
+  it("lets an answer win over Not collected, the phone included", () => {
+    const result = parseLeadForm({ ...blank, phone: "403 555 0199", owns_home: "yes", both_decision_makers: "no" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.values.phone).toBe("+14035550199");
+    expect(result.values.owns_home).toBe(true);
+    expect(result.values.both_decision_makers).toBe(false);
+    expect(result.values.not_collected).not.toContain("phone");
+    expect(result.values.not_collected).not.toContain("owns_home");
+    expect(result.values.not_collected).not.toContain("both_decision_makers");
   });
 
   it("stores the yes or no answers as true or false", () => {
@@ -173,8 +212,18 @@ describe("parseLeadForm", () => {
 });
 
 describe("leadFormDataToInput and leadColumnsFromValues", () => {
-  it("reads the form and never writes status, owner or session from it", () => {
+  // A form with every counted question marked Not collected.
+  function formWithNotCollected(): FormData {
     const fd = new FormData();
+    fd.set("phone_not_collected", "1");
+    for (const question of ["owns_home", "wants_price", "both_decision_makers", "christmas_lights_now", "looked_into_before", "areas_wanted", "install_timing"]) {
+      fd.set(question, "not_collected");
+    }
+    return fd;
+  }
+
+  it("reads the form and never writes status, owner or session from it", () => {
+    const fd = formWithNotCollected();
     fd.set("first_name", "Dana");
     fd.set("address_line", "123 Evanston Way NW");
     fd.set("status", "sold");
@@ -193,7 +242,7 @@ describe("leadFormDataToInput and leadColumnsFromValues", () => {
   });
 
   it("reads the Find out answers and slot photos, and never writes the track colour", () => {
-    const fd = new FormData();
+    const fd = formWithNotCollected();
     fd.set("first_name", "Dana");
     fd.set("address_line", "123 Evanston Way NW");
     fd.set("owns_home", "yes");
@@ -204,7 +253,7 @@ describe("leadFormDataToInput and leadColumnsFromValues", () => {
     fd.set("track_colour_id", photo);
     fd.set("track_ral_code", "7016");
     const input = leadFormDataToInput(fd);
-    expect(input).toMatchObject({ christmas_lights_now: "", areas_wanted: "", photo_slot_front: "" });
+    expect(input).toMatchObject({ christmas_lights_now: "not_collected", areas_wanted: "not_collected", photo_slot_front: "" });
     const parsed = parseLeadForm(input);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
@@ -217,6 +266,7 @@ describe("leadFormDataToInput and leadColumnsFromValues", () => {
       christmas_lights_now: null,
       areas_wanted: null,
       install_timing: "no_rush",
+      not_collected: ["phone", "both_decision_makers", "christmas_lights_now", "looked_into_before", "areas_wanted"],
     });
     for (const key of ["track_colour_id", "track_ral_code", "slot_photos", "photo_slot_right_corner"]) {
       expect(columns).not.toHaveProperty(key);
