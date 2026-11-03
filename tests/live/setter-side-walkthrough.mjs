@@ -75,13 +75,16 @@ function tooSmall(page, selector) {
   }, selector);
 }
 
-// Where a page sends you, without following it: a 3xx Location, or the
+// Where a page sends you, without following it, asked from inside the
+// browser (its own network path, so it works against a deployed site): the
 // refresh tag Next.js writes when the redirect comes after streaming began.
-async function redirectTarget(request, address) {
-  const response = await request.get(address, { maxRedirects: 0 });
-  if ([301, 302, 303, 307, 308].includes(response.status())) return new URL(response.headers().location ?? "", base).pathname;
-  const meta = (await response.text()).match(/__next-page-redirect"[^>]*url=([^"]+)"/);
-  return meta ? new URL(meta[1], base).pathname : `status ${response.status()}, no redirect`;
+async function redirectTarget(page, address) {
+  return page.evaluate(async (url) => {
+    const response = await fetch(url, { redirect: "manual", credentials: "include" });
+    if (response.type === "opaqueredirect") return "a redirect the browser hides";
+    const meta = (await response.text()).match(/__next-page-redirect"[^>]*url=([^"]+)"/);
+    return meta ? new URL(meta[1], location.origin).pathname : `status ${response.status}, no redirect`;
+  }, address);
 }
 
 async function ownerFootprint(ownerId) {
@@ -236,13 +239,18 @@ try {
   await bell.click();
   await page.waitForURL("**/app/notifications");
   await settle(page);
+  await page.getByTestId("welcome-again").waitFor({ timeout: 20000 }).catch(() => {});
   const notifText = await mainText(page);
+  const notifParts = {
+    heading: await page.getByRole("heading", { level: 1, name: "Notifications" }).count(),
+    names: notifText.includes("A notice names the street only, never the house number or the customer"),
+    card: await page.getByTestId("notifications").count(),
+    again: await page.getByTestId("welcome-again").count(),
+  };
   check(
     "the bell opens the setter's Notifications: what a notice names, this device, and the welcome",
-    (await page.getByRole("heading", { level: 1, name: "Notifications" }).count()) === 1 &&
-      notifText.includes("A notice names the street only, never the house number or the customer") &&
-      (await page.getByTestId("notifications").count()) === 1 &&
-      (await page.getByTestId("welcome-again").count()) === 1,
+    notifParts.heading === 1 && notifParts.names && notifParts.card === 1 && notifParts.again === 1,
+    JSON.stringify(notifParts),
   );
   check("Notifications is marked as the open page", (await bell.getAttribute("aria-current")) === "page");
   check("a setter's card never offers Keenan's key maker", (await page.getByTestId("push-key-setup").count()) === 0);
@@ -320,8 +328,8 @@ try {
 
   // The owner never gets the welcome, and his Notifications are in Settings.
   // Read without following, so his own Home never renders here.
-  const ownerWelcome = await redirectTarget(op.request, `${base}/app/welcome`);
-  const ownerBell = await redirectTarget(op.request, `${base}/app/notifications`);
+  const ownerWelcome = await redirectTarget(op, `${base}/app/welcome`);
+  const ownerBell = await redirectTarget(op, `${base}/app/notifications`);
   check(
     "Keenan is sent Home from the welcome, and to Settings from Notifications",
     ownerWelcome === "/app" && ownerBell === "/app/admin/settings",
@@ -367,14 +375,23 @@ try {
 
   await op.goto(`${base}/app/notifications`);
   await settle(op);
-  const viewedDevices = await op.getByTestId("devices").innerText().catch(() => "");
-  check(
-    "View as lists the setter's own devices on Notifications, and nothing on it works",
-    viewedDevices.includes("iPhone") &&
-      (await op.getByRole("button", { name: "Send a test notification" }).isDisabled()) &&
-      (await op.getByRole("button", { name: "Switch off" }).first().isDisabled()),
-    viewedDevices,
-  );
+  await op.getByTestId("welcome-again").waitFor({ timeout: 20000 }).catch(() => {});
+  if ((await op.getByTestId("push-not-set-up").count()) === 1) {
+    // A site without the push keys yet shows every setter the same line.
+    check(
+      "View as shows Notifications as the setter sees it: not set up yet, until the keys are in",
+      (await op.getByText("Notifications aren't set up yet.").count()) === 1 && (await op.getByTestId("welcome-again").count()) === 1,
+    );
+  } else {
+    const viewedDevices = await op.getByTestId("devices").innerText().catch(() => "");
+    check(
+      "View as lists the setter's own devices on Notifications, and nothing on it works",
+      viewedDevices.includes("iPhone") &&
+        (await op.getByRole("button", { name: "Send a test notification" }).isDisabled()) &&
+        (await op.getByRole("button", { name: "Switch off" }).first().isDisabled()),
+      viewedDevices,
+    );
+  }
   check("View as never shows a device's push address", !(await op.content()).includes(DEVICE_SEALED));
   await op.goto(`${base}/app/notifications`);
   await settle(op);
