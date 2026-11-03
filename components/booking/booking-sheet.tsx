@@ -287,6 +287,11 @@ function BookingSheet({
   );
   const [contextFailed, setContextFailed] = useState(false);
   const [contextTry, setContextTry] = useState(0);
+  // Try again shows the wait at once, then loads the times and notes afresh.
+  const retryContext = () => {
+    setContextFailed(false);
+    setContextTry((n) => n + 1);
+  };
   const [context, setContext] = useState<{
     notes: SheetNotes;
     holdMinutes: number;
@@ -1315,7 +1320,7 @@ function BookingSheet({
               contextFailed ? (
                 <div className="flex flex-col items-start gap-3" data-testid="times-failed">
                   <p className="text-base text-pretty">The times didn&apos;t load. Check your signal and try again.</p>
-                  <Button type="button" variant="outline" onClick={() => setContextTry((n) => n + 1)}>
+                  <Button type="button" variant="outline" onClick={retryContext}>
                     Try again
                   </Button>
                 </div>
@@ -1473,7 +1478,18 @@ function BookingSheet({
           </Button>
         }
       >
-        {context === null ? <p className="text-base text-muted-foreground">One moment.</p> : <NoteText text={note ?? ""} />}
+        {context !== null ? (
+          <NoteText text={note ?? ""} />
+        ) : contextFailed ? (
+          <div className="flex flex-col items-start gap-3">
+            <p className="text-base text-pretty">The note didn&apos;t load. Check your signal and try again.</p>
+            <Button type="button" variant="outline" onClick={retryContext}>
+              Try again
+            </Button>
+          </div>
+        ) : (
+          <p className="text-base text-muted-foreground">One moment.</p>
+        )}
       </DialogPanel>
 
       <DialogPanel
