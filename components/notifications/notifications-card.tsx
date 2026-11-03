@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BLOCKED_MESSAGE, isOnForMe, pushSupport, turnOnPush, type PushSupport } from "@/lib/push/browser";
+import { sentence } from "@/lib/schedule/meetings";
 import { formatDateTime } from "@/lib/time";
 import { saveThisDevice, sendTestNotification, switchOffDevice, switchOffThisDevice } from "@/app/(app)/app/notifications/actions";
 
@@ -225,8 +226,8 @@ export function DeviceControls({
                 <span>
                   <span className="font-semibold">{device.label}</span>
                   <span className="block text-muted-foreground">
-                    Added {formatDateTime(device.createdAt)}
-                    {device.lastSentAt ? `. Last notice ${formatDateTime(device.lastSentAt)}` : ""}.
+                    {sentence(`Added ${formatDateTime(device.createdAt)}`)}
+                    {device.lastSentAt ? ` ${sentence(`Last notice ${formatDateTime(device.lastSentAt)}`)}` : ""}
                   </span>
                 </span>
                 <Button type="button" variant="ghost" size="sm" onClick={() => void remove(device.id)} disabled={busy}>

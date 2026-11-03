@@ -75,6 +75,15 @@ function tooSmall(page, selector) {
   }, selector);
 }
 
+// Where a page sends you, without following it: a 3xx Location, or the
+// refresh tag Next.js writes when the redirect comes after streaming began.
+async function redirectTarget(request, address) {
+  const response = await request.get(address, { maxRedirects: 0 });
+  if ([301, 302, 303, 307, 308].includes(response.status())) return new URL(response.headers().location ?? "", base).pathname;
+  const meta = (await response.text()).match(/__next-page-redirect"[^>]*url=([^"]+)"/);
+  return meta ? new URL(meta[1], base).pathname : `status ${response.status()}, no redirect`;
+}
+
 async function ownerFootprint(ownerId) {
   const [profile, sessions, leads, events, settings, devicesRows] = await Promise.all([
     admin.from("profiles").select("*").eq("id", ownerId).single(),
@@ -310,14 +319,13 @@ try {
   check("after a reset, the setter's next Home shows the welcome again", path(page) === "/app/welcome");
 
   // The owner never gets the welcome, and his Notifications are in Settings.
-  const ownerWelcome = await op.request.get(`${base}/app/welcome`, { maxRedirects: 0 });
-  const ownerBell = await op.request.get(`${base}/app/notifications`, { maxRedirects: 0 });
+  // Read without following, so his own Home never renders here.
+  const ownerWelcome = await redirectTarget(op.request, `${base}/app/welcome`);
+  const ownerBell = await redirectTarget(op.request, `${base}/app/notifications`);
   check(
     "Keenan is sent Home from the welcome, and to Settings from Notifications",
-    [303, 307, 308].includes(ownerWelcome.status()) &&
-      new URL(ownerWelcome.headers().location ?? "", base).pathname === "/app" &&
-      new URL(ownerBell.headers().location ?? "", base).pathname === "/app/admin/settings",
-    `${ownerWelcome.status()} ${ownerWelcome.headers().location} / ${ownerBell.status()} ${ownerBell.headers().location}`,
+    ownerWelcome === "/app" && ownerBell === "/app/admin/settings",
+    `${ownerWelcome} / ${ownerBell}`,
   );
 
   // ---------------------------------------------------------------- 8. View as
