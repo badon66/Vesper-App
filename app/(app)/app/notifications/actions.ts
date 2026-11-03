@@ -2,38 +2,42 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { NotOwnerError, ReadOnlyError, requireOwnerForAction, type SessionProfile } from "@/lib/auth/profile";
+import { NotAllowedError, ReadOnlyError, requireSalesSideForAction, type SessionProfile } from "@/lib/auth/profile";
 import { endpointHash, readSubscription, seal } from "@/lib/push/seal";
 import { pushKeys, sendPush } from "@/lib/push/send";
 import { createClient } from "@/lib/supabase/server";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 
-// Notifications on Keenan's devices (2026-11-02): turn them on for this
-// device, switch a device off, and send a test. Each member's devices are
-// their own rows; the push address is stored sealed.
+// Notifications on a member's own devices (2026-11-02; setters too from
+// 2026-11-03): turn them on for this device, switch a device off, and send
+// a test. Each member's devices are their own rows, and the push address
+// is stored sealed. Refused while Keenan is viewing as someone.
 
-type Refused = { ok: false; message: string };
+// taken: this browser's push address is already another account's device
+// (a shared phone); the page then asks the browser for a fresh one.
+type Refused = { ok: false; message: string; taken?: boolean };
 
-async function owner(): Promise<SessionProfile | Refused> {
+async function member(): Promise<SessionProfile | Refused> {
   try {
-    return await requireOwnerForAction();
+    return await requireSalesSideForAction();
   } catch (e) {
     if (e instanceof ReadOnlyError) return { ok: false, message: VIEW_AS_READ_ONLY };
-    if (e instanceof NotOwnerError) return { ok: false, message: "Only Keenan can change notifications here." };
+    if (e instanceof NotAllowedError) return { ok: false, message: "Not for your role." };
     throw e;
   }
 }
 
 const refused = (value: SessionProfile | Refused): value is Refused => "ok" in value;
 
-const NOT_SET_UP = "Notifications aren't set up yet: the two keys need to be added in Vercel first.";
-const SETTINGS = "/app/admin/settings";
+const NOT_SET_UP = "Notifications aren't set up yet. Keenan turns them on.";
+const PAGES = ["/app/notifications", "/app/admin/settings"];
+const refresh = () => PAGES.forEach((page) => revalidatePath(page));
 
 export type PushActionResult = { ok: true; message?: string } | Refused;
 
 // This device's push address, sealed and kept for this member.
 export async function saveThisDevice(subscription: unknown, label: string): Promise<PushActionResult> {
-  const me = await owner();
+  const me = await member();
   if (refused(me)) return me;
   const keys = pushKeys();
   if (!keys) return { ok: false, message: NOT_SET_UP };
@@ -48,14 +52,17 @@ export async function saveThisDevice(subscription: unknown, label: string): Prom
   const write = existing
     ? await supabase.from("push_subscriptions").update({ sealed, label: name.data, removed_at: null }).eq("id", existing.id)
     : await supabase.from("push_subscriptions").insert({ profile_id: me.id, endpoint_hash: hash, sealed, label: name.data });
+  if (write.error?.code === "23505") {
+    return { ok: false, taken: true, message: "This device takes another account's notifications. Try again." };
+  }
   if (write.error) return { ok: false, message: "That didn't save. Check your signal and try again." };
-  revalidatePath(SETTINGS);
+  refresh();
   return { ok: true };
 }
 
 // Stops sending to a device. The row stays, sealed, marked removed.
 export async function switchOffDevice(id: string): Promise<PushActionResult> {
-  const me = await owner();
+  const me = await member();
   if (refused(me)) return me;
   const parsed = z.uuid().safeParse(id);
   if (!parsed.success) return { ok: false, message: "That device wasn't found." };
@@ -65,13 +72,13 @@ export async function switchOffDevice(id: string): Promise<PushActionResult> {
     .eq("id", parsed.data)
     .eq("profile_id", me.id);
   if (error) return { ok: false, message: "That didn't save. Check your signal and try again." };
-  revalidatePath(SETTINGS);
+  refresh();
   return { ok: true };
 }
 
 // The same as switchOffDevice, found by the browser's own push address.
 export async function switchOffThisDevice(subscription: unknown): Promise<PushActionResult> {
-  const me = await owner();
+  const me = await member();
   if (refused(me)) return me;
   const sub = readSubscription(subscription);
   if (!sub) return { ok: true };
@@ -81,14 +88,14 @@ export async function switchOffThisDevice(subscription: unknown): Promise<PushAc
     .eq("endpoint_hash", endpointHash(sub.endpoint))
     .eq("profile_id", me.id);
   if (error) return { ok: false, message: "That didn't save. Check your signal and try again." };
-  revalidatePath(SETTINGS);
+  refresh();
   return { ok: true };
 }
 
 // A test to every device that has notifications on, so Keenan can see
 // they arrive. Devices the push service says are gone are switched off.
 export async function sendTestNotification(): Promise<PushActionResult> {
-  const me = await owner();
+  const me = await member();
   if (refused(me)) return me;
   if (!pushKeys()) return { ok: false, message: NOT_SET_UP };
   const supabase = await createClient();
@@ -103,7 +110,7 @@ export async function sendTestNotification(): Promise<PushActionResult> {
   const result = await sendPush(rows, {
     title: "Vesper",
     body: "This is a test. Notifications are working on this device.",
-    url: `${SETTINGS}#notifications`,
+    url: me.role === "owner" ? "/app/admin/settings#notifications" : "/app/notifications",
     tag: "test",
   });
   const now = new Date().toISOString();
@@ -113,7 +120,7 @@ export async function sendTestNotification(): Promise<PushActionResult> {
   if (result.gone.length > 0) {
     await supabase.from("push_subscriptions").update({ removed_at: now }).in("id", result.gone);
   }
-  revalidatePath(SETTINGS);
+  refresh();
   const sent = result.sent.length;
   const parts = [
     sent === 0 ? "Nothing was sent." : `Sent to ${sent === 1 ? "1 device" : `${sent} devices`}.`,
