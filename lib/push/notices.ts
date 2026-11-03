@@ -6,14 +6,25 @@
 
 import type { PushNotice } from "@/lib/push/send-types";
 import { formatMoney } from "@/lib/pricing";
+import { sentence } from "@/lib/schedule/meetings";
 
 // "123 Aspen Crescent SW" -> "Aspen Crescent SW". Unit numbers, house
-// numbers and anything after a comma go; a street that is itself a number
-// ("56 Avenue NW") keeps it. Empty when nothing is left that isn't a number.
+// numbers and anything after a comma go; a numbered street ("1234 17 Avenue
+// SW") keeps its number. Empty when nothing is left that isn't a number.
+const UNIT_ONLY = /^(unit|suite|ste|apt|apartment|#)\s*[\w-]+$/i;
+const NUMBERED_ROAD = /^\d+\s+(avenue|ave|street|st)(\s+(nw|ne|sw|se))?$/i;
+
 export function streetOf(address: string): string {
-  let street = address.trim().split(",")[0]?.trim() ?? "";
-  // "Unit 5", "Suite 200", "Apt 3B", "#5" in front, with what follows it.
+  let parts = address.split(",").map((part) => part.trim()).filter(Boolean);
+  // "Unit 5, 123 Main Street": the unit is its own part.
+  if (parts.length > 1 && UNIT_ONLY.test(parts[0])) parts = parts.slice(1);
+  let street = parts[0] ?? "";
+  // A numbered road with no house number ("17 Avenue SW") is all street.
+  if (NUMBERED_ROAD.test(street)) return street;
+  // "Unit 5 123 Main Street", "#5 123 Main Street": the unit in front.
   street = street.replace(/^(unit|suite|ste|apt|apartment|#)\s*[\w-]+\s*[-,]?\s*/i, "");
+  // "123 Main Street SW #5", "123 Main Street Unit 5": the unit behind.
+  street = street.replace(/\s+(#\s*|unit\s+|suite\s+|ste\s+|apt\s+|apartment\s+)[\w-]+$/i, "");
   // "5-123 Main Street": the unit before the house number.
   street = street.replace(/^\d+[a-z]?\s*-\s*(?=\d)/i, "");
   // The house number itself, with any letter: "123", "123A", "123 A".
@@ -69,11 +80,12 @@ export function outcomeNotice(address: string, change: OutcomeChange, url: strin
   }
 }
 
-// Keenan moved the booking to another time, given as "Tue, Nov 4, 6:45 p.m.".
+// Keenan moved the booking to another time, given as "Tue, Nov 4 at
+// 6:45 p.m." (the sentence ends once).
 export function movedNotice(address: string, when: string, url: string): PushNotice {
   return {
     title: "Booking moved",
-    body: `Keenan moved your booking${on(streetOf(address))} to ${when}.`,
+    body: sentence(`Keenan moved your booking${on(streetOf(address))} to ${when}`),
     url,
     tag: `booking-${url}`,
   };

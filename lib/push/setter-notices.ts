@@ -63,7 +63,12 @@ export async function notifyOutcome(
       .maybeSingle();
     change = { kind: "qualified", feeAdded: fee ? Number(fee.amount) : null };
   } else if (outcome === "not_qualified") {
-    change = { kind: "not_qualified", reason: reason.text, listed: reason.listed };
+    // Named only when it is one of the reasons in Settings, word for word;
+    // anything written out by hand stays on the lead.
+    const { data: settings } = await supabase.from("settings").select("not_qualified_reasons").eq("id", 1).maybeSingle();
+    const list = settings?.not_qualified_reasons ?? [];
+    const listed = Boolean(reason.text) && reason.listed && reason.text !== "Other" && list.includes(reason.text ?? "");
+    change = { kind: "not_qualified", reason: listed ? reason.text : null, listed };
   } else if (outcome === "no_show") {
     change = { kind: "no_show" };
   } else {
