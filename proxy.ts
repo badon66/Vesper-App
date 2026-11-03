@@ -8,8 +8,26 @@ import { parseViewAsCookie, refusedWhileViewing, VIEW_AS_COOKIE } from "@/lib/vi
 // Row Level Security decides what a user can read and write, and the app
 // layout verifies the session with the Auth server.
 export async function proxy(request: NextRequest) {
-  const { response, user } = await updateSession(request);
   const { pathname, search } = request.nextUrl;
+
+  // The customer quote link (2026-11-02): public, never indexed, no
+  // referrer, never cached, and no session work: the page reads as an
+  // anonymous caller whoever opens it.
+  if (isQuotePath(pathname)) {
+    return withQuoteHeaders(NextResponse.next());
+  }
+  // On the quote domain only quote pages answer; everything else is not
+  // found there, the app included.
+  if (QUOTE_ONLY_HOSTS.has(hostOf(request))) {
+    return quoteHostAllows(pathname)
+      ? NextResponse.next()
+      : withQuoteHeaders(new NextResponse("Not found", { status: 404 }));
+  }
+  if (!(pathname === "/login" || pathname.startsWith("/app") || pathname.startsWith("/meeting"))) {
+    return NextResponse.next();
+  }
+
+  const { response, user } = await updateSession(request);
 
   // View as: while this signed-in owner's View as cookie is set, nothing
   // under /app may change anything, so every server action is refused before
@@ -47,6 +65,31 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+// Hosts that serve only the customer's quote pages. Links are built from
+// QUOTE_BASE_URL, which points here once the domain is live.
+const QUOTE_ONLY_HOSTS = new Set(["quote.vesperlighting.ca"]);
+
+function hostOf(request: NextRequest): string {
+  return (request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "").toLowerCase().split(":")[0];
+}
+
+function isQuotePath(pathname: string): boolean {
+  return pathname.startsWith("/q/");
+}
+
+// What the quote domain serves besides quote pages: the icons the page
+// links to. Build files never reach this file (see the matcher).
+function quoteHostAllows(pathname: string): boolean {
+  return isQuotePath(pathname) || /^\/(icon|apple-icon)[^/]*\.png$/.test(pathname) || pathname === "/favicon.ico";
+}
+
+function withQuoteHeaders(response: NextResponse): NextResponse {
+  response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+  response.headers.set("Referrer-Policy", "no-referrer");
+  response.headers.set("Cache-Control", "private, no-store, max-age=0");
+  return response;
+}
+
 // A redirect is a new response, so any refreshed session cookies on the
 // original response have to be copied across or the user is logged out.
 function withCookies(target: NextResponse, source: NextResponse) {
@@ -54,6 +97,8 @@ function withCookies(target: NextResponse, source: NextResponse) {
   return target;
 }
 
+// Every request except build files and the worker: the quote domain has to
+// be able to turn away anything that isn't a quote page.
 export const config = {
-  matcher: ["/login", "/app/:path*", "/meeting/:path*"],
+  matcher: ["/((?!_next/static|_next/image|sw\\.js|icons/).*)"],
 };

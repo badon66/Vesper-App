@@ -38,6 +38,7 @@ const valid = {
   rush_colour_fee_per_ft: "",
   service_call_fee: "95",
   quote_valid_days: "14",
+  min_job_total: "2500",
   faq_text: "Q.\r\nA.",
   presentation_pages: [
     { kind: "what_vesper_is", title: "Permanent roofline lighting", body: "An investment in the home." },
@@ -52,6 +53,7 @@ describe("parseSettingsForm", () => {
       expect(result.values.rush_colour_fee_per_ft).toBeNull();
       expect(result.values.service_call_fee).toBe(95);
       expect(result.values.quote_valid_days).toBe(14);
+      expect(result.values.min_job_total).toBe(2500);
       expect(result.values.faq_text).toBe("Q.\nA.");
       expect(result.values.presentation_pages[0]).toEqual({
         kind: "what_vesper_is",
@@ -199,13 +201,14 @@ describe("settingsRowToFormDefaults", () => {
       meeting_slot_count: 4,
       distance_warning_km: 10,
       company: { name: "Vesper", phone: "", email: "", address: "" },
-      rush_colour_fee_per_ft: null, service_call_fee: 95, quote_valid_days: 14, faq_text: "Q and A",
+      rush_colour_fee_per_ft: null, service_call_fee: 95, quote_valid_days: 14, min_job_total: null, faq_text: "Q and A",
       updated_at: "2026-10-26T00:00:00Z",
     });
     expect(defaults.price_per_ft).toBe("23.00");
     expect(defaults.rush_colour_fee_per_ft).toBe("");
     expect(defaults.service_call_fee).toBe("95.00");
     expect(defaults.quote_valid_days).toBe("14");
+    expect(defaults.min_job_total).toBe("");
     expect(defaults.gst_rate_percent).toBe("5");
     expect(defaults.gst_number).toBe("123456789 RT0001");
     expect(defaults.commission_rate_percent).toBe("12.5");
@@ -222,7 +225,7 @@ describe("settingsRowToFormDefaults", () => {
       id: 1, price_per_ft: 1, box_price: 1, neighbour_discount: 0, referral_credit: 0, gst_rate: 0, gst_enabled: false, gst_number: null,
       booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], door_guide: "g", step_note_at_door: "a", step_note_after_door: "b", step_note_book: "c", not_qualified_reasons: ["Other"], booking_cutoff_minutes: 30, hold_grace_minutes: 2, booking_window_days: 14, meeting_host_id: null, meeting_days: [1],
       meeting_start: "18:00:00", meeting_slot_minutes: 45, meeting_slot_count: 4, distance_warning_km: 10,
-      company: "nonsense", rush_colour_fee_per_ft: null, service_call_fee: null, quote_valid_days: 14, faq_text: "",
+      company: "nonsense", rush_colour_fee_per_ft: null, service_call_fee: null, quote_valid_days: 14, min_job_total: 2500, faq_text: "",
       updated_at: "2026-10-26T00:00:00Z",
     });
     expect(defaults.company_name).toBe("");

@@ -14,6 +14,7 @@
 // (owner-session.mjs). It only views screens and submits forms that are
 // refused before anything saves, and the run checks that nothing of the
 // owner's changed.
+import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
 import { chromium, devices } from "playwright";
@@ -161,6 +162,8 @@ async function removeEverythingOf(id) {
     await admin.from("slot_holds").delete().in("lead_id", leadIds);
     await admin.from("meetings").update({ rebooked_as: null }).in("lead_id", leadIds);
     await admin.from("meetings").delete().in("lead_id", leadIds);
+    await admin.from("quote_links").delete().in("lead_id", leadIds);
+    await admin.from("quotes").delete().in("lead_id", leadIds);
   }
   await admin.from("meetings").update({ rebooked_as: null }).eq("host_id", id);
   await admin.from("meetings").delete().eq("host_id", id);
@@ -245,6 +248,26 @@ try {
     const linked = await a.client.from("lead_photos").insert({ lead_id: leads.dueToday, storage_path: path, slot });
     if (linked.error) throw new Error(`photo ${slot}: ${linked.error.message}`);
   }
+  // A quote and a live customer link on the setter's own lead: View as must
+  // never show the owner's Quote card (2026-11-02). The link is made by the
+  // setter's throwaway account, so nothing could ever notify Keenan.
+  const viewAsQuote = await admin.from("quotes").insert({
+    lead_id: leads.dueToday,
+    created_by: a.id,
+    price_per_ft: 23,
+    box_price: 500,
+    runs: [{ name: "Front", feet: 40, level: "lower" }],
+    total_feet: 40,
+    gst_rate: 0.05,
+    subtotal: 1420,
+    total: 1420,
+    valid_until: today,
+  });
+  if (viewAsQuote.error) throw new Error(`View as quote: ${viewAsQuote.error.message}`);
+  const viewAsLink = await admin
+    .from("quote_links")
+    .insert({ lead_id: leads.dueToday, token: randomBytes(18).toString("base64url"), created_by: a.id });
+  if (viewAsLink.error) throw new Error(`View as link: ${viewAsLink.error.message}`);
   const custom = await admin.from("leads").update({ track_ral_code: "7016" }).eq("id", leads.dueToday);
   if (custom.error) throw new Error(`custom colour: ${custom.error.message}`);
   const { data: firstColour } = await admin.from("track_colours").select("id, name").eq("active", true).order("sort_order").limit(1).single();
@@ -546,6 +569,7 @@ try {
           viewed.text.includes("Keenan sets the track colour."),
         viewed.text.slice(viewed.text.indexOf("Find out"), viewed.text.indexOf("Find out") + 200),
       );
+      check("View as never shows the owner's Quote card or the customer's link", (await op.getByTestId("quote-card").count()) === 0 && !(await op.content()).includes("/q/"));
       check("View as gives the setter's lead no track colour controls", !viewed.controls.some((c) => /track colour/i.test(c.label)) && (await op.getByTestId("track-colour-form").count()) === 0);
     }
     if (label === "another setter's lead") {

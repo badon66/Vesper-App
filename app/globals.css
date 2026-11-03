@@ -1,7 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+/* Dark variants never reach inside the customer quote page, which is always
+   white (CLAUDE.md, 2026-11-02). */
+@custom-variant dark (&:is(.dark *):not(.quote-light, .quote-light *));
 
 /* Brand colours from CLAUDE.md. Everything else is derived from them.
    Gold is for primary actions and emphasis only. It never carries body text
@@ -54,6 +56,45 @@
   --border: #27404f;
   --input: #5e7a8a;
   --ring: #b99257;
+}
+
+/* The customer quote page (2026-11-02): always white with navy and gold,
+   like the documents, whatever theme the device is set to. The app's own
+   theme class stays on <html>; this wrapper puts the day colours back. */
+.quote-light {
+  color-scheme: light;
+  --background: #ffffff;
+  --foreground: #132e3f;
+  --card: #ffffff;
+  --card-foreground: #132e3f;
+  --popover: #ffffff;
+  --popover-foreground: #132e3f;
+  --primary: #b99257;
+  --primary-foreground: #132e3f;
+  --secondary: #e8edf0;
+  --secondary-foreground: #132e3f;
+  --muted: #f2f4f6;
+  --muted-foreground: #4f6270;
+  --accent: #f6f1e7;
+  --accent-foreground: #132e3f;
+  --destructive: #b3261e;
+  --destructive-foreground: #ffffff;
+  --border: #d5dce1;
+  --input: #7d8f9b;
+  /* Navy focus rings on white (14:1); gold stays on the one action. */
+  --ring: #132e3f;
+}
+
+/* next-themes writes color-scheme on <html> inline; this page is white. */
+html:has(.quote-light),
+html:has(.quote-light) body {
+  background-color: #ffffff;
+  color-scheme: light !important;
+}
+
+/* Keyboard focus never lands under the bar fixed to the bottom. */
+html:has(.quote-light) {
+  scroll-padding-bottom: calc(7rem + env(safe-area-inset-bottom));
 }
 
 @theme inline {

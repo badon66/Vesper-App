@@ -46,3 +46,6 @@ next-env.d.ts
 # playwright
 /test-results/
 /playwright-report/
+
+# The impeccable skill's live-server state (runtime only, 2026-11-02)
+.impeccable/live/

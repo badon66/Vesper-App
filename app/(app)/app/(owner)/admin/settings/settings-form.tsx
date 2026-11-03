@@ -179,6 +179,9 @@ export function SettingsForm({
           <Field name="service_call_fee" label="Service call fee ($)" hint="The flat fee for a service call in years 6 to 10 of the warranty. Blank means the warranty page names no amount." errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.service_call_fee} />}
           </Field>
+          <Field name="min_job_total" label="Minimum job total ($, before GST)" hint="When a quote, or a smaller choice on the customer's link, comes in under this, the total rises to it with a line saying so. Blank means no minimum. Each quote keeps the minimum it was saved with." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.min_job_total} />}
+          </Field>
           <div className="sm:col-span-2">
             <Field name="faq_text" label="Common questions" hint="For the leave-behind folder, coming after the first meetings. This started as a draft; make it yours." errors={errors}>
               {(p) => <Textarea {...p} rows={10} defaultValue={defaults.faq_text} />}

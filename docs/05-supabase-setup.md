@@ -62,6 +62,8 @@ The full list, with comments, is in `.env.example`. These three point the app an
 
 They are set in three places: Vercel (Production and Preview), the cloud environment the build sessions run in, and `.env.local` on any machine that runs the app. Pointing something at another project means changing these three values there and nothing else.
 
+The quote link and push variables (`QUOTE_BASE_URL`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, 2026-11-02) belong to the app, not to a Supabase project, so a second project needs nothing new for them. The quote link's database side (tables, token functions and the storage rule for the mockup) is all in migrations; there is no dashboard setting for it.
+
 ## Setting up a second project
 
 1. **Create the project.** In the same Supabase organization, region us-west-2 (Oregon), with a name like `vesper-app-test`. Keep the database password in a password manager; the app never uses it. The WorkBase organization is on the Pro plan, so there is no cap on projects; a second project adds roughly $10 USD a month.

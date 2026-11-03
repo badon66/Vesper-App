@@ -831,6 +831,174 @@ export type Database = {
         }
         Relationships: []
       }
+      push_subscriptions: {
+        Row: {
+          created_at: string
+          endpoint_hash: string
+          id: string
+          label: string
+          last_sent_at: string | null
+          profile_id: string
+          removed_at: string | null
+          sealed: string
+        }
+        Insert: {
+          created_at?: string
+          endpoint_hash: string
+          id?: string
+          label: string
+          last_sent_at?: string | null
+          profile_id: string
+          removed_at?: string | null
+          sealed: string
+        }
+        Update: {
+          created_at?: string
+          endpoint_hash?: string
+          id?: string
+          label?: string
+          last_sent_at?: string | null
+          profile_id?: string
+          removed_at?: string | null
+          sealed?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "push_subscriptions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "push_subscriptions_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quote_links: {
+        Row: {
+          booked_at: string | null
+          booked_option: string | null
+          booked_selection: number[] | null
+          created_at: string
+          created_by: string
+          first_viewed_at: string | null
+          id: string
+          last_viewed_at: string | null
+          lead_id: string
+          notified_option: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          selection: number[] | null
+          selection_at: string | null
+          selection_runs: string | null
+          token: string
+          updated_at: string
+          view_count: number
+        }
+        Insert: {
+          booked_at?: string | null
+          booked_option?: string | null
+          booked_selection?: number[] | null
+          created_at?: string
+          created_by: string
+          first_viewed_at?: string | null
+          id?: string
+          last_viewed_at?: string | null
+          lead_id: string
+          notified_option?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          selection?: number[] | null
+          selection_at?: string | null
+          selection_runs?: string | null
+          token: string
+          updated_at?: string
+          view_count?: number
+        }
+        Update: {
+          booked_at?: string | null
+          booked_option?: string | null
+          booked_selection?: number[] | null
+          created_at?: string
+          created_by?: string
+          first_viewed_at?: string | null
+          id?: string
+          last_viewed_at?: string | null
+          lead_id?: string
+          notified_option?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          selection?: number[] | null
+          selection_at?: string | null
+          selection_runs?: string | null
+          token?: string
+          updated_at?: string
+          view_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_links_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_links_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_links_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_links_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_links_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_links_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_links_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quotes: {
         Row: {
           accepted_at: string | null
@@ -849,6 +1017,7 @@ export type Database = {
           gst_rate: number
           id: string
           lead_id: string
+          min_job_total: number | null
           notes: string | null
           pdf_path: string | null
           presented_at: string | null
@@ -882,6 +1051,7 @@ export type Database = {
           gst_rate: number
           id?: string
           lead_id: string
+          min_job_total?: number | null
           notes?: string | null
           pdf_path?: string | null
           presented_at?: string | null
@@ -915,6 +1085,7 @@ export type Database = {
           gst_rate?: number
           id?: string
           lead_id?: string
+          min_job_total?: number | null
           notes?: string | null
           pdf_path?: string | null
           presented_at?: string | null
@@ -999,6 +1170,7 @@ export type Database = {
           meeting_slot_count: number
           meeting_slot_minutes: number
           meeting_start: string
+          min_job_total: number | null
           neighbour_discount: number
           not_qualified_reasons: string[]
           presentation: Json
@@ -1034,6 +1206,7 @@ export type Database = {
           meeting_slot_count?: number
           meeting_slot_minutes?: number
           meeting_start?: string
+          min_job_total?: number | null
           neighbour_discount?: number
           not_qualified_reasons?: string[]
           presentation: Json
@@ -1069,6 +1242,7 @@ export type Database = {
           meeting_slot_count?: number
           meeting_slot_minutes?: number
           meeting_start?: string
+          min_job_total?: number | null
           neighbour_discount?: number
           not_qualified_reasons?: string[]
           presentation?: Json
@@ -1524,6 +1698,7 @@ export type Database = {
       is_template_slot:
         | { Args: { p_starts_at: string }; Returns: boolean }
         | { Args: { p_host: string; p_starts_at: string }; Returns: boolean }
+      issue_quote_link: { Args: { p_lead_id: string }; Returns: string }
       lock_evening: {
         Args: { p_at: string; p_host: string }
         Returns: undefined
@@ -1537,6 +1712,97 @@ export type Database = {
         Args: { p_meeting_id: string; p_new_starts_at: string }
         Returns: string
       }
+      quote_for_customer: { Args: { p_token: string }; Returns: Json }
+      quote_link_book: {
+        Args: { p_positions: number[]; p_token: string }
+        Returns: Json
+      }
+      quote_link_current_quote: {
+        Args: { p_lead_id: string }
+        Returns: {
+          accepted_at: string | null
+          adders: Json
+          box_count: number
+          box_price: number
+          colour_timing: string | null
+          created_at: string
+          created_by: string
+          declined_at: string | null
+          discounts: Json
+          financing_offered: boolean
+          gst: number
+          gst_enabled: boolean
+          gst_number: string | null
+          gst_rate: number
+          id: string
+          lead_id: string
+          min_job_total: number | null
+          notes: string | null
+          pdf_path: string | null
+          presented_at: string | null
+          price_per_ft: number
+          runs: Json
+          rush_fee_per_ft: number | null
+          status: Database["public"]["Enums"]["quote_status"]
+          subtotal: number
+          total: number
+          total_feet: number
+          track_colour_name: string | null
+          track_custom: boolean
+          track_ral_code: string | null
+          updated_at: string
+          valid_until: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "quotes"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      quote_link_live: {
+        Args: { p_token: string }
+        Returns: {
+          booked_at: string | null
+          booked_option: string | null
+          booked_selection: number[] | null
+          created_at: string
+          created_by: string
+          first_viewed_at: string | null
+          id: string
+          last_viewed_at: string | null
+          lead_id: string
+          notified_option: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          selection: number[] | null
+          selection_at: string | null
+          selection_runs: string | null
+          token: string
+          updated_at: string
+          view_count: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "quote_links"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      quote_link_positions: {
+        Args: { p_positions: number[]; p_runs: Json }
+        Returns: number[]
+      }
+      quote_link_run_name: {
+        Args: { p_position: number; p_run: Json }
+        Returns: string
+      }
+      quote_link_select: {
+        Args: { p_positions: number[]; p_token: string }
+        Returns: boolean
+      }
+      quote_link_visit: { Args: { p_token: string }; Returns: boolean }
+      quote_mockup_signable: { Args: { p_name: string }; Returns: boolean }
       release_hold: { Args: never; Returns: undefined }
       release_lapsed_holds: {
         Args: { p_host: string; p_starts_at: string }
@@ -1545,6 +1811,7 @@ export type Database = {
       remove_time_block: { Args: { p_block_id: string }; Returns: undefined }
       renew_hold: { Args: never; Returns: Json }
       resolve_meeting_host: { Args: { p_host: string }; Returns: string }
+      revoke_quote_link: { Args: { p_lead_id: string }; Returns: boolean }
       schedule_board: {
         Args: { p_as_sales?: boolean; p_host?: string; p_viewer?: string }
         Returns: {
@@ -1634,6 +1901,10 @@ export type Database = {
         | "meeting_moved"
         | "meeting_cancelled"
         | "colour_confirmed"
+        | "quote_link_created"
+        | "quote_link_opened"
+        | "quote_link_revoked"
+        | "install_requested"
       house_type: "bungalow" | "bi_level" | "two_storey" | "other"
       install_timing: "before_christmas" | "new_year" | "no_rush"
       lead_source: "door" | "referral" | "neighbour_card" | "website" | "other"
@@ -1814,6 +2085,10 @@ export const Constants = {
         "meeting_moved",
         "meeting_cancelled",
         "colour_confirmed",
+        "quote_link_created",
+        "quote_link_opened",
+        "quote_link_revoked",
+        "install_requested",
       ],
       house_type: ["bungalow", "bi_level", "two_storey", "other"],
       install_timing: ["before_christmas", "new_year", "no_rush"],

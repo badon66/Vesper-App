@@ -40,6 +40,7 @@ const payload = (draft: MeetingPayload["draft"] = null): MeetingPayload => ({
     gstNumber: null,
     rushFeePerFt: null,
     quoteValidDays: 14,
+    minJobTotal: null,
   },
   draft,
   today: "2026-11-03",
@@ -116,6 +117,35 @@ describe("a saved draft back on screen", () => {
     expect(state.runs).toEqual([{ name: "Front", feet: 0, level: "lower" }]);
     expect(state.adders).toEqual([]);
     expect(state.neighbourOn).toBe(false);
+  });
+
+  it("keeps extra work marked only with upper runs, and prices it only while an upper run is in", () => {
+    const draft = {
+      ...serverDraft("2026-11-03T01:00:00+00:00"),
+      runs: [{ name: "Garage", feet: 40, level: "lower" }],
+      adders: [{ label: "Extra height", amount: 150, upper_only: true }, { label: "Corner", amount: 50 }],
+    };
+    const state = quoteStateFromDraft(draft, payload());
+    expect(state.adders).toEqual([
+      { label: "Extra height", amount: "150", upperOnly: true },
+      { label: "Corner", amount: "50" },
+    ]);
+    const lowerOnly = priceQuote(quoteInputs(state, payload().pricing)).lines.map((line) => line.label);
+    expect(lowerOnly).not.toContain("Extra height");
+    const withUpper = { ...state, runs: [...state.runs, { name: "Upper", feet: 20, level: "upper" as const }] };
+    expect(priceQuote(quoteInputs(withUpper, payload().pricing)).lines.map((line) => line.label)).toContain("Extra height");
+    expect(quoteFingerprint({ ...state, adders: state.adders.map((item) => ({ ...item, upperOnly: false })) })).not.toBe(
+      quoteFingerprint(state),
+    );
+  });
+
+  it("prices with the minimum job total from Settings", () => {
+    const state = { ...withFeet(defaultQuoteState(payload()), 10) };
+    const pricing = { ...payload().pricing, minJobTotal: 2500 };
+    const priced = priceQuote(quoteInputs(state, pricing));
+    expect(priced.subtotal).toBe(2500);
+    expect(priced.minimumApplied).toBe(true);
+    expect(priced.lines.map((line) => line.label)).toContain("To reach our $2,500 minimum");
   });
 
   it("names unnamed extra work plainly on the bill", () => {

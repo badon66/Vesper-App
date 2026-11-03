@@ -149,6 +149,8 @@ export const settingsFormSchema = z.object({
   rush_colour_fee_per_ft: moneyOrUnset,
   service_call_fee: moneyOrUnset,
   quote_valid_days: wholeNumber(1, 90),
+  // The quote link (2026-11-02): the least a job can cost before GST.
+  min_job_total: moneyOrUnset,
   faq_text: z
     .string()
     .transform((text) => text.replace(/\r\n?/g, "\n").trim())
@@ -230,6 +232,7 @@ export function settingsFormDataToInput(
     rush_colour_fee_per_ft: text("rush_colour_fee_per_ft"),
     service_call_fee: text("service_call_fee"),
     quote_valid_days: text("quote_valid_days"),
+    min_job_total: text("min_job_total"),
     faq_text: text("faq_text"),
     presentation_pages: formData.getAll("presentation_kind").map((kind) => ({
       kind: String(kind),
@@ -274,6 +277,7 @@ export function settingsUpdateFromValues(v: SettingsFormValues): SettingsUpdate 
     rush_colour_fee_per_ft: v.rush_colour_fee_per_ft,
     service_call_fee: v.service_call_fee,
     quote_valid_days: v.quote_valid_days,
+    min_job_total: v.min_job_total,
     faq_text: v.faq_text,
     // presentation titles and bodies merge over the stored image paths in
     // the action, which is the one place that reads the current jsonb.
@@ -315,6 +319,7 @@ export type SettingsFormDefaults = {
   rush_colour_fee_per_ft: string;
   service_call_fee: string;
   quote_valid_days: string;
+  min_job_total: string;
   faq_text: string;
 };
 
@@ -357,6 +362,7 @@ export function settingsRowToFormDefaults(row: SettingsRow): SettingsFormDefault
     rush_colour_fee_per_ft: row.rush_colour_fee_per_ft === null ? "" : row.rush_colour_fee_per_ft.toFixed(2),
     service_call_fee: row.service_call_fee === null ? "" : row.service_call_fee.toFixed(2),
     quote_valid_days: String(row.quote_valid_days),
+    min_job_total: row.min_job_total === null ? "" : row.min_job_total.toFixed(2),
     faq_text: row.faq_text,
   };
 }

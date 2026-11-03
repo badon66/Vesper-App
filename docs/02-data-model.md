@@ -18,7 +18,7 @@ looked_into_before: got_quotes | thought_about_it | new_to_them   -- added in M3
 meeting_status:  booked | confirmed | qualified | not_qualified | no_show | cancelled | moved   -- qualified and not_qualified both mean the meeting was held; moved means it was replaced by a meeting at another time; confirmed is unused for now
 map_position_source: picked | device               -- picked from the address suggestions, or the phone's own position at the door
 quote_status:    draft | presented | accepted | declined | expired   -- take 1 writes drafts only
-event_type:      created | note | status_change | call | text | meeting_booked | meeting_outcome | quote_created | quote_presented | quote_accepted | quote_declined | photo_added | edited | meeting_moved | meeting_cancelled | colour_confirmed   -- meeting_moved and meeting_cancelled added in M3; colour_confirmed added in M5 (the customer initialled the track colour; payload holds the initials and the colour by name, never a price)
+event_type:      created | note | status_change | call | text | meeting_booked | meeting_outcome | quote_created | quote_presented | quote_accepted | quote_declined | photo_added | edited | meeting_moved | meeting_cancelled | colour_confirmed | quote_link_created | quote_link_opened | quote_link_revoked | install_requested   -- meeting_moved and meeting_cancelled added in M3; colour_confirmed added in M5 (the customer initialled the track colour; payload holds the initials and the colour by name, never a price); the four quote link events added 2026-11-02 (payloads hold the link id, or the option they picked in words and the run names, never a price)
 run_level:       lower | upper
 earning_type:    booking | commission
 earning_status:  pending | paid | void
@@ -62,6 +62,7 @@ commission_rate numeric(5,4) not null default 0.0500  -- share of the accepted q
 rush_colour_fee_per_ft numeric(10,2)             -- M5: per foot, for a non-stock colour installed this season; null = not set, the line is hidden
 service_call_fee numeric(10,2)                   -- M5: warranty years 6 to 10; null = not set, no amount shows
 quote_valid_days int not null default 14         -- M5: a new quote's valid-until date is this many days out
+min_job_total numeric(10,2)                      -- quote link (2026-11-02): the least a job can cost before GST; null = no minimum. Copied onto each quote when it is saved
 faq_text text not null default ''                -- M5: the folder's FAQ (take 2); seeded as a draft
 lost_reasons text[] not null default '{price, other company, not now, could not reach, other}'
 door_guide text not null                        -- the M2.6 Door guide; unused since M3.5, kept per the additive rule
@@ -302,7 +303,7 @@ box_price numeric(10,2) not null
 box_count int not null default 1
 runs jsonb not null default '[]'                 -- [{name, feet, level}]
 total_feet int not null default 0
-adders jsonb not null default '[]'               -- [{label, amount}]
+adders jsonb not null default '[]'               -- [{label, amount, upper_only?}]; upper_only (2026-11-02): the line counts only while an upper run is selected
 discounts jsonb not null default '[]'            -- [{label, amount}]
 gst_rate numeric(5,4) not null                   -- copied from settings at creation
 gst_number text                                  -- copied from settings at creation
@@ -318,10 +319,57 @@ track_custom boolean not null default false      -- a Custom RAL colour, which n
 notes text
 pdf_path text                                    -- bucket 'quotes', private
 valid_until date
+min_job_total numeric(10,2)                      -- 2026-11-02: copied from settings when the quote is saved; null = no minimum
 presented_at, accepted_at, declined_at timestamptz
 created_at, updated_at
 ```
 A quote can't be marked ready until the lead's track colour is set; the quote stores the colour name and RAL code it used, prints them, and shows a Custom colour as needing powder coating. Totals are computed in one pure function in `lib/pricing.ts`, used by the UI and the server action, and covered by unit tests. The database stores the result so history is stable if prices change later. `subtotal` is the total before GST and is the base for commission. Every price on a quote belongs to that quote: `price_per_ft`, `box_price`, each adder and discount amount, and custom lines in `adders` and `discounts`. Settings supplies the defaults when the quote is created; later changes to settings never alter an existing quote. Accepting a quote creates a `commission` earning (see `earnings`). Take 1 (M5) writes drafts only, one draft per lead reused; presented, accepted, declined, the ready rule and the PDF arrive in take 2. The rush line is `total_feet` times `rush_fee_per_ft` when `colour_timing` is 'rush'; a stocked colour and a factory order add nothing.
+
+### quote_links
+The customer quote link (2026-11-02). Owner only; anonymous callers and sales users read nothing here. The public page reaches it only through the token functions below.
+```
+id uuid pk
+lead_id uuid not null references leads
+token text not null unique                        -- 24 characters, base64url of 18 random bytes (144 bits), made in the database
+created_by uuid not null references profiles      -- who made it; Book my install notifies this person
+created_at
+revoked_at timestamptz                            -- turned off; a revoked link shows "expired" and can't be turned back on
+revoked_by uuid references profiles
+view_count int not null default 0                 -- visits, no IP address or device details stored
+first_viewed_at, last_viewed_at timestamptz
+selection int[]                                   -- positions (0-based) of the runs they have switched on; null = the Recommended package
+selection_runs text                               -- fingerprint of the quote's runs when the selection was made; a different fingerprint means the quote changed and the selection is ignored
+selection_at timestamptz
+booked_at timestamptz                             -- the latest Book my install
+booked_option text                                -- "Recommended package" or "Start smaller: Front, Garage"; words only, never a price
+booked_selection int[]
+notified_option text                              -- the option last pushed to the maker, so the same option twice notifies once
+updated_at
+unique (lead_id) where revoked_at is null         -- one live link per lead
+```
+The page shows the lead's latest quote, so updating the quote updates what the same link shows. A link is live while it is not revoked and its quote's `valid_until` is today or later (Calgary).
+
+Functions (all `security definer`, `search_path = ''`):
+- `issue_quote_link(lead_id)`: owner only. Returns the live link's token, making one (and a `quote_link_created` event) when there is none and the lead has a quote.
+- `revoke_quote_link(lead_id)`: owner only. Stamps the live link revoked and writes `quote_link_revoked`.
+- `quote_for_customer(token)`: anyone. One call returns what the page shows: `{state: 'live', name, address, valid_until, quote: {runs, prices, adders, discounts, colour timing, rush fee, minimum, box count}, gst_enabled, warranty, company, mockup_path, selection, booked}` for a live token, and `{state: 'expired', company: {name, phone, email}}` for anything else (unknown, revoked or out of date): Vesper's public contact for the call and text buttons, with no customer name and no prices. No notes, costs, setter, status, timeline or other customer, ever.
+- `quote_link_visit(token)`: anyone. Adds one visit and stamps the time; the first visit writes `quote_link_opened`.
+- `quote_link_select(token, positions int[])`: anyone. Saves which runs they have on.
+- `quote_link_book(token, positions int[])`: anyone. Saves Book my install with the option in words, writes `install_requested` (the option and run names, no price), and returns the maker's sealed push addresses when this option hasn't been pushed yet. Never accepts the quote and never creates an earning.
+
+### push_subscriptions
+Web push addresses for members' devices (2026-11-02). Built for Book my install first and for any later alert (the backlog's booking alerts) without changes.
+```
+id uuid pk
+profile_id uuid not null references profiles
+endpoint_hash text not null unique                -- sha256 of the push address, so one device is stored once
+sealed text not null                              -- the push address and its keys, AES-GCM sealed with a key derived from the server's VAPID private key; only the server can open it
+label text not null                               -- "iPhone", "iPad" and so on, from the browser, for the list in Settings
+created_at
+last_sent_at timestamptz
+removed_at timestamptz                            -- switched off; the row is kept, sealed, and gets nothing
+```
+Each member reads, adds and switches off only their own rows. A function that decides an event warrants a notice (today only `quote_link_book`) returns the recipient's sealed rows; the server opens them and sends.
 
 ### earnings
 What setters are owed and what they have been paid. One row per earning. Rows are created by server actions, never by the client directly.
@@ -374,13 +422,18 @@ Sales users collaborate, so they can read the team's leads, meetings and knock s
 | slot_holds | select; writes only through the booking functions | select all; writes only through the booking functions |
 | meetings | select; writes only through the booking functions | select all; book, move and cancel their own leads' meetings through the booking functions |
 | quotes | all | none |
+| quote_links | all, through `issue_quote_link` and `revoke_quote_link` for writes | none |
+| push_subscriptions | their own rows | their own rows |
 | earnings | select; writes only through the booking functions | select where `profile_id = auth.uid()`; no writes |
 
 Views on Supabase run with the privileges of the view's owner and bypass RLS, which is what lets sales read `settings_public`, `profiles_public` and `profile_names`. All three views return rows only when the caller has an active profile, so a signed-in account without a profile sees nothing. That is safe only while each view exposes nothing but the safe columns. Never add a column to a public view without checking this table. Supabase's security advisor reports these views as a finding; that is expected and accepted.
+
+Anonymous callers (the customer's quote page) have no access to any table. They call the four token functions, which return only customer-safe fields and change only their own link, and Storage lets a request carrying a live token sign that quote's mockup and nothing else (below).
 
 Write the policies in SQL in the migration that creates each table. Add a test script that signs in as a sales user and proves it can read another setter's lead but cannot update it, cannot read quotes, cannot read another setter's earnings, and cannot double book a slot.
 
 ## Storage buckets
 - `lead-photos`: private, signed URLs valid one hour, max 10 MB per file, JPEG, PNG or WebP. Resized in the browser to 1600 px on the long edge and re-encoded as JPEG, which also drops location data, then uploaded straight from the phone to `<uploader id>/<random id>.jpg` while the form is still open. Active owner and sales profiles can read every file; people can upload only into their own folder; only the owner can delete. Files from abandoned forms stay unlinked; cleanup is in the backlog.
+- `lead-photos`, the quote link (2026-11-02): an anonymous request can sign (and so show for ten minutes) exactly one object, the mockup of the lead whose live token it carries in the `x-quote-token` header. Listing or signing anything else is refused.
 - `quotes`: private, PDFs, owner only.
 - `presentation`: private, owner writes, app reads through signed URLs.

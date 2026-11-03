@@ -8,9 +8,17 @@
 // non-stock colour installed this season adds the rush colour fee per foot
 // on every foot; a stocked colour, or a factory order (spring), adds
 // nothing.
+//
+// The quote link (2026-11-02) runs the same function on the customer's
+// phone and on the server, over the runs they have switched on: an
+// extra-work line marked "only with upper runs" counts only while an
+// upper run is in, and when the total before GST falls below the minimum
+// job total it rises to the minimum with a line saying so.
 
 export type QuoteRun = { name: string; feet: number; level: "lower" | "upper" };
 export type QuoteLineItem = { label: string; amount: number };
+// Extra work. upperOnly: the line counts only while an upper run is in.
+export type QuoteAdder = QuoteLineItem & { upperOnly?: boolean };
 export type ColourTiming = "stock" | "factory_order" | "rush";
 
 export type QuoteInputs = {
@@ -18,11 +26,13 @@ export type QuoteInputs = {
   boxCount: number;
   pricePerFt: number;
   boxPrice: number;
-  adders: QuoteLineItem[];
+  adders: QuoteAdder[];
   discounts: QuoteLineItem[];
   colourTiming: ColourTiming | null;
   // The fee this quote uses when colourTiming is "rush"; ignored otherwise.
   rushFeePerFt: number | null;
+  // The least the job can cost before GST; null or 0 means no minimum.
+  minJobTotal?: number | null;
   gstEnabled: boolean;
   gstRate: number;
 };
@@ -40,6 +50,8 @@ export type QuoteTotals = {
   subtotal: number;
   gst: number;
   total: number;
+  // True when the total was raised to the minimum job total.
+  minimumApplied: boolean;
 };
 
 const toCents = (dollars: number) => Math.round(dollars * 100);
@@ -53,6 +65,20 @@ export function cleanFeet(value: number): number {
 
 export function totalFeet(runs: QuoteRun[]): number {
   return runs.reduce((sum, run) => sum + cleanFeet(run.feet), 0);
+}
+
+// Whether any run with feet is on the upper level.
+export function hasUpperRun(runs: QuoteRun[]): boolean {
+  return runs.some((run) => run.level === "upper" && cleanFeet(run.feet) > 0);
+}
+
+// The runs a customer has switched on: positions into the quote's runs, in
+// the quote's order, or every run when positions is null. Positions that
+// aren't on the quote are ignored.
+export function selectRuns(runs: QuoteRun[], positions: readonly number[] | null): QuoteRun[] {
+  if (positions === null) return runs;
+  const wanted = new Set(positions);
+  return runs.filter((_, at) => wanted.has(at));
 }
 
 export function priceQuote(inputs: QuoteInputs): QuoteTotals {
@@ -87,7 +113,9 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
   }
 
   let adderCents = 0;
+  const upper = hasUpperRun(inputs.runs);
   for (const adder of inputs.adders) {
+    if (adder.upperOnly && !upper) continue;
     const cents = toCents(Math.max(0, adder.amount));
     if (cents === 0 && adder.label.trim() === "") continue;
     adderCents += cents;
@@ -103,7 +131,23 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
   }
 
   // A pile of discounts can never make the house owe less than nothing.
-  const subtotalCents = Math.max(0, trackCents + boxCents + rushCents + adderCents - discountCents);
+  let subtotalCents = Math.max(0, trackCents + boxCents + rushCents + adderCents - discountCents);
+
+  // Below the minimum job total, the total rises to the minimum, and a
+  // line says so, so the breakdown still adds up.
+  // The line names what the amount is: the top-up to the minimum.
+  const minimum = inputs.minJobTotal ?? 0;
+  const minCents = Number.isFinite(minimum) && minimum > 0 ? toCents(minimum) : 0;
+  const minimumApplied = minCents > subtotalCents;
+  if (minimumApplied) {
+    lines.push({
+      label: `To reach our ${formatMoney(toDollars(minCents))} minimum`,
+      detail: null,
+      amount: toDollars(minCents - subtotalCents),
+    });
+    subtotalCents = minCents;
+  }
+
   const gstCents = inputs.gstEnabled ? Math.round(subtotalCents * inputs.gstRate) : 0;
 
   return {
@@ -112,6 +156,7 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
     subtotal: toDollars(subtotalCents),
     gst: toDollars(gstCents),
     total: toDollars(subtotalCents + gstCents),
+    minimumApplied,
   };
 }
 

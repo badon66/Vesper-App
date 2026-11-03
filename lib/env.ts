@@ -79,3 +79,37 @@ export function getServerEnv(): ServerEnv {
   });
   return cachedServer;
 }
+
+// The quote link and push (2026-11-02). All optional: without
+// QUOTE_BASE_URL, links use the address the app was opened on; without the
+// VAPID keys, the app works and sends no pushes. Server only.
+const blankIsUnset = (value: unknown) => (typeof value === "string" && value.trim() === "" ? undefined : value);
+
+const extrasEnvSchema = z.object({
+  QUOTE_BASE_URL: z.preprocess(
+    blankIsUnset,
+    z.url({ error: "must be a full address, like https://quote.vesperlighting.ca" }).optional(),
+  ),
+  VAPID_PUBLIC_KEY: z.preprocess(blankIsUnset, z.string().trim().optional()),
+  VAPID_PRIVATE_KEY: z.preprocess(blankIsUnset, z.string().trim().optional()),
+  VAPID_SUBJECT: z.preprocess(blankIsUnset, z.string().trim().optional()),
+});
+
+export type ExtrasEnv = z.infer<typeof extrasEnvSchema>;
+
+export function parseExtrasEnv(source: Record<string, string | undefined>): ExtrasEnv {
+  return parseEnv(extrasEnvSchema, source);
+}
+
+let cachedExtras: ExtrasEnv | undefined;
+
+// Server only. Never import this from a Client Component.
+export function getExtrasEnv(): ExtrasEnv {
+  cachedExtras ??= parseExtrasEnv({
+    QUOTE_BASE_URL: process.env.QUOTE_BASE_URL,
+    VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
+    VAPID_SUBJECT: process.env.VAPID_SUBJECT,
+  });
+  return cachedExtras;
+}

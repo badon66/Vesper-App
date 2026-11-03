@@ -119,3 +119,43 @@ self.addEventListener("fetch", (event) => {
     }
   }
 });
+
+// Push (2026-11-02): Book my install now, other alerts later. The server
+// sends {title, body, url, tag}; the notice shows on the lock screen and a
+// tap opens that page in the app, never another site.
+self.addEventListener("push", (event) => {
+  let notice = { title: "Vesper", body: "", url: "/app", tag: undefined };
+  try {
+    notice = { ...notice, ...(event.data ? event.data.json() : {}) };
+  } catch {
+    // A push without a readable payload still shows something.
+  }
+  event.waitUntil(
+    self.registration.showNotification(notice.title, {
+      body: notice.body,
+      tag: notice.tag,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { url: notice.url },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const asked = new URL((event.notification.data && event.notification.data.url) || "/app", self.location.origin);
+  const target = asked.origin === self.location.origin ? asked.href : self.location.origin + "/app";
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of windows) {
+        if (client.url.startsWith(self.location.origin)) {
+          await client.focus();
+          if ("navigate" in client) await client.navigate(target);
+          return;
+        }
+      }
+      await self.clients.openWindow(target);
+    })(),
+  );
+});

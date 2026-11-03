@@ -2,6 +2,8 @@
 
 Ideas and removed features that are not in the current milestone. Say which version they might belong to. Nothing here gets built without Keenan's say so.
 
+**Parked (Keenan, 2026-11-02).** The whole backlog is parked, along with M4, M6 and M7: the work now is the three fundamentals (setter sessions, sales meetings and the shareable quote link). Nothing here is started or planned until Keenan says otherwise.
+
 ## Removed from V1 on 2026-10-25
 
 - **Customer confirmation text.** A prefilled Messages link from the setter's phone using a template in settings, with a "mark sent" stamp on the meeting. Needs the CASL consent checkbox first. V1.5, alongside automated texts through Twilio.
