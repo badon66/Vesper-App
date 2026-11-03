@@ -15,6 +15,7 @@ import {
 import {
   bookFromSheet,
   saveSheetLead,
+  sheetBookedAt,
   sheetBookableLeads,
   sheetContext,
   sheetDistanceWarnings,
@@ -108,11 +109,16 @@ const SYNC_MS = 30_000;
 // as lost to the signal, so the sheet never sits on "Saving".
 const ANSWER_WITHIN_MS = 25_000;
 const SLOW = "That's taking too long. Check your signal and try again.";
+// Book with no answer back (2026-11-03): the sheet asks whether the lead
+// booked anyway before it says anything, and says only what it knows.
+const CHECK_WITHIN_MS = 10_000;
+const NOT_BOOKED_YET = "Not booked yet. Check your signal and tap Book again.";
+const NO_ANSWER_YET = "No signal to check whether it booked. Tap Book again once you have signal: it can't book twice.";
 
 class TooSlow extends Error {}
-function timed<T>(promise: Promise<T>): Promise<T> {
+function timed<T>(promise: Promise<T>, within = ANSWER_WITHIN_MS): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new TooSlow(SLOW)), ANSWER_WITHIN_MS);
+    const timer = window.setTimeout(() => reject(new TooSlow(SLOW)), within);
     promise.then(
       (value) => {
         window.clearTimeout(timer);
@@ -124,6 +130,20 @@ function timed<T>(promise: Promise<T>): Promise<T> {
       },
     );
   });
+}
+
+// A booking that may have gone through without its answer reaching the phone.
+type Unanswered = { leadId: string; startsAt: string };
+
+// Whether the lead now has its booking at that time: true, false, or null
+// when that can't be told either, because there's still no signal.
+async function bookedAlready(leadId: string, startsAt: string): Promise<boolean | null> {
+  try {
+    const reply = await timed(sheetBookedAt({ leadId, startsAt }), CHECK_WITHIN_MS);
+    return reply.ok ? reply.booked : null;
+  } catch {
+    return null;
+  }
 }
 
 // Classes the first thing a step still needs wears for a moment.
@@ -281,6 +301,11 @@ function BookingSheet({
   const menuWrapRef = useRef<HTMLDivElement>(null);
   const swipe = useRef<{ x: number; y: number; at: number } | null>(null);
   const runningOut = useRef(false);
+  // A Book whose answer never arrived. Until the sheet knows how it went, a
+  // hold that goes missing is checked against the lead's bookings first:
+  // booking is what uses a hold up, so it may simply have booked.
+  const unanswered = useRef<Unanswered | null>(null);
+  const finishLate = useRef<(booked: Unanswered) => void>(() => {});
   const actedOutLength = useRef(DEFAULT_HOLD_MINUTES);
   const menuId = useId();
   const isMove = request.kind === "move";
@@ -445,6 +470,19 @@ function BookingSheet({
   const explainLost = useCallback(
     async (startsAt: string, ranOut: boolean) => {
       let text = ranOut ? `Your hold on ${formatTime(startsAt)} ran out.` : `Your hold on ${formatTime(startsAt)} let go.`;
+      // A Book that got no answer for this time is the likeliest reason.
+      const pending = unanswered.current;
+      if (pending && pending.startsAt === startsAt && !viewingAs) {
+        const booked = await bookedAlready(pending.leadId, startsAt);
+        if (booked === true) {
+          finishLate.current(pending);
+          return;
+        }
+        if (booked === null) {
+          setLost({ text: `${text} It may have booked: check your signal.`, canHoldAgain: false });
+          return;
+        }
+      }
       let canHoldAgain = false;
       if (viewingAs) {
         setLost({ text: `${text} It's still free.`, canHoldAgain: true });
@@ -601,6 +639,12 @@ function BookingSheet({
       return;
     }
     if (reply.status === "none") {
+      // A Book that got no answer may be what used the hold up.
+      const pending = unanswered.current;
+      if (pending && pending.startsAt === startsAt && (await bookedAlready(pending.leadId, startsAt)) === true) {
+        finishLate.current(pending);
+        return;
+      }
       // The hold is gone altogether: ask for the time again, as a new hold.
       const again = await timed(
         holdTime(startsAt, {
@@ -905,6 +949,24 @@ function BookingSheet({
     }
   }
 
+  // Booked: the done screen. Also where an unanswered Book ends once the
+  // sheet learns it went through.
+  function finishBooked(booked: Unanswered, current: SheetDraft = draft) {
+    unanswered.current = null;
+    forgetDraft({ ...current, leadId: booked.leadId });
+    setError(null);
+    setLost(null);
+    setDone({ startsAt: booked.startsAt, leadId: booked.leadId });
+    go("done");
+    router.refresh();
+  }
+
+  // The hold's checks run in callbacks made once; they reach the latest
+  // finishBooked through this.
+  useEffect(() => {
+    finishLate.current = (booked) => finishBooked(booked);
+  });
+
   async function book(current: SheetDraft) {
     if (!heldAt) return;
     if (viewingAs) {
@@ -920,23 +982,44 @@ function BookingSheet({
       if (!saved) return;
       current = saved;
     }
+    const attempt: Unanswered = { leadId: current.leadId as string, startsAt: heldAt };
     let result: Awaited<ReturnType<typeof bookFromSheet>>;
     try {
       result = await timed(
         bookFromSheet({
-          leadId: current.leadId as string,
-          startsAt: heldAt,
+          leadId: attempt.leadId,
+          startsAt: attempt.startsAt,
           everyone: current.everyone === true,
           skip: current.skip,
           skipNote: current.skip_note,
         }),
       );
     } catch {
-      // It may still have booked: the board says, and booking it twice can't happen.
-      setError({ text: `${SLOW} If it booked, it shows on Schedule.`, fix: null });
+      // No answer: no signal, or too slow. It may have booked anyway, so ask
+      // before saying anything. Booking twice can't happen, so Book again is
+      // always safe.
+      unanswered.current = attempt;
+      const booked = await bookedAlready(attempt.leadId, attempt.startsAt);
+      if (booked === true) {
+        finishBooked(attempt, current);
+        return;
+      }
+      setError({ text: booked === false ? NOT_BOOKED_YET : NO_ANSWER_YET, fix: null });
       return;
     }
     if (!result.ok) {
+      // A try that got no answer may be what booked the lead or took the
+      // time: if so, it's booked, not refused.
+      const pending = unanswered.current;
+      if (pending && pending.leadId === attempt.leadId && pending.startsAt === attempt.startsAt) {
+        const booked = await bookedAlready(attempt.leadId, attempt.startsAt);
+        if (booked === true) {
+          finishBooked(attempt, current);
+          return;
+        }
+        // It didn't book, and this answer is the last word on it.
+        if (booked === false) unanswered.current = null;
+      }
       // A time that's gone is explained once, by the hold notice, which
       // offers to pick another time.
       if (result.code === "slot_held" || result.code === "slot_taken" || result.code === "slot_closed" || result.code === "not_a_slot") {
@@ -947,10 +1030,7 @@ function BookingSheet({
       }
       return;
     }
-    forgetDraft(current);
-    setDone({ startsAt: heldAt, leadId: current.leadId });
-    go("done");
-    router.refresh();
+    finishBooked(attempt, current);
   }
 
   // Leaving the address screen any way at all keeps what was typed there.
