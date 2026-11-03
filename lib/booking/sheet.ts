@@ -19,8 +19,8 @@ export type SheetScreen = "who" | "door" | "learned" | "address" | "house" | "bo
 export type StepKey = "door" | "after" | "book";
 
 // At the door: only what is needed face to face to book. After the door,
-// on the sidewalk: the rest of what they learned, the house, the soffit
-// and the photos. Then Book.
+// on the sidewalk: the rest of what they learned, the house (its address
+// and soffit colour), then its photos. Then Book.
 export const STEPS: { key: StepKey; label: string; screens: SheetScreen[] }[] = [
   { key: "door", label: "At the door", screens: ["who", "door"] },
   { key: "after", label: "After the door", screens: ["learned", "address", "house"] },
@@ -34,8 +34,8 @@ export const SCREEN_TITLES: Record<SheetScreen, string> = {
   who: "Who are we meeting?",
   door: "Three questions to book",
   learned: "What else did you learn?",
-  address: "Where's the house?",
-  house: "Soffit and photos",
+  address: "The house",
+  house: "Photos",
   book: "Ready to book?",
 };
 
@@ -179,6 +179,22 @@ export function withAnswer(draft: SheetDraft, question: CountedQuestion, value: 
   }
 }
 
+// The questions a booking needs a real answer to; Not collected, No or Not
+// yet on any of them means the time can't be booked.
+export const BOOKING_QUESTIONS: CountedQuestion[] = ["phone", "owns_home", "wants_price", "both_decision_makers"];
+
+// Which of them, as things stand, rule booking out: answered No or Not
+// yet, or marked Not collected. Blank ones aren't listed: they're still open.
+export function bookingBlockers(draft: SheetDraft): CountedQuestion[] {
+  const answers = draftAnswers(draft);
+  return BOOKING_QUESTIONS.filter((question) => {
+    const value = answers[question];
+    if (value === NOT_COLLECTED) return true;
+    if (question === "phone") return false;
+    return value === "no" || value === "not_yet";
+  });
+}
+
 // The questions on a screen that still need an answer or Not collected.
 export function screenOpenQuestions(screen: SheetScreen, draft: SheetDraft): CountedQuestion[] {
   const answers = draftAnswers(draft);
@@ -213,6 +229,11 @@ export function draftProblems(draft: SheetDraft): string[] {
   });
 }
 
+// The address is in with a map position.
+export function addressPlaced(draft: SheetDraft): boolean {
+  return draft.address_line.trim() !== "" && draft.lat !== null && draft.lng !== null;
+}
+
 // When a screen has everything it asks for. A question counts once it has
 // an answer or is marked Not collected.
 export function isScreenComplete(screen: SheetScreen, draft: SheetDraft): boolean {
@@ -223,11 +244,9 @@ export function isScreenComplete(screen: SheetScreen, draft: SheetDraft): boolea
     case "learned":
       return screenOpenQuestions(screen, draft).length === 0;
     case "address":
-      return draft.address_line.trim() !== "" && draft.lat !== null && draft.lng !== null;
-    case "house": {
-      const photosDone = guidedPhotoCount(draft) >= 3 || (draft.skip !== null && (draft.skip !== "other" || draft.skip_note.trim() !== ""));
-      return draft.soffit_colour !== null && photosDone;
-    }
+      return addressPlaced(draft) && draft.soffit_colour !== null;
+    case "house":
+      return guidedPhotoCount(draft) >= 3 || (draft.skip !== null && (draft.skip !== "other" || draft.skip_note.trim() !== ""));
     case "book":
       return draftProblems(draft).length === 0;
   }
@@ -262,7 +281,7 @@ export const PROBLEM_SCREENS: Record<string, SheetScreen> = {
   wants_price: "door",
   everyone_deciding_present: "door",
   map_position: "address",
-  soffit_colour: "house",
+  soffit_colour: "address",
   photos: "house",
   photos_skip_note: "house",
 };

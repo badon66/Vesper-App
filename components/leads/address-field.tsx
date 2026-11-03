@@ -142,6 +142,12 @@ export function AddressField({
   }
 
   function useDevicePosition(found: { lat: number; lng: number; accuracy: number }) {
+    // The position is taken, so the suggestions close and any search still
+    // on its way is dropped; left open, they cover what comes next.
+    if (timer.current) clearTimeout(timer.current);
+    request.current?.abort();
+    setSuggestions([]);
+    setOpen(false);
     setPosition({ lat: found.lat, lng: found.lng, placeId: null, source: "device", accuracy: found.accuracy });
     onEdited?.({ addressLine: text, positioned: true });
     findLeadsNear(found.lat, found.lng, leadId).then(setNearby, () => setNearby([]));

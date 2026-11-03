@@ -5,13 +5,48 @@ import { FieldError } from "@/components/field-error";
 import { NOT_COLLECTED, NOT_COLLECTED_LABEL } from "@/lib/leads/questions";
 import { cn } from "@/lib/utils";
 
-// The quiet "Not collected" answer beside a question (round 2): dashed until
-// chosen, then light on dark with a tick like any chosen answer. It sits in
-// the question's own line, so it costs no extra row; its touch area is the
-// full 44 px, reaching into the space around the line.
-export const NOT_COLLECTED_CHIP =
-  "relative -my-2.5 inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-dashed border-input bg-background px-3 text-sm font-medium text-muted-foreground transition-colors";
-export const NOT_COLLECTED_CHIP_ON = "border-solid border-foreground bg-foreground text-background";
+// The quiet "Not collected" answer beside a question (round 2): a small
+// dashed chip on the question's own line, so it costs no extra row. Its
+// touch area is the full 44 px, reaching a little into the space around the
+// line, while the chip itself stays clear of the answers below. Chosen, it
+// turns light on dark with a tick, like any chosen answer.
+const CHIP_TOUCH = "relative -my-1.5 inline-flex min-h-11 shrink-0 cursor-pointer items-center outline-none";
+const CHIP_FACE =
+  "inline-flex h-8 items-center gap-1.5 rounded-md border border-dashed border-input bg-background px-3 text-sm font-medium text-muted-foreground transition-colors";
+const CHIP_FACE_ON = "border-solid border-foreground bg-foreground text-background";
+const CHIP_FACE_SHEET = "min-[420px]:h-9 min-[420px]:text-base";
+
+// The phone's Not collected: the same chip, as a button that toggles.
+export function NotCollectedToggle({
+  pressed,
+  onToggle,
+  size = "form",
+  label,
+  testId,
+}: {
+  pressed: boolean;
+  onToggle: () => void;
+  size?: "form" | "sheet";
+  // What a screen reader hears, e.g. "Phone: Not collected".
+  label: string;
+  testId?: string;
+}) {
+  return (
+    <button type="button" aria-pressed={pressed} aria-label={label} onClick={onToggle} data-testid={testId} className={cn(CHIP_TOUCH, "group")}>
+      <span
+        className={cn(
+          CHIP_FACE,
+          size === "sheet" && CHIP_FACE_SHEET,
+          pressed && CHIP_FACE_ON,
+          "group-focus-visible:ring-2 group-focus-visible:ring-ring group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-background",
+        )}
+      >
+        {pressed ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
+        {NOT_COLLECTED_LABEL}
+      </span>
+    </button>
+  );
+}
 
 // A one-tap question: big choices backed by real radio buttons, so they work
 // with one thumb and with a keyboard or screen reader. The chosen answer is
@@ -38,7 +73,7 @@ export function AnswerGroup<T extends string>({
   value: T | string | null;
   // Not collected arrives as NOT_COLLECTED.
   onChange: (value: T | null) => void;
-  // Four in a row take smaller words on a narrow phone, so they fit one row.
+  // Four in a row take smaller words, so they fit one row.
   columns?: 2 | 3 | 4;
   error?: string;
   // When the screen's heading already asks the question.
@@ -67,7 +102,7 @@ export function AnswerGroup<T extends string>({
   const marked = value === NOT_COLLECTED;
   return (
     <fieldset
-      className={cn("flex flex-col", notCollected ? "gap-3" : "gap-2")}
+      className={cn("flex flex-col rounded-md", notCollected ? "gap-3" : "gap-2")}
       aria-describedby={[describedBy, error ? `${name}-error` : null].filter(Boolean).join(" ") || undefined}
       data-question={name}
     >
@@ -82,17 +117,19 @@ export function AnswerGroup<T extends string>({
           >
             {legend}
           </span>
-          <label
-            data-answer={NOT_COLLECTED}
-            className={cn(
-              NOT_COLLECTED_CHIP,
-              "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
-              marked && NOT_COLLECTED_CHIP_ON,
-            )}
-          >
+          <label data-answer={NOT_COLLECTED} className={cn(CHIP_TOUCH, "group")}>
             {radio(NOT_COLLECTED)}
-            {marked ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
-            {NOT_COLLECTED_LABEL}
+            <span
+              className={cn(
+                CHIP_FACE,
+                size === "sheet" && CHIP_FACE_SHEET,
+                marked && CHIP_FACE_ON,
+                "group-has-[:focus-visible]:ring-2 group-has-[:focus-visible]:ring-ring group-has-[:focus-visible]:ring-offset-2 group-has-[:focus-visible]:ring-offset-background",
+              )}
+            >
+              {marked ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
+              {NOT_COLLECTED_LABEL}
+            </span>
           </label>
         </div>
       ) : null}
@@ -104,7 +141,8 @@ export function AnswerGroup<T extends string>({
             className={cn(
               "group flex min-h-12 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-input bg-background px-2 py-1 text-center text-base font-semibold leading-tight transition-colors has-[:checked]:border-foreground has-[:checked]:bg-foreground has-[:checked]:text-background has-[:disabled]:cursor-not-allowed has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
               columns === 4 && "max-[419px]:text-sm",
-              size === "sheet" && "min-[420px]:min-h-14 min-[420px]:text-lg",
+              size === "sheet" && "min-[420px]:min-h-14",
+              size === "sheet" && (columns === 4 ? "min-[420px]:text-base" : "min-[420px]:text-lg"),
             )}
           >
             {radio(option.value)}

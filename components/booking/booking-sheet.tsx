@@ -27,13 +27,12 @@ import {
   AddressScreen,
   BookScreen,
   ExistingScreen,
-  HouseScreen,
+  PhotosScreen,
   QuestionsScreen,
   WhoScreen,
 } from "@/components/booking/sheet-screens";
 import { NoteText } from "@/components/booking/step-notes";
 import { Wordmark } from "@/components/brand/wordmark";
-import { ViewAsBar } from "@/components/view-as-bar";
 import { TimePicker } from "@/components/schedule/time-picker";
 import { Button } from "@/components/ui/button";
 import { DialogPanel } from "@/components/ui/dialog-panel";
@@ -57,6 +56,7 @@ import {
   type HoldClock,
 } from "@/lib/booking/hold-clock";
 import {
+  addressPlaced,
   canSaveLead,
   DOOR_QUESTIONS,
   draftAnswers,
@@ -69,6 +69,7 @@ import {
   markScreenNotCollected,
   nextScreen,
   previousScreen,
+  PROBLEM_SCREENS,
   savedFingerprint,
   SCREEN_QUESTIONS,
   SCREEN_TITLES,
@@ -88,7 +89,7 @@ import { COUNTED_QUESTIONS, isQuestionDone, type CountedQuestion } from "@/lib/l
 import { normalizePhone } from "@/lib/phone";
 import type { PickedAddress } from "@/lib/places";
 import { toBoardSlots, type BoardSlot } from "@/lib/schedule/board";
-import { sentence, timePhrase } from "@/lib/schedule/meetings";
+import { bookButtonLabel, formatMeetingTime, heldTimeLabel, sentence, timePhrase } from "@/lib/schedule/meetings";
 import { createClient } from "@/lib/supabase/client";
 import { calgaryDateOf, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -97,6 +98,30 @@ import { VIEW_AS_NOTHING_SAVED } from "@/lib/view-as";
 // How often the sheet checks its hold with the database. The countdown on
 // screen runs on its own between checks; a check keeps it honest.
 const SYNC_MS = 30_000;
+// A save, a booking or a hold that hasn't answered in this long is treated
+// as lost to the signal, so the sheet never sits on "Saving".
+const ANSWER_WITHIN_MS = 25_000;
+const SLOW = "That's taking too long. Check your signal and try again.";
+
+class TooSlow extends Error {}
+function timed<T>(promise: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new TooSlow(SLOW)), ANSWER_WITHIN_MS);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+// Classes the first thing a step still needs wears for a moment.
+const ATTENTION = ["ring-2", "ring-primary", "ring-offset-4", "ring-offset-background"];
 const DEFAULT_HOLD_MINUTES = 5;
 const OPEN_KEY = (userId: string) => `vesper.booking-sheet.${userId}`;
 
@@ -260,6 +285,8 @@ function BookingSheet({
       restored?.sheetId ??
       (request.kind === "draft" && request.draftId.startsWith("new:") ? request.draftId.slice(4) : crypto.randomUUID()),
   );
+  const [contextFailed, setContextFailed] = useState(false);
+  const [contextTry, setContextTry] = useState(0);
   const [context, setContext] = useState<{
     notes: SheetNotes;
     holdMinutes: number;
@@ -316,25 +343,43 @@ function BookingSheet({
     if (dialog && !dialog.open) dialog.showModal();
   }, []);
 
+  // The times and Keenan's notes; on no signal it says so and offers to try again.
   useEffect(() => {
     let cancelled = false;
-    sheetContext().then((result) => {
-      if (cancelled || !result.ok) return;
-      setContext({
-        notes: result.notes,
-        holdMinutes: result.holdMinutes,
-        board: result.board,
-        today: result.today,
-        windowDays: result.windowDays,
-        asSales: result.asSales,
-      });
-      // An acted-out hold lasts what Settings says, like a real one.
-      if (viewingAs && result.holdMinutes !== actedOutLength.current) {
-        const change = (result.holdMinutes - actedOutLength.current) * 60_000;
-        actedOutLength.current = result.holdMinutes;
-        setClock((current) => (current ? { ...current, expiresAt: current.expiresAt + change } : current));
-      }
-    });
+    timed(sheetContext()).then(
+      (result) => {
+        if (cancelled) return;
+        if (!result.ok) {
+          setContextFailed(true);
+          return;
+        }
+        setContextFailed(false);
+        setContext({
+          notes: result.notes,
+          holdMinutes: result.holdMinutes,
+          board: result.board,
+          today: result.today,
+          windowDays: result.windowDays,
+          asSales: result.asSales,
+        });
+        // An acted-out hold lasts what Settings says, like a real one.
+        if (viewingAs && result.holdMinutes !== actedOutLength.current) {
+          const change = (result.holdMinutes - actedOutLength.current) * 60_000;
+          actedOutLength.current = result.holdMinutes;
+          setClock((current) => (current ? { ...current, expiresAt: current.expiresAt + change } : current));
+        }
+      },
+      () => {
+        if (!cancelled) setContextFailed(true);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [contextTry, viewingAs]);
+
+  useEffect(() => {
+    let cancelled = false;
     if (request.kind === "lead" && !restored) {
       sheetLead(request.leadId).then((lead) => {
         if (cancelled) return;
@@ -546,10 +591,12 @@ function BookingSheet({
     }
     if (reply.status === "none") {
       // The hold is gone altogether: ask for the time again, as a new hold.
-      const again = await holdTime(startsAt, {
-        leadId: draft.leadId,
-        meetingId: request.kind === "move" ? request.meetingId : null,
-      });
+      const again = await timed(
+        holdTime(startsAt, {
+          leadId: draft.leadId,
+          meetingId: request.kind === "move" ? request.meetingId : null,
+        }),
+      );
       if (again.ok) {
         setClock(clockOf(again));
         setNow(Date.now());
@@ -581,9 +628,9 @@ function BookingSheet({
     }
     setExtending(true);
     try {
-      await applyHoldReply(await extendMyHold(), heldAt);
+      await applyHoldReply(await timed(extendMyHold()), heldAt);
     } catch {
-      setError({ text: "No signal. Try again in a moment.", fix: null });
+      setError({ text: SLOW, fix: null });
     } finally {
       setExtending(false);
     }
@@ -716,7 +763,13 @@ function BookingSheet({
 
   async function save(current: SheetDraft): Promise<SheetDraft | null> {
     if (viewingAs) return current;
-    const result = await saveSheetLead(current.leadId, draftToLeadInput(current));
+    let result: Awaited<ReturnType<typeof saveSheetLead>>;
+    try {
+      result = await timed(saveSheetLead(current.leadId, draftToLeadInput(current)));
+    } catch {
+      setError({ text: SLOW, fix: null });
+      return null;
+    }
     if (!result.ok) {
       const fix = screenForField(result.errors ? Object.keys(result.errors)[0] : null);
       setError({ text: result.error, fix: fix === view ? null : fix });
@@ -738,42 +791,59 @@ function BookingSheet({
       case "learned":
         return screenOpenQuestions(screen, current).length > 0 ? "Answer the rest first" : null;
       case "address": {
-        const ready = addressLive
-          ? addressLive.addressLine.trim() !== "" && addressLive.positioned
-          : isScreenComplete("address", current);
-        return ready ? null : "Add the address first";
+        const placed = addressLive ? addressLive.addressLine.trim() !== "" && addressLive.positioned : addressPlaced(current);
+        if (!placed) return "Add the address first";
+        return current.soffit_colour === null ? "Pick the soffit first" : null;
       }
       case "house":
-        if (current.soffit_colour === null) return "Pick the soffit first";
         return isScreenComplete("house", current) ? null : "Photos first";
-      case "book":
-        return null;
+      case "book": {
+        const problems = draftProblems(current);
+        return problems.length > 0 ? `Fix ${problems.length} first` : null;
+      }
     }
   }
 
-  // Next while a screen isn't done: show what's missing.
-  function showMissing(screen: SheetScreen, current: SheetDraft) {
+  // Next while a screen isn't done: the first thing it still needs comes
+  // into view and is outlined for a moment. A tap also moves focus there; a
+  // swipe doesn't, so a phone's keyboard never jumps up mid-swipe.
+  function showMissing(screen: SheetScreen, current: SheetDraft, focus = true) {
     const root = bodyRef.current;
     if (!root) return;
+    let marked: HTMLElement | null = null;
     let target: HTMLElement | null = null;
     if (screen === "who") {
       target = root.querySelector(current.first_name.trim() === "" ? "#sheet-first-name" : "#sheet-phone");
+      marked = target;
     } else if (screen === "door" || screen === "learned") {
       const open = screenOpenQuestions(screen, current)[0];
-      target = open ? root.querySelector(`[data-question="sheet-${open}"] input`) : null;
+      marked = open ? root.querySelector(`[data-question="sheet-${open}"]`) : null;
+      target = marked?.querySelector<HTMLElement>('label[data-answer]:not([data-answer="not_collected"]) input') ?? null;
     } else if (screen === "address") {
-      target = root.querySelector("#lead-address");
+      const placed = addressLive ? addressLive.addressLine.trim() !== "" && addressLive.positioned : addressPlaced(current);
+      marked = placed ? root.querySelector('[data-question="sheet-soffit"]') : root.querySelector("#lead-address");
+      target = placed ? (marked?.querySelector<HTMLElement>("input") ?? null) : marked;
     } else if (screen === "house") {
-      target = current.soffit_colour === null ? root.querySelector('[data-question="sheet-soffit"] input') : root.querySelector('[data-slot="front"] button');
+      marked = root.querySelector('[aria-label="Guided photos"]');
+      target = root.querySelector('[data-slot="front"] button');
+    } else if (screen === "book") {
+      const first = draftProblems(current)[0];
+      if (first) go(PROBLEM_SCREENS[first] ?? "who");
+      return;
     }
-    target?.scrollIntoView({ block: "center" });
-    target?.focus({ preventScroll: true });
+    marked?.scrollIntoView({ block: "center" });
+    if (focus) target?.focus({ preventScroll: true });
+    if (marked) {
+      const box = marked;
+      box.classList.add(...ATTENTION);
+      window.setTimeout(() => box.classList.remove(...ATTENTION), 1500);
+    }
   }
 
   // Next, or a swipe to the left. A screen is done when every question on
   // it has an answer or Not collected. Saves the lead when it can and
   // something changed, then moves on.
-  async function advance() {
+  async function advance(viaSwipe = false) {
     if (!isScreen(view) || busy) return;
     setError(null);
     if (view === "book") {
@@ -791,7 +861,7 @@ function BookingSheet({
       setDraft(current);
     }
     if (!isScreenComplete(view, current)) {
-      showMissing(view, current);
+      showMissing(view, current, !viaSwipe);
       return;
     }
     if (view === "who" && !current.not_collected.includes("phone")) {
@@ -841,13 +911,22 @@ function BookingSheet({
       if (!saved) return;
       current = saved;
     }
-    const result = await bookFromSheet({
-      leadId: current.leadId as string,
-      startsAt: heldAt,
-      everyone: current.everyone === true,
-      skip: current.skip,
-      skipNote: current.skip_note,
-    });
+    let result: Awaited<ReturnType<typeof bookFromSheet>>;
+    try {
+      result = await timed(
+        bookFromSheet({
+          leadId: current.leadId as string,
+          startsAt: heldAt,
+          everyone: current.everyone === true,
+          skip: current.skip,
+          skipNote: current.skip_note,
+        }),
+      );
+    } catch {
+      // It may still have booked: the board says, and booking it twice can't happen.
+      setError({ text: `${SLOW} If it booked, it shows on Schedule.`, fix: null });
+      return;
+    }
     if (!result.ok) {
       // A time that's gone is explained once, by the hold notice, which
       // offers to pick another time.
@@ -949,7 +1028,13 @@ function BookingSheet({
     }
     setBusy(true);
     try {
-      const result = await moveBooking(request.meetingId, heldAt);
+      let result: Awaited<ReturnType<typeof moveBooking>>;
+      try {
+        result = await timed(moveBooking(request.meetingId, heldAt));
+      } catch {
+        setError({ text: SLOW, fix: null });
+        return;
+      }
       if (!result.ok) {
         setError({ text: result.message, fix: null });
         return;
@@ -1024,7 +1109,7 @@ function BookingSheet({
     const dy = touch.clientY - from.y;
     if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5 || event.timeStamp - from.at > 800) return;
     // A swipe never books: Book is a tap.
-    if (dx < 0 && view !== "book") void advance();
+    if (dx < 0 && view !== "book") void advance(true);
     if (dx > 0 && view !== "who") back();
   }
 
@@ -1072,14 +1157,18 @@ function BookingSheet({
       <div className="flex h-dvh flex-col">
         {/* ------------------------------------------------ top: the wordmark, the held time, the steps */}
         <header className="border-b pt-[env(safe-area-inset-top)]">
-          {/* The sheet covers the app's gold bar, so it carries its own. */}
-          {viewingAs ? <ViewAsBar name={viewedName ?? "someone"} ended={false} /> : null}
+          {/* The sheet covers the app's gold bar, so it carries a slim one of its own. */}
+          {viewingAs ? (
+            <p role="status" className="bg-primary px-4 py-1 text-center text-xs font-semibold text-primary-foreground" data-testid="sheet-view-as">
+              Viewing as {viewedName ?? "someone"}. Read only: nothing here is saved.
+            </p>
+          ) : null}
           <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3 px-4 py-2">
             <Wordmark className="text-sm min-[420px]:text-base" />
             {done || view === "moved" ? (
-              <p className="inline-flex min-h-12 items-center gap-2 text-sm font-semibold" data-testid="sheet-held" data-held="booked">
+              <p className="inline-flex min-h-12 items-center gap-2 text-sm font-semibold min-[420px]:text-base" data-testid="sheet-held" data-held="booked">
                 <Check aria-hidden="true" className="size-4" />
-                {heldAt ? formatTime(heldAt) : ""} {view === "moved" ? "moved" : "booked"}
+                {heldAt ? heldTimeLabel(heldAt) : ""}, {view === "moved" ? "moved" : "booked"}
               </p>
             ) : !heldAt ? (
               <p className="inline-flex min-h-12 items-center text-sm font-semibold text-muted-foreground" data-testid="sheet-held" data-held="none">
@@ -1093,24 +1182,27 @@ function BookingSheet({
                   aria-haspopup="menu"
                   aria-expanded={menuOpen}
                   aria-controls={menuOpen ? menuId : undefined}
-                  aria-label={`${formatTime(heldAt)}. ${
-                    held ? `${formatCountdown(remaining)} left on your hold.` : extending ? "Holding it again." : "Your hold ran out."
-                  } Hold options`}
+                  aria-label={`Hold options for ${formatMeetingTime(heldAt)}`}
                   onClick={() => setMenuOpen((open) => !open)}
                   data-testid="sheet-held"
                   data-held={held ? "yes" : "no"}
                   data-phase={held ? phase : "run_out"}
                   className={cn(
-                    "flex min-h-12 items-center gap-2 rounded-md border px-3 py-1 text-right outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    held && phase === "plenty" && "border-primary",
+                    "flex min-h-12 items-center gap-2 rounded-md px-3 py-1 text-right outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    held && phase === "plenty" && "border-2 border-primary",
                     held && phase === "under_a_minute" && "border-2 border-foreground bg-secondary",
-                    !held && "border-dashed border-input text-muted-foreground",
+                    !held && "border border-dashed border-input text-muted-foreground",
                   )}
                 >
                   <span className="flex flex-col items-end">
-                    <span className="text-base leading-tight font-bold tabular-nums min-[420px]:text-lg">{formatTime(heldAt)}</span>
+                    <span className="text-base leading-tight font-bold tabular-nums min-[420px]:text-lg" data-testid="sheet-held-time">
+                      {heldTimeLabel(heldAt)}
+                    </span>
                     <span
-                      className={cn("text-xs leading-tight tabular-nums min-[420px]:text-sm", phase === "under_a_minute" && held ? "font-bold" : "text-muted-foreground")}
+                      className={cn(
+                        "text-sm leading-tight tabular-nums min-[420px]:text-base",
+                        held && phase === "under_a_minute" ? "font-bold" : held ? "font-medium" : "text-muted-foreground",
+                      )}
                       data-testid="sheet-countdown"
                     >
                       {held ? `${formatCountdown(remaining)} left` : extending ? "Holding" : "Ran out"}
@@ -1125,8 +1217,11 @@ function BookingSheet({
                     aria-label="Hold options"
                     onKeyDown={menuKeys}
                     data-testid="hold-menu"
-                    className="absolute top-full right-0 z-20 mt-1 flex w-60 flex-col overflow-hidden rounded-md border bg-background py-1 shadow-lg"
+                    className="absolute top-full right-0 z-20 mt-1 flex w-64 flex-col overflow-hidden rounded-md border bg-background py-1 shadow-sm"
                   >
+                    <p role="none" className="px-4 pt-1 pb-2 text-sm text-pretty text-muted-foreground min-[420px]:text-base" data-testid="hold-menu-status">
+                      {held ? `Held for you, ${formatCountdown(remaining)} left.` : lost?.canHoldAgain ? "Your hold ran out. It's still free." : "Your hold ran out."}
+                    </p>
                     {held ? (
                       <MenuItem onClick={() => void addMinutes()}>Add {holdMinutes} minutes</MenuItem>
                     ) : lost?.canHoldAgain ? (
@@ -1216,7 +1311,18 @@ function BookingSheet({
                 onHeld={onTimeHeld}
               />
             ) : null}
-            {view === "times" && !context ? <p className="text-sm text-muted-foreground">One moment.</p> : null}
+            {view === "times" && !context ? (
+              contextFailed ? (
+                <div className="flex flex-col items-start gap-3" data-testid="times-failed">
+                  <p className="text-base text-pretty">The times didn&apos;t load. Check your signal and try again.</p>
+                  <Button type="button" variant="outline" onClick={() => setContextTry((n) => n + 1)}>
+                    Try again
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Loading the times.</p>
+              )
+            ) : null}
             {view === "existing" ? <ExistingScreen leads={existing ?? []} loading={existing === null} onPick={(id) => void pickExisting(id)} /> : null}
             {view === "who" ? (
               <WhoScreen
@@ -1250,6 +1356,7 @@ function BookingSheet({
                 formRef={addressFormRef}
                 apiKey={mapsKey}
                 duplicates={duplicates}
+                onChange={change}
                 onEdited={setAddressLive}
                 onPicked={(picked) => {
                   pickedRef.current = picked;
@@ -1260,7 +1367,7 @@ function BookingSheet({
               />
             ) : null}
             {view === "house" ? (
-              <HouseScreen
+              <PhotosScreen
                 draft={draft}
                 userId={userId}
                 photos={photos}
@@ -1314,7 +1421,7 @@ function BookingSheet({
                   ) : null}
                   {view !== "times" ? (
                     <Button type="button" variant="outline" size="sm" onClick={pickAnother}>
-                      Pick another time
+                      Change time
                     </Button>
                   ) : null}
                 </div>
@@ -1335,9 +1442,9 @@ function BookingSheet({
               saving={busy}
               uploading={photosBusy}
               need={need}
+              held={held}
               canBook={problems.length === 0 && held}
-              missing={problems.length}
-              heldTime={heldAt ? formatTime(heldAt) : null}
+              bookLabel={heldAt ? bookButtonLabel(heldAt) : "Book"}
               onBack={back}
               onNext={() => (need && isScreen(view) ? showMissing(view, view === "address" ? readAddressForm(draft) : draft) : void advance())}
               onMove={() => void confirmMove()}
@@ -1416,7 +1523,7 @@ function MenuItem({ onClick, children }: { onClick: () => void; children: React.
       type="button"
       role="menuitem"
       onClick={onClick}
-      className="flex min-h-12 w-full items-center px-4 text-left text-base font-semibold outline-none hover:bg-muted focus-visible:bg-muted"
+      className="flex min-h-12 w-full items-center px-4 text-left text-base font-semibold outline-none hover:bg-muted focus-visible:bg-muted min-[420px]:min-h-14 min-[420px]:text-lg"
     >
       {children}
     </button>
@@ -1453,9 +1560,9 @@ function BottomBar({
   saving,
   uploading,
   need,
+  held,
   canBook,
-  missing,
-  heldTime,
+  bookLabel,
   onBack,
   onNext,
   onMove,
@@ -1470,9 +1577,11 @@ function BottomBar({
   uploading: boolean;
   // What the screen still needs, said on Next; null when it's done.
   need: string | null;
+  // Whether the time is still held: once it runs out, Hold it again is the
+  // one gold button, and Next steps back.
+  held: boolean;
   canBook: boolean;
-  missing: number;
-  heldTime: string | null;
+  bookLabel: string;
   onBack: () => void;
   onNext: () => void;
   onMove: () => void;
@@ -1482,10 +1591,10 @@ function BottomBar({
   if (view === "done" || view === "moved") {
     return (
       <div className="grid grid-cols-2 gap-3 py-1">
-        <Button type="button" variant="outline" size="lg" onClick={onOpenLead}>
+        <Button type="button" variant="outline" size="lg" className="min-[420px]:h-14 min-[420px]:text-lg" onClick={onOpenLead}>
           Open the lead
         </Button>
-        <Button type="button" size="lg" onClick={onClose}>
+        <Button type="button" size="lg" className="min-[420px]:h-14 min-[420px]:text-lg" onClick={onClose}>
           Done
         </Button>
       </div>
@@ -1494,7 +1603,7 @@ function BottomBar({
   if (view === "loading" || view === "not-bookable" || ((view === "times" || view === "existing") && !hasTime)) {
     return (
       <div className="grid grid-cols-2 gap-3 py-1">
-        <Button type="button" variant="outline" size="lg" onClick={onClose}>
+        <Button type="button" variant="outline" size="lg" className="min-[420px]:h-14 min-[420px]:text-lg" onClick={onClose}>
           Close
         </Button>
         <span />
@@ -1504,7 +1613,7 @@ function BottomBar({
   if (view === "times" || view === "existing") {
     return (
       <div className="grid grid-cols-2 gap-3 py-1">
-        <Button type="button" variant="outline" size="lg" onClick={onBack} disabled={busy}>
+        <Button type="button" variant="outline" size="lg" className="min-[420px]:h-14 min-[420px]:text-lg" onClick={onBack} disabled={busy}>
           Back
         </Button>
         <span />
@@ -1514,10 +1623,10 @@ function BottomBar({
   if (view === "move-confirm") {
     return (
       <div className="grid grid-cols-2 gap-3 py-1">
-        <Button type="button" variant="outline" size="lg" onClick={onBack} disabled={busy}>
+        <Button type="button" variant="outline" size="lg" className="min-[420px]:h-14 min-[420px]:text-lg" onClick={onBack} disabled={busy}>
           Back
         </Button>
-        <Button type="button" size="lg" onClick={onMove} disabled={busy}>
+        <Button type="button" size="lg" className="min-[420px]:h-14 min-[420px]:text-lg" onClick={onMove} disabled={busy || !held}>
           {busy ? "Moving" : "Move"}
         </Button>
       </div>
@@ -1525,6 +1634,10 @@ function BottomBar({
   }
   const first = view === "who";
   const booking = view === "book";
+  // Not ready, on any step Book included: dashed, and a tap goes to what's
+  // missing. Book on a time that isn't held can't be tapped at all.
+  const notHeldBook = booking && !need && !canBook;
+  const quiet = Boolean(need) || !held;
   return (
     <div className="grid grid-cols-2 gap-3 py-1">
       <Button type="button" variant="outline" size="lg" className="min-[420px]:h-14 min-[420px]:text-lg" onClick={onBack} disabled={busy || first}>
@@ -1533,26 +1646,14 @@ function BottomBar({
       <Button
         type="button"
         size="lg"
-        variant={need ? "outline" : "default"}
+        variant={quiet ? "outline" : "default"}
         className={cn("min-[420px]:h-14 min-[420px]:text-lg", need && "border-dashed px-3 text-sm min-[420px]:text-base")}
         onClick={onNext}
-        disabled={busy || (booking && !canBook)}
+        disabled={busy || notHeldBook}
         data-testid="sheet-next"
         data-ready={need ? "no" : "yes"}
       >
-        {saving
-          ? booking
-            ? "Booking"
-            : "Saving"
-          : uploading
-            ? "Uploading photos"
-            : booking
-              ? canBook
-                ? `Book ${heldTime ?? ""}`
-                : missing > 0
-                  ? `Fix ${missing} first`
-                  : "Time not held"
-              : need ?? "Next"}
+        {saving ? (booking ? "Booking" : "Saving") : uploading ? "Uploading photos" : need ?? (booking ? (canBook ? bookLabel : "Time not held") : "Next")}
       </Button>
     </div>
   );

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bookingBlockers,
   canSaveLead,
   DOOR_QUESTIONS,
   draftAnswers,
@@ -97,8 +98,10 @@ describe("The booking sheet's steps", () => {
   it("skips what an existing lead already has, but never skips Book", () => {
     const draft = { ...ready(), everyone: null, soffit_colour: null };
     expect(firstScreenToVisit(draft)).toBe("door");
-    expect(nextScreen("door", draft, true)).toBe("house");
-    expect(nextScreen("house", draft, true)).toBe("book");
+    // The soffit colour is asked with the address now.
+    expect(nextScreen("door", draft, true)).toBe("address");
+    expect(nextScreen("address", draft, true)).toBe("book");
+    expect(nextScreen("door", { ...draft, soffit_colour: "white", photo_slots: [] }, true)).toBe("house");
     expect(firstScreenToVisit(ready())).toBe("book");
     expect(firstScreenToVisit(emptyDraft())).toBe("who");
   });
@@ -143,22 +146,32 @@ describe("When a screen is done", () => {
     expect(withAnswer({ ...emptyDraft(), phone: "403" }, "phone", NOT_COLLECTED).phone).toBe("");
   });
 
-  it("needs a map position on the address, not just the words", () => {
-    const draft = { ...emptyDraft(), address_line: "305 Brand New Way NW" };
+  it("needs a map position on the address, not just the words, and the soffit colour with it", () => {
+    const draft = { ...emptyDraft(), address_line: "305 Brand New Way NW", soffit_colour: "not_sure" as const };
     expect(isScreenComplete("address", draft)).toBe(false);
-    expect(isScreenComplete("address", { ...draft, lat: 51.2, lng: -114.1, position_source: "device" })).toBe(true);
+    const placed = { ...draft, lat: 51.2, lng: -114.1, position_source: "device" as const };
+    expect(isScreenComplete("address", placed)).toBe(true);
+    expect(isScreenComplete("address", { ...placed, soffit_colour: null })).toBe(false);
   });
 
-  it("needs the soffit colour and three guided photos, or a skip reason with a note when it's Other", () => {
-    const draft = { ...emptyDraft(), soffit_colour: "not_sure" as const };
+  it("needs three guided photos on the photo step, or a skip reason with a note when it's Other", () => {
+    const draft = emptyDraft();
     expect(isScreenComplete("house", draft)).toBe(false);
     expect(isScreenComplete("house", { ...draft, photo_slots: ["front", "left_corner", "soffit"] })).toBe(false);
     expect(guidedPhotoCount({ ...draft, photo_slots: ["front", "left_corner", "soffit"] })).toBe(2);
     expect(isScreenComplete("house", { ...draft, photo_slots: ["front", "left_corner", "right_corner"] })).toBe(true);
-    expect(isScreenComplete("house", { ...draft, soffit_colour: null, photo_slots: ["front", "left_corner", "right_corner"] })).toBe(false);
     expect(isScreenComplete("house", { ...draft, skip: "homeowner_said_no" })).toBe(true);
     expect(isScreenComplete("house", { ...draft, skip: "other" })).toBe(false);
     expect(isScreenComplete("house", { ...draft, skip: "other", skip_note: "Dog in the yard" })).toBe(true);
+  });
+
+  it("says at once which booking questions rule this time out: Not collected, No or Not yet", () => {
+    expect(bookingBlockers(ready())).toEqual([]);
+    expect(bookingBlockers(emptyDraft())).toEqual([]);
+    const marked = markScreenNotCollected("door", { ...ready(), owns_home: true, wants_price: null, everyone: null });
+    expect(bookingBlockers(marked)).toEqual(["wants_price", "both_decision_makers"]);
+    expect(bookingBlockers({ ...ready(), owns_home: false, wants_price: false })).toEqual(["owns_home", "wants_price"]);
+    expect(bookingBlockers(withAnswer(ready(), "phone", NOT_COLLECTED))).toEqual(["phone"]);
   });
 });
 
@@ -175,6 +188,7 @@ describe("Before you book in the sheet", () => {
     for (const code of [...problems, "photos_skip_note"]) expect(PROBLEM_SCREENS[code]).toBeDefined();
     expect(PROBLEM_SCREENS.map_position).toBe("address");
     expect(PROBLEM_SCREENS.everyone_deciding_present).toBe("door");
+    expect(PROBLEM_SCREENS.soffit_colour).toBe("address");
     expect(PROBLEM_SCREENS.photos).toBe("house");
   });
 
@@ -245,6 +259,17 @@ describe("Saving the lead from the sheet", () => {
 });
 
 describe("Saying the time", () => {
+  it("gives the held time its day in the sheet's header, and the weekday on Book unless it's tonight", async () => {
+    const { heldTimeLabel, bookButtonLabel } = await import("@/lib/schedule/meetings");
+    const at = calgaryInstant("2026-11-17", "17:00");
+    expect(heldTimeLabel(at, "2026-11-17")).toBe("Tonight, 5:00 p.m.");
+    expect(heldTimeLabel(at, "2026-11-16")).toBe("Tomorrow, 5:00 p.m.");
+    expect(heldTimeLabel(at, "2026-11-03")).toBe("Tue, Nov 17, 5:00 p.m.");
+    expect(bookButtonLabel(at, "2026-11-17")).toBe("Book 5:00 p.m.");
+    expect(bookButtonLabel(at, "2026-11-16")).toBe("Book tomorrow 5:00 p.m.");
+    expect(bookButtonLabel(at, "2026-11-03")).toBe("Book Tue 5:00 p.m.");
+  });
+
   it("says tonight for tonight, tomorrow for tomorrow, and the day otherwise", () => {
     const tonight = calgaryInstant("2026-11-14", "19:30");
     expect(timePhrase(tonight, "2026-11-14")).toBe("7:30 p.m. tonight");
