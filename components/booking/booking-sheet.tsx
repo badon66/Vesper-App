@@ -91,6 +91,7 @@ import { bookingSheet, useSheetRequest, type SheetRequest, type SheetTimer } fro
 import { getPublicEnv } from "@/lib/env";
 import type { PhotoSlot } from "@/lib/leads/door";
 import { draftKey } from "@/lib/leads/draft";
+import { timed } from "@/lib/answer-within";
 import { handOffToNewLead } from "@/lib/leads/hand-off";
 import { COUNTED_QUESTIONS, isQuestionDone, type CountedQuestion } from "@/lib/leads/questions";
 import { normalizePhone } from "@/lib/phone";
@@ -105,32 +106,15 @@ import { VIEW_AS_EXIT_PATH, VIEW_AS_NOTHING_SAVED } from "@/lib/view-as";
 // How often the sheet checks its hold with the database. The countdown on
 // screen runs on its own between checks; a check keeps it honest.
 const SYNC_MS = 30_000;
-// A save, a booking or a hold that hasn't answered in this long is treated
-// as lost to the signal, so the sheet never sits on "Saving".
-const ANSWER_WITHIN_MS = 25_000;
+// A save, a booking or a hold that hasn't answered within the app's answer
+// limit (lib/answer-within.ts) is treated as lost to the signal, so the
+// sheet never sits on "Saving". This is what it says then.
 const SLOW = "That's taking too long. Check your signal and try again.";
 // Book with no answer back (2026-11-03): the sheet asks whether the lead
 // booked anyway before it says anything, and says only what it knows.
 const CHECK_WITHIN_MS = 10_000;
 const NOT_BOOKED_YET = "Not booked yet. Check your signal and tap Book again.";
 const NO_ANSWER_YET = "No signal to check whether it booked. Tap Book again once you have signal: it can't book twice.";
-
-class TooSlow extends Error {}
-function timed<T>(promise: Promise<T>, within = ANSWER_WITHIN_MS): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new TooSlow(SLOW)), within);
-    promise.then(
-      (value) => {
-        window.clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        window.clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
-}
 
 // A booking that may have gone through without its answer reaching the phone.
 type Unanswered = { leadId: string; startsAt: string };

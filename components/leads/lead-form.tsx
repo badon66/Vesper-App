@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { unstable_rethrow, useRouter } from "next/navigation";
 import { X } from "lucide-react";
-import { useActionState, useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   findLeadsAtPlace,
   type DuplicateLead,
@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useViewAs } from "@/components/view-as-context";
 import type { PhotoSlot } from "@/lib/leads/door";
 import { defaultsFromDraft, draftFromFormData, draftHasContent, draftKey, draftPhotoPaths, readDraft, type LeadDraft } from "@/lib/leads/draft";
+import { timed } from "@/lib/answer-within";
 import { takeHandOff } from "@/lib/leads/hand-off";
 import { QUESTION_LABELS, type CountedQuestion } from "@/lib/leads/questions";
 import { ANSWER_OR_NOT_COLLECTED, leadFormDataToInput, unansweredQuestions, type LeadFormErrors } from "@/lib/leads/schema";
@@ -63,6 +64,17 @@ const initialState: LeadFormState = {};
 const NO_ANSWER_NEW = "No answer, so it may have saved. Tap Save again once you have signal: it won't make a copy.";
 const NO_ANSWER_EDIT = "No answer, so it may have saved. Tap Save again once you have signal.";
 
+// Next.js's own redirect (or another of its navigations), told apart from a
+// real failure by its own check.
+function isNextNavigation(error: unknown): boolean {
+  try {
+    unstable_rethrow(error);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 const NOTHING_FOUND_OUT: QuestionDefaults = {
   owns_home: null,
   wants_price: null,
@@ -98,18 +110,8 @@ export function LeadForm({
   defaults?: LeadFormDefaults;
   cancelHref: string;
 }) {
-  // A lost answer (no signal) keeps the form as typed and says so, rather
-  // than leaving the page (2026-11-04). Next.js ends a save with a redirect,
-  // which arrives as an error and goes on through.
-  const [state, formAction, pending] = useActionState(async (previous: LeadFormState, formData: FormData) => {
-    try {
-      return await action(previous, formData);
-    } catch (error) {
-      unstable_rethrow(error);
-      return { error: mode === "create" ? NO_ANSWER_NEW : NO_ANSWER_EDIT };
-    }
-  }, initialState);
-  const [, startTransition] = useTransition();
+  const [state, setState] = useState<LeadFormState>(initialState);
+  const [pending, setPending] = useState(false);
   const router = useRouter();
   const [neighbourhood, setNeighbourhood] = useState(
     defaults?.neighbourhood ?? sessionNeighbourhood ?? "",
@@ -325,7 +327,27 @@ export function LeadForm({
     }
     // The draft, key included, is on the phone before the request leaves.
     keepDraft(formData);
-    startTransition(() => formAction(formData));
+    void send(formData);
+  }
+
+  // Sent from the tap itself, not inside a React transition (2026-11-04): a
+  // transition's "Saving" stays up until every request in it has answered,
+  // so a save that hangs would show it for ever. With the app's answer
+  // limit, a lost answer or none in time keeps the form as typed and says
+  // so. Next.js ends a save with a redirect, which arrives as an error while
+  // the router is already on its way to where the save lands, so the form
+  // stays on "Saving" until the page changes.
+  async function send(formData: FormData) {
+    setPending(true);
+    let next: LeadFormState;
+    try {
+      next = await timed(action(state, formData));
+    } catch (error) {
+      if (isNextNavigation(error)) return;
+      next = { error: mode === "create" ? NO_ANSWER_NEW : NO_ANSWER_EDIT };
+    }
+    setState(next);
+    setPending(false);
   }
 
   return (
