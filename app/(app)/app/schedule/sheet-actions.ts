@@ -19,7 +19,7 @@ import { leadName, STATUS_LABELS } from "@/lib/leads/status";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import type { BoardSlot } from "@/lib/schedule/board";
 import { distanceWarnings, formatKm } from "@/lib/schedule/distance";
-import { isLive } from "@/lib/schedule/meetings";
+import { isLive, LIVE_STATUSES } from "@/lib/schedule/meetings";
 import { bookingMessage, errorCode } from "@/lib/schedule/messages";
 import { bookingSettings, fetchBoard, meetingsOnDay } from "@/lib/schedule/queries";
 import { createClient } from "@/lib/supabase/server";
@@ -327,6 +327,31 @@ export async function bookFromSheet(input: {
   revalidatePath("/app/pay");
   revalidatePath(`/app/leads/${values.leadId}`);
   return { ok: true, meetingId: data as string };
+}
+
+// Whether a lead now has its booking at a time (2026-11-03). Book asks when
+// its answer never arrived (no signal, or too slow), and when a try after
+// that is refused: the booking may have gone through anyway, and then the
+// setter sees it booked rather than an error. Read only, as the person the
+// sheet is for; every sales user can already see every booking.
+export type SheetBookedAt = { ok: true; booked: boolean } | Refused;
+
+export async function sheetBookedAt(input: { leadId: string; startsAt: string }): Promise<SheetBookedAt> {
+  const me = await reader();
+  if (refused(me)) return me;
+  const leadIdParsed = id.safeParse(input?.leadId);
+  const at = instant.safeParse(input?.startsAt);
+  if (!leadIdParsed.success || !at.success) return { ok: false, error: "That booking was not found." };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("meetings")
+    .select("id")
+    .eq("lead_id", leadIdParsed.data)
+    .eq("starts_at", at.data)
+    .in("status", [...LIVE_STATUSES])
+    .limit(1);
+  if (error) return { ok: false, error: "That couldn't be checked. Try again." };
+  return { ok: true, booked: (data ?? []).length > 0 };
 }
 
 // The straight-line distance warning for a lead at a time, for the Book screen.
