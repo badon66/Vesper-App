@@ -58,12 +58,12 @@ describe("Not collected", () => {
         created_by: setter.id,
         not_collected: ["phone", "owns_home", "owns_home", "install_timing", "nonsense"],
       })
-      .select("id, not_collected, phone, owns_home")
+      .select("id, not_collected, phone_saved, owns_home")
       .single();
     expect(error).toBeNull();
     leadId = data!.id;
     expect(data!.not_collected).toEqual(["install_timing", "owns_home", "phone"]);
-    expect(data!.phone).toBeNull();
+    expect(data!.phone_saved).toBe(false);
     expect(data!.owns_home).toBeNull();
   });
 
@@ -72,10 +72,13 @@ describe("Not collected", () => {
       .from("leads")
       .update({ owns_home: true, phone: "+14035550142", not_collected: ["phone", "owns_home", "install_timing"] })
       .eq("id", leadId)
-      .select("not_collected, owns_home, phone")
+      .select("not_collected, owns_home, phone_saved")
       .single();
     expect(error).toBeNull();
-    expect(data).toEqual({ not_collected: ["install_timing"], owns_home: true, phone: "+14035550142" });
+    expect(data).toEqual({ not_collected: ["install_timing"], owns_home: true, phone_saved: true });
+    // The number itself, on their own lead, through lead_contacts (contact privacy).
+    const { data: contact } = await setter.client.from("lead_contacts").select("phone").eq("lead_id", leadId).single();
+    expect(contact?.phone).toBe("+14035550142");
   });
 
   it("stores the everyone-who-decides answer on the lead, and the timeline notes both changes", async () => {

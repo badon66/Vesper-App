@@ -207,6 +207,10 @@ const page = await setterContext.newPage();
 let ownerSession = null;
 let ownerPage = null;
 const leads = {};
+const OTHER_PHONE = "+14035550188";
+const OTHER_EMAIL = "other.setter.lead@example.com";
+const OWN_PHONE = "+14035550177";
+const OWN_EMAIL = "own.setter.lead@example.com";
 
 try {
   // Setup: two setters, A's leads in every attention group, B's one lead,
@@ -247,6 +251,12 @@ try {
   leads.newYoung = await add(a, { address_line: "5 Attention Way NW (TEST)" });
   leads.lost = await add(a, { address_line: "6 Attention Way NW (TEST)", status: "lost", lost_reason: "price" });
   leads.other = await add(people.b, { address_line: "9 Other Setter Way NW (TEST)" });
+  // Contact privacy (Keenan, 2026-11-04): B's lead and one of A's own carry a
+  // phone and an email; A sees only their own, and so does View as A.
+  const contactB = await people.b.client.from("leads").update({ phone: OTHER_PHONE, email: OTHER_EMAIL }).eq("id", leads.other);
+  if (contactB.error) throw new Error(`B's contact: ${contactB.error.message}`);
+  const contactA = await a.client.from("leads").update({ phone: OWN_PHONE, email: OWN_EMAIL }).eq("id", leads.newOld);
+  if (contactA.error) throw new Error(`A's contact: ${contactA.error.message}`);
   const { data: knock, error: knockError } = await a.client
     .from("knock_sessions")
     .insert({ neighbourhood: TEST_PLACE, user_id: a.id })
@@ -614,6 +624,21 @@ try {
     }
     if (label === "another setter's lead") {
       check("View as shows another setter's track colour from the list", viewed.text.includes(`Track colour ${firstColour.name}`), firstColour.name);
+      const realHtml = await page.content();
+      const viewedHtml = await op.content();
+      const leaks = [OTHER_PHONE, OTHER_PHONE.slice(2), "555-0188", OTHER_EMAIL].filter((bit) => realHtml.includes(bit) || viewedHtml.includes(bit));
+      check(
+        "another setter's lead shows no phone or email, to the setter or in View as, not even in the page's data",
+        leaks.length === 0 &&
+          (await page.locator('a[href^="tel:"], a[href^="sms:"], a[href^="mailto:"]').count()) === 0 &&
+          (await op.locator('a[href^="tel:"], a[href^="sms:"], a[href^="mailto:"]').count()) === 0,
+        leaks.join(", "),
+      );
+      check(
+        "it says the phone is saved and why it isn't shown",
+        real.text.includes("Phone Saved, hidden") && real.text.includes("Phone and email show only to this lead's own setter."),
+        real.text.slice(real.text.indexOf("Find out"), real.text.indexOf("Find out") + 60),
+      );
     }
     if (label === "New lead") {
       check(
@@ -650,6 +675,25 @@ try {
     }
   }
   check("View as keeps owner screens from the setter's view", (await op.getByRole("heading", { name: "Not for your role" }).count()) === 1);
+
+  // Contact privacy on their own lead and in search (Keenan, 2026-11-04): the
+  // setter sees their own lead's phone and email, and so does View as; a
+  // search by B's digits finds nothing of B's, a search by their own finds
+  // their lead.
+  for (const [who, tab] of [["the setter", page], ["View as", op]]) {
+    await tab.goto(`${base}/app/leads/${leads.newOld}`);
+    await settle(tab);
+    const call = await tab.locator(`a[href="tel:${OWN_PHONE}"]`).count();
+    const mail = await tab.locator(`a[href="mailto:${OWN_EMAIL}"]`).count();
+    check(`${who}: their own lead shows its phone and email`, call === 1 && mail === 1, `${call} call, ${mail} email`);
+    await tab.goto(`${base}/app/leads?scope=everyone&view=all&q=${encodeURIComponent("403 555 0188")}`);
+    await settle(tab);
+    const foundOther = await tab.locator(`main a[href="/app/leads/${leads.other}"]`).count();
+    await tab.goto(`${base}/app/leads?scope=everyone&view=all&q=${encodeURIComponent("5550177")}`);
+    await settle(tab);
+    const foundOwn = await tab.locator(`main a[href="/app/leads/${leads.newOld}"]`).count();
+    check(`${who}: a search by phone finds only their own leads, never another setter's`, foundOther === 0 && foundOwn >= 1, `${foundOther} of B's, ${foundOwn} of theirs`);
+  }
 
   // ---------------------------------------------------------------- View as you can click through (round 2)
   // Keenan taps through what Nav Test A would. Each write is refused on the

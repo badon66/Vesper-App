@@ -1,4 +1,6 @@
 import "server-only";
+import type { ContactViewer } from "@/lib/leads/contact-rules";
+import { contactsFor } from "@/lib/leads/contacts";
 import { toBoardSlots, type BoardSlot } from "@/lib/schedule/board";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/server";
@@ -67,9 +69,10 @@ export async function activeHoldOf(supabase: Client, personId: string, holdMinut
 const MEETING_COLUMNS =
   "id, lead_id, host_id, setter_id, booked_by, starts_at, ends_at, status, photos_skipped, photos_skip_note, outcome_reason, outcome_note, outcome_at, outcome_by, rebooked_as, created_at";
 // The counted questions come along so each card can say how complete the
-// lead is ("6 of 8 collected", round 2).
+// lead is ("6 of 8 collected", round 2). Never the phone or email: those come
+// from lead_contacts, for the leads the viewer may contact (2026-11-04).
 const LEAD_COLUMNS =
-  "id, first_name, last_name, address_line, city, neighbourhood, phone, lat, lng, notes, position_source, position_accuracy_m, status, created_by, assigned_to, owns_home, wants_price, both_decision_makers, christmas_lights_now, looked_into_before, areas_wanted, install_timing, not_collected";
+  "id, first_name, last_name, address_line, city, neighbourhood, phone_saved, lat, lng, notes, position_source, position_accuracy_m, status, created_by, assigned_to, owns_home, wants_price, both_decision_makers, christmas_lights_now, looked_into_before, areas_wanted, install_timing, not_collected";
 
 export type MeetingRow = Pick<
   Database["public"]["Tables"]["meetings"]["Row"],
@@ -98,7 +101,7 @@ export type MeetingLead = Pick<
   | "address_line"
   | "city"
   | "neighbourhood"
-  | "phone"
+  | "phone_saved"
   | "lat"
   | "lng"
   | "notes"
@@ -115,16 +118,21 @@ export type MeetingLead = Pick<
   | "areas_wanted"
   | "install_timing"
   | "not_collected"
->;
+> & {
+  // The phone, only on a lead the viewer may contact (contact privacy).
+  phone: string | null;
+};
 export type MeetingWithLead = MeetingRow & { lead: MeetingLead };
 
 // Meetings starting between two moments, with their leads. setterId keeps
 // a setter's own screens to their own bookings, which View as relies on.
+// viewer adds the phone of the leads that person may contact; without it no
+// phone comes along at all.
 export async function meetingsBetween(
   supabase: Client,
   fromIso: string,
   toIso: string,
-  opts: { setterId?: string; leadId?: string } = {},
+  opts: { setterId?: string; leadId?: string; viewer?: ContactViewer } = {},
 ): Promise<MeetingWithLead[]> {
   let query = supabase
     .from("meetings")
@@ -136,11 +144,15 @@ export async function meetingsBetween(
   if (opts.setterId) query = query.eq("setter_id", opts.setterId);
   if (opts.leadId) query = query.eq("lead_id", opts.leadId);
   const { data } = await query;
-  return ((data ?? []) as unknown as MeetingWithLead[]).filter((meeting) => meeting.lead);
+  const meetings = ((data ?? []) as unknown as (MeetingRow & { lead: Omit<MeetingLead, "phone"> | null })[]).filter(
+    (meeting): meeting is MeetingRow & { lead: Omit<MeetingLead, "phone"> } => meeting.lead !== null,
+  );
+  const contacts = opts.viewer ? await contactsFor(supabase, opts.viewer, meetings.map((meeting) => meeting.lead.id)) : new Map();
+  return meetings.map((meeting) => ({ ...meeting, lead: { ...meeting.lead, phone: contacts.get(meeting.lead.id)?.phone ?? null } }));
 }
 
 // One Calgary evening's meetings.
-export function meetingsOnDay(supabase: Client, day: string, opts: { setterId?: string } = {}) {
+export function meetingsOnDay(supabase: Client, day: string, opts: { setterId?: string; viewer?: ContactViewer } = {}) {
   return meetingsBetween(supabase, calgaryDayStart(day), calgaryDayStart(addDays(day, 1)), opts);
 }
 

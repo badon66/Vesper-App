@@ -177,6 +177,13 @@ export type Database = {
             foreignKeyName: "earnings_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "earnings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -349,6 +356,13 @@ export type Database = {
             foreignKeyName: "lead_events_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_events_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -408,6 +422,13 @@ export type Database = {
             foreignKeyName: "lead_photos_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_photos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -448,6 +469,7 @@ export type Database = {
           notes: string | null
           owns_home: boolean | null
           phone: string | null
+          phone_saved: boolean | null
           place_id: string | null
           position_accuracy_m: number | null
           position_source:
@@ -501,6 +523,7 @@ export type Database = {
           notes?: string | null
           owns_home?: boolean | null
           phone?: string | null
+          phone_saved?: boolean | null
           place_id?: string | null
           position_accuracy_m?: number | null
           position_source?:
@@ -554,6 +577,7 @@ export type Database = {
           notes?: string | null
           owns_home?: boolean | null
           phone?: string | null
+          phone_saved?: boolean | null
           place_id?: string | null
           position_accuracy_m?: number | null
           position_source?:
@@ -742,6 +766,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles_public"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meetings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "meetings_lead_id_fkey"
@@ -982,6 +1013,13 @@ export type Database = {
             foreignKeyName: "quote_links_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "quote_links_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -1132,6 +1170,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles_public"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
           },
           {
             foreignKeyName: "quotes_lead_id_fkey"
@@ -1377,6 +1422,13 @@ export type Database = {
             foreignKeyName: "slot_holds_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "slot_holds_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -1529,6 +1581,73 @@ export type Database = {
       }
     }
     Views: {
+      lead_contacts: {
+        Row: {
+          assigned_to: string | null
+          created_by: string | null
+          email: string | null
+          lead_id: string | null
+          phone: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_by?: string | null
+          email?: string | null
+          lead_id?: string | null
+          phone?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          created_by?: string | null
+          email?: string | null
+          lead_id?: string | null
+          phone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profile_names: {
         Row: {
           full_name: string | null

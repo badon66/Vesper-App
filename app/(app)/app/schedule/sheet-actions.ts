@@ -14,6 +14,8 @@ import { type PhotoSlot } from "@/lib/leads/door";
 import { COUNTED_QUESTIONS, type CountedQuestion } from "@/lib/leads/questions";
 import { followUpLabel } from "@/lib/leads/attention";
 import { openKnockSession } from "@/lib/leads/queries";
+import { contactFor } from "@/lib/leads/contacts";
+import { LEAD_FIELDS } from "@/lib/leads/fields";
 import { insertLeadOnce, NOT_SAVED, readSaveKey } from "@/lib/leads/save-key";
 import { leadColumnsFromValues, parseLeadForm, type LeadFormErrors } from "@/lib/leads/schema";
 import { leadName, STATUS_LABELS } from "@/lib/leads/status";
@@ -122,12 +124,14 @@ export async function sheetLead(leadId: string): Promise<SheetLead> {
   if (!leadIdParsed.success) return { ok: false, error: "That lead was not found." };
   const supabase = await createClient();
   const [{ data: lead }, { data: photoRows }, { data: live }] = await Promise.all([
-    supabase.from("leads").select("*").eq("id", leadIdParsed.data).maybeSingle(),
+    supabase.from("leads").select(LEAD_FIELDS).eq("id", leadIdParsed.data).maybeSingle(),
     supabase.from("lead_photos").select("storage_path, slot, created_at").eq("lead_id", leadIdParsed.data).not("slot", "is", null).order("created_at"),
     supabase.from("meetings").select("id").eq("lead_id", leadIdParsed.data).in("status", ["booked", "confirmed"]),
   ]);
   if (!lead) return { ok: false, error: "That lead was not found." };
   if (!mine(me, lead)) return { ok: false, error: "You can only book your own leads." };
+  // Their own lead, or Keenan: its phone comes from lead_contacts (2026-11-04).
+  const contact = await contactFor(supabase, me, lead.id);
 
   // The newest photo in each slot.
   const latest = new Map<string, string>();
@@ -158,7 +162,7 @@ export async function sheetLead(leadId: string): Promise<SheetLead> {
       leadId: lead.id,
       first_name: lead.first_name,
       last_name: lead.last_name ?? "",
-      phone: lead.phone ?? "",
+      phone: contact.phone ?? "",
       owns_home: lead.owns_home,
       wants_price: lead.wants_price,
       christmas_lights_now: lead.christmas_lights_now,

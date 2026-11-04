@@ -119,8 +119,9 @@ status lead_status not null default 'new'
 source lead_source not null default 'door'
 first_name text not null
 last_name text
-phone text                                      -- E.164 normalized, Canada (+1) when no country code is typed, required before booking
-email text
+phone text                                      -- E.164 normalized, Canada (+1) when no country code is typed, required before booking; read only through lead_contacts (contact privacy, 2026-11-04)
+email text                                      -- read only through lead_contacts (contact privacy, 2026-11-04)
+phone_saved boolean generated always as (phone is not null) stored  -- 2026-11-04: whether a number is saved, readable by anyone who reads the lead, so completeness and Before you book read right without the number
 address_line text not null
 city text not null default 'Calgary'
 postal_code text
@@ -165,6 +166,7 @@ Rules enforced in the database:
 - `follow_up` requires `follow_up_on`. Leaving `follow_up` clears it. A signed-in person cannot set a follow-up date earlier than today in Calgary; moving the date on a lead that stays in `follow_up` is an edit. The status change into `follow_up` records the date in its event payload, and a date change alone logs an `edited` event naming the field.
 - `lat` and `lng` are both set or both empty, and `position_source` is set exactly when they are. A typed address with no map position is allowed to save; booking requires one. For a brand-new street Google doesn't have yet, the phone's own position at the door counts, stored as `device` with its accuracy, which must be 50 m or better and inside the Calgary area. A position saved without a source is taken as picked.
 - `phone` is stored in E.164 or not at all.
+- Contact privacy (Keenan, 2026-11-04): signed-in people read `leads` column by column, every column except `phone` and `email`, so a query that names either one, or asks for `*`, is refused. Setters still write the phone and email of their own leads. The phone and email come from the view `lead_contacts` (`lead_id`, `phone`, `email`, `created_by`, `assigned_to`), which returns every lead's for Keenan and only their own leads' for a setter. It runs with the view owner's rights and a security barrier, so its own filter applies before anything a caller adds. A column added to `leads` later needs a read grant in its migration, or nobody but the service role can read it.
 - At most one lead has a given `save_key` (the unique index), so two tries of the same first save can never both make a lead, even at the same instant. The app looks the key up before it inserts, and again when the insert hits the index; it hands a lead back only to the person who created it.
 - The track colour is set by the owner only: a signed-in non-owner cannot set or change `track_colour_id` or `track_ral_code`. At most one of the two is set. A newly chosen `track_colour_id` must be an active colour; a lead keeps a colour that is later retired.
 - Deleting a profile that still owns leads or knock sessions is refused; deactivate people instead.
@@ -423,7 +425,8 @@ Sales users collaborate, so they can read the team's leads, meetings and knock s
 | track_colours | select, insert, update; never delete | select all (active and retired) |
 | ral_classic_colours | select | select |
 | settings | all | read only the fields the client needs: slot template, `distance_warning_km`, `lost_reasons`, `door_guide`, `booking_cutoff_minutes`, `hold_grace_minutes`, `booking_window_days`, the three step notes and (round 2) `hold_minutes`, through a view `settings_public` that exposes nothing else |
-| leads | all | insert as themselves; select all; update where `created_by = auth.uid()` or `assigned_to = auth.uid()`; change status only among `new`, `follow_up`, `lost`; no delete |
+| leads | all, phone and email through `lead_contacts` | insert as themselves; select every lead, every column but `phone` and `email`; update where `created_by = auth.uid()` or `assigned_to = auth.uid()`; change status only among `new`, `follow_up`, `lost`; no delete |
+| lead_contacts (view) | every lead's phone and email | the phone and email of their own leads only (created or assigned) |
 | lead_photos | all | select all; insert for their own leads, with the file inside their own storage folder |
 | lead_events | select and insert; never update or delete | select all; insert `note` events on their own leads |
 | knock_sessions | all | select all; insert and update own rows |

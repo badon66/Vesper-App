@@ -52,6 +52,7 @@ export async function SalesHome({
     fetchBoard(supabase, profile, realRole),
     meetingsBetween(supabase, calgaryDayStart(addDays(today, -1)), calgaryDayStart(addDays(today, settings.windowDays + 1)), {
       setterId: profile.id,
+      viewer: profile,
     }),
     addedId
       ? supabase.from("leads").select("id, first_name, last_name").eq("id", addedId).eq("created_by", profile.id).maybeSingle()
@@ -65,6 +66,9 @@ export async function SalesHome({
   const names = await namesById(supabase, mine.flatMap((meeting) => [meeting.setter_id, meeting.booked_by]));
   const now = requestTime();
 
+  // Top to bottom (Keenan, 2026-11-04, the spec's order again): after a save
+  // the saved line, Unfinished bookings, tonight's open times, my bookings,
+  // the knock session, follow-ups due.
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-bold">Hello, {firstName}</h1>
@@ -87,8 +91,6 @@ export async function SalesHome({
       ) : null}
 
       <UnfinishedBookings userId={profile.id} />
-
-      <KnockCard key={session?.id ?? "none"} session={session} lastNeighbourhood={last} />
 
       <Card data-testid="tonight-times">
         <CardHeader>
@@ -148,6 +150,8 @@ export async function SalesHome({
           ))
         )}
       </section>
+
+      <KnockCard key={session?.id ?? "none"} session={session} lastNeighbourhood={last} />
 
       <Card>
         <CardHeader>

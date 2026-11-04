@@ -387,8 +387,8 @@ try {
   const bookingsY = await pageA.getByTestId("my-bookings").boundingBox();
   const dueY = await pageA.getByRole("heading", { name: "Follow-ups due" }).boundingBox().catch(() => null);
   check(
-    "Home runs top to bottom: the knock session, tonight's open times, my bookings, follow-ups due",
-    JSON.stringify(homeOrder) === JSON.stringify(["tonight-times", "my-bookings"]) && timesY && bookingsY && knockY && dueY && knockY.y < timesY.y && timesY.y < bookingsY.y && bookingsY.y < dueY.y,
+    "Home runs top to bottom (Keenan, 2026-11-04): tonight's open times, my bookings, the knock session, follow-ups due",
+    JSON.stringify(homeOrder) === JSON.stringify(["tonight-times", "my-bookings"]) && timesY && bookingsY && knockY && dueY && timesY.y < bookingsY.y && bookingsY.y < knockY.y && knockY.y < dueY.y,
   );
   const tonight = (byDay.get(today) ?? []).filter((row) => row.state === "open");
   const homeDay = (await pageA.getByTestId("picker-day").first().innerText()).trim();

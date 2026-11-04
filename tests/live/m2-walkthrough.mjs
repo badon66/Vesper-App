@@ -312,11 +312,29 @@ try {
   await page.waitForURL("**/app?added=*", { timeout: 30000 });
   await settle(page);
   const seconds = (Date.now() - started) / 1000;
-  check("while knocking, save returns Home to the counters", true, `${seconds.toFixed(1)} s for the scripted flow`);
+  check("while knocking, save returns Home", true, `${seconds.toFixed(1)} s for the scripted flow`);
   check("the scripted new-lead flow takes well under 30 seconds", seconds < 30, `${seconds.toFixed(1)} s`);
   await page.getByTestId("lead-saved").waitFor({ timeout: 10000 });
-  const doorsBox = await page.getByRole("button", { name: /^Add one to doors/ }).first().boundingBox().catch(() => null);
-  check("Home names the saved lead and shows the counters without scrolling", doorsBox !== null && doorsBox.y + doorsBox.height <= viewport.height, doorsBox ? `${Math.round(doorsBox.y)}` : "missing");
+  // Home's order (Keenan, 2026-11-04): the saved line, tonight's open times,
+  // my bookings, the knock session, follow-ups due.
+  const tops = await page.evaluate(() => {
+    const top = (element) => (element ? Math.round(element.getBoundingClientRect().top + window.scrollY) : null);
+    const doors = [...document.querySelectorAll("button")].find((button) => (button.getAttribute("aria-label") ?? "").startsWith("Add one to doors"));
+    const followUps = [...document.querySelectorAll("h2, h3, [data-slot='card-title']")].find((heading) => heading.textContent?.trim() === "Follow-ups due");
+    return {
+      saved: top(document.querySelector('[data-testid="lead-saved"]')),
+      tonight: top(document.querySelector('[data-testid="tonight-times"]')),
+      bookings: top(document.querySelector('[data-testid="my-bookings"]')),
+      knock: top(doors),
+      followUps: top(followUps),
+    };
+  });
+  const order = [tops.saved, tops.tonight, tops.bookings, tops.knock, tops.followUps];
+  check(
+    "Home names the saved lead first, then tonight's open times, my bookings, the knock session and follow-ups due",
+    order.every((value) => value !== null) && order.every((value, index) => index === 0 || value > order[index - 1]),
+    JSON.stringify(tops),
+  );
 
   const { data: typedLead } = await admin
     .from("leads")

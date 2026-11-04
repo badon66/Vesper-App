@@ -8,6 +8,9 @@ import { requireProfile } from "@/lib/auth/profile";
 import { getPublicEnv } from "@/lib/env";
 import { answersOf } from "@/lib/leads/questions";
 import { formatPhone } from "@/lib/phone";
+import { maySeeContact } from "@/lib/leads/contact-rules";
+import { contactFor } from "@/lib/leads/contacts";
+import { LEAD_FIELDS } from "@/lib/leads/fields";
 import { createClient } from "@/lib/supabase/server";
 import { updateLead } from "../../actions";
 
@@ -36,11 +39,13 @@ export default async function EditLeadPage({ params }: { params: Promise<{ id: s
   if (!z.uuid().safeParse(id).success) notFound();
 
   const supabase = await createClient();
-  const { data: lead } = await supabase.from("leads").select("*").eq("id", id).maybeSingle();
-  if (!lead) notFound();
-  if (me.role !== "owner" && lead.created_by !== me.id && lead.assigned_to !== me.id) {
+  const { data: row } = await supabase.from("leads").select(LEAD_FIELDS).eq("id", id).maybeSingle();
+  if (!row) notFound();
+  if (!maySeeContact(me, row)) {
     return <NotForYourRole message="You can only change your own leads." />;
   }
+  // Their own lead, or Keenan: its phone and email come from lead_contacts.
+  const lead = { ...row, ...(await contactFor(supabase, me, row.id)) };
 
   return (
     <div className="flex flex-col gap-5">

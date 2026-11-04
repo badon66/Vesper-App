@@ -61,7 +61,7 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
         </p>
       </div>
 
-      <TonightMeetings />
+      <TonightMeetings viewer={profile} />
 
       <Card>
         <CardHeader>

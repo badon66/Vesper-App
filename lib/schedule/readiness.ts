@@ -5,6 +5,8 @@
 
 export type ReadinessLead = {
   phone: string | null;
+  // A number saved on a lead whose phone isn't shown here (2026-11-04).
+  phone_saved?: boolean | null;
   owns_home: boolean | null;
   wants_price: boolean | null;
   soffit_colour: string | null;
@@ -37,7 +39,7 @@ export type PhotoSkip = (typeof PHOTO_SKIP_OPTIONS)[number]["value"];
 // Right corner photos it has.
 export function leadReadiness(lead: ReadinessLead, guidedPhotos: number): ReadinessItem[] {
   return [
-    { key: "phone", label: "Phone number saved", ok: lead.phone !== null, fix: "Add the phone number." },
+    { key: "phone", label: "Phone number saved", ok: lead.phone !== null || lead.phone_saved === true, fix: "Add the phone number." },
     { key: "owns_home", label: "Owns the home: Yes", ok: lead.owns_home === true, fix: "They must own the home." },
     { key: "wants_price", label: "Wants a price: Yes", ok: lead.wants_price === true, fix: "They must want a price." },
     {
