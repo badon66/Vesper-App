@@ -818,9 +818,19 @@ function BookingSheet({
 
   async function save(current: SheetDraft): Promise<SheetDraft | null> {
     if (viewingAs) return current;
+    // A new person's first save carries a save key made once on this phone
+    // (2026-11-04). It goes into the draft as the request leaves, so every
+    // later try, after a reload or from Unfinished too, sends the same key
+    // and gets back the lead the first try made instead of a copy.
+    let keyed = current;
+    if (!current.leadId && !current.saveKey) {
+      const saveKey = crypto.randomUUID();
+      keyed = { ...current, saveKey };
+      setDraft((draft) => (draft.leadId || draft.saveKey ? draft : { ...draft, saveKey }));
+    }
     let result: Awaited<ReturnType<typeof saveSheetLead>>;
     try {
-      result = await timed(saveSheetLead(current.leadId, draftToLeadInput(current)));
+      result = await timed(saveSheetLead(keyed.leadId, draftToLeadInput(keyed)));
     } catch {
       setError({ text: SLOW, fix: null });
       return null;
@@ -830,7 +840,7 @@ function BookingSheet({
       setError({ text: result.error, fix: fix === view ? null : fix });
       return null;
     }
-    const saved = { ...current, leadId: result.leadId };
+    const saved = { ...keyed, leadId: result.leadId };
     setDraft(saved);
     setSavedPrint(savedFingerprint(saved));
     return saved;

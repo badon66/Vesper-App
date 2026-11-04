@@ -32,7 +32,8 @@ export function draftName(draft: SheetDraft): string {
 export function draftHasContent(draft: SheetDraft): boolean {
   const blank = emptyDraft();
   return (Object.keys(blank) as (keyof SheetDraft)[]).some((key) => {
-    if (key === "city") return false;
+    // The city starts filled in, and a save key isn't something entered.
+    if (key === "city" || key === "saveKey") return false;
     return JSON.stringify(draft[key]) !== JSON.stringify(blank[key]);
   });
 }

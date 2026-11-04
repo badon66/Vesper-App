@@ -147,6 +147,7 @@ est_feet int
 notes text
 both_decision_makers boolean                    -- round 2: the question "Everyone who decides will be there": Yes true, No false; booking copies it to meetings.everyone_deciding_present
 not_collected text[] not null default '{}'      -- round 2: the questions marked Not collected (phone, owns_home, wants_price, both_decision_makers, christmas_lights_now, looked_into_before, areas_wanted, install_timing); an answered question is never in it (a trigger keeps them apart)
+save_key uuid                                   -- 2026-11-04: made on the phone once per new lead (booking sheet, New lead) and sent with every try of its first save, so a retry finds this lead instead of making a copy; unique; empty on leads saved before it or by other paths
 consent_text boolean not null default false     -- CASL: agreed to texts and emails
 lost_reason text
 lost_at timestamptz
@@ -155,7 +156,7 @@ sold_at timestamptz
 installed_at timestamptz
 created_at, updated_at
 ```
-Indexes: `(assigned_to, status)`, `(status, created_at)`, `(lat, lng)`, `place_id`, `knock_session_id`, `(created_by, created_at)`, and `follow_up_on` where status is `follow_up`.
+Indexes: `(assigned_to, status)`, `(status, created_at)`, `(lat, lng)`, `place_id`, `knock_session_id`, `(created_by, created_at)`, `follow_up_on` where status is `follow_up`, and a unique index on `save_key` where it is set.
 
 Rules enforced in the database:
 - `created_by` is always the signed-in user, and `assigned_to` defaults to it. A lead can only link to a knock session of the person who created it.
@@ -164,6 +165,7 @@ Rules enforced in the database:
 - `follow_up` requires `follow_up_on`. Leaving `follow_up` clears it. A signed-in person cannot set a follow-up date earlier than today in Calgary; moving the date on a lead that stays in `follow_up` is an edit. The status change into `follow_up` records the date in its event payload, and a date change alone logs an `edited` event naming the field.
 - `lat` and `lng` are both set or both empty, and `position_source` is set exactly when they are. A typed address with no map position is allowed to save; booking requires one. For a brand-new street Google doesn't have yet, the phone's own position at the door counts, stored as `device` with its accuracy, which must be 50 m or better and inside the Calgary area. A position saved without a source is taken as picked.
 - `phone` is stored in E.164 or not at all.
+- At most one lead has a given `save_key` (the unique index), so two tries of the same first save can never both make a lead, even at the same instant. The app looks the key up before it inserts, and again when the insert hits the index; it hands a lead back only to the person who created it.
 - The track colour is set by the owner only: a signed-in non-owner cannot set or change `track_colour_id` or `track_ral_code`. At most one of the two is set. A newly chosen `track_colour_id` must be an active colour; a lead keeps a colour that is later retired.
 - Deleting a profile that still owns leads or knock sessions is refused; deactivate people instead.
 

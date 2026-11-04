@@ -76,6 +76,7 @@ Design each screen for the device it will actually be used on, then make it tole
   - related items share a screen so there are fewer steps; one-tap answers, no scrolling on a phone where it can be avoided, and nothing important at the top centre;
   - leaving the sheet keeps what was entered as a draft on that phone, wiped after 24 hours; setters see an Unfinished list on Home, and tapping one reopens it where they left off and asks them to pick a time.
   New lead's "Save and book", the lead page's "Book a meeting" and Move open the same sheet, prefilled.
+- Saving a new lead never makes a copy (Keenan, 2026-11-04). The phone makes a save key once per new lead, the first time the booking sheet or New lead saves that person, keeps it in that phone's draft, and sends it with every try. A unique index on `leads.save_key` lets only one lead have it, so a try after a lost answer gets back the lead the first try made, brought up to date with what's on screen, never a second copy. Only the person who made the lead gets it back.
 - Before you book (M3): a lead can be booked only when all of these hold:
   - a phone number is saved;
   - Owns the home is Yes;
@@ -145,9 +146,14 @@ Design each screen for the device it will actually be used on, then make it tole
     - it ends that session afterwards.
 
     Anything the walk-through cannot reach is named in the report.
-11. After building, run the full automated suite: unit, RLS, smoke, build, and the live walk-through with test-prefixed accounts, deleted after, plus the owner's one-time session for View as. Keenan does not run checklists or review preview links.
+11. After building, run the full automated suite: unit, RLS, smoke, build, and the live walk-through with test-prefixed accounts, deleted after, plus the owner's one-time session for View as. Keenan does not run checklists; he looks at a preview only for what customers see (rule 13).
 12. If anything fails, do not merge. Stop and report what failed.
-13. If everything is green, push the branch and report; never merge on green alone (Keenan, 2026-11-02, replacing merge on green). The report's first line is a clickable Vercel preview link for the branch, which Keenan opens on his iPad (previews have no login wall), followed by a short list of what changed, where to see it, and anything he needs to upload or set first. Keenan looks and gives feedback; only when he says "push the changes" is the branch merged into main, with production verified after the deploy and the production link reported. No test checklists for Keenan, ever.
+13. If everything is green, how it ships depends on whether customers see it (Keenan, 2026-11-04, replacing the 2026-11-02 rule):
+    - anything customers never see (setter and owner screens, fixes, tests) merges on green, straight to live: merge the branch into main, verify production after the deploy, and put the production link first in the report;
+    - anything customers see (the quote link, meeting mode, which the customer watches the whole time, its presentation included, the quote PDF and other documents) waits for a preview: push the branch and put a clickable Vercel preview link first in the report, which Keenan opens on his iPad (Vercel may ask him to sign in to Vercel first). Only when he says "push the changes" is the branch merged into main, with production verified after the deploy and the production link reported;
+    - a branch that changes both waits for the preview.
+
+    Either way the report gives a short list of what changed, where to see it, and anything he needs to upload or set first. No test checklists for Keenan, ever.
 
 ## Definition of done for V1
 

@@ -5,7 +5,9 @@
 // photos), search,
 // the Everyone view, the status rules and the timeline, the track colour as
 // a setter sees it, tap-target sizes, and the Google address path with the
-// duplicate warning. Two throwaway setters do the work. Their leads are named
+// duplicate warning; last, New lead's save with its answer lost to the
+// signal (2026-11-04), saved again without making a copy. Two throwaway
+// setters do the work. Their leads are named
 // "TEST LEAD (automated)" so a real setter who sees one knows to ignore it,
 // and everything they create is deleted at the end of the run.
 //
@@ -15,6 +17,7 @@ import { mkdir } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
 import { chromium, devices } from "playwright";
 import sharp from "sharp";
+import { interceptFetches } from "./drop.mjs";
 
 const base = process.env.BASE ?? "http://localhost:3300";
 const out = process.env.OUT ?? "test-results/live";
@@ -610,6 +613,62 @@ try {
   const { count: linked } = await admin.from("leads").select("id", { count: "exact", head: true }).eq("knock_session_id", sessionRow.id);
   check("ending the session stamps its end", ended?.ended_at !== null);
   check("every lead added during the session is linked to it", linked === (mapsKey ? 2 : 1), `${linked} linked`);
+
+  // 8. New lead's save, its answer lost to the signal (2026-11-04). The
+  // server makes the lead and the answer never reaches the phone: the form
+  // stays as typed and says so, and Save again sends the same save key and
+  // gets back that lead, brought up to date, never a copy.
+  const ONCE_ADDRESS = "301 Testing Lane NW (TEST)";
+  const onceLeads = async () =>
+    (await admin.from("leads").select("id, save_key, last_name").eq("created_by", people.a.id).eq("address_line", ONCE_ADDRESS)).data ?? [];
+  await page.goto(`${base}/app/leads/new`);
+  await settle(page);
+  await page.fill("#lead-address", ONCE_ADDRESS);
+  await page.fill("#lead-first_name", TEST_LEAD);
+  await page.getByTestId("mark-rest").click();
+  const saveTry = { drop: true, seen: 0 };
+  const stopDropping = await interceptFetches(page, (request, stage) => {
+    if (request.method !== "POST" || new URL(request.url).pathname !== "/app/leads/new") return null;
+    if (request.body && !request.body.includes(ONCE_ADDRESS)) return null;
+    if (stage === "request") saveTry.seen += 1;
+    return saveTry.drop && stage === "response" ? "drop" : null;
+  });
+  await page.getByRole("button", { name: "Save lead" }).click();
+  const lostMessage = page.getByRole("alert").filter({ hasText: "No answer, so it may have saved." });
+  await lostMessage.waitFor({ timeout: 30000 });
+  const madeOnce = await onceLeads();
+  check(
+    "New lead's save with its answer lost: the server made the lead once, and the form stays as typed and says Save again won't make a copy",
+    madeOnce.length === 1 &&
+      Boolean(madeOnce[0].save_key) &&
+      new URL(page.url()).pathname === "/app/leads/new" &&
+      (await page.inputValue("#lead-first_name")) === TEST_LEAD &&
+      (await lostMessage.innerText()).trim() === "No answer, so it may have saved. Tap Save again once you have signal: it won't make a copy." &&
+      saveTry.seen === 1,
+    `${madeOnce.length} lead(s)`,
+  );
+  await page.fill("#lead-last_name", "Once");
+  saveTry.drop = false;
+  await page.getByRole("button", { name: "Save lead" }).click();
+  await page.waitForURL("**/app/**added=*", { timeout: 30000 });
+  await stopDropping();
+  await settle(page);
+  const keptOnce = await onceLeads();
+  const { count: createdEvents } = await admin
+    .from("lead_events")
+    .select("id", { count: "exact", head: true })
+    .eq("lead_id", madeOnce[0]?.id ?? "00000000-0000-0000-0000-000000000000")
+    .eq("type", "created");
+  check(
+    "Save again gets back the same lead with what was added since, never a copy",
+    keptOnce.length === 1 &&
+      keptOnce[0].id === madeOnce[0]?.id &&
+      keptOnce[0].last_name === "Once" &&
+      new URL(page.url()).searchParams.get("added") === keptOnce[0].id &&
+      createdEvents === 1 &&
+      saveTry.seen === 2,
+    `${keptOnce.length} lead(s), ${createdEvents} created event(s), ${saveTry.seen} saves`,
+  );
 } catch (error) {
   results.push(`SCRIPT ERROR ${error?.message ?? String(error)} at ${page.url()}`);
   await page.screenshot({ path: `${out}/m2-failure.png`, fullPage: true }).catch(() => {});

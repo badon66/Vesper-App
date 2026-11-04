@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { unstable_rethrow, useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { useActionState, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import {
@@ -51,9 +51,17 @@ export type LeadFormDefaults = {
   notes: string;
   source: LeadSource;
   address: AddressDefaults;
+  // A new lead's save key, from its draft (2026-11-04).
+  saveKey?: string | null;
 };
 
 const initialState: LeadFormState = {};
+
+// A save whose answer never came back (2026-11-04). Saving again is safe:
+// an edit saves the same lead, and a new lead's save key gets back the lead
+// the first try made.
+const NO_ANSWER_NEW = "No answer, so it may have saved. Tap Save again once you have signal: it won't make a copy.";
+const NO_ANSWER_EDIT = "No answer, so it may have saved. Tap Save again once you have signal.";
 
 const NOTHING_FOUND_OUT: QuestionDefaults = {
   owns_home: null,
@@ -90,7 +98,17 @@ export function LeadForm({
   defaults?: LeadFormDefaults;
   cancelHref: string;
 }) {
-  const [state, formAction, pending] = useActionState(action, initialState);
+  // A lost answer (no signal) keeps the form as typed and says so, rather
+  // than leaving the page (2026-11-04). Next.js ends a save with a redirect,
+  // which arrives as an error and goes on through.
+  const [state, formAction, pending] = useActionState(async (previous: LeadFormState, formData: FormData) => {
+    try {
+      return await action(previous, formData);
+    } catch (error) {
+      unstable_rethrow(error);
+      return { error: mode === "create" ? NO_ANSWER_NEW : NO_ANSWER_EDIT };
+    }
+  }, initialState);
   const [, startTransition] = useTransition();
   const router = useRouter();
   const [neighbourhood, setNeighbourhood] = useState(
@@ -116,6 +134,10 @@ export function LeadForm({
   const [formKey, setFormKey] = useState(0);
   const [discardOpen, setDiscardOpen] = useState(false);
   const shown = restored?.defaults ?? defaults;
+  // A new lead's save key: made at its first save, or brought back with its
+  // draft (2026-11-04).
+  const [saveKey, setSaveKey] = useState<string | null>(null);
+  const shownKey = saveKey ?? shown?.saveKey ?? null;
   const [slotsBusy, setSlotsBusy] = useState(false);
   const [extrasBusy, setExtrasBusy] = useState(false);
   const photosBusy = slotsBusy || extrasBusy;
@@ -142,16 +164,23 @@ export function LeadForm({
   // Saved while typing, and at once when the phone hides the page (the
   // camera opening, another app). Never while the lead is being sent; the
   // page the save lands on clears it.
+  const keepDraft = useCallback(
+    (formData: FormData) => {
+      if (!drafting) return;
+      const draft = draftFromFormData(formData, Date.now());
+      try {
+        if (draftHasContent(draft)) localStorage.setItem(storageKey, JSON.stringify(draft));
+        else localStorage.removeItem(storageKey);
+      } catch {
+        // Private browsing or full storage: the form still works.
+      }
+    },
+    [drafting, storageKey],
+  );
   const saveNow = useCallback(() => {
-    if (!drafting || pendingRef.current || !formRef.current) return;
-    const draft = draftFromFormData(new FormData(formRef.current), Date.now());
-    try {
-      if (draftHasContent(draft)) localStorage.setItem(storageKey, JSON.stringify(draft));
-      else localStorage.removeItem(storageKey);
-    } catch {
-      // Private browsing or full storage: the form still works.
-    }
-  }, [drafting, storageKey]);
+    if (pendingRef.current || !formRef.current) return;
+    keepDraft(new FormData(formRef.current));
+  }, [keepDraft]);
   const scheduleSave = useCallback(() => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(saveNow, 300);
@@ -223,6 +252,7 @@ export function LeadForm({
   }, [mode, drafting, storageKey, sessionNeighbourhood]);
 
   function startOver() {
+    setSaveKey(null);
     try {
       localStorage.removeItem(storageKey);
     } catch {
@@ -274,7 +304,17 @@ export function LeadForm({
     event.preventDefault();
     const submitter = (event.nativeEvent as SubmitEvent).submitter;
     const form = event.currentTarget;
+    // A new lead's save key (2026-11-04): made on this phone at its first
+    // save, held in state (a hidden field's own value doesn't survive React
+    // drawing the form again) and kept in the draft, so every try sends the
+    // same one.
+    let key = shownKey;
+    if (mode === "create" && !key) {
+      key = crypto.randomUUID();
+      setSaveKey(key);
+    }
     const formData = new FormData(form, submitter);
+    if (mode === "create" && key) formData.set("save_key", key);
     const open = unansweredQuestions(leadFormDataToInput(formData));
     setOpenNow(open.length > 0 ? open : null);
     if (open.length > 0) {
@@ -283,6 +323,8 @@ export function LeadForm({
       first?.focus({ preventScroll: true });
       return;
     }
+    // The draft, key included, is on the phone before the request leaves.
+    keepDraft(formData);
     startTransition(() => formAction(formData));
   }
 
@@ -296,6 +338,7 @@ export function LeadForm({
       className="flex flex-col gap-6 pb-36"
     >
       {leadId ? <input type="hidden" name="id" value={leadId} /> : null}
+      {mode === "create" ? <input type="hidden" name="save_key" value={shownKey ?? ""} /> : null}
 
       {restored ? (
         <div
