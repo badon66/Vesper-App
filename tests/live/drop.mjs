@@ -10,12 +10,16 @@
 // reach the site the browser reaches (it couldn't from the build sandbox).
 //
 // decide(request, stage) gets { method, url, body } and "request" or
-// "response", and returns "drop" to drop it there, anything else to let it
-// through. Only fetch() requests are looked at (server actions among them).
+// "response", and returns "drop" to drop it there, "hold" to leave it hanging
+// as a stalled signal does, anything else to let it through. Only fetch()
+// requests are looked at (server actions among them). The returned stop
+// function also has held(), how many are hanging, and release("fail" or
+// "continue") to let them go.
 export async function interceptFetches(page, decide) {
   const cdp = await page.context().newCDPSession(page);
   // What was decided at the request stage, for its answer.
   const planned = new Map();
+  const held = [];
   cdp.on("Fetch.requestPaused", (event) => {
     const atResponse = event.responseStatusCode !== undefined || event.responseErrorReason !== undefined;
     const request = {
@@ -29,7 +33,11 @@ export async function interceptFetches(page, decide) {
       planned.delete(event.requestId);
     } else {
       verdict = decide(request, "request");
-      if (verdict !== "drop") planned.set(event.requestId, decide(request, "response"));
+      if (verdict !== "drop" && verdict !== "hold") planned.set(event.requestId, decide(request, "response"));
+    }
+    if (verdict === "hold") {
+      held.push({ requestId: event.requestId, atResponse });
+      return;
     }
     const send =
       verdict === "drop"
@@ -49,8 +57,21 @@ export async function interceptFetches(page, decide) {
       { urlPattern: "*", resourceType: "Fetch", requestStage: "Response" },
     ],
   });
-  return async () => {
+  const stop = async () => {
     await cdp.send("Fetch.disable").catch(() => {});
     await cdp.detach().catch(() => {});
   };
+  stop.held = () => held.length;
+  stop.release = async (how = "fail") => {
+    for (const { requestId, atResponse } of held.splice(0)) {
+      const send =
+        how === "fail"
+          ? cdp.send("Fetch.failRequest", { requestId, errorReason: "InternetDisconnected" })
+          : atResponse
+            ? cdp.send("Fetch.continueResponse", { requestId }).catch(() => cdp.send("Fetch.continueRequest", { requestId }))
+            : cdp.send("Fetch.continueRequest", { requestId });
+      await send.catch(() => {});
+    }
+  };
+  return stop;
 }

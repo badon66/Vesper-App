@@ -6,8 +6,8 @@
 // the Everyone view, the status rules and the timeline, the track colour as
 // a setter sees it, tap-target sizes, and the Google address path with the
 // duplicate warning; last, New lead's save with its answer lost to the
-// signal (2026-11-04), saved again without making a copy. Two throwaway
-// setters do the work. Their leads are named
+// signal, and with no answer at all until the 25-second limit (2026-11-04),
+// saved again without making a copy. Two throwaway setters do the work. Their leads are named
 // "TEST LEAD (automated)" so a real setter who sees one knows to ignore it,
 // and everything they create is deleted at the end of the run.
 //
@@ -668,6 +668,56 @@ try {
       createdEvents === 1 &&
       saveTry.seen === 2,
     `${keptOnce.length} lead(s), ${createdEvents} created event(s), ${saveTry.seen} saves`,
+  );
+
+  // 9. New lead's save with no answer at all (2026-11-04): the answer hangs,
+  // as on a stalled signal. Within the 25-second answer limit the form says
+  // the same as a lost answer, instead of Saving for ever. Once the stalled
+  // request finally drops, Save again gets back the lead the server made.
+  const HANG_ADDRESS = "303 Testing Lane NW (TEST)";
+  const hangLeads = async () =>
+    (await admin.from("leads").select("id").eq("created_by", people.a.id).eq("address_line", HANG_ADDRESS)).data ?? [];
+  await page.goto(`${base}/app/leads/new`);
+  await settle(page);
+  await page.fill("#lead-address", HANG_ADDRESS);
+  await page.fill("#lead-first_name", TEST_LEAD);
+  await page.getByTestId("mark-rest").click();
+  const hang = { hold: true, seen: 0 };
+  const stopHanging = await interceptFetches(page, (request, stage) => {
+    if (request.method !== "POST" || new URL(request.url).pathname !== "/app/leads/new") return null;
+    if (request.body && !request.body.includes(HANG_ADDRESS)) return null;
+    if (stage === "request") hang.seen += 1;
+    return hang.hold && stage === "response" ? "hold" : null;
+  });
+  const startedAt = Date.now();
+  await page.getByRole("button", { name: "Save lead" }).click();
+  const hungMessage = page.getByRole("alert").filter({ hasText: "No answer, so it may have saved." });
+  await hungMessage.waitFor({ timeout: 45000 }).catch(() => {});
+  const waited = Math.round((Date.now() - startedAt) / 1000);
+  const shownAfterHang = (await hungMessage.count()) === 1;
+  const saveAgain = page.getByRole("button", { name: "Save lead" });
+  const saveBack = (await saveAgain.count()) === 1 && (await saveAgain.isEnabled());
+  const madeWhileHung = await hangLeads();
+  check(
+    "New lead's save with no answer at all: at the 25-second limit the form says it may have saved, with Save back, instead of Saving for ever",
+    shownAfterHang && waited >= 24 && waited <= 40 && saveBack && stopHanging.held() === 1 && madeWhileHung.length === 1,
+    `${shownAfterHang ? "message" : "no message"} after ${waited} s; Save ${saveBack ? "back" : "not back"}; ${madeWhileHung.length} lead(s)`,
+  );
+  // The stalled request finally drops, as when the signal comes back.
+  hang.hold = false;
+  await stopHanging.release("fail");
+  await page.getByRole("button", { name: "Save lead" }).click();
+  await page.waitForURL("**/app/**added=*", { timeout: 30000 });
+  await stopHanging();
+  await settle(page);
+  const keptAfterHang = await hangLeads();
+  check(
+    "once the stalled request drops, Save again gets back the lead the server made: one lead",
+    keptAfterHang.length === 1 &&
+      keptAfterHang[0].id === madeWhileHung[0]?.id &&
+      new URL(page.url()).searchParams.get("added") === keptAfterHang[0].id &&
+      hang.seen === 2,
+    `${keptAfterHang.length} lead(s), ${hang.seen} saves`,
   );
 } catch (error) {
   results.push(`SCRIPT ERROR ${error?.message ?? String(error)} at ${page.url()}`);
