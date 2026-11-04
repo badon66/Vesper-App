@@ -3,11 +3,16 @@ import {
   cleanFeet,
   defaultValidUntil,
   formatMoney,
+  guessRunPart,
   hasUpperRun,
   priceQuote,
+  RUSH_COLOUR_LABEL,
+  runPart,
   screenTotal,
   selectRuns,
   totalFeet,
+  UPPER_ACCESS_LABEL,
+  upperAccessAmount,
   type QuoteInputs,
 } from "@/lib/pricing";
 
@@ -24,7 +29,7 @@ function base(overrides: Partial<QuoteInputs> = {}): QuoteInputs {
     adders: [],
     discounts: [],
     colourTiming: "stock",
-    rushFeePerFt: null,
+    rushFee: null,
     gstEnabled: false,
     gstRate: 0.05,
     ...overrides,
@@ -85,19 +90,156 @@ describe("Per-quote price changes", () => {
 });
 
 describe("The rush colour fee", () => {
-  it("adds the fee on every foot only when the colour comes this season", () => {
-    const rush = priceQuote(base({ colourTiming: "rush", rushFeePerFt: 2.5 }));
-    expect(rush.lines.find((line) => line.label === "Colour this season")?.amount).toBe(250);
-    expect(rush.subtotal).toBe(3050);
+  // A flat amount a job since 2026-11-04, not a fee per foot.
+  it("adds the flat fee once, only when the colour comes this season", () => {
+    const rush = priceQuote(base({ colourTiming: "rush", rushFee: 350 }));
+    expect(rush.lines.find((line) => line.label === RUSH_COLOUR_LABEL)).toEqual({ label: RUSH_COLOUR_LABEL, detail: null, amount: 350 });
+    expect(rush.subtotal).toBe(3150);
+    const longer = priceQuote(base({ colourTiming: "rush", rushFee: 350, runs: [{ name: "Front", feet: 400, level: "lower" }] }));
+    expect(longer.lines.find((line) => line.label === RUSH_COLOUR_LABEL)?.amount).toBe(350);
 
-    const factory = priceQuote(base({ colourTiming: "factory_order", rushFeePerFt: 2.5 }));
-    expect(factory.lines.some((line) => line.label === "Colour this season")).toBe(false);
-    expect(factory.subtotal).toBe(2800);
+    for (const timing of ["factory_order", "stock", null] as const) {
+      const other = priceQuote(base({ colourTiming: timing, rushFee: 350 }));
+      expect(other.lines.some((line) => line.label === RUSH_COLOUR_LABEL)).toBe(false);
+      expect(other.subtotal).toBe(2800);
+    }
   });
 
   it("adds nothing when the fee is not set, even on a rush", () => {
-    const quote = priceQuote(base({ colourTiming: "rush", rushFeePerFt: null }));
-    expect(quote.subtotal).toBe(2800);
+    for (const fee of [null, 0]) {
+      const quote = priceQuote(base({ colourTiming: "rush", rushFee: fee }));
+      expect(quote.subtotal).toBe(2800);
+      expect(quote.lines.some((line) => line.label === RUSH_COLOUR_LABEL)).toBe(false);
+    }
+  });
+});
+
+describe("Upper access", () => {
+  const fees = { upperAccessFee: 200, upperGableAccessFee: 400 };
+
+  it("adds nothing without an upper run", () => {
+    const lower = priceQuote(base({ ...fees, runs: [{ name: "Garage", feet: 40, level: "lower" }] }));
+    expect(lower.lines.some((line) => line.label === UPPER_ACCESS_LABEL)).toBe(false);
+    expect(lower.subtotal).toBe(40 * 23 + 500);
+  });
+
+  it("adds the upper amount with upper runs and no upper gable", () => {
+    const quote = priceQuote(base(fees));
+    expect(quote.lines.find((line) => line.label === UPPER_ACCESS_LABEL)).toEqual({ label: UPPER_ACCESS_LABEL, detail: null, amount: 200 });
+    expect(quote.subtotal).toBe(3000);
+  });
+
+  it("adds the gable amount instead when an upper gable is in, once", () => {
+    const quote = priceQuote(
+      base({
+        ...fees,
+        runs: [
+          { name: "Front upper", feet: 60, level: "upper" },
+          { name: "Two upper gables", feet: 30, level: "upper", part: "gable" },
+          { name: "Garage", feet: 40, level: "lower" },
+        ],
+      }),
+    );
+    expect(quote.lines.filter((line) => line.label === UPPER_ACCESS_LABEL).map((line) => line.amount)).toEqual([400]);
+  });
+
+  it("does not count a lower gable or an upper run with no feet", () => {
+    const lowerGable = [
+      { name: "Garage gable", feet: 34, level: "lower" as const, part: "gable" as const },
+      { name: "Front upper", feet: 20, level: "upper" as const },
+    ];
+    expect(upperAccessAmount(lowerGable, fees)).toBe(200);
+    const emptyGable = [...lowerGable, { name: "Upper gable", feet: 0, level: "upper" as const, part: "gable" as const }];
+    expect(upperAccessAmount(emptyGable, fees)).toBe(200);
+    expect(upperAccessAmount([{ name: "Upper", feet: 0, level: "upper" }], fees)).toBeNull();
+  });
+
+  it("follows the runs that are switched on", () => {
+    const runs = [
+      { name: "Upper gable", feet: 30, level: "upper" as const, part: "gable" as const },
+      { name: "Upper eave", feet: 32, level: "upper" as const, part: "eave" as const },
+      { name: "Garage", feet: 30, level: "lower" as const, part: "garage" as const },
+    ];
+    expect(upperAccessAmount(selectRuns(runs, null), fees)).toBe(400);
+    expect(upperAccessAmount(selectRuns(runs, [1, 2]), fees)).toBe(200);
+    expect(upperAccessAmount(selectRuns(runs, [2]), fees)).toBeNull();
+  });
+
+  it("adds no line on a quote made before upper access existed, or with an amount cleared", () => {
+    expect(priceQuote(base()).lines.some((line) => line.label === UPPER_ACCESS_LABEL)).toBe(false);
+    expect(priceQuote(base({ upperAccessFee: null, upperGableAccessFee: 400 })).subtotal).toBe(2800);
+    expect(priceQuote(base({ upperAccessFee: 0, upperGableAccessFee: 400 })).subtotal).toBe(2800);
+  });
+
+  it("counts toward the minimum like any other line", () => {
+    const small = priceQuote(base({ ...fees, runs: [{ name: "Upper eave", feet: 20, level: "upper" }], minJobTotal: 2500 }));
+    // 20 ft x $23 = $460 + $500 box + $200 upper access = $1,160, raised by $1,340.
+    expect(small.lines.find((line) => line.label.startsWith("To reach"))?.amount).toBe(1340);
+    expect(small.subtotal).toBe(2500);
+  });
+});
+
+describe("Todd Dean's quote, as a new quote would price it", () => {
+  // Anonymised from the real quote: $24/ft, one box, a $300 discount, an
+  // upper gable in, so the $400 upper access line (2026-11-04).
+  const runs = [
+    { name: "Garage Gable", feet: 34, level: "lower" as const },
+    { name: "Garage Eave", feet: 30, level: "lower" as const },
+    { name: "Lower Porch Eave", feet: 13, level: "lower" as const },
+    { name: "Upper Front Eave", feet: 32, level: "upper" as const },
+    { name: "Two Upper Gables", feet: 30, level: "upper" as const },
+    { name: "Upper & Lower Sides", feet: 26, level: "lower" as const },
+  ];
+
+  it("guesses each run's part from its name", () => {
+    expect(runs.map((run) => guessRunPart(run.name))).toEqual(["gable", "garage", "porch", "eave", "gable", "sides"]);
+  });
+
+  it("comes to $4,560", () => {
+    const quote = priceQuote(
+      base({
+        runs,
+        pricePerFt: 24,
+        upperAccessFee: 200,
+        upperGableAccessFee: 400,
+        discounts: [{ label: "Family & Friends Discount", amount: 300 }],
+        minJobTotal: 2500,
+      }),
+    );
+    expect(quote.lines.map((line) => [line.label, line.amount])).toEqual([
+      ["Track and lights", 3960],
+      ["Control box", 500],
+      [UPPER_ACCESS_LABEL, 400],
+      ["Family & Friends Discount", -300],
+    ]);
+    expect(quote.subtotal).toBe(4560);
+  });
+});
+
+describe("A run's part of the house", () => {
+  it("guesses from the names Keenan uses", () => {
+    const cases: [string, string][] = [
+      ["Front", "eave"],
+      ["Front upper", "eave"],
+      ["Back", "eave"],
+      ["Left gable", "gable"],
+      ["Right peak", "gable"],
+      ["Garage", "garage"],
+      ["Garage line", "garage"],
+      ["Porch", "porch"],
+      ["Front entry", "porch"],
+      ["Left side", "sides"],
+      ["Sides", "sides"],
+      ["Shed", "other"],
+      ["", "other"],
+    ];
+    for (const [name, part] of cases) expect([name, guessRunPart(name)]).toEqual([name, part]);
+  });
+
+  it("uses the stored part over the guess, and the guess for a run saved without one", () => {
+    expect(runPart({ name: "Front", feet: 10, level: "lower", part: "porch" })).toBe("porch");
+    expect(runPart({ name: "Left gable", feet: 10, level: "lower" })).toBe("gable");
+    expect(runPart({ name: "Left gable", feet: 10, level: "lower", part: "nonsense" as never })).toBe("gable");
   });
 });
 
@@ -154,10 +296,14 @@ describe("Money and dates", () => {
     expect(formatMoney(-150)).toBe("-$150");
   });
 
-  it("defaults valid until to the settings days out", () => {
+  it("holds a new quote's prices the settings days out (120 since 2026-11-04)", () => {
+    expect(defaultValidUntil("2026-11-04", 120)).toBe("2027-03-04");
+    // Todd's quote, made 2026-11-02 (Calgary).
+    expect(defaultValidUntil("2026-11-02", 120)).toBe("2027-03-02");
     expect(defaultValidUntil("2026-11-03", 14)).toBe("2026-11-17");
     expect(defaultValidUntil("2026-12-28", 14)).toBe("2027-01-11");
     expect(defaultValidUntil("2026-11-03", 0)).toBe("2026-11-04");
+    expect(defaultValidUntil("2026-11-03", 9999)).toBe("2027-11-03");
   });
 });
 
