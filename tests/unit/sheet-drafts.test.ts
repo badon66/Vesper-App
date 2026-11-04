@@ -33,6 +33,12 @@ describe("Unfinished bookings", () => {
     expect(draftHasContent({ ...emptyDraft(), city: "Airdrie" })).toBe(false);
     expect(draftHasContent({ ...emptyDraft(), first_name: "S" })).toBe(true);
     expect(draftHasContent({ ...emptyDraft(), not_collected: ["phone"] })).toBe(true);
+    // A save key (2026-11-04) isn't something entered, nor is a draft from
+    // before it that has none.
+    expect(draftHasContent({ ...emptyDraft(), saveKey: "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b" })).toBe(false);
+    const { saveKey: _none, ...older } = emptyDraft();
+    void _none;
+    expect(draftHasContent(older as ReturnType<typeof emptyDraft>)).toBe(false);
     expect(draftIdFor(emptyDraft(), "sheet-1")).toBe("new:sheet-1");
     expect(draftIdFor({ ...emptyDraft(), leadId: "L1" }, "sheet-1")).toBe("lead:L1");
     expect(draftName({ ...emptyDraft(), first_name: " Sarah ", last_name: "Chen" })).toBe("Sarah Chen");
