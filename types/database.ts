@@ -454,6 +454,7 @@ export type Database = {
             | Database["public"]["Enums"]["map_position_source"]
             | null
           postal_code: string | null
+          save_key: string | null
           soffit_colour: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_note: string | null
           sold_at: string | null
@@ -506,6 +507,7 @@ export type Database = {
             | Database["public"]["Enums"]["map_position_source"]
             | null
           postal_code?: string | null
+          save_key?: string | null
           soffit_colour?: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_note?: string | null
           sold_at?: string | null
@@ -558,6 +560,7 @@ export type Database = {
             | Database["public"]["Enums"]["map_position_source"]
             | null
           postal_code?: string | null
+          save_key?: string | null
           soffit_colour?: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_note?: string | null
           sold_at?: string | null
