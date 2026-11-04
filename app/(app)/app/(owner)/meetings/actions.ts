@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { NotOwnerError, ReadOnlyError, requireOwnerForAction } from "@/lib/auth/profile";
 import { leadColumnsFromValues, leadFormDataToInput, parseLeadForm } from "@/lib/leads/schema";
 import { leadName, STATUS_LABELS } from "@/lib/leads/status";
+import { leadIdsByPhone } from "@/lib/leads/contacts";
 import { cleanSearch, searchFilter } from "@/lib/leads/search";
 import { createClient } from "@/lib/supabase/server";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
@@ -30,9 +31,11 @@ export type LeadSearchResult = { ok: true; leads: LeadMatch[] } | { ok: false; e
 export async function searchLeadsForMeeting(query: string): Promise<LeadSearchResult> {
   const me = await owner();
   if (typeof me === "string") return { ok: false, error: me };
-  const filter = searchFilter(cleanSearch(query));
-  if (!filter) return { ok: true, leads: [] };
+  const search = cleanSearch(query);
   const supabase = await createClient();
+  const phoneMatches = search.digits.length >= 3 ? await leadIdsByPhone(supabase, { id: me.id, role: "owner" }, search.digits) : [];
+  const filter = searchFilter(search, phoneMatches);
+  if (!filter) return { ok: true, leads: [] };
   const { data, error } = await supabase
     .from("leads")
     .select("id, first_name, last_name, address_line, neighbourhood, status")

@@ -46,6 +46,9 @@ import { PHOTO_BUCKET } from "@/lib/photos";
 import { mapsLink } from "@/lib/places";
 import { createClient } from "@/lib/supabase/server";
 import { followUpSentence } from "@/lib/leads/attention";
+import { maySeeContact, NO_CONTACT } from "@/lib/leads/contact-rules";
+import { contactFor } from "@/lib/leads/contacts";
+import { LEAD_FIELDS } from "@/lib/leads/fields";
 import { calgaryToday, formatDate, formatDateTime, requestTime } from "@/lib/time";
 import { screenTotal, totalFeet } from "@/lib/pricing";
 import { quoteBaseUrl, requestOrigin } from "@/lib/quote-link/server";
@@ -75,8 +78,12 @@ export default async function LeadPage({
   if (!z.uuid().safeParse(id).success) notFound();
 
   const supabase = await createClient();
-  const { data: lead } = await supabase.from("leads").select("*").eq("id", id).maybeSingle();
-  if (!lead) notFound();
+  const { data: row } = await supabase.from("leads").select(LEAD_FIELDS).eq("id", id).maybeSingle();
+  if (!row) notFound();
+  // Contact privacy (2026-11-04): the phone and email only on the viewer's
+  // own leads, or every lead for Keenan; View as shows the viewed setter's.
+  const contactShown = maySeeContact(me, row);
+  const lead = { ...row, ...(contactShown ? await contactFor(supabase, me, row.id) : NO_CONTACT) };
 
   const isOwner = me.role === "owner";
   const canEdit = isOwner || lead.created_by === me.id || lead.assigned_to === me.id;
@@ -383,6 +390,11 @@ export default async function LeadPage({
               {lead.email}
             </a>
           ) : null}
+          {contactShown ? null : (
+            <p className="text-pretty text-muted-foreground" data-testid="contact-hidden">
+              Phone and email show only to this lead&apos;s own setter.
+            </p>
+          )}
         </CardContent>
       </Card>
 

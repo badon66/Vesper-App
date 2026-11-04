@@ -9,6 +9,7 @@ import { requireProfile } from "@/lib/auth/profile";
 import { ACTIVE_STATUSES, followUpLabel, groupByAttention } from "@/lib/leads/attention";
 import { formatMeetingTime, sentence } from "@/lib/schedule/meetings";
 import { namesById } from "@/lib/leads/queries";
+import { leadIdsByPhone } from "@/lib/leads/contacts";
 import { cleanSearch, searchFilter } from "@/lib/leads/search";
 import { groupByStatus, leadName, STATUS_LABELS, type LeadStatus } from "@/lib/leads/status";
 import { createClient } from "@/lib/supabase/server";
@@ -60,12 +61,14 @@ export default async function LeadsPage({
   const all = params.view === "all";
   const added = typeof params.added === "string" ? params.added : null;
   const search = cleanSearch(q);
-  const filter = searchFilter(search);
+  const supabase = await createClient();
+  // Phone digits match only the leads whose phone this person may see.
+  const phoneMatches = search.digits.length >= 3 ? await leadIdsByPhone(supabase, me, search.digits) : [];
+  const filter = searchFilter(search, phoneMatches);
   const searching = Boolean(filter);
   const showActive = !all && !searching;
   const today = calgaryToday();
 
-  const supabase = await createClient();
   let query = supabase
     .from("leads")
     .select("id, first_name, last_name, address_line, neighbourhood, status, follow_up_on, created_at, created_by, assigned_to");

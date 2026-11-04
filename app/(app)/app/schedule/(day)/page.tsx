@@ -3,6 +3,7 @@ import { NotForYourRole } from "@/components/not-for-your-role";
 import { MeetingCard } from "@/components/schedule/meeting-card";
 import { ScheduleBoard, type OwnerEveningTools } from "@/components/schedule/schedule-board";
 import { getViewer } from "@/lib/auth/profile";
+import type { ContactViewer } from "@/lib/leads/contact-rules";
 import { namesById } from "@/lib/leads/queries";
 import { eveningsOf, pickEvening } from "@/lib/schedule/board";
 import { legs } from "@/lib/schedule/distance";
@@ -51,7 +52,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
       initialDay={day}
       owner={tools}
     >
-      {isOwner ? <OwnerEvening day={day} today={today} /> : null}
+      {isOwner ? <OwnerEvening day={day} today={today} viewer={me} /> : null}
     </ScheduleBoard>
   );
 }
@@ -105,10 +106,10 @@ async function ownerTools(day: string): Promise<OwnerEveningTools> {
   };
 }
 
-async function OwnerEvening({ day, today }: { day: string; today: string }) {
+async function OwnerEvening({ day, today, viewer }: { day: string; today: string; viewer: ContactViewer }) {
   const supabase = await createClient();
   const [meetings, { data: settingsRow }] = await Promise.all([
-    meetingsOnDay(supabase, day),
+    meetingsOnDay(supabase, day, { viewer }),
     supabase.from("settings").select("not_qualified_reasons").eq("id", 1).maybeSingle(),
   ]);
   const names = await namesById(

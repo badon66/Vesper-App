@@ -141,8 +141,13 @@ export function findOutAnswerList(
 // Round 2 (Keenan, 2026-11-03): the lead page lists the eight counted
 // questions in the order they're asked, each answered, Not collected or not
 // asked yet, then the soffit colour.
+// The phone on someone else's lead (contact privacy, 2026-11-04): saved,
+// but shown only to the lead's own setter.
+export const PHONE_HIDDEN = "Saved, hidden";
+
 export type LeadAnswers = FindOutAnswers & {
   phone: string | null;
+  phone_saved?: boolean | null;
   both_decision_makers: boolean | null;
   not_collected: string[] | null;
 };
@@ -157,7 +162,8 @@ export type LeadAnswerRow = {
 export function leadAnswerList(lead: LeadAnswers): LeadAnswerRow[] {
   const listed = new Map(findOutAnswerList(lead).map((item) => [item.field, item.answer]));
   const shown: Record<CountedQuestion, string | null> = {
-    phone: lead.phone ? formatPhone(lead.phone) : null,
+    // Someone else's lead: saved, but the number is only for its own setter.
+    phone: lead.phone ? formatPhone(lead.phone) : lead.phone_saved ? PHONE_HIDDEN : null,
     owns_home: listed.get("owns_home") ?? null,
     wants_price: listed.get("wants_price") ?? null,
     both_decision_makers: lead.both_decision_makers === null ? null : lead.both_decision_makers ? "Yes" : "No",

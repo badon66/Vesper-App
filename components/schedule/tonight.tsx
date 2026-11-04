@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MeetingCard } from "@/components/schedule/meeting-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import type { ContactViewer } from "@/lib/leads/contact-rules";
 import { namesById } from "@/lib/leads/queries";
 import { legs } from "@/lib/schedule/distance";
 import { meetingsOnDay, slotPhotoLinks } from "@/lib/schedule/queries";
@@ -12,11 +13,11 @@ import { calgaryToday, requestTime } from "@/lib/time";
 // call and Navigate, notes, photos, any photo skip and how the map position
 // was set. Moved and cancelled bookings stay listed, muted. After each slot
 // he marks how it went.
-export async function TonightMeetings() {
+export async function TonightMeetings({ viewer }: { viewer: ContactViewer }) {
   const supabase = await createClient();
   const today = calgaryToday();
   const [meetings, { data: settingsRow }] = await Promise.all([
-    meetingsOnDay(supabase, today),
+    meetingsOnDay(supabase, today, { viewer }),
     supabase.from("settings").select("not_qualified_reasons").eq("id", 1).maybeSingle(),
   ]);
   const [names, photos] = await Promise.all([

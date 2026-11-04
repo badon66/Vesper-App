@@ -44,9 +44,12 @@ export const EVERYONE_OPTIONS: { value: "yes" | "no"; label: string }[] = [
   { value: "no", label: "No" },
 ];
 
-// What a lead holds for the counted questions.
+// What a lead holds for the counted questions. On someone else's lead the
+// phone itself isn't shown (contact privacy, 2026-11-04); phone_saved still
+// says a number is saved, so the lead counts it.
 export type QuestionLead = {
   phone: string | null;
+  phone_saved?: boolean | null;
   owns_home: boolean | null;
   wants_price: boolean | null;
   both_decision_makers: boolean | null;
@@ -62,6 +65,7 @@ export type QuestionState = "answered" | "not_collected" | "open";
 export function questionState(lead: QuestionLead, question: CountedQuestion): QuestionState {
   const value = lead[question];
   if (value !== null && value !== undefined && value !== "") return "answered";
+  if (question === "phone" && lead.phone_saved === true) return "answered";
   return (lead.not_collected ?? []).includes(question) ? "not_collected" : "open";
 }
 
