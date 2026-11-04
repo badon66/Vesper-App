@@ -38,7 +38,9 @@ A setter's visit is a short conversation with a structure, not a single yes or n
 
 ## Sales users
 
-Setters are a team. Each setter has their own profile, their own leads and their own numbers, but every sales user can see everyone's leads, bookings and knock sessions. That is so two setters do not knock the same street twice, and so a setter can book into an evening that already has meetings nearby. A setter can edit only their own leads. Sales users never see quotes, sale prices, revenue, the owner dashboard, settings or anyone else's pay.
+Setters are a team. Each setter has their own profile, their own leads and their own numbers, but every sales user can see everyone's leads, bookings and knock sessions. That is so two setters do not knock the same street twice, and so a setter can book into an evening that already has meetings nearby. A setter can edit only their own leads.
+
+Contact privacy (Keenan, 2026-11-04): a setter sees a lead's phone number and email only on their own leads. On other setters' leads and Keenan's they still see the name, address, status and bookings, so nobody knocks the same door twice, but never the phone or email: not on the lead page, a booking, Schedule, search or anywhere else. Where a number matters without being shown, the screen says it is saved (the phone in Find out, "6 of 8 collected", Before you book). Searching by phone finds only the setter's own leads. Keenan sees every lead's contact details, and View as shows a setter's screens exactly as that setter sees them. The database enforces it, not just the screens. Sales users never see quotes, sale prices, revenue, the owner dashboard, settings or anyone else's pay.
 
 ### Setter pay
 
@@ -63,7 +65,7 @@ The app is built around the evening schedule, not a list of people.
 
 ### Phone (setters and Keenan in the field)
 
-**Home (setter).** Built for the door. Bookings left unfinished in the sheet show first as an Unfinished list (on that phone only, for 24 hours); tapping one reopens it where they left off. Then, top to bottom:
+**Home (setter).** Built for the door. After a lead is saved while knocking, Home opens with "Lead saved. On to the next door." and a link to it. Bookings left unfinished in the sheet show first as an Unfinished list (on that phone only, for 24 hours); tapping one reopens it where they left off. Then, top to bottom (Keenan, 2026-11-04, this order again):
 1. Tonight's open times, big and easy to read at dusk, with the holder's initials on any time someone is booking. Tapping an open time holds it and opens the booking sheet over Home, the same as on Schedule. If tonight has nothing left, it says so and shows the next evening's open times.
 2. My bookings: tonight and upcoming, each with Move and Cancel until it starts, and the outcome once Keenan marks it.
 3. The knock session.
