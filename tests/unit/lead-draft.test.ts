@@ -94,3 +94,19 @@ describe("a new lead's draft", () => {
     expect(draftKey("u1")).not.toBe(draftKey("u2"));
   });
 });
+
+describe("a new lead's save key in its draft (2026-11-04)", () => {
+  const key = "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b";
+
+  it("is kept with the draft and comes back with it", () => {
+    const draft = draftFromFormData(form([["first_name", "Zane"], ["save_key", key]]), NOW);
+    expect(draft.values.save_key).toBe(key);
+    const back = readDraft(JSON.stringify(draft), NOW);
+    expect(back?.values.save_key).toBe(key);
+    expect(defaultsFromDraft(back!).saveKey).toBe(key);
+  });
+
+  it("isn't something entered on its own", () => {
+    expect(draftHasContent(draftFromFormData(form([["save_key", key]]), NOW))).toBe(false);
+  });
+});

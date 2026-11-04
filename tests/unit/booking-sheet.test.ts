@@ -261,6 +261,22 @@ describe("Saving the lead from the sheet", () => {
     expect(savedFingerprint({ ...draft, everyone: false })).not.toBe(print);
     expect(savedFingerprint(withAnswer(draft, "install_timing", NOT_COLLECTED))).not.toBe(print);
   });
+
+  it("sends a new person's save key with the save, and a new draft has none until its first save (2026-11-04)", () => {
+    expect(emptyDraft().saveKey).toBeNull();
+    expect(draftToLeadInput(emptyDraft()).save_key).toBe("");
+    const key = "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b";
+    expect(draftToLeadInput({ ...ready(), leadId: null, saveKey: key }).save_key).toBe(key);
+    // A draft kept on the phone before the save key existed.
+    const { saveKey: _none, ...older } = emptyDraft();
+    void _none;
+    expect(draftToLeadInput(older as SheetDraft).save_key).toBe("");
+  });
+
+  it("doesn't count the save key as a change to save", () => {
+    const draft = ready();
+    expect(savedFingerprint({ ...draft, saveKey: "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b" })).toBe(savedFingerprint(draft));
+  });
 });
 
 describe("Saying the time", () => {
@@ -359,6 +375,15 @@ describe("Keep as a lead", () => {
     expect(defaults.address.lat).toBe(51.04);
     expect(defaults.address.positionSource).toBe("device");
     expect(defaults.address.accuracy).toBe(12);
+  });
+
+  it("hands New lead the save key of a first save whose answer was lost, so New lead can't make a copy", () => {
+    const key = "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b";
+    const handed = leadDraftFromSheet({ ...person(), saveKey: key }, 1_000);
+    expect(handed.values.save_key).toBe(key);
+    expect(defaultsFromDraft(handed).saveKey).toBe(key);
+    expect(leadDraftFromSheet(person(), 1_000).values.save_key).toBeUndefined();
+    expect(defaultsFromDraft(leadDraftFromSheet(person(), 1_000)).saveKey).toBeNull();
   });
 
   it("keeps the hand-off's mark through New lead's storage, and only a recent one", () => {
