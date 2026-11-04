@@ -145,10 +145,15 @@ export const settingsFormSchema = z.object({
         .min(1, { error: "cannot be empty" })
         .max(2000, { error: "must be under 2,000 characters" }),
     ),
-  // Meeting mode (M5).
-  rush_colour_fee_per_ft: moneyOrUnset,
+  // Meeting mode (M5). Since 2026-11-04 the rush colour fee is a flat
+  // amount a job (the per-foot column stays, unused), upper access has its
+  // two amounts, and a quote's prices are held price_hold_days (the old
+  // quote_valid_days column stays, unused).
+  rush_colour_fee: moneyOrUnset,
+  upper_access_fee: moneyOrUnset,
+  upper_gable_access_fee: moneyOrUnset,
   service_call_fee: moneyOrUnset,
-  quote_valid_days: wholeNumber(1, 90),
+  price_hold_days: wholeNumber(1, 365),
   // The quote link (2026-11-02): the least a job can cost before GST.
   min_job_total: moneyOrUnset,
   faq_text: z
@@ -229,9 +234,11 @@ export function settingsFormDataToInput(
     company_phone: text("company_phone"),
     company_email: text("company_email"),
     company_address: text("company_address"),
-    rush_colour_fee_per_ft: text("rush_colour_fee_per_ft"),
+    rush_colour_fee: text("rush_colour_fee"),
+    upper_access_fee: text("upper_access_fee"),
+    upper_gable_access_fee: text("upper_gable_access_fee"),
     service_call_fee: text("service_call_fee"),
-    quote_valid_days: text("quote_valid_days"),
+    price_hold_days: text("price_hold_days"),
     min_job_total: text("min_job_total"),
     faq_text: text("faq_text"),
     presentation_pages: formData.getAll("presentation_kind").map((kind) => ({
@@ -274,9 +281,11 @@ export function settingsUpdateFromValues(v: SettingsFormValues): SettingsUpdate 
       email: v.company_email,
       address: v.company_address,
     },
-    rush_colour_fee_per_ft: v.rush_colour_fee_per_ft,
+    rush_colour_fee: v.rush_colour_fee,
+    upper_access_fee: v.upper_access_fee,
+    upper_gable_access_fee: v.upper_gable_access_fee,
     service_call_fee: v.service_call_fee,
-    quote_valid_days: v.quote_valid_days,
+    price_hold_days: v.price_hold_days,
     min_job_total: v.min_job_total,
     faq_text: v.faq_text,
     // presentation titles and bodies merge over the stored image paths in
@@ -316,9 +325,11 @@ export type SettingsFormDefaults = {
   company_phone: string;
   company_email: string;
   company_address: string;
-  rush_colour_fee_per_ft: string;
+  rush_colour_fee: string;
+  upper_access_fee: string;
+  upper_gable_access_fee: string;
   service_call_fee: string;
-  quote_valid_days: string;
+  price_hold_days: string;
   min_job_total: string;
   faq_text: string;
 };
@@ -359,9 +370,11 @@ export function settingsRowToFormDefaults(row: SettingsRow): SettingsFormDefault
     company_phone: companyField("phone"),
     company_email: companyField("email"),
     company_address: companyField("address"),
-    rush_colour_fee_per_ft: row.rush_colour_fee_per_ft === null ? "" : row.rush_colour_fee_per_ft.toFixed(2),
+    rush_colour_fee: row.rush_colour_fee === null ? "" : row.rush_colour_fee.toFixed(2),
+    upper_access_fee: row.upper_access_fee === null ? "" : row.upper_access_fee.toFixed(2),
+    upper_gable_access_fee: row.upper_gable_access_fee === null ? "" : row.upper_gable_access_fee.toFixed(2),
     service_call_fee: row.service_call_fee === null ? "" : row.service_call_fee.toFixed(2),
-    quote_valid_days: String(row.quote_valid_days),
+    price_hold_days: String(row.price_hold_days),
     min_job_total: row.min_job_total === null ? "" : row.min_job_total.toFixed(2),
     faq_text: row.faq_text,
   };

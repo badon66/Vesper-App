@@ -170,11 +170,17 @@ export function SettingsForm({
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5 sm:grid-cols-2">
-          <Field name="quote_valid_days" label="Quotes valid for (days)" hint="Every new quote gets a valid-until date this many days out. It can be changed on the quote." errors={errors}>
-            {(p) => <Input {...p} type="number" inputMode="numeric" min="1" max="90" defaultValue={defaults.quote_valid_days} />}
+          <Field name="price_hold_days" label="Prices held for (days)" hint="Each new quote holds its prices until this many days out, shown to the customer as Price held until. It can be changed on the quote." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="numeric" min="1" max="365" defaultValue={defaults.price_hold_days} />}
           </Field>
-          <Field name="rush_colour_fee_per_ft" label="Rush colour fee ($ per foot)" hint="Added when a custom colour is powder coated this season instead of the factory order. Blank hides that choice on the quote." errors={errors}>
-            {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.rush_colour_fee_per_ft} />}
+          <Field name="rush_colour_fee" label="Rush colour fee ($ a job)" hint="One flat amount when a colour other than stock is powder coated this season instead of waiting for the spring factory order. Blank hides that choice on the quote and on the customer's link." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.rush_colour_fee} />}
+          </Field>
+          <Field name="upper_access_fee" label="Upper access ($)" hint="Added on its own to a quote with upper runs and no upper gable. Each quote keeps its own copy, and Keenan can change it in the quote builder. Blank: no line." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.upper_access_fee} />}
+          </Field>
+          <Field name="upper_gable_access_fee" label="Upper access with an upper gable ($)" hint="Added instead of the amount above when an upper gable is in the quote. Blank: no line." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.upper_gable_access_fee} />}
           </Field>
           <Field name="service_call_fee" label="Service call fee ($)" hint="The flat fee for a service call in years 6 to 10 of the warranty. Blank means the warranty page names no amount." errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.service_call_fee} />}
