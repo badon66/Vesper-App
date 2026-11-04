@@ -1,3 +1,4 @@
+import { LEAD_FIELDS } from "@/lib/leads/fields";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -55,7 +56,8 @@ async function newLead(user: TestUser, extra: Partial<Database["public"]["Tables
   const { data, error } = await user.client
     .from("leads")
     .insert({ first_name: TEST_LEAD, address_line: "1 Test Street NW", created_by: user.id, ...extra })
-    .select("*")
+    // Every column a signed-in person may read: not the phone or email (contact privacy).
+    .select(LEAD_FIELDS)
     .single();
   return { lead: data, error };
 }
