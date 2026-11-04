@@ -531,7 +531,7 @@ async function loadQuoteCard(
     supabase
       .from("quotes")
       .select(
-        "runs, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee_per_ft, min_job_total, gst_enabled, gst_rate, valid_until",
+        "runs, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, min_job_total, gst_enabled, gst_rate, valid_until",
       )
       .eq("lead_id", lead.id)
       .in("status", ["draft", "presented", "accepted"])

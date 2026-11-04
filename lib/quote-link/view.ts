@@ -8,6 +8,8 @@ import { z } from "zod";
 import {
   formatMoney,
   priceQuote,
+  RUN_PARTS,
+  runPart,
   screenTotal,
   selectRuns,
   type ColourTiming,
@@ -38,7 +40,11 @@ export type CustomerQuote = {
     adders: { label: string; amount: number; upperOnly: boolean }[];
     discounts: { label: string; amount: number }[];
     colourTiming: ColourTiming | null;
-    rushFeePerFt: number | null;
+    // The quote's flat rush colour fee and upper access amounts
+    // (2026-11-04); null on a quote made before then, so no line.
+    rushFee: number | null;
+    upperAccessFee: number | null;
+    upperGableAccessFee: number | null;
     minJobTotal: number | null;
     gstEnabled: boolean;
     gstRate: number;
@@ -81,6 +87,9 @@ const runSchema = z.object({
   name: z.string().catch(""),
   feet: number,
   level: z.enum(["lower", "upper"]).catch("lower"),
+  // The part of the house (2026-11-04); a run saved before then has none,
+  // and its name gives the guess.
+  part: z.enum(RUN_PARTS).nullable().optional().catch(null),
 });
 
 const quoteSchema = z.object({
@@ -94,7 +103,9 @@ const quoteSchema = z.object({
     .catch([]),
   discounts: z.array(z.object({ label: z.string().catch(""), amount: number })).catch([]),
   colour_timing: z.enum(["stock", "factory_order", "rush"]).nullable().catch(null),
-  rush_fee_per_ft: z.coerce.number().nullable().catch(null),
+  rush_fee: z.coerce.number().nullable().optional().catch(null),
+  upper_access_fee: z.coerce.number().nullable().optional().catch(null),
+  upper_gable_access_fee: z.coerce.number().nullable().optional().catch(null),
   min_job_total: z.coerce.number().nullable().catch(null),
   gst_enabled: z.boolean().catch(false),
   gst_rate: number,
@@ -102,7 +113,7 @@ const quoteSchema = z.object({
 
 function toQuote(q: z.infer<typeof quoteSchema>): CustomerQuote["quote"] {
   return {
-    runs: q.runs,
+    runs: q.runs.map((run) => ({ name: run.name, feet: run.feet, level: run.level, part: runPart(run) })),
     runsFingerprint: q.runs_fingerprint,
     pricePerFt: q.price_per_ft,
     boxPrice: q.box_price,
@@ -110,7 +121,9 @@ function toQuote(q: z.infer<typeof quoteSchema>): CustomerQuote["quote"] {
     adders: q.adders.map((a) => ({ label: a.label, amount: a.amount, upperOnly: a.upper_only === true })),
     discounts: q.discounts,
     colourTiming: q.colour_timing,
-    rushFeePerFt: q.rush_fee_per_ft,
+    rushFee: q.rush_fee ?? null,
+    upperAccessFee: q.upper_access_fee ?? null,
+    upperGableAccessFee: q.upper_gable_access_fee ?? null,
     minJobTotal: q.min_job_total,
     gstEnabled: q.gst_enabled,
     gstRate: q.gst_rate,
@@ -189,7 +202,9 @@ export function customerInputs(quote: CustomerQuote["quote"], positions: readonl
     adders: quote.adders.map((a) => ({ label: a.label, amount: a.amount, ...(a.upperOnly ? { upperOnly: true } : {}) })),
     discounts: quote.discounts,
     colourTiming: quote.colourTiming,
-    rushFeePerFt: quote.colourTiming === "rush" ? quote.rushFeePerFt : null,
+    rushFee: quote.colourTiming === "rush" ? quote.rushFee : null,
+    upperAccessFee: quote.upperAccessFee,
+    upperGableAccessFee: quote.upperGableAccessFee,
     minJobTotal: quote.minJobTotal,
     gstEnabled: quote.gstEnabled,
     gstRate: quote.gstRate,
