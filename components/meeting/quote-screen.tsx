@@ -6,8 +6,8 @@ import { saveQuoteDraft } from "@/app/(app)/meeting/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { quoteFingerprint, quoteInputs, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
-import { defaultValidUntil, formatMoney, priceQuote, screenTotal, type ColourTiming } from "@/lib/pricing";
+import { quoteFingerprint, quoteInputs, quoteRushFee, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
+import { defaultValidUntil, formatMoney, guessRunPart, priceQuote, RUN_PARTS, screenTotal, type ColourTiming, type RunPart } from "@/lib/pricing";
 import { formatFullDate, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,18 @@ import { cn } from "@/lib/utils";
 // the iPad; Save is the only thing that needs signal.
 
 const RUN_NAMES = ["Front", "Front upper", "Left gable", "Right gable", "Garage", "Back", "Left side", "Right side"];
+
+// The part of the house each run lights (2026-11-04): guessed from the
+// name, and Keenan can change it. The customer's house diagram lights it,
+// and an upper gable sets the upper access amount.
+const PART_NAMES: Record<RunPart, string> = {
+  eave: "Eave",
+  gable: "Gable",
+  garage: "Garage",
+  porch: "Porch",
+  sides: "Sides",
+  other: "Other",
+};
 
 export function QuoteScreen({
   leadId,
@@ -46,6 +58,7 @@ export function QuoteScreen({
   const [message, setMessage] = useState<string | null>(null);
   const inputs = useMemo(() => quoteInputs(state, pricing), [state, pricing]);
   const priced = useMemo(() => priceQuote(inputs), [inputs]);
+  const rushFee = quoteRushFee(state);
   const set = (patch: Partial<QuoteUIState>) => onChange({ ...state, ...patch });
 
   async function save() {
@@ -64,7 +77,9 @@ export function QuoteScreen({
         adders: inputs.adders,
         discounts: inputs.discounts,
         colourTiming: state.colourTiming,
-        rushFeePerFt: inputs.rushFeePerFt,
+        rushFee,
+        upperAccessFee: inputs.upperAccessFee ?? null,
+        upperGableAccessFee: inputs.upperGableAccessFee ?? null,
         minJobTotal: pricing.minJobTotal,
         financingOffered: state.financingOffered,
         validUntil: state.validUntil,
@@ -100,9 +115,33 @@ export function QuoteScreen({
                 list="run-names"
                 aria-label={`Run ${at + 1} name`}
                 maxLength={60}
-                onChange={(event) => set({ runs: state.runs.map((item, which) => (which === at ? { ...item, name: event.target.value } : item)) })}
+                onChange={(event) => {
+                  const name = event.target.value;
+                  // The part follows the name until Keenan picks one that
+                  // differs from the guess.
+                  set({
+                    runs: state.runs.map((item, which) =>
+                      which === at ? { ...item, name, part: !item.part || item.part === guessRunPart(item.name) ? guessRunPart(name) : item.part } : item,
+                    ),
+                  });
+                }}
                 className="min-w-0 flex-1"
               />
+              <select
+                aria-label={`Run ${at + 1} part of the house`}
+                value={run.part ?? guessRunPart(run.name)}
+                onChange={(event) => {
+                  const part = event.target.value as RunPart;
+                  set({ runs: state.runs.map((item, which) => (which === at ? { ...item, part } : item)) });
+                }}
+                className="h-9 w-24 rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {RUN_PARTS.map((part) => (
+                  <option key={part} value={part}>
+                    {PART_NAMES[part]}
+                  </option>
+                ))}
+              </select>
               <Input
                 inputMode="numeric"
                 aria-label={`Run ${at + 1} feet`}
@@ -142,11 +181,11 @@ export function QuoteScreen({
           </datalist>
           <div className="flex flex-wrap gap-2">
             {RUN_NAMES.filter((name) => !state.runs.some((run) => run.name === name)).slice(0, 5).map((name) => (
-              <Button key={name} type="button" variant="outline" size="sm" onClick={() => set({ runs: [...state.runs, { name, feet: 0, level: name.includes("upper") ? "upper" : "lower" }] })}>
+              <Button key={name} type="button" variant="outline" size="sm" onClick={() => set({ runs: [...state.runs, { name, feet: 0, level: name.includes("upper") ? "upper" : "lower", part: guessRunPart(name) }] })}>
                 + {name}
               </Button>
             ))}
-            <Button type="button" variant="ghost" size="sm" onClick={() => set({ runs: [...state.runs, { name: "", feet: 0, level: "lower" }] })}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => set({ runs: [...state.runs, { name: "", feet: 0, level: "lower", part: "other" }] })}>
               + Other
             </Button>
           </div>
@@ -172,6 +211,16 @@ export function QuoteScreen({
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="quote-box">Per box</Label>
             <Input id="quote-box" inputMode="decimal" value={state.boxPrice} onChange={(event) => set({ boxPrice: event.target.value })} className="w-24 text-center tabular-nums" />
+          </div>
+          {/* Upper access (2026-11-04): added on its own when an upper run
+              is in, the gable amount when an upper gable is. Blank: no line. */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="quote-upper">Upper access</Label>
+            <Input id="quote-upper" inputMode="decimal" placeholder="None" value={state.upperAccessFee} onChange={(event) => set({ upperAccessFee: event.target.value })} className="w-24 text-center tabular-nums" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="quote-upper-gable">With upper gable</Label>
+            <Input id="quote-upper-gable" inputMode="decimal" placeholder="None" value={state.upperGableAccessFee} onChange={(event) => set({ upperGableAccessFee: event.target.value })} className="w-24 text-center tabular-nums" />
           </div>
         </section>
 
@@ -290,15 +339,23 @@ export function QuoteScreen({
                   label="Factory order, spring install"
                   detail="Included"
                 />
-                {pricing.rushFeePerFt !== null ? (
+                {rushFee !== null && rushFee > 0 ? (
                   <TimingChoice
                     current={state.colourTiming}
                     value="rush"
                     onPick={(value) => set({ colourTiming: value })}
                     label="This season"
-                    detail={`${formatMoney(pricing.rushFeePerFt)}/ft`}
+                    detail={formatMoney(rushFee)}
                   />
                 ) : null}
+              </div>
+              {/* The flat rush colour fee for this quote only (2026-11-04).
+                  Blank hides the choice. */}
+              <div className="flex items-center gap-2">
+                <Label htmlFor="quote-rush" className="text-sm text-muted-foreground">
+                  Rush colour fee
+                </Label>
+                <Input id="quote-rush" inputMode="decimal" placeholder="None" value={state.rushFee} onChange={(event) => set({ rushFee: event.target.value })} className="w-24 text-center tabular-nums" />
               </div>
             </div>
           )}
@@ -317,13 +374,13 @@ export function QuoteScreen({
             Financing available
           </button>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="quote-valid">Valid until</Label>
+            <Label htmlFor="quote-valid">Price held until</Label>
             <Input
               id="quote-valid"
               type="date"
               min={today}
               value={state.validUntil}
-              onChange={(event) => set({ validUntil: event.target.value || defaultValidUntil(today, pricing.quoteValidDays) })}
+              onChange={(event) => set({ validUntil: event.target.value || defaultValidUntil(today, pricing.priceHoldDays) })}
               className="w-44"
             />
           </div>
@@ -367,7 +424,7 @@ export function QuoteScreen({
         <div className="flex flex-col gap-1 text-sm text-muted-foreground">
           <p>No payment until your install is complete.</p>
           {state.financingOffered ? <p>Financing available. We will walk through the options together.</p> : null}
-          {state.validUntil ? <p>Valid until {formatFullDate(state.validUntil)}.</p> : null}
+          {state.validUntil ? <p>Price held until {formatFullDate(state.validUntil)}.</p> : null}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {/* Outline, so the total stays the one gold thing on the screen. */}

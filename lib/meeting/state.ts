@@ -5,7 +5,7 @@
 
 import type { SoffitColour } from "@/lib/leads/status";
 import type { TrackColour } from "@/lib/leads/track-colour";
-import { defaultValidUntil, type ColourTiming, type QuoteInputs, type QuoteRun } from "@/lib/pricing";
+import { defaultValidUntil, guessRunPart, RUN_PARTS, type ColourTiming, type QuoteInputs, type QuoteRun, type RunPart } from "@/lib/pricing";
 import type { PresentationKind } from "@/lib/presentation";
 
 export type MeetingPayload = {
@@ -42,8 +42,13 @@ export type MeetingPayload = {
     gstEnabled: boolean;
     gstRate: number;
     gstNumber: string | null;
-    rushFeePerFt: number | null;
-    quoteValidDays: number;
+    // Settings' flat rush colour fee and upper access amounts (2026-11-04),
+    // copied onto each new quote.
+    rushFee: number | null;
+    upperAccessFee: number | null;
+    upperGableAccessFee: number | null;
+    // How many days a new quote's prices are held (120).
+    priceHoldDays: number;
     // The least a job can cost before GST (Settings); null = no minimum.
     minJobTotal: number | null;
   };
@@ -56,6 +61,11 @@ export type MeetingPayload = {
     adders: unknown;
     discounts: unknown;
     colourTiming: string | null;
+    // The draft's own flat rush colour fee and upper access amounts; null
+    // on a quote made before 2026-11-04.
+    rushFee: number | null;
+    upperAccessFee: number | null;
+    upperGableAccessFee: number | null;
     financingOffered: boolean;
     validUntil: string | null;
     // The database's updated_at for the draft.
@@ -77,6 +87,11 @@ export type QuoteUIState = {
   neighbourAmount: string;
   customDiscounts: { label: string; amount: string }[];
   colourTiming: ColourTiming | null;
+  // This quote's own flat rush colour fee and upper access amounts, as
+  // typed; "" is none (a quote made before 2026-11-04, or cleared).
+  rushFee: string;
+  upperAccessFee: string;
+  upperGableAccessFee: string;
   financingOffered: boolean;
   validUntil: string;
 };
@@ -86,10 +101,25 @@ const parseMoney = (value: string) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) / 100 : 0;
 };
+// A fee that may be unset: "" (or a copy from before it existed) is none.
+const moneyOrNone = (value: string | undefined) => ((value ?? "").trim() === "" ? null : parseMoney(value ?? ""));
+const feeString = (value: number | null | undefined) => (value === null || value === undefined ? "" : moneyString(value));
+
+// This quote's flat rush colour fee as typed, whatever the colour timing:
+// the quote keeps it either way, so the customer's link can name it and
+// switching to rush at the table finds it. Null: none.
+export function quoteRushFee(state: QuoteUIState): number | null {
+  return moneyOrNone(state.rushFee);
+}
+
+// A run's part as stored, or the guess from its name.
+function partOf(value: unknown, name: string): RunPart {
+  return typeof value === "string" && (RUN_PARTS as readonly string[]).includes(value) ? (value as RunPart) : guessRunPart(name);
+}
 
 export function defaultQuoteState(payload: MeetingPayload): QuoteUIState {
   return {
-    runs: [{ name: "Front", feet: 0, level: "lower" }],
+    runs: [{ name: "Front", feet: 0, level: "lower", part: "eave" }],
     boxCount: 1,
     pricePerFt: moneyString(payload.pricing.pricePerFt),
     boxPrice: moneyString(payload.pricing.boxPrice),
@@ -98,8 +128,11 @@ export function defaultQuoteState(payload: MeetingPayload): QuoteUIState {
     neighbourAmount: moneyString(payload.pricing.neighbourDiscount),
     customDiscounts: [],
     colourTiming: payload.lead.colourKind === "custom" ? "factory_order" : payload.lead.colourKind === "list" ? "stock" : null,
+    rushFee: feeString(payload.pricing.rushFee),
+    upperAccessFee: feeString(payload.pricing.upperAccessFee),
+    upperGableAccessFee: feeString(payload.pricing.upperGableAccessFee),
     financingOffered: false,
-    validUntil: defaultValidUntil(payload.today, payload.pricing.quoteValidDays),
+    validUntil: defaultValidUntil(payload.today, payload.pricing.priceHoldDays),
   };
 }
 
@@ -114,6 +147,7 @@ export function quoteStateFromDraft(draft: NonNullable<MeetingPayload["draft"]>,
                 name: String((run as QuoteRun).name).slice(0, 60),
                 feet: Number((run as QuoteRun).feet) || 0,
                 level: (run as QuoteRun).level === "upper" ? ("upper" as const) : ("lower" as const),
+                part: partOf((run as QuoteRun).part, String((run as QuoteRun).name)),
               },
             ]
           : [],
@@ -137,7 +171,7 @@ export function quoteStateFromDraft(draft: NonNullable<MeetingPayload["draft"]>,
   const adders = items(draft.adders).map((item, at) => (upperOnly.get(at) ? { ...item, upperOnly: true } : item));
   const neighbour = discounts.find((item) => item.label === "Neighbour discount");
   return {
-    runs: runs.length > 0 ? runs : [{ name: "Front", feet: 0, level: "lower" }],
+    runs: runs.length > 0 ? runs : [{ name: "Front", feet: 0, level: "lower", part: "eave" }],
     boxCount: draft.boxCount,
     pricePerFt: moneyString(draft.pricePerFt),
     boxPrice: moneyString(draft.boxPrice),
@@ -149,8 +183,11 @@ export function quoteStateFromDraft(draft: NonNullable<MeetingPayload["draft"]>,
       draft.colourTiming === "stock" || draft.colourTiming === "factory_order" || draft.colourTiming === "rush"
         ? draft.colourTiming
         : defaultQuoteState(payload).colourTiming,
+    rushFee: feeString(draft.rushFee),
+    upperAccessFee: feeString(draft.upperAccessFee),
+    upperGableAccessFee: feeString(draft.upperGableAccessFee),
     financingOffered: draft.financingOffered,
-    validUntil: draft.validUntil ?? defaultValidUntil(payload.today, payload.pricing.quoteValidDays),
+    validUntil: draft.validUntil ?? defaultValidUntil(payload.today, payload.pricing.priceHoldDays),
   };
 }
 
@@ -159,7 +196,7 @@ export function quoteStateFromDraft(draft: NonNullable<MeetingPayload["draft"]>,
 // or a run with no feet yet is not a change.
 export function quoteFingerprint(state: QuoteUIState): string {
   return JSON.stringify([
-    state.runs.filter((run) => run.feet > 0).map((run) => [run.name.trim(), Math.round(run.feet), run.level]),
+    state.runs.filter((run) => run.feet > 0).map((run) => [run.name.trim(), Math.round(run.feet), run.level, run.part ?? guessRunPart(run.name)]),
     state.boxCount,
     parseMoney(state.pricePerFt),
     parseMoney(state.boxPrice),
@@ -171,6 +208,9 @@ export function quoteFingerprint(state: QuoteUIState): string {
       .filter((item) => parseMoney(item.amount) > 0)
       .map((item) => [item.label.trim(), parseMoney(item.amount)]),
     state.colourTiming,
+    moneyOrNone(state.rushFee),
+    moneyOrNone(state.upperAccessFee),
+    moneyOrNone(state.upperGableAccessFee),
     state.financingOffered,
     state.validUntil,
   ]);
@@ -198,7 +238,9 @@ export function quoteInputs(state: QuoteUIState, pricing: MeetingPayload["pricin
       })),
     discounts,
     colourTiming: state.colourTiming,
-    rushFeePerFt: state.colourTiming === "rush" ? pricing.rushFeePerFt : null,
+    rushFee: state.colourTiming === "rush" ? moneyOrNone(state.rushFee) : null,
+    upperAccessFee: moneyOrNone(state.upperAccessFee),
+    upperGableAccessFee: moneyOrNone(state.upperGableAccessFee),
     minJobTotal: pricing.minJobTotal,
     gstEnabled: pricing.gstEnabled,
     gstRate: pricing.gstRate,

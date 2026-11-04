@@ -38,8 +38,10 @@ const payload = (draft: MeetingPayload["draft"] = null): MeetingPayload => ({
     gstEnabled: false,
     gstRate: 0.05,
     gstNumber: null,
-    rushFeePerFt: null,
-    quoteValidDays: 14,
+    rushFee: 350,
+    upperAccessFee: 200,
+    upperGableAccessFee: 400,
+    priceHoldDays: 120,
     minJobTotal: null,
   },
   draft,
@@ -55,6 +57,9 @@ const serverDraft = (updatedAt: string): NonNullable<MeetingPayload["draft"]> =>
   adders: [],
   discounts: [{ label: "Neighbour discount", amount: 150 }],
   colourTiming: "stock",
+  rushFee: null,
+  upperAccessFee: null,
+  upperGableAccessFee: null,
   financingOffered: false,
   validUntil: "2026-11-17",
   updatedAt,
@@ -114,7 +119,7 @@ describe("a saved draft back on screen", () => {
       { ...serverDraft("2026-11-03T01:00:00+00:00"), runs: "nope", adders: [null, 4, { amount: 5 }], discounts: {} },
       payload(),
     );
-    expect(state.runs).toEqual([{ name: "Front", feet: 0, level: "lower" }]);
+    expect(state.runs).toEqual([{ name: "Front", feet: 0, level: "lower", part: "eave" }]);
     expect(state.adders).toEqual([]);
     expect(state.neighbourOn).toBe(false);
   });
@@ -163,7 +168,8 @@ describe("where a meeting starts", () => {
     expect(start.quoteId).toBeNull();
     expect(start.savedQuote).toBeNull();
     expect(start.index).toBe(0);
-    expect(start.quote.validUntil).toBe("2026-11-17");
+    // Prices held 120 days from today (2026-11-03 in this payload).
+    expect(start.quote.validUntil).toBe("2027-03-03");
   });
 
   it("the server draft when the iPad has no copy, counted as saved", () => {

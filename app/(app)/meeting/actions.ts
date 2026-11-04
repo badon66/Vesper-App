@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { NotOwnerError, ReadOnlyError, requireOwnerForAction, type SessionProfile } from "@/lib/auth/profile";
-import { priceQuote, totalFeet, type QuoteInputs } from "@/lib/pricing";
+import { guessRunPart, priceQuote, RUN_PARTS, totalFeet, type QuoteInputs } from "@/lib/pricing";
 import { createClient } from "@/lib/supabase/server";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 
@@ -36,6 +36,9 @@ const quoteDraftSchema = z.object({
         name: z.string().trim().max(60),
         feet: z.number().int().min(0).max(10_000),
         level: z.enum(["lower", "upper"]),
+        // The part of the house (2026-11-04). An iPad still holding a draft
+        // from before parts gets the guess from the run's name.
+        part: z.enum(RUN_PARTS).nullable().optional(),
       }),
     )
     .max(30),
@@ -47,7 +50,12 @@ const quoteDraftSchema = z.object({
     .max(20),
   discounts: z.array(z.object({ label: z.string().trim().max(80), amount: money })).max(20),
   colourTiming: z.enum(["stock", "factory_order", "rush"]).nullable(),
-  rushFeePerFt: money.nullable(),
+  // This quote's flat rush colour fee and upper access amounts (2026-11-04),
+  // copied from Settings and changed at the table if Keenan wants. Null on
+  // a quote made before, which has neither line.
+  rushFee: money.nullable().optional(),
+  upperAccessFee: money.nullable().optional(),
+  upperGableAccessFee: money.nullable().optional(),
   // The minimum job total from Settings when the quote is saved.
   minJobTotal: money.nullable().optional(),
   financingOffered: z.boolean(),
@@ -73,7 +81,7 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
   if (!parsed.success) {
     return { ok: false, code: "bad_input", message: "Something in the quote doesn't look right. Check the numbers." };
   }
-  const draft = parsed.data;
+  const draft = { ...parsed.data, runs: parsed.data.runs.map((run) => ({ ...run, part: run.part ?? guessRunPart(run.name) })) };
 
   const supabase = await createClient();
   const { data: lead } = await supabase
@@ -91,7 +99,9 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     adders: draft.adders,
     discounts: draft.discounts,
     colourTiming: draft.colourTiming,
-    rushFeePerFt: draft.rushFeePerFt,
+    rushFee: draft.rushFee ?? null,
+    upperAccessFee: draft.upperAccessFee ?? null,
+    upperGableAccessFee: draft.upperGableAccessFee ?? null,
     minJobTotal: draft.minJobTotal ?? null,
     gstEnabled: draft.gstEnabled,
     gstRate: draft.gstRate,
@@ -116,7 +126,13 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     })),
     discounts: draft.discounts,
     colour_timing: draft.colourTiming,
-    rush_fee_per_ft: draft.colourTiming === "rush" ? draft.rushFeePerFt : null,
+    // The flat fee is kept whatever the timing, so switching to rush at the
+    // table finds it; the price counts it only for rush. The fee per foot
+    // is no longer used (2026-11-04).
+    rush_fee: draft.rushFee ?? null,
+    rush_fee_per_ft: null,
+    upper_access_fee: draft.upperAccessFee ?? null,
+    upper_gable_access_fee: draft.upperGableAccessFee ?? null,
     gst_enabled: draft.gstEnabled,
     gst_rate: draft.gstRate,
     gst_number: draft.gstNumber,
