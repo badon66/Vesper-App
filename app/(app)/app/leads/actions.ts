@@ -12,6 +12,7 @@ import {
   type SessionProfile, requireSalesSideForRead} from "@/lib/auth/profile";
 import type { PhotoSlot } from "@/lib/leads/door";
 import { lostReasons, namesById, openKnockSession } from "@/lib/leads/queries";
+import { insertLeadOnce, NOT_SAVED, readSaveKey } from "@/lib/leads/save-key";
 import {
   leadColumnsFromValues,
   leadFormDataToInput,
@@ -85,29 +86,47 @@ export async function createLead(
     return { error: "A photo did not upload properly. Remove it and take it again." };
   }
 
+  // The save key the phone made for this new lead (2026-11-04): a try after
+  // a lost answer gets back the lead the first try made, never a copy.
+  const saveKey = readSaveKey(formData.get("save_key"));
+  if (!saveKey.ok) return { error: NOT_SAVED };
+
   const supabase = await createClient();
   const session = await openKnockSession(supabase, me.id);
-  const { data: lead, error } = await supabase
-    .from("leads")
-    .insert({
-      ...leadColumnsFromValues(values),
-      first_name: values.first_name,
-      address_line: values.address_line,
-      created_by: me.id,
-      status: "new",
-      knock_session_id: session?.id ?? null,
-    })
-    .select("id")
-    .single();
-  if (error || !lead) {
-    return { error: "The lead could not be saved. Check your signal and try again." };
+  const first = await insertLeadOnce(supabase, me.id, saveKey.key, {
+    ...leadColumnsFromValues(values),
+    first_name: values.first_name,
+    address_line: values.address_line,
+    created_by: me.id,
+    status: "new",
+    knock_session_id: session?.id ?? null,
+  });
+  if (!first.ok) return { error: first.error };
+  const lead = { id: first.leadId };
+
+  let toAttach = photos;
+  if (first.again) {
+    // The first try made the lead and its answer was lost: this try brings
+    // it up to date with the form and adds only the photos it doesn't have.
+    const { data: updated, error: updateError } = await supabase
+      .from("leads")
+      .update(leadColumnsFromValues(values))
+      .eq("id", lead.id)
+      .select("id");
+    if (updateError || !updated || updated.length === 0) return { error: NOT_SAVED };
+    if (photos.length > 0) {
+      const { data: attached } = await supabase.from("lead_photos").select("storage_path").eq("lead_id", lead.id);
+      const have = new Set((attached ?? []).map((row) => row.storage_path));
+      toAttach = photos.filter((photo) => !have.has(photo.storage_path));
+    }
+    revalidatePath(`/app/leads/${lead.id}`);
   }
 
   let photosFailed = false;
-  if (photos.length > 0) {
+  if (toAttach.length > 0) {
     const { error: photoError } = await supabase
       .from("lead_photos")
-      .insert(photos.map((photo) => ({ lead_id: lead.id, ...photo })));
+      .insert(toAttach.map((photo) => ({ lead_id: lead.id, ...photo })));
     photosFailed = Boolean(photoError);
   }
 

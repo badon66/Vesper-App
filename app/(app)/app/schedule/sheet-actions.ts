@@ -14,6 +14,7 @@ import { type PhotoSlot } from "@/lib/leads/door";
 import { COUNTED_QUESTIONS, type CountedQuestion } from "@/lib/leads/questions";
 import { followUpLabel } from "@/lib/leads/attention";
 import { openKnockSession } from "@/lib/leads/queries";
+import { insertLeadOnce, NOT_SAVED, readSaveKey } from "@/lib/leads/save-key";
 import { leadColumnsFromValues, parseLeadForm, type LeadFormErrors } from "@/lib/leads/schema";
 import { leadName, STATUS_LABELS } from "@/lib/leads/status";
 import { PHOTO_BUCKET } from "@/lib/photos";
@@ -241,41 +242,52 @@ export async function saveSheetLead(leadId: string | null, input: Record<string,
   const supabase = await createClient();
 
   if (!leadId) {
+    // A new person's first save carries the save key the phone made for
+    // them (2026-11-04): a try after a lost answer gets back the lead the
+    // first try made, and this save brings it up to date, never a copy.
+    const saveKey = readSaveKey(input.save_key);
+    if (!saveKey.ok) return { ok: false, error: NOT_SAVED };
     const session = await openKnockSession(supabase, me.id);
-    const { data: lead, error } = await supabase
-      .from("leads")
-      .insert({
-        ...columns,
-        first_name: parsed.values.first_name,
-        address_line: parsed.values.address_line,
-        created_by: me.id,
-        status: "new",
-        knock_session_id: session?.id ?? null,
-      })
-      .select("id")
-      .single();
-    if (error || !lead) return { ok: false, error: "The lead could not be saved. Check your signal and try again." };
+    const first = await insertLeadOnce(supabase, me.id, saveKey.key, {
+      ...columns,
+      first_name: parsed.values.first_name,
+      address_line: parsed.values.address_line,
+      created_by: me.id,
+      status: "new",
+      knock_session_id: session?.id ?? null,
+    });
+    if (!first.ok) return { ok: false, error: first.error };
+    if (first.again) return updateSheetLead(supabase, first.leadId, columns);
     revalidatePath("/app/leads");
-    return { ok: true, leadId: lead.id };
+    return { ok: true, leadId: first.leadId };
   }
 
   const existing = id.safeParse(leadId);
   if (!existing.success) return { ok: false, error: "That lead was not found." };
-  // Only the sheet's own columns: an existing lead's email, notes, house
-  // type and source are never touched from the sheet.
+  return updateSheetLead(supabase, existing.data, columns);
+}
+
+// A saved lead's save from the sheet: only the sheet's own columns. An
+// existing lead's email, notes, house type and source are never touched
+// from the sheet.
+async function updateSheetLead(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  leadId: string,
+  columns: ReturnType<typeof leadColumnsFromValues>,
+): Promise<SheetSave> {
   const { email: _email, notes: _notes, house_type: _house, source: _source, ...update } = columns;
   void _email;
   void _notes;
   void _house;
   void _source;
-  const { data, error } = await supabase.from("leads").update(update).eq("id", existing.data).select("id");
+  const { data, error } = await supabase.from("leads").update(update).eq("id", leadId).select("id");
   if (error) {
     return { ok: false, error: error.code === "42501" ? "You can only change your own leads." : "The lead could not be saved. Try again." };
   }
   if (!data || data.length === 0) return { ok: false, error: "You can only change your own leads." };
   revalidatePath("/app/leads");
-  revalidatePath(`/app/leads/${existing.data}`);
-  return { ok: true, leadId: existing.data };
+  revalidatePath(`/app/leads/${leadId}`);
+  return { ok: true, leadId };
 }
 
 // ---------------------------------------------------------------- booking

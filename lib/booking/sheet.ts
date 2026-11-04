@@ -63,6 +63,10 @@ export function stepCount(screen: SheetScreen): { number: number; total: number;
 // Unanswered choices are null; questions marked Not collected are listed.
 export type SheetDraft = {
   leadId: string | null;
+  // A new person's save key (2026-11-04): made on this phone at their first
+  // save and sent with every try, so a try after a lost answer gets back the
+  // lead the first try made. Drafts from before it have none until then.
+  saveKey?: string | null;
   first_name: string;
   last_name: string;
   phone: string;
@@ -95,6 +99,7 @@ export type SheetDraft = {
 export function emptyDraft(): SheetDraft {
   return {
     leadId: null,
+    saveKey: null,
     first_name: "",
     last_name: "",
     phone: "",
@@ -300,6 +305,7 @@ export function draftToLeadInput(draft: SheetDraft): Record<string, unknown> {
   const answers = draftAnswers(draft);
   const answer = (question: CountedQuestion) => answers[question] ?? "";
   return {
+    save_key: draft.saveKey ?? "",
     first_name: draft.first_name,
     last_name: draft.last_name,
     phone: draft.phone,
@@ -337,8 +343,9 @@ export function draftToLeadInput(draft: SheetDraft): Record<string, unknown> {
 // The fields a save sends, so the sheet can tell whether anything changed
 // since the last save. The photo skip is the booking's own choice.
 export function savedFingerprint(draft: SheetDraft): string {
-  const { leadId: _lead, photo_slots: _photos, skip: _skip, skip_note: _note, ...fields } = draft;
+  const { leadId: _lead, saveKey: _key, photo_slots: _photos, skip: _skip, skip_note: _note, ...fields } = draft;
   void _lead;
+  void _key;
   void _photos;
   void _skip;
   void _note;
@@ -365,7 +372,8 @@ export function bookNeed(draft: SheetDraft): string | null {
 }
 
 // Keep as a lead: a new person the sheet can't book goes on to New lead with
-// everything entered, in New lead's own draft form.
+// everything entered, in New lead's own draft form, its save key included, so
+// a first save whose answer was lost can't become a second lead there.
 export function leadDraftFromSheet(draft: SheetDraft, now: number): LeadDraft {
   const values: Record<string, string> = {};
   for (const [name, value] of Object.entries(draftToLeadInput(draft))) {

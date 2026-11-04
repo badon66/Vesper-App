@@ -106,6 +106,7 @@ export function defaultsFromDraft(draft: LeadDraft): LeadFormDefaults {
     soffit_note: v.soffit_note ?? "",
     notes: v.notes ?? "",
     source: oneOf<LeadSource>(SOURCE_OPTIONS, v.source) ?? "door",
+    saveKey: v.save_key ? v.save_key : null,
     address: {
       addressLine: v.address_line ?? "",
       city: v.city ?? "",
