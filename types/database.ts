@@ -1070,6 +1070,7 @@ export type Database = {
           presented_at: string | null
           price_per_ft: number
           runs: Json
+          rush_fee: number | null
           rush_fee_per_ft: number | null
           status: Database["public"]["Enums"]["quote_status"]
           subtotal: number
@@ -1079,6 +1080,8 @@ export type Database = {
           track_custom: boolean
           track_ral_code: string | null
           updated_at: string
+          upper_access_fee: number | null
+          upper_gable_access_fee: number | null
           valid_until: string | null
         }
         Insert: {
@@ -1104,6 +1107,7 @@ export type Database = {
           presented_at?: string | null
           price_per_ft: number
           runs?: Json
+          rush_fee?: number | null
           rush_fee_per_ft?: number | null
           status?: Database["public"]["Enums"]["quote_status"]
           subtotal?: number
@@ -1113,6 +1117,8 @@ export type Database = {
           track_custom?: boolean
           track_ral_code?: string | null
           updated_at?: string
+          upper_access_fee?: number | null
+          upper_gable_access_fee?: number | null
           valid_until?: string | null
         }
         Update: {
@@ -1138,6 +1144,7 @@ export type Database = {
           presented_at?: string | null
           price_per_ft?: number
           runs?: Json
+          rush_fee?: number | null
           rush_fee_per_ft?: number | null
           status?: Database["public"]["Enums"]["quote_status"]
           subtotal?: number
@@ -1147,6 +1154,8 @@ export type Database = {
           track_custom?: boolean
           track_ral_code?: string | null
           updated_at?: string
+          upper_access_fee?: number | null
+          upper_gable_access_fee?: number | null
           valid_until?: string | null
         }
         Relationships: [
@@ -1229,15 +1238,19 @@ export type Database = {
           neighbour_discount: number
           not_qualified_reasons: string[]
           presentation: Json
+          price_hold_days: number
           price_per_ft: number
           quote_valid_days: number
           referral_credit: number
+          rush_colour_fee: number | null
           rush_colour_fee_per_ft: number | null
           service_call_fee: number | null
           step_note_after_door: string
           step_note_at_door: string
           step_note_book: string
           updated_at: string
+          upper_access_fee: number | null
+          upper_gable_access_fee: number | null
           warranty_text: string
         }
         Insert: {
@@ -1266,15 +1279,19 @@ export type Database = {
           neighbour_discount?: number
           not_qualified_reasons?: string[]
           presentation: Json
+          price_hold_days?: number
           price_per_ft?: number
           quote_valid_days?: number
           referral_credit?: number
+          rush_colour_fee?: number | null
           rush_colour_fee_per_ft?: number | null
           service_call_fee?: number | null
           step_note_after_door?: string
           step_note_at_door?: string
           step_note_book?: string
           updated_at?: string
+          upper_access_fee?: number | null
+          upper_gable_access_fee?: number | null
           warranty_text: string
         }
         Update: {
@@ -1303,15 +1320,19 @@ export type Database = {
           neighbour_discount?: number
           not_qualified_reasons?: string[]
           presentation?: Json
+          price_hold_days?: number
           price_per_ft?: number
           quote_valid_days?: number
           referral_credit?: number
+          rush_colour_fee?: number | null
           rush_colour_fee_per_ft?: number | null
           service_call_fee?: number | null
           step_note_after_door?: string
           step_note_at_door?: string
           step_note_book?: string
           updated_at?: string
+          upper_access_fee?: number | null
+          upper_gable_access_fee?: number | null
           warranty_text?: string
         }
         Relationships: [
@@ -1895,6 +1916,7 @@ export type Database = {
           presented_at: string | null
           price_per_ft: number
           runs: Json
+          rush_fee: number | null
           rush_fee_per_ft: number | null
           status: Database["public"]["Enums"]["quote_status"]
           subtotal: number
@@ -1904,6 +1926,8 @@ export type Database = {
           track_custom: boolean
           track_ral_code: string | null
           updated_at: string
+          upper_access_fee: number | null
+          upper_gable_access_fee: number | null
           valid_until: string | null
         }
         SetofOptions: {
