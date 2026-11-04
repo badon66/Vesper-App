@@ -17,7 +17,10 @@
 // with the phone's GPS, My pay, and Keenan's screens through the view-only
 // owner session. Last, Book's answer lost to the signal (2026-11-03): the
 // sheet asks whether the lead booked before it says anything, in four
-// cases, with the phone's requests dropped as a lost signal would.
+// cases; and a new person's first save whose answer is lost (2026-11-04):
+// Next again gets back the same lead through its save key, never a copy.
+// The phone's requests and answers are dropped as a lost signal would, in
+// the browser's own network (tests/live/drop.mjs).
 //
 // The holds and bookings land on Keenan's real board, so the run uses only
 // the last evening of the booking window, under test names, and removes
@@ -27,6 +30,7 @@ import { mkdir } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
 import { chromium, devices } from "playwright";
 import sharp from "sharp";
+import { interceptFetches } from "./drop.mjs";
 import { openOwnerSession } from "./owner-session.mjs";
 
 const base = process.env.BASE ?? "http://localhost:3300";
@@ -154,27 +158,35 @@ const nextLabel = (page) => page.getByTestId("sheet-next").innerText().then((tex
 // sheet's question of whether the lead booked; drop.sync drops the hold's
 // own checks, so only a tap can find the booking. Server actions are POSTs
 // whose body is their arguments, which is how each one is told apart.
+// Drops the sheet's Book, its check and the hold's sync for one lead, in the
+// browser's own network (tests/live/drop.mjs). Book can drop "before" it
+// reaches the server or "after" the server booked.
 function dropping(page, leadId) {
   const drop = { book: null, check: false, sync: false };
   const seen = { book: 0, check: 0 };
-  const handler = async (route) => {
-    const request = route.request();
-    const body = request.method() === "POST" ? (request.postData() ?? "") : "";
+  let stop = async () => {};
+  const decide = (request, stage) => {
+    if (request.method !== "POST") return null;
+    const body = request.body;
     if (body.includes(`"leadId":"${leadId}"`) && body.includes('"everyone":')) {
-      seen.book += 1;
-      if (!drop.book) return route.fallback();
-      if (drop.book === "after") await route.fetch().catch(() => {});
-      return route.abort("internetdisconnected");
+      if (stage === "request") seen.book += 1;
+      return drop.book && (drop.book === "before") === (stage === "request") ? "drop" : null;
     }
     if (body.startsWith(`[{"leadId":"${leadId}","startsAt":`) && !body.includes('"everyone":')) {
-      seen.check += 1;
-      if (!drop.check) return route.fallback();
-      return route.abort("internetdisconnected");
+      if (stage === "request") seen.check += 1;
+      return drop.check && stage === "request" ? "drop" : null;
     }
-    if (drop.sync && body === "[]") return route.abort("internetdisconnected");
-    return route.fallback();
+    if (drop.sync && body === "[]" && stage === "request") return "drop";
+    return null;
   };
-  return { drop, seen, start: () => page.route("**/*", handler), stop: () => page.unroute("**/*", handler) };
+  return {
+    drop,
+    seen,
+    start: async () => {
+      stop = await interceptFetches(page, decide);
+    },
+    stop: () => stop(),
+  };
 }
 
 async function secondsLeft(page) {
@@ -1256,6 +1268,77 @@ try {
     `${lossF.seen.book} Book taps`,
   );
   await closeDone();
+
+  // ---------------------------------------------------------------- a new person's first save, its answer lost (2026-11-04)
+  // The server makes the lead and the answer never reaches the phone. Next
+  // again sends the same save key and gets back that lead, never a copy.
+  const ONCE_ADDRESS = "309 Once Test Way NW (TEST)";
+  const onceLeads = async () =>
+    (await admin.from("leads").select("id, save_key, status").eq("created_by", people.a.id).eq("address_line", ONCE_ADDRESS)).data ?? [];
+  await pageA.goto(`${base}/app/schedule`);
+  await settle(pageA);
+  await chooseEvening(pageA.locator("main"), testDay);
+  let freeAt = null;
+  for (let attempt = 0; attempt < 20 && !freeAt; attempt += 1) {
+    freeAt = await pageA.evaluate(
+      () =>
+        [...document.querySelectorAll('main [data-testid="time-picker"] [data-time]')]
+          .find((element) => element.getAttribute("data-state") === "open")
+          ?.getAttribute("data-time") ?? null,
+    );
+    if (!freeAt) await pageA.waitForTimeout(500);
+  }
+  if (!freeAt) throw new Error("no open time on the test evening for the first-save case");
+  await slotButton(pageA, freeAt).click();
+  await waitView(pageA, "who");
+  await pageA.fill("#sheet-first-name", TEST_LEAD);
+  await pageA.fill("#sheet-last-name", "Once");
+  await pageA.fill("#sheet-phone", "403 555 0168");
+  await next(pageA);
+  await waitView(pageA, "door");
+  await sheet(pageA).getByTestId("mark-rest").click();
+  await next(pageA);
+  await waitView(pageA, "learned");
+  await sheet(pageA).getByTestId("mark-rest").click();
+  await next(pageA);
+  await waitView(pageA, "address", 30000);
+  await pageA.fill("#lead-address", ONCE_ADDRESS);
+  await pageA.getByTestId("sheet-heading").click();
+  await sheet(pageA).getByRole("button", { name: "Use where I'm standing" }).click();
+  await sheet(pageA).getByText(/accurate to about 10 m/).first().waitFor({ timeout: 15000 });
+  await answer(pageA, "Soffit colour", "Not sure");
+  const firstSave = { drop: true, seen: 0 };
+  const stopFirstSave = await interceptFetches(pageA, (request, stage) => {
+    if (request.method !== "POST" || !request.body.startsWith("[null,") || !request.body.includes(`"address_line":"${ONCE_ADDRESS}"`)) return null;
+    if (stage === "request") firstSave.seen += 1;
+    return firstSave.drop && stage === "response" ? "drop" : null;
+  });
+  await next(pageA);
+  const lostSave = await sheetError("That's taking too long");
+  const madeOnce = await onceLeads();
+  check(
+    "a new person's first save whose answer is lost: the server made the lead once, and the sheet stays to try again",
+    lostSave.startsWith("That's taking too long") && (await viewOf(pageA)) === "address" && madeOnce.length === 1 && Boolean(madeOnce[0]?.save_key) && firstSave.seen === 1,
+    `${madeOnce.length} lead(s); ${lostSave}`,
+  );
+  firstSave.drop = false;
+  await next(pageA);
+  await waitView(pageA, "house", 30000);
+  await stopFirstSave();
+  const keptOnce = await onceLeads();
+  const sheetLeadId = await pageA.evaluate(() => {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const name = localStorage.key(index) ?? "";
+      if (name.startsWith("vesper.booking-sheet.")) return JSON.parse(localStorage.getItem(name) ?? "{}")?.draft?.leadId ?? null;
+    }
+    return null;
+  });
+  check(
+    "Next again sends the same save key and gets back that lead: one lead, and the sheet goes on with it",
+    firstSave.seen === 2 && keptOnce.length === 1 && keptOnce[0].id === madeOnce[0]?.id && sheetLeadId === keptOnce[0].id && keptOnce[0].status === "new",
+    `${keptOnce.length} lead(s), ${firstSave.seen} saves`,
+  );
+  await letGo(pageA);
 } catch (error) {
   results.push(`SCRIPT ERROR ${error?.message ?? String(error)} at A ${pageA.url()} / B ${pageB.url()}${ownerPage ? ` / owner ${ownerPage.url()}` : ""}`);
   await pageA.screenshot({ path: `${out}/m3-failure-a.png`, fullPage: true }).catch(() => {});
