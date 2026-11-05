@@ -361,10 +361,12 @@ try {
   check("a run's part of the house is guessed from its name", (await part.inputValue()) === "eave");
   const upperAmount = Number(settings.upper_access_fee ?? 0);
   const gableAmount = Number(settings.upper_gable_access_fee ?? 0);
+  const upperField = await priceScreen.locator("#quote-upper").inputValue().catch((e) => `error: ${e.message.slice(0, 80)}`);
+  const gableField = await priceScreen.locator("#quote-upper-gable").inputValue().catch((e) => `error: ${e.message.slice(0, 80)}`);
   check(
     "this quote's upper access amounts come from Settings and can be changed here",
-    (await priceScreen.getByLabel("Upper access").inputValue()) === (upperAmount ? String(upperAmount) : "") &&
-      (await priceScreen.getByLabel("With upper gable").inputValue()) === (gableAmount ? String(gableAmount) : ""),
+    Number(upperField) === upperAmount && Number(gableField) === gableAmount,
+    `fields ${upperField} and ${gableField}, Settings ${settings.upper_access_fee} and ${settings.upper_gable_access_fee}`,
   );
   const billText = async () => (await priceScreen.getByTestId("quote-bill").innerText()).replace(/\s+/g, " ");
   check("no upper run, no upper access line", !(await billText()).includes("Upper roof access"));
