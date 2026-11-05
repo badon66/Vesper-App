@@ -3,6 +3,7 @@
 import { Check, ChevronRight } from "lucide-react";
 import { useEffect, useState, type RefObject } from "react";
 import { AddressField, type AddressFieldValue } from "@/components/leads/address-field";
+import { useViewAs } from "@/components/view-as-context";
 import { AnswerGroup, NotCollectedToggle } from "@/components/leads/answer-group";
 import { CheckGroup } from "@/components/leads/check-group";
 import { PhotoSlots } from "@/components/leads/photo-slots";
@@ -284,6 +285,7 @@ export function AddressScreen({
   onLocateFailed: (title: string) => void;
   onChange: Change;
 }) {
+  const { viewingAs } = useViewAs();
   return (
     <form ref={formRef} onSubmit={(event) => event.preventDefault()} className="flex flex-col gap-5">
       <div className="flex flex-col gap-3">
@@ -298,6 +300,8 @@ export function AddressScreen({
           onValue={onValue}
           onWorking={onWorking}
           onLocateFailed={onLocateFailed}
+          // The sheet keeps what was entered on the phone, except in View as.
+          keepsEntries={!viewingAs}
           defaults={{
             addressLine: draft.address_line,
             city: draft.city,

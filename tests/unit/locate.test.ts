@@ -47,6 +47,12 @@ describe("Finding where the setter is standing", () => {
 
   it("gives the iPhone steps when location is off, and the Precise Location steps when it's rough", () => {
     expect(failureMessage("denied", null, "phone")).toMatchObject({ title: "Location is off for Vesper.", steps: LOCATION_ON_STEPS });
+    // Only a screen that keeps what was entered says so (the booking sheet,
+    // New lead making a lead), since the steps end by closing Vesper.
+    expect(failureMessage("denied", null, "phone").detail).toBe("To turn it on:");
+    expect(failureMessage("denied", null, "phone", true).detail).toBe("What you've entered stays here. To turn it on:");
+    expect(failureMessage("approximate", 3200, "phone", true).detail).toBe("Precise Location is off. What you've entered stays here. To turn it on:");
+    expect(failureMessage("approximate", 3200, "phone").detail).toBe("Precise Location is off. To turn it on:");
     expect(failureMessage("approximate", 3200, "phone").steps).toBe(PRECISE_STEPS);
     expect(failureMessage("rough", 88, "phone").title).toBe("It only got to about 88 m. It needs 50 m or better.");
     expect(failureMessage("no_answer", null, "device").title).toBe("This device didn't answer with a position.");

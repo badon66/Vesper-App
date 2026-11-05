@@ -67,6 +67,7 @@ export function AddressField({
   onValue,
   onWorking,
   onLocateFailed,
+  keepsEntries = false,
   leadId = null,
   linkLeads = true,
   place = "door",
@@ -86,6 +87,9 @@ export function AddressField({
   onValue?: (value: AddressFieldValue) => void;
   onWorking?: (working: boolean) => void;
   onLocateFailed?: (title: string) => void;
+  // The screen keeps what was entered on the phone, so a location note may
+  // say so (the booking sheet; New lead when it's making a lead).
+  keepsEntries?: boolean;
   leadId?: string | null;
   // Where the person is standing when it's used: a setter at the door, or
   // Keenan at the house for a meeting nobody booked.
@@ -412,6 +416,7 @@ export function AddressField({
             onPosition={useDevicePosition}
             onFinding={setLocating}
             onFailed={onLocateFailed}
+            keeps={keepsEntries}
             label={position ? "Take the position again" : "Use where I'm standing"}
             place={place}
           />

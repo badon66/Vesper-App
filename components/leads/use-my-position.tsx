@@ -28,6 +28,7 @@ export function UseMyPosition({
   onPosition,
   onFinding,
   onFailed,
+  keeps = false,
   label = "Use where I'm standing",
   place = "door",
 }: {
@@ -37,6 +38,8 @@ export function UseMyPosition({
   onFinding?: (finding: boolean) => void;
   // How it ended when it didn't find a position: the first line of the reason.
   onFailed?: (title: string) => void;
+  // Whether the screen keeps what was entered on the phone (see failureMessage).
+  keeps?: boolean;
   label?: string;
   // A setter's phone at the door, or Keenan's device at the house.
   place?: "door" | "house";
@@ -70,7 +73,7 @@ export function UseMyPosition({
       deliver.current.onPosition(next.position);
     } else if (next.kind === "failed") {
       stop();
-      deliver.current.onFailed?.(failureMessage(next.reason, next.best, device).title);
+      deliver.current.onFailed?.(failureMessage(next.reason, next.best, device, keeps).title);
     }
     if (next.kind !== "finding" && wasFinding) deliver.current.onFinding?.(false);
   }
@@ -117,7 +120,7 @@ export function UseMyPosition({
   }
 
   const finding = state.kind === "finding";
-  const failed = state.kind === "failed" ? failureMessage(state.reason, state.best, device) : null;
+  const failed = state.kind === "failed" ? failureMessage(state.reason, state.best, device, keeps) : null;
 
   // While it listens the button stays at full strength, so it plainly is
   // working at dusk, and a second tap does nothing rather than start over.

@@ -950,9 +950,10 @@ Keenan approved the scope up front, additive schema changes and a line in the Bo
   Not changed, as questions for Keenan: whether the progress bar should become tappable to jump straight to a step (the phone is four swipes from the door), and whether the four "what they learned" questions should still gate booking now that "Mark the rest Not collected" is the quickest way through.
 - **After the re-score (29/40, from 28; round 2 was 31).** A second pair of isolated assessments of the polished build found these, also changed before merge:
   - a step opened from Book had "Back" (the step before) beside "Back to Book"; the gold button now says "Return to Book", so only one button says Back;
-  - when Use where I'm standing fails out of sight, its notice with Go there is in the calm bordered style, not red; the location-off and Precise Location notes say "What you've entered stays here." before the steps;
+  - when Use where I'm standing fails out of sight, its notice with Go there is in the calm bordered style, not red; the location-off and Precise Location notes say "What you've entered stays here." before the steps, only where that's true (the booking sheet, and New lead when it's making a lead, outside View as), since the steps end by closing Vesper;
   - the progress markers are 8 px, up from 6;
   - New lead's optional answers (house type, setter's read, call or text) use the same one-tap answers as its questions, so tapping the chosen one again clears it, as the page says;
   - on the lead page, From the door puts each label above its answer on a phone, so the hot buttons aren't squeezed into a narrow column;
-  - "Use it" beside the nearest address is a full 44 px wide.
+  - "Use it" beside the nearest address is a full 44 px wide;
+  - a last read-only review of this polish found that clearing an optional answer on New lead (a second tap) changed no radio, so the phone's draft kept the old answer until the next change; a tap on New lead now saves the draft too.
   Not changed: "Mark the rest Not collected" stays on the door step, as Keenan set it in round 2 (removing it there is his call); the answer chips' tick still sits inline in two- and three-across rows, where it shifts the centred words a little but never wraps them (round 2's rule).

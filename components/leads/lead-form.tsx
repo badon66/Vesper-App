@@ -373,6 +373,9 @@ export function LeadForm({
       ref={formRef}
       onSubmit={onSubmit}
       onChange={drafting ? scheduleSave : undefined}
+      // Tapping a chosen answer again clears it without a change event, so
+      // a tap saves the draft too, once the screen has caught up.
+      onClick={drafting ? () => window.requestAnimationFrame(saveNow) : undefined}
       noValidate
       className="flex flex-col gap-6 pb-36"
     >
@@ -406,6 +409,7 @@ export function LeadForm({
         error={errors.address_line}
         onPicked={onPicked}
         leadId={leadId ?? null}
+        keepsEntries={drafting}
       />
 
       {duplicates.length > 0 ? (

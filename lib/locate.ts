@@ -99,13 +99,17 @@ export const PRECISE_STEPS = [
 
 export type LocateMessage = { title: string; detail?: string; steps?: string[] };
 
-export function failureMessage(reason: LocateFailure, best: number | null, device: "phone" | "device"): LocateMessage {
+// keeps: the screen keeps what was entered on the phone (the booking sheet,
+// and New lead outside View as), so the note can say so before its steps,
+// which end by closing Vesper. Other screens never say it.
+export function failureMessage(reason: LocateFailure, best: number | null, device: "phone" | "device", keeps = false): LocateMessage {
+  const kept = keeps ? "What you've entered stays here. " : "";
   const The = device === "phone" ? "The phone" : "This device";
   switch (reason) {
     case "unsupported":
       return { title: `${The} can't share where it is.`, detail: "Type the address instead." };
     case "denied":
-      return { title: "Location is off for Vesper.", detail: "What you've entered stays here. To turn it on:", steps: LOCATION_ON_STEPS };
+      return { title: "Location is off for Vesper.", detail: `${kept}To turn it on:`, steps: LOCATION_ON_STEPS };
     case "no_answer":
       return {
         title: `${The} didn't answer with a position.`,
@@ -120,7 +124,7 @@ export function failureMessage(reason: LocateFailure, best: number | null, devic
     case "approximate":
       return {
         title: `${The} is only giving a rough area (about ${formatDistance(best ?? APPROXIMATE_M)}), not where you're standing.`,
-        detail: "Precise Location is off. What you've entered stays here. To turn it on:",
+        detail: `Precise Location is off. ${kept}To turn it on:`,
         steps: PRECISE_STEPS,
       };
     case "outside":
