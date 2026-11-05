@@ -907,5 +907,8 @@ The impeccable skill's critique ran as two isolated agents (a design review, and
 - **"Upper & Lower Sides" stays as built.** The drawing lights both sides for a sides run named for both floors; Keenan sets the level in meeting mode when he quotes, which decides upper access.
 - **See our work stays hidden** until Keenan adds real install photos to the presentation gallery.
 - **The rush colour fee stays $350** everywhere: Settings, and each new quote's own copy.
-- **Dropping the old `quote_valid_days` check is approved.** It needs Keenan at the screen, since Supabase asks a person to confirm a drop; it runs as its own migration when he is.
+- **The old `quote_valid_days` check is dropped** (Keenan approved; run as `20261105045236` while he was at the screen to confirm it). The column stays, unused.
+- **The track colour line follows the banner's dates.** From September 1 to November 30 it keeps Keenan's words, the rush colour fee "to have it before Christmas". From December 1 nothing on the page mentions Christmas: non-stock colours show the spring option only, "Any other colour is powder coated for a spring install, with colour matching included at no extra cost." The rush colour fee stays available in meeting mode, with no Christmas promise.
+- **A quote priced for this season after November 30 (judgment call).** For a quote Keenan priced with the rush colour fee, the spring-only line would contradict the fee in that customer's own breakdown, so it reads "Any other colour is powder coated: nothing extra if it can wait for spring, or the $350 rush colour fee to have it sooner."
+- **keenancudi@gmail.com** is left as it is: Keenan's answer came through as the blank template twice, so nothing is changed until he picks.
 

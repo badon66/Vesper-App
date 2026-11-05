@@ -70,7 +70,7 @@ rush_colour_fee numeric(10,2)                    -- 2026-11-04: one flat amount 
 upper_access_fee numeric(10,2)                   -- 2026-11-04: added to a quote with upper runs and no upper gable ($200); null = no line. Copied onto each quote
 upper_gable_access_fee numeric(10,2)             -- 2026-11-04: added instead when an upper gable is in the quote ($400); null = no line. Copied onto each quote
 service_call_fee numeric(10,2)                   -- M5: warranty years 6 to 10 ($200 since 2026-11-04); null = not set, no amount shows
-quote_valid_days int not null default 14         -- M5: unused since 2026-11-04 (price_hold_days replaced it; its 1..90 check stays, at 90, until Keenan approves dropping it)
+quote_valid_days int not null default 14         -- M5: unused since 2026-11-04 (price_hold_days replaced it); set to 90, and its 1..90 check was dropped on 2026-11-05 (Keenan approved)
 price_hold_days int not null default 120         -- 2026-11-04: a new quote holds its prices until this many days out (1..365), shown to the customer as "Price held until"
 christmas_banner_on boolean not null default true  -- 2026-11-04: the customer quote page's Christmas banner; it shows only from September 1 to November 30 (Calgary) while on (2026-11-05; it was to December 24)
 christmas_banner_title text not null             -- its bold first line, "Want them up for Christmas?" (1..80 characters)
