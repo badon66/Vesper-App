@@ -349,7 +349,7 @@ try {
   );
   const bill = await priceScreen.getByTestId("quote-bill").innerText();
   check("No payment until your install is complete, on the bill", bill.includes("No payment until your install is complete."));
-  check("valid until reads as a written-out date", /Valid until [A-Z][a-z]+ \d{1,2}, \d{4}\./.test(bill));
+  check("price held until reads as a written-out date", /Price held until [A-Z][a-z]+ \d{1,2}, \d{4}\./.test(bill));
   if (!settings.gst_enabled) check("with GST off, the price never mentions GST", !/GST/.test(await priceScreen.innerText()));
   check("no note to Keenan on the customer's screen", !(await priceScreen.innerText()).includes("apply to this quote only"));
   await priceScreen.getByLabel("Run 1 feet").press("ArrowLeft");

@@ -1,20 +1,24 @@
-// Live walk-through of the customer quote link, take 1 (Keenan, 2026-11-02),
-// against the real database, phone size first.
+// Live walk-through of the customer quote link (Keenan, 2026-11-02; the
+// rework, 2026-11-04), against the real database, phone size first.
 //
 // It stages a throwaway setter, a TEST LEAD with a quote (four runs, two of
-// them upper; extra work marked only with upper runs; a neighbour discount;
-// a minimum job total), a mockup and a live link made by the throwaway
-// setter, so any notice goes to that account and never to Keenan's phone.
-// Then, as a customer with no session, at phone size: the page's headers
-// and look, every section, Start smaller down to the minimum, the mockup
-// viewer, Book my install and the thank-you, the visit and the choice in the
-// database, and nothing internal on the page. As Keenan, through his
-// one-time view-only session (owner-session.mjs): the lead's Quote card, the
-// Send quote link sheet (the link already exists, so nothing is written),
-// the timeline, and his Preview, which counts nothing and books nothing. As
-// the setter: no Quote card. Then the link is turned off and expires, and
-// on the quote domain only quote pages answer. Everything staged is removed
-// at the end, and nothing of Keenan's changes.
+// them upper, one an upper gable; extra work marked only with upper runs; a
+// neighbour discount; the two upper access amounts; a rush colour fee; a
+// minimum job total), a mockup and a live link made by the throwaway setter,
+// so any notice goes to that account and never to Keenan's phone. Then, as a
+// customer with no session, at phone size: the page's headers and look, all
+// eight sections in order, the house diagram, Start smaller with upper
+// access following the runs and the total counting, down to the minimum and
+// Keenan's two lines, reduce motion, Tap to open, the mockup viewer, Book my
+// install and the thank-you, the visit and the choice in the database, and
+// nothing internal on the page. As Keenan, through his one-time view-only
+// session (owner-session.mjs): the lead's Quote card, the Send quote link
+// sheet (the link already exists, so nothing is written), the timeline, and
+// his Preview, which counts nothing and books nothing. As the setter: no
+// Quote card. Then the price hold passes and the page still works, Book my
+// install included; then the link is turned off and closes; and on the
+// quote domain only quote pages answer. Everything staged is removed at the
+// end, and nothing of Keenan's changes.
 import http from "node:http";
 import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
@@ -55,6 +59,18 @@ const addDays = (day, n) => {
 };
 const longDay = (day) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric" }).format(new Date(`${day}T12:00:00Z`));
+const fullDate = (day) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", month: "long", day: "numeric", year: "numeric" }).format(new Date(`${day}T12:00:00Z`));
+// Page text as the checks compare it: spaces collapsed, and the page's curly
+// apostrophes (2026-11-04) read as straight ones.
+const flat = (t) => (t ?? "").replace(/\s+/g, " ").replace(/[\u2018\u2019]/g, "'");
+// The figure a screen reader hears, never the counting digits.
+const totalOf = async (page, testId) => ((await page.getByTestId(testId).locator(".sr-only").textContent().catch(() => "")) ?? "").trim();
+// The digits on screen, which count to the new value.
+const shownOf = async (page, testId) => ((await page.getByTestId(testId).locator("[aria-hidden=true]").first().textContent().catch(() => "")) ?? "").trim();
+const lineShown = async (page, label) =>
+  (await page.locator(`[data-testid="quote-lines"] [data-line="${label}"]`).getAttribute("data-shown").catch(() => null)) === "true";
+const segment = async (page, name) => page.locator(`[data-testid="quote-house"] [data-segment="${name}"]`).getAttribute("data-state").catch(() => null);
 
 async function settle(page) {
   await page.waitForLoadState("networkidle").catch(() => {});
@@ -128,7 +144,11 @@ try {
   await admin.from("profiles").update({ welcome_done_at: new Date().toISOString() }).eq("id", setter.id);
   const { data: ownerRow } = await admin.from("profiles").select("id").eq("role", "owner").single();
   const ownerId = ownerRow.id;
-  const { data: settingsRow } = await admin.from("settings").select("warranty_text, company").eq("id", 1).single();
+  const { data: settingsRow } = await admin
+    .from("settings")
+    .select("warranty_text, company, service_call_fee, christmas_banner_on, christmas_banner_title, christmas_banner_text, product_points, presentation")
+    .eq("id", 1)
+    .single();
 
   const lead = await admin
     .from("leads")
@@ -138,19 +158,20 @@ try {
   if (lead.error) throw new Error(`lead: ${lead.error.message}`);
   leadId = lead.data.id;
 
-  const validUntil = addDays(calgaryToday(), 14);
+  // Prices are held 120 days (2026-11-04).
+  const validUntil = addDays(calgaryToday(), 120);
   const runs = [
-    { name: "Front", feet: 64, level: "lower" },
-    { name: "Front upper", feet: 52, level: "upper" },
-    { name: "Garage", feet: 28, level: "lower" },
-    { name: "Left gable", feet: 22, level: "upper" },
+    { name: "Front", feet: 64, level: "lower", part: "eave" },
+    { name: "Front upper", feet: 52, level: "upper", part: "eave" },
+    { name: "Garage", feet: 28, level: "lower", part: "garage" },
+    { name: "Left gable", feet: 22, level: "upper", part: "gable" },
   ];
   const quote = await admin
     .from("quotes")
     .insert({
       lead_id: leadId,
       created_by: setter.id,
-      price_per_ft: 23,
+      price_per_ft: 24,
       box_price: 500,
       box_count: 1,
       runs,
@@ -160,8 +181,15 @@ try {
       gst_rate: 0.05,
       gst_enabled: false,
       min_job_total: 2500,
-      subtotal: 4393,
-      total: 4393,
+      // 166 ft x $24 + $500 + $400 upper access (an upper gable is in) +
+      // $150 + $75 - $150.
+      subtotal: 4959,
+      total: 4959,
+      colour_timing: "stock",
+      rush_fee: 350,
+      upper_access_fee: 200,
+      upper_gable_access_fee: 400,
+      track_colour_name: "White",
       notes: INTERNAL,
       valid_until: validUntil,
     })
@@ -221,41 +249,142 @@ try {
   }));
   check("white like a document, whatever the theme, and no sideways scroll", look.body === "rgb(255, 255, 255)" && look.width <= 390, JSON.stringify(look));
 
-  const text = (await page.locator("body").innerText()).replace(/\s+/g, " ");
-  check("their name, address and valid-until date", text.includes(`${TEST_LEAD} Quote link`) && text.includes(street) && text.includes(`Good until ${longDay(validUntil)}`));
+  const text = flat(await page.locator("body").innerText());
+  // 1. Their house and their price.
+  check(
+    "their greeting first, then the total and price held until",
+    text.includes(`${TEST_LEAD}, here's your quote`) &&
+      (await totalOf(page, "hero-total")) === "$4,959" &&
+      (await page.getByTestId("quote-price-hold").innerText()).trim() === `Price held until ${fullDate(validUntil)}`,
+    text.slice(0, 200),
+  );
   const mockup = await page.getByTestId("quote-mockup").evaluate((img) => img.complete && img.naturalWidth > 0).catch(() => false);
   check("their mockup, full width, loaded through a short-lived signed link", mockup);
-  const lines = (await page.getByTestId("recommended-lines").innerText()).replace(/\s+/g, " ");
+  const promises = flat(await page.getByTestId("quote-promises").innerText());
+  const justAsk = await page.getByRole("link", { name: "Just ask." }).getAttribute("href").catch(() => "");
   check(
-    "the Recommended package, line by line: lights at the per-foot price, the box, extra work and the discount",
+    "no payment until install, and financing with Just ask. opening a text",
+    promises.includes("No payment until your install is complete.") && promises.includes("Financing is available. Just ask.") && (justAsk ?? "").startsWith("sms:+14038959915?&body=Hi%20Keenan"),
+    `${promises} ${justAsk}`,
+  );
+  // 2. Christmas, while Keenan has it on, September 1 to December 24.
+  const [, month, day] = calgaryToday().split("-").map(Number);
+  const bannerDue = settingsRow?.christmas_banner_on && month >= 9 && !(month === 12 && day > 24);
+  const banner = await page.getByTestId("quote-christmas").innerText().catch(() => "");
+  check(
+    bannerDue ? "the Christmas banner, in Keenan's words from Settings" : "no Christmas banner out of season or while it's off",
+    bannerDue ? banner.includes(settingsRow.christmas_banner_title) && banner.replace(/\s+/g, " ").includes(settingsRow.christmas_banner_text) : banner === "",
+    banner.replace(/\s+/g, " "),
+  );
+  // 3. What you're getting.
+  const pointTexts = (Array.isArray(settingsRow?.product_points) ? settingsRow.product_points : []).map((p) => (p?.text ?? "").trim()).filter(Boolean);
+  const pointItems = await page.getByTestId("quote-points").locator("li").allInnerTexts().catch(() => []);
+  check(
+    "the product points from Settings, one line each with a line icon",
+    pointItems.length === pointTexts.length && pointTexts.every((t, at) => pointItems[at]?.trim() === t) && (await page.getByTestId("quote-points").locator("svg").count()) === pointTexts.length,
+    `${pointItems.length} of ${pointTexts.length}`,
+  );
+  // 4. Your lights, and the house.
+  const runRows = await page.getByTestId("quote-runs").locator("li").allInnerTexts();
+  check("their runs as a compact list, name and feet, no levels", runRows.length === 4 && runRows[0].replace(/\s+/g, " ").trim() === "Front 64 ft" && !runRows.join(" ").includes("level"), runRows.join(" | "));
+  const states = {};
+  for (const name of ["lower-eave", "upper-eave", "garage", "upper-gable", "garage-gable", "porch", "lower-sides", "upper-sides"]) states[name] = await segment(page, name);
+  check(
+    "the house lights the parts in their quote and leaves the rest as the outline",
+    states["lower-eave"] === "on" && states["upper-eave"] === "on" && states.garage === "on" && states["upper-gable"] === "on" && states["garage-gable"] === "none" && states.porch === "none",
+    JSON.stringify(states),
+  );
+  const explainer = page.getByTestId("quote-explainer");
+  const explainerClosed = (await explainer.getAttribute("open")) === null;
+  await explainer.locator("summary").click();
+  await page.waitForTimeout(400);
+  const explained = flat(await page.getByTestId("parts-explained").innerText().catch(() => ""));
+  check(
+    "What do these mean? opens labelled drawings of an eave, a gable, a garage line, the sides and a porch",
+    explainerClosed &&
+      ["Eave:", "Gable:", "Garage line:", "Sides:", "Porch:", "Upper is the second storey. Lower is the main floor."].every((t) => explained.includes(t)) &&
+      (await page.getByTestId("parts-explained").locator("svg").count()) === 5,
+    explained.slice(0, 160),
+  );
+  // 5. The price, line by line.
+  const lines = (await page.getByTestId("quote-lines").innerText()).replace(/\s+/g, " ");
+  check(
+    "the price line by line: lights at the per-foot price, the box, upper access with its reason, extra work and the discount",
     lines.includes("Track and lights") &&
-      lines.includes("166 ft at $23/ft") &&
-      lines.includes("$3,818") &&
-      lines.includes("Control box") &&
-      lines.includes("$500") &&
+      lines.includes("166 ft at $24/ft") &&
+      lines.includes("$3,984") &&
+      lines.includes("Control box Always included $500") &&
+      lines.includes("Upper roof access For work up high: $200, or $400 with an upper gable $400") &&
       lines.includes("Extra height") &&
       lines.includes("Garage corner") &&
-      lines.includes("-$150"),
+      lines.includes("\u2212$150") &&
+      !lines.includes("Rush colour fee"),
     lines,
   );
-  check("the total, with no mention of GST while GST is off", (await page.getByTestId("recommended-total").innerText()).trim() === "$4,393" && !/GST/.test(text));
+  check("the total, with no mention of GST while GST is off", (await totalOf(page, "smaller-total")) === "$4,959" && !/GST/.test(text));
+  // 6. Track colour, in Keenan's words, with the fee as a dollar amount.
   check(
-    "no payment until install and financing are on the page",
-    text.includes("No payment until your install is complete.") && text.includes("Financing is available. Just ask."),
+    "track colour: their colour, white is stock, and the rush colour fee as a dollar amount",
+    text.includes("Your colour: White.") &&
+      text.includes("White is our stock colour. It costs nothing extra and fits this season's schedule.") &&
+      text.includes("Any other colour is powder coated: nothing extra if it can wait for spring, or the $350 rush colour fee to have it before Christmas."),
   );
+  // 7. Tap to open, closed until tapped.
   const warrantyFirst = (settingsRow?.warranty_text ?? "").split(/\n+/)[0]?.trim() ?? "";
-  check("the warranty in Keenan's exact words", warrantyFirst.length > 0 && text.includes(warrantyFirst), warrantyFirst);
+  const warranty = page.getByTestId("quote-warranty");
+  const warrantyClosed = (await warranty.getAttribute("open")) === null && !(await warranty.getByText(warrantyFirst).isVisible().catch(() => false));
+  await warranty.locator("summary").click();
+  await page.waitForTimeout(400);
+  const warrantyText = (await warranty.innerText()).replace(/\s+/g, " ");
+  const fee = Number(settingsRow?.service_call_fee ?? 0);
+  check(
+    "Warranty opens on a tap, in Keenan's exact words, with the service call fee",
+    warrantyClosed && warrantyFirst.length > 0 && warrantyText.includes(warrantyFirst) && (fee > 0 ? warrantyText.includes(`Service call fee for years 6 to 10: $${fee.toLocaleString("en-CA")}`) : true),
+    warrantyText.slice(0, 200),
+  );
+  const installDay = (Array.isArray(settingsRow?.presentation) ? settingsRow.presentation : []).find((p) => p?.kind === "install_day");
+  const galleryCount = (Array.isArray(settingsRow?.presentation) ? settingsRow.presentation : []).find((p) => p?.kind === "gallery")?.image_paths?.filter(Boolean)?.length ?? 0;
+  check(
+    "How install day works from Settings, and See our work hidden until there are photos",
+    (installDay?.body?.trim() ? (await page.getByTestId("quote-install-day").count()) === 1 : true) &&
+      (galleryCount === 0 ? (await page.getByTestId("quote-gallery").count()) === 0 : (await page.getByTestId("quote-gallery").count()) === 1),
+    `${galleryCount} gallery photos`,
+  );
+  const order = await page.evaluate(() =>
+    ["hero-total", "quote-christmas", "quote-points", "quote-runs", "quote-house", "start-smaller", "smaller-total", "quote-lines", "quote-colour", "quote-more", "quote-footer"]
+      .map((id) => document.querySelector(`[data-testid="${id}"]`))
+      .filter(Boolean)
+      .map((el) => el.getBoundingClientRect().top + window.scrollY),
+  );
+  check("the sections in Keenan's order, top to bottom, with the total right under the switches", order.every((top, at) => at === 0 || top > order[at - 1]), order.map(Math.round).join(","));
+  const gap = await page.evaluate(() => {
+    const rows = document.querySelector('[data-testid="start-smaller"]').getBoundingClientRect();
+    const total = document.querySelector('[data-testid="smaller-total"]').getBoundingClientRect();
+    return Math.round(total.top - rows.bottom);
+  });
+  check("a switch and the total share the screen: the total sits within 60 px of the last switch", gap >= 0 && gap <= 60, `${gap} px`);
   const hrefs = await page.locator("a").evaluateAll((links) => links.map((a) => a.getAttribute("href") ?? ""));
   check(
-    "call, text and email Vesper",
-    hrefs.includes("tel:+14038959915") && hrefs.includes("sms:+14038959915") && hrefs.some((h) => h.startsWith("mailto:info@vesperlighting.ca")),
+    "call, text and email Vesper; Text opens with a line about their quote",
+    hrefs.includes("tel:+14038959915") &&
+      hrefs.some((h) => h.startsWith("sms:+14038959915?&body=Hi%20Keenan%2C%20a%20question%20about%20the%20quote%20for%20")) &&
+      hrefs.some((h) => h.startsWith("mailto:info@vesperlighting.ca")),
     hrefs.filter((h) => /^(tel|sms|mailto):/.test(h)).join(" "),
   );
   check(
     "nothing internal: no note, setter, status or other customer",
     !text.includes("INTERNAL") && !text.includes(setter.name) && !text.includes(setter.email) && !/\bdraft\b/i.test(text),
   );
-  check("Book my install in a bar fixed to the bottom, with the total", await page.getByRole("button", { name: "Book my install" }).isVisible() && (await page.getByTestId("bar-total").innerText()).trim() === "$4,393");
+  const bar = (await page.getByTestId("quote-bar").innerText()).replace(/\s+/g, " ").trim();
+  check(
+    "a bar fixed to the bottom with Call, Text and Book my install, and no price in it",
+    (await page.getByRole("button", { name: "Book my install" }).isVisible()) && bar === "Call Text Book my install" && (await page.getByTestId("quote-bar").evaluate((el) => getComputedStyle(el).position)) === "fixed",
+    bar,
+  );
+  const targets = await page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid="quote-bar"] a, [data-testid="quote-bar"] button, [role="switch"], summary, [data-testid="quote-footer"] a, [data-testid="switch-all-on"]')].map((el) => Math.round(el.getBoundingClientRect().height)),
+  );
+  check("every tap target is at least 44 px tall", targets.every((h) => h >= 44), targets.join(","));
   await page.screenshot({ path: `${out}/ql-phone-top.png` });
   await page.screenshot({ path: `${out}/ql-phone-full.png`, fullPage: true });
 
@@ -264,28 +393,47 @@ try {
   const { data: opened } = await admin.from("lead_events").select("actor_id").eq("lead_id", leadId).eq("type", "quote_link_opened");
   check("the visit is counted, nothing about the visitor stored, and goes on the timeline once", visited?.view_count === 1 && opened?.length === 1 && opened[0].actor_id === null, JSON.stringify(visited));
 
-  // Start smaller: off with both upper runs, then the front, down to the minimum.
+  // Start smaller: the upper gable off, then the other upper run, then the
+  // front, down to the minimum. The total counts to each new figure.
   const smaller = page.getByTestId("start-smaller");
-  await smaller.getByRole("switch", { name: /^Front upper/ }).click();
   await smaller.getByRole("switch", { name: /^Left gable/ }).click();
-  await page.waitForTimeout(200);
-  const noUpper = (await page.getByTestId("smaller-lines").innerText()).replace(/\s+/g, " ");
+  await page.waitForTimeout(90);
+  const counting = await shownOf(page, "smaller-total");
+  await page.waitForTimeout(700);
   check(
-    "switching off every upper run drops the extra work marked only with upper runs",
-    !noUpper.includes("Extra height") && noUpper.includes("Garage corner") && (await page.getByTestId("smaller-total").innerText()).trim() === "$2,541",
-    noUpper,
+    "switching off the upper gable dims it on the house, drops upper access to $200, and the total counts to its new figure",
+    (await segment(page, "upper-gable")) === "off" &&
+      lines.length > 0 &&
+      (await page.locator('[data-testid="quote-lines"] [data-line="Upper roof access"]').innerText()).includes("$200") &&
+      (await totalOf(page, "smaller-total")) === "$4,231" &&
+      (await shownOf(page, "smaller-total")) === "$4,231" &&
+      counting !== "$4,231" &&
+      (await totalOf(page, "hero-total")) === "$4,231" &&
+      (await page.getByTestId("hero-full").innerText()).trim() === "Full quote $4,959",
+    `while counting: ${counting}`,
+  );
+  await smaller.getByRole("switch", { name: /^Front upper/ }).click();
+  await page.waitForTimeout(700);
+  check(
+    "switching off every upper run drops upper access and the extra work marked only with upper runs",
+    !(await lineShown(page, "Upper roof access")) &&
+      !(await lineShown(page, "Extra height")) &&
+      (await lineShown(page, "Garage corner")) &&
+      (await segment(page, "upper-eave")) === "off" &&
+      (await totalOf(page, "smaller-total")) === "$2,633",
   );
   await smaller.getByRole("switch", { name: /^Front,/ }).click();
-  await page.waitForTimeout(200);
-  const minLines = (await page.getByTestId("smaller-lines").innerText()).replace(/\s+/g, " ");
+  await page.waitForTimeout(700);
+  const minLines = (await page.getByTestId("quote-lines").innerText()).replace(/\s+/g, " ");
+  const note = flat(await page.getByTestId("minimum-note").innerText()).trim();
   check(
-    "below the minimum job total, the total rises to it with a line saying so",
-    minLines.includes("To reach our $2,500 minimum") &&
-      (await page.getByTestId("smaller-total").innerText()).trim() === "$2,500" &&
-      (await page.getByTestId("bar-total").innerText()).trim() === "$2,500" &&
-      (await page.getByTestId("bar-label").innerText()).trim() === "Start smaller: 1 of 4 parts" &&
-      (await page.getByTestId("smaller-minimum-note").isVisible()),
-    minLines,
+    "below the minimum, both totals come to it, with a line saying so and Keenan's two sentences at the total",
+    minLines.includes("To reach our $2,500 minimum $1,403") &&
+      (await totalOf(page, "smaller-total")) === "$2,500" &&
+      (await totalOf(page, "hero-total")) === "$2,500" &&
+      note === "That's under our $2,500 minimum, so this option comes to $2,500. Need a repair or something smaller? Call or text us and we'll see what we can do." &&
+      (await page.getByTestId("hero-full").innerText()).trim() === "Full quote $4,959",
+    `${minLines} | ${note}`,
   );
   // The last part is marked disabled; a tap on it anyway changes nothing.
   await smaller.getByRole("switch", { name: /^Garage/ }).click({ force: true });
@@ -309,13 +457,13 @@ try {
   await page.getByRole("button", { name: "Book my install" }).click();
   const confirm = page.getByTestId("book-confirm");
   await confirm.getByRole("button", { name: "Yes, book my install" }).waitFor({ timeout: 10000 }).catch(() => {});
-  const confirmText = (await confirm.innerText().catch(() => "")).replace(/\s+/g, " ");
+  const confirmText = flat(await confirm.innerText().catch(() => ""));
   check(
     "Book my install asks first, with the choice, the total and nothing to sign or pay",
     (await page.getByTestId("confirm-option").innerText()).trim() === "Garage only" &&
       (await page.getByTestId("confirm-total").innerText()).trim() === "$2,500" &&
       confirmText.includes("There's nothing to sign or pay today.") &&
-      (await confirm.getByRole("button", { name: "Not yet" }).count()) === 1,
+      (await confirm.getByRole("button", { name: "Back" }).count()) === 1,
     confirmText.slice(0, 200),
   );
   await page.screenshot({ path: `${out}/ql-phone-confirm.png` });
@@ -323,7 +471,7 @@ try {
   check("nothing is booked until they say yes", notYet?.booked_at === null);
   await confirm.getByRole("button", { name: "Yes, book my install" }).click();
   await page.getByTestId("quote-thanks").waitFor({ timeout: 20000 }).catch(() => {});
-  const thanks = (await page.getByTestId("quote-thanks").innerText().catch(() => "")).replace(/\s+/g, " ");
+  const thanks = flat(await page.getByTestId("quote-thanks").innerText().catch(() => ""));
   check(
     "Book my install shows the thank-you: Keenan in touch within a day, nothing to sign or pay",
     thanks.includes("Keenan will be in touch within a day to set your install date and go through the agreement.") &&
@@ -354,7 +502,7 @@ try {
   check(
     "coming back, the page says they asked to book, and the bar no longer offers it again",
     (await page.getByTestId("quote-booked-before").innerText().catch(() => "")).includes("you asked us to book your install: Garage only.") &&
-      (await page.getByTestId("bar-label").innerText()).trim() === "Install requested" &&
+      (await page.getByTestId("bar-requested").innerText()).includes("Install requested") &&
       (await page.getByRole("button", { name: "Book my install" }).count()) === 0,
   );
   await page.screenshot({ path: `${out}/ql-phone-return.png` });
@@ -372,7 +520,8 @@ try {
     "the lead's Quote card leads with the booking, then the total, opens and last visit",
     (await card.getByTestId("quote-card-booked").innerText().catch(() => "")).includes(`${TEST_LEAD} asked to book Garage only, $2,500.`) &&
       cardText.includes("Quoted total, all parts") &&
-      cardText.includes("$4,393") &&
+      cardText.includes("$4,959") &&
+      cardText.includes(`Price held until ${longDay(validUntil)}`) &&
       cardText.includes("Opened 2 times, last") &&
       !cardText.includes(".."),
     cardText.slice(0, 300),
@@ -385,7 +534,7 @@ try {
   const message = await sheet.getByRole("textbox").inputValue().catch(() => "");
   check(
     "Send quote link: the same link and an editable text, nothing sent",
-    message.includes(`Hi ${TEST_LEAD}, here's your Vesper quote:`) && message.includes(`/q/${token}`) && message.includes(`good until ${longDay(validUntil)}`) && !message.includes("—"),
+    message.includes(`Hi ${TEST_LEAD}, here's your Vesper quote:`) && message.includes(`/q/${token}`) && message.includes(`Your price is held until ${longDay(validUntil)}.`) && !message.includes("—"),
     message.replace(/\s+/g, " ").slice(0, 200),
   );
   await owner.screenshot({ path: `${out}/ql-ipad-send-sheet.png` });
@@ -431,27 +580,60 @@ try {
   check("a setter never sees the Quote card or the link", (await setterPage.getByTestId("quote-card").count()) === 0 && !setterHtml.includes(token));
   await setterContext.close();
 
-  // ---------------------------------------------------------------- off, expired, and the quote domain
+  // ---------------------------------------------------------------- reduce motion
+  const calm = await browser.newContext({ ...phone, reducedMotion: "reduce" });
+  const calmPage = await calm.newPage();
+  await calmPage.goto(quoteUrl);
+  await settle(calmPage);
+  await calmPage.getByTestId("start-smaller").getByRole("switch", { name: /^Front,/ }).click();
+  await calmPage.waitForTimeout(60);
+  check("with reduce motion on, the total swaps straight to its new figure", (await shownOf(calmPage, "smaller-total")) === (await totalOf(calmPage, "smaller-total")));
+  await calm.close();
+
+  // ---------------------------------------------------------------- after the price hold
+  await admin.from("quotes").update({ valid_until: addDays(calgaryToday(), -1) }).eq("id", quote.data.id);
+  const later = await browser.newContext(phone);
+  const laterPage = await later.newPage();
+  await laterPage.goto(quoteUrl);
+  await settle(laterPage);
+  const held = flat(await laterPage.getByTestId("quote-price-hold").innerText().catch(() => "")).trim();
+  await laterPage.getByTestId("start-smaller").getByRole("switch", { name: /^Front,/ }).click();
+  await laterPage.getByRole("button", { name: "Update my choice" }).click();
+  const laterConfirm = flat(await laterPage.getByTestId("book-confirm").innerText().catch(() => ""));
+  await laterPage.getByTestId("book-confirm").getByRole("button", { name: "Yes, update it" }).click();
+  await laterPage.getByTestId("quote-thanks").waitFor({ timeout: 20000 }).catch(() => {});
+  const { data: rebooked } = await admin.from("quote_links").select("booked_option").eq("id", link.data.id).single();
+  const passed = `Prices may have changed since ${fullDate(addDays(calgaryToday(), -1))}. We'll confirm before booking.`;
+  check(
+    "after the price-held-until date the link still works, says prices may have changed, and Book my install still goes through",
+    held === passed && laterConfirm.includes(passed) && rebooked?.booked_option === "Start smaller: Front, Garage",
+    `${held} | ${rebooked?.booked_option}`,
+  );
+  await laterPage.screenshot({ path: `${out}/ql-phone-held.png` });
+  await later.close();
+
+  // ---------------------------------------------------------------- turned off, and the quote domain
   const turnedOff = await admin.rpc("revoke_quote_link", { p_lead_id: leadId });
   const after = await browser.newContext(phone);
-  const expired = await after.newPage();
-  await expired.goto(quoteUrl);
-  await settle(expired);
-  const expiredText = (await expired.locator("body").innerText()).replace(/\s+/g, " ");
-  const expiredHrefs = await expired.locator("a").evaluateAll((links) => links.map((a) => a.getAttribute("href") ?? ""));
+  const closed = await after.newPage();
+  await closed.goto(quoteUrl);
+  await settle(closed);
+  const closedText = flat(await closed.locator("body").innerText()).replace(/\u2011/g, "-");
+  const closedHrefs = await closed.locator("a").evaluateAll((links) => links.map((a) => a.getAttribute("href") ?? ""));
   check(
-    "a link turned off says the quote has expired, with call and text, no name and no prices",
+    "a link turned off is closed, with call and text, no name and no prices",
     turnedOff.data === true &&
-      expiredText.includes("This quote has expired") &&
-      expiredHrefs.includes("tel:+14038959915") &&
-      expiredHrefs.includes("sms:+14038959915") &&
-      !expiredText.includes(TEST_LEAD) &&
-      !/\$\d/.test(expiredText),
-    expiredText.slice(0, 160),
+      closedText.includes("This quote link is closed.") &&
+      closedText.includes("Call or text Keenan for an up-to-date quote.") &&
+      closedHrefs.includes("tel:+14038959915") &&
+      closedHrefs.includes("sms:+14038959915") &&
+      !closedText.includes(TEST_LEAD) &&
+      !/\$\d/.test(closedText),
+    closedText.slice(0, 160),
   );
-  await expired.screenshot({ path: `${out}/ql-phone-expired.png` });
-  await expired.goto(`${base}/q/${randomBytes(18).toString("base64url")}`);
-  check("a made-up link shows the same expired screen", (await expired.locator("body").innerText()).includes("This quote has expired"));
+  await closed.screenshot({ path: `${out}/ql-phone-closed.png` });
+  await closed.goto(`${base}/q/${randomBytes(18).toString("base64url")}`);
+  check("a made-up link shows the same closed screen", (await closed.locator("body").innerText()).includes("This quote link is closed."));
   await after.close();
 
   if (new URL(base).hostname === "localhost") {
