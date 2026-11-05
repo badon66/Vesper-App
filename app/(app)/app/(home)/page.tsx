@@ -10,16 +10,17 @@ export const metadata: Metadata = {
   title: "Home",
 };
 
-// Home depends on who the screen is for: the owner's dashboard, a setter's
-// open times, bookings and follow-ups, or a placeholder for crew until V2. While
+// Home depends on who the screen is for: Keenan's meetings and who's out, a
+// setter's team schedule, their bookings and follow-ups (Keenan,
+// 2026-11-05), or a placeholder for crew until V2. While
 // the owner views the app as someone, this is that person's Home, read only.
 export default async function HomePage() {
-  const { profile, real, viewingAs } = await getViewer();
+  const { profile, viewingAs } = await getViewer();
   if (profile.role === "owner") return <OwnerHome profile={profile} />;
   // A setter's first sign-in lands here: the welcome until it is finished or
   // skipped (Keenan, 2026-11-03). Never while Keenan views the app as them.
   if (profile.role === "sales" && !profile.welcome_done_at && !viewingAs) redirect("/app/welcome");
-  if (profile.role === "sales") return <SalesHome profile={profile} readOnly={viewingAs} realRole={real.role} />;
+  if (profile.role === "sales") return <SalesHome profile={profile} />;
 
   const firstName = profile.full_name.split(" ")[0] || profile.full_name;
   return (

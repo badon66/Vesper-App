@@ -66,16 +66,15 @@ The app is built around the evening schedule, not a list of people.
 
 ### Phone (setters and Keenan in the field)
 
-**Home (setter).** Top to bottom:
-1. Tonight's open times, big and easy to read at dusk, with the holder's initials on any time someone is booking. Tapping an open time holds it and opens the booking sheet over Home, the same as on Schedule and Session. If tonight has nothing left, it says so and shows the next evening's open times.
-2. My bookings: tonight and upcoming, each with Move and Cancel until it starts, and the outcome once Keenan marks it.
-3. Follow-ups due: their Follow up leads whose date is today or earlier, the oldest date first, each saying how late it is, with a tap through to the lead.
+**Home (setter) (Keenan, 2026-11-05).** Top to bottom:
+1. Start knocking, which opens Session; or, while they're out, a bar for their live session ("Knocking in Bridgeland. Since 4:32 p.m. 24 doors, 6 conversations.") that opens it.
+2. The team's schedule for today, with a switch to tomorrow: every meeting that evening, its time, its area (the neighbourhood, or the street when there's none) and who booked it ("Your booking" for their own). Never a customer's name, phone or email: this is for clustering, so it says only where and when.
+3. How mine went: their own bookings. Coming up, soonest first, each with Move and Cancel until it starts; then how each meeting this past week went (Qualified, Not qualified with the reason, No-show, Cancelled, or waiting for Keenan to mark it), newest first, each opening its lead.
+4. Follow-ups due: their Follow up leads whose date is today or earlier, the oldest date first, each saying how late it is, with a tap through to the lead.
 
-The knock session and Unfinished bookings moved to Session on 2026-11-05 (Keenan), and saves made while knocking land there.
+The greeting has no role line under it. Tonight's open times live on Session and Schedule; the knock session and Unfinished bookings are on Session.
 
-The greeting has no role line under it.
-
-**Home (Keenan).** The dashboard. For now it shows today across the team: one row per person who knocked or logged a lead today, showing whether their knock session is open now, the neighbourhood, doors, conversations and leads logged today, with team totals. Below that, the list of today's leads. His own knock session is on Session, like everyone's. Every number says what it counts and that it covers today in Calgary time. Tonight's meetings sit at the top (see Tonight). M6 adds the sales dashboard below.
+**Home (Keenan) (Keenan, 2026-11-05).** Top to bottom: Today and the date; Start knocking, or a bar for his live session that opens Session; Meetings for today with a switch to tomorrow, each a full meeting card (call, Navigate, meeting mode, photos, the distance from the meeting before, and after the slot how it went, which he marks there) with the Meetings page's flags (no mockup yet, no track colour yet) and how complete the lead is; and who's out knocking right now, with their neighbourhood, since when, doors and conversations so far today. Every number says what it counts and that it covers today in Calgary time. M6 adds the sales dashboard below. The team-today totals and today's leads it showed before 2026-11-05 are gone: Keenan's list for this Home didn't have them.
 
 **Session (Keenan, 2026-11-05).** The gold tab, for setters and Keenan. The evening runs from here: start, count, book, end. It has two states.
 
@@ -137,7 +136,7 @@ Only names show, never an on-screen swatch, because screen colours aren't accura
 
 **Leads.** A New lead button at the top. Opens to Active: New, Follow up and Meeting booked, ordered by what needs attention first. Follow-ups due today or overdue come first (oldest date first), then New leads (oldest first), then follow-ups for later days (soonest first), then booked meetings (soonest first, from M3). An All switch shows every lead, lost and closed ones included, grouped by status, newest first. Search always covers every status. Mine and Everyone stay: Everyone shows all leads read only, so a setter can check an address before knocking. Tap to open. Edit anything on your own lead. Add a note. Change status within what a setter can do: `new`, `follow_up` and `lost`. Choosing Follow up asks when: Tomorrow, In 3 days, Next week, or a date, and the date can be moved later. `meeting_booked` is set by booking a meeting, never by hand.
 
-**Picking a time.** On Schedule, Session, setter Home and inside the booking sheet. The times open on tonight. If tonight has no open time left, it says so ("No meetings tonight" when tonight never had any) and opens the next evening with an opening. Any evening in the 14-day booking window stays one tap away, and the evening on screen is the board's heading. Open times are the brightest thing on the board. Booked times go quiet and show the neighbourhood first, then who booked it, so setters can cluster. Times past the cutoff show as closed. Inside the sheet, Pick another time and Move open on the evening of the time being changed.
+**Picking a time.** On Schedule, Session and inside the booking sheet. The times open on tonight. If tonight has no open time left, it says so ("No meetings tonight" when tonight never had any) and opens the next evening with an opening. Any evening in the 14-day booking window stays one tap away, and the evening on screen is the board's heading. Open times are the brightest thing on the board. Booked times go quiet and show the neighbourhood first, then who booked it, so setters can cluster. Times past the cutoff show as closed. Inside the sheet, Pick another time and Move open on the evening of the time being changed.
 
 **The booking sheet (Keenan, 2026-11-02; round 2, 2026-11-03).** The only way to book. It is built for one moment: at the door, the homeowner is getting serious, the setter shows them the open times on the phone or iPad, they pick one together, and the setter finishes the details as part of the conversation and right after leaving the door. It is designed and tested at 430 x 932 (Keenan's iPhone 15 Pro Max) and at 390 wide: the extra room goes to bigger type and tap targets, and related items share a screen so there are fewer steps.
 - Tapping an open time holds it and opens a full-screen sheet over the schedule. Letting go closes it and returns to the schedule.

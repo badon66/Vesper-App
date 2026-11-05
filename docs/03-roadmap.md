@@ -20,8 +20,8 @@ Setters are out the afternoon of 2026-11-05, so it aims to be live before 3:00 p
 
 ## The new Homes (Keenan, 2026-11-05; merge on green, approved)
 Replaces the setter Home with open times on top that is live now. Nothing customer facing.
-- [ ] Keenan: today's meetings with a switch to tomorrow, each with the flags the Meetings page already shows; who's out knocking right now; Start knocking, or a bar for his live session that opens Session
-- [ ] Setters: the team's schedule for today with a switch to tomorrow (every meeting, its time, area and who booked it, never other setters' customers' phone or email); then "How mine went" (their own bookings and how each meeting went); then follow-ups due as now; plus Start knocking, or a bar for their live session
+- [x] Keenan: today's meetings with a switch to tomorrow, each with the flags the Meetings page already shows; who's out knocking right now; Start knocking, or a bar for his live session that opens Session
+- [x] Setters: the team's schedule for today with a switch to tomorrow (every meeting, its time, area and who booked it, never other setters' customers' phone or email); then "How mine went" (their own bookings and how each meeting went); then follow-ups due as now; plus Start knocking, or a bar for their live session
 - [ ] Tested at 390 and 430; View as shows everything exactly as each person sees it
 - [ ] Design: impeccable shape, then critique and polish; plain copy, no em dashes
 - [ ] The full suite passes, the branch merges on green, and production is verified

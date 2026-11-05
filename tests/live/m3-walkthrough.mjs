@@ -381,25 +381,32 @@ try {
   await signIn(pageA, people.a);
   await signIn(pageB, people.b);
   check("a setter's Home has no role line under the greeting", (await pageA.getByText("Signed in as").count()) === 0 && (await pageA.getByRole("heading", { name: /^Hello, TEST$/ }).count()) === 1);
-  const homeOrder = await pageA.evaluate(() => [...document.querySelectorAll("main [data-testid]")].map((el) => el.getAttribute("data-testid")).filter((id) => ["tonight-times", "my-bookings"].includes(id)));
-  const knockCount = await pageA.getByRole("button", { name: /Start knocking/ }).count();
-  const timesY = await pageA.getByTestId("tonight-times").boundingBox();
-  const bookingsY = await pageA.getByTestId("my-bookings").boundingBox();
+  // Home (Keenan, 2026-11-05): Start knocking or the live session, the
+  // team's schedule with Today and Tomorrow, How mine went, follow-ups due.
+  const homeOrder = await pageA.evaluate(() =>
+    [...document.querySelectorAll("main [data-testid]")]
+      .map((el) => el.getAttribute("data-testid"))
+      .filter((id) => ["home-start-knocking", "home-session-bar", "team-schedule", "how-mine-went"].includes(id)),
+  );
+  const mineY = await pageA.getByTestId("how-mine-went").boundingBox();
   const dueY = await pageA.getByRole("heading", { name: "Follow-ups due" }).boundingBox().catch(() => null);
   check(
-    "Home runs top to bottom: tonight's open times, my bookings, follow-ups due; the knock session is on Session (2026-11-05)",
-    JSON.stringify(homeOrder) === JSON.stringify(["tonight-times", "my-bookings"]) && timesY && bookingsY && dueY && knockCount === 0 && timesY.y < bookingsY.y && bookingsY.y < dueY.y,
+    "Home runs top to bottom: Start knocking, the team's schedule, How mine went, follow-ups due",
+    JSON.stringify(homeOrder) === JSON.stringify(["home-start-knocking", "team-schedule", "how-mine-went"]) && mineY && dueY && mineY.y < dueY.y,
+    homeOrder.join(", "),
   );
+  check("Start knocking on Home opens Session", (await pageA.getByTestId("home-start-knocking").getAttribute("href")) === "/app/session");
+  check("Home has no open-times grid any more: times are on Session and Schedule", (await pageA.locator("main [data-time]").count()) === 0);
+  const team = pageA.getByTestId("team-schedule");
+  await team.getByRole("button", { name: /^Tomorrow/ }).click();
+  check(
+    "the team's schedule switches to tomorrow in place",
+    (await team.getByRole("button", { name: /^Tomorrow/ }).getAttribute("aria-pressed")) === "true" && (await team.locator('[data-day-list="Tomorrow"]').isVisible()) && !(await team.locator('[data-day-list="Today"]').isVisible()),
+  );
+  await team.getByRole("button", { name: /^Today/ }).click();
+  const teamHtml = await team.innerHTML();
+  check("the team's schedule carries no phone number, email or call link", !/tel:|mailto:|@[a-z0-9-]+\./i.test(teamHtml) && !/\(\d{3}\) \d{3}-\d{4}/.test(teamHtml));
   const tonight = (byDay.get(today) ?? []).filter((row) => row.state === "open");
-  const homeDay = (await pageA.getByTestId("picker-day").first().innerText()).trim();
-  if (tonight.length > 0) {
-    check("Home opens on tonight's open times", homeDay === "Tonight", homeDay);
-  } else {
-    const fullTitle = await pageA.getByTestId("tonight-times").getByRole("heading", { name: /^(Nothing left tonight|No meetings tonight)$/ }).count();
-    check("with nothing open tonight, Home says so and shows the next evening with an opening", fullTitle === 1 && homeDay !== "Tonight", homeDay);
-  }
-  const homeSlot = await pageA.locator('[data-testid="tonight-times"] [data-time]').first().getAttribute("aria-label").catch(() => null);
-  check("tonight's times are big and readable: each is a tap target with the time", Boolean(homeSlot), homeSlot ?? "none");
   await checkTapTargets(pageA, "the setter's Home");
   await pageA.screenshot({ path: `${out}/m3-setter-home.png`, fullPage: true });
 
@@ -407,7 +414,11 @@ try {
   await pageA.waitForURL("**/app/schedule", { timeout: 20000 });
   await settle(pageA);
   const scheduleDay = (await pageA.getByTestId("picker-day").innerText()).trim();
-  check("Schedule opens on the same evening as Home", scheduleDay === homeDay, `${scheduleDay} / ${homeDay}`);
+  if (tonight.length > 0) {
+    check("Schedule opens on tonight when tonight has open times", scheduleDay === "Tonight", scheduleDay);
+  } else {
+    check("with nothing open tonight, Schedule opens on another evening", scheduleDay !== "Tonight", scheduleDay);
+  }
   const chips = await pageA.getByRole("group", { name: "Evenings" }).getByRole("button").count();
   check(`every evening in the ${settings.booking_window_days}-day window is one tap away`, chips === settings.booking_window_days + 1, `${chips} evenings`);
   await pageB.goto(`${base}/app/schedule`);
@@ -1075,8 +1086,8 @@ try {
   check("the lead page says how complete it is: 4 of 8 collected", (await pageA.getByTestId("completeness").innerText()).trim() === "4 of 8 collected", await pageA.getByTestId("completeness").innerText());
   await pageA.goto(`${base}/app`);
   await settle(pageA);
-  const myBookings = (await pageA.getByTestId("my-bookings").innerText()).replace(/\s+/g, " ");
-  check("the setter's own bookings say how complete each lead is", /\d of 8 collected/.test(myBookings) && myBookings.includes("4 of 8 collected"), myBookings.slice(0, 200));
+  const myBookings = (await pageA.getByTestId("how-mine-went").innerText()).replace(/\s+/g, " ");
+  check("How mine went lists the setter's own bookings coming up, each saying how complete its lead is", /\d of 8 collected/.test(myBookings) && myBookings.includes("4 of 8 collected") && myBookings.includes("Coming up"), myBookings.slice(0, 200));
 
   // ---------------------------------------------------------------- My pay
   // A qualified booking on the throwaway test host, so Keenan's evenings stay
@@ -1122,14 +1133,22 @@ try {
         admin.from("earnings").select("id, status, paid_at").eq("profile_id", people.a.id).then((r) => r.data),
         admin.from("meetings").select("id, status, starts_at").in("lead_id", [lead1, lead3, lead4, newLeadId]).order("id").then((r) => r.data),
         admin.from("time_blocks").select("id").is("removed_at", null).then((r) => r.data),
-        admin.from("day_schedules").select("id, day, start_time, slot_minutes, slot_count").is("removed_at", null).order("id").then((r) => r.data),
+        admin.from("day_schedules").select("id, day, meeting_start, meeting_slot_minutes, meeting_slot_count").is("removed_at", null).order("id").then((r) => r.data),
       ]),
     );
   const before = await footprint();
   await op.goto(`${base}/app`);
   await settle(op);
-  const homeHeadings = await op.locator("main h1, main [data-testid='tonight']").evaluateAll((els) => els.map((el) => el.tagName));
-  check("Keenan's Home starts with Tonight", homeHeadings[0] === "H1" && homeHeadings[1] === "DIV" && (await op.getByTestId("tonight").count()) === 1);
+  const ownerOrder = await op.evaluate(() =>
+    [...document.querySelectorAll("main h1, main [data-testid]")]
+      .map((el) => (el.tagName === "H1" ? "h1" : el.getAttribute("data-testid")))
+      .filter((id) => ["h1", "home-start-knocking", "home-session-bar", "home-meetings", "out-now"].includes(id)),
+  );
+  check(
+    "Keenan's Home: Today, then Start knocking or his live session, then Meetings, then who's out knocking now",
+    ownerOrder[0] === "h1" && ["home-start-knocking", "home-session-bar"].includes(ownerOrder[1]) && ownerOrder[2] === "home-meetings" && ownerOrder[3] === "out-now",
+    ownerOrder.join(", "),
+  );
   await op.goto(`${base}/app/schedule?day=${testDay}`);
   await settle(op);
   const cards = op.getByTestId("meeting-card");

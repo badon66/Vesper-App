@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PrepFlags } from "@/components/meetings/prep-flags";
 import { BookingActions } from "@/components/schedule/booking-actions";
 import { OutcomeForm } from "@/components/schedule/outcome-form";
 import { formatKm, navigateUrl } from "@/lib/schedule/distance";
@@ -44,6 +45,7 @@ export function MeetingCard({
   showDetails = false,
   showDay = false,
   viewerId = null,
+  prep = null,
 }: {
   meeting: MeetingWithLead;
   names: Map<string, string>;
@@ -60,6 +62,9 @@ export function MeetingCard({
   showDay?: boolean;
   // Who is looking: their own lead or booking says "you".
   viewerId?: string | null;
+  // Keenan's Home (2026-11-05): what the meeting still needs, as on the
+  // Meetings page. Owner only.
+  prep?: { missingMockup: boolean; missingColour: boolean } | null;
 }) {
   const lead = meeting.lead;
   const started = new Date(meeting.starts_at).getTime() <= now;
@@ -108,6 +113,8 @@ export function MeetingCard({
           </p>
         </div>
       ) : null}
+
+      {prep && !changed ? <PrepFlags leadId={lead.id} missingMockup={prep.missingMockup} missingColour={prep.missingColour} /> : null}
 
       {legKm !== null && previousTime ? (
         <p className="text-sm text-pretty">
