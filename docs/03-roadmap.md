@@ -91,7 +91,7 @@ The customer's page, phone first:
 - [x] Start smaller: switch individual runs on or off and watch the total update live; prices, footage and discounts can't be changed; the control box is always included; extra work marked "only with upper runs" drops off when no upper run is on; below the minimum job total (Settings, empty by default) the total rises to the minimum with a line saying so
 - [x] The warranty in the exact wording from Settings
 - [x] A big Book my install button, plus call, text and email buttons for (403) 895-9915 and info@vesperlighting.ca
-- [x] After Book my install, a thank-you screen: Keenan will be in touch within a day to set the date and go through the agreement; no signing, no payment
+- [x] After Book my install, a thank-you screen: Keenan will be in touch within a day (within one business day since 2026-11-05) to set the date and go through the agreement; no signing, no payment
 - [x] After the valid-until date, or once revoked: "This quote has expired" with the call and text buttons and no prices
 
 Keenan's side:
@@ -118,7 +118,7 @@ Rules:
 - [x] Todd Dean's quote: "Family & Friends Discount", prices held 120 days from the day it was made, and the $2,500 minimum
 - [x] Each run has a part of the house beside its level, guessed from its name in the quote builder, which Keenan can change
 - [x] A debate between five agents (homeowner, closer, designer, mobile UX, plain-language editor) settles the open choices, written into decisions.md; no plan to Keenan
-- [x] The page, top to bottom: their house and price, the Christmas banner (Settings, hides itself after December 24), six product points (Settings), their lights on an original house diagram with "What do these mean?", Start smaller with the total counting, track colour, Warranty, How install day works and See our work behind taps, and a bar with Book my install, Call and Text
+- [x] The page, top to bottom: their house and price, the Christmas banner (Settings, September 1 to November 30), six product points (Settings), their lights on an original house diagram with "What do these mean?", Start smaller with the total counting, track colour, Warranty, How install day works and See our work behind taps, and a bar with Book my install, Call and Text
 - [x] Keenan's minimum lines at the total; the price held, then "Prices may have changed since [date]" after it, with Book my install still working; links stay live until revoked, and a revoked link shows the closed page with Call and Text
 - [x] Quiet motion that respects reduce motion; tested at 390 and 430; the same agents review the screenshots and their fixes are made
 - [x] Commission recorded: 5% of the lights and control box after discounts, rush colour and upper access left out (built with M5 take 2)

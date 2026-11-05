@@ -900,3 +900,12 @@ The impeccable skill's critique ran as two isolated agents (a design review, and
 - **Smaller.** The small drawings drop the windows and are cropped tighter.
 - **For Keenan, not changed.** "Garage Eave" in the run names and "Garage line" in the explainer are two names for one part; "Two Upper Gables" is drawn as one gable; and "Upper & Lower Sides" lights the upper side on the drawing while upper access follows the level it was saved with (lower), so a quote whose only upper work is that run charges no upper access. Setting that run to upper in meeting mode would charge it.
 
+## 2026-11-05: Keenan's answers on the quote link rework
+
+- **The thank-you says "within one business day"** instead of "within a day" (the spec and the page).
+- **The Christmas banner runs September 1 to November 30** (Calgary), not to December 24 (migration `20261105042102`). The install season ends mid-December and custom colours take one to two weeks, so a later banner would promise something Vesper can't deliver. This replaces the September 1 to December 24 judgment call above.
+- **"Upper & Lower Sides" stays as built.** The drawing lights both sides for a sides run named for both floors; Keenan sets the level in meeting mode when he quotes, which decides upper access.
+- **See our work stays hidden** until Keenan adds real install photos to the presentation gallery.
+- **The rush colour fee stays $350** everywhere: Settings, and each new quote's own copy.
+- **Dropping the old `quote_valid_days` check is approved.** It needs Keenan at the screen, since Supabase asks a person to confirm a drop; it runs as its own migration when he is.
+
