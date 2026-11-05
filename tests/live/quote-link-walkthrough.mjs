@@ -412,6 +412,12 @@ try {
       (await page.getByTestId("hero-full").innerText()).trim() === "Full quote $4,959",
     `while counting: ${counting}`,
   );
+  const markOf = async (name) =>
+    smaller.getByRole("switch", { name: new RegExp(`^${name}`) }).locator(`[data-state="off"], [data-state="on"]`).first().getAttribute("data-state").catch(() => null);
+  check(
+    "each switch carries a small drawing of its own part: lit while on, dashed once off",
+    (await markOf("Left gable")) === "off" && (await markOf("Front upper")) === "on" && (await markOf("Garage")) === "on",
+  );
   await smaller.getByRole("switch", { name: /^Front upper/ }).click();
   await page.waitForTimeout(700);
   check(
@@ -427,8 +433,9 @@ try {
   const minLines = (await page.getByTestId("quote-lines").innerText()).replace(/\s+/g, " ");
   const note = flat(await page.getByTestId("minimum-note").innerText()).trim();
   check(
-    "below the minimum, both totals come to it, with a line saying so and Keenan's two sentences at the total",
-    minLines.includes("To reach our $2,500 minimum $1,403") &&
+    "below the minimum, both totals come to it, with the lines' own subtotal, a line saying so and Keenan's two sentences at the total",
+    minLines.includes("Subtotal $1,097 To reach our $2,500 minimum $1,403") &&
+      minLines.trim().endsWith("Total $2,500") &&
       (await totalOf(page, "smaller-total")) === "$2,500" &&
       (await totalOf(page, "hero-total")) === "$2,500" &&
       note === "That's under our $2,500 minimum, so this option comes to $2,500. Need a repair or something smaller? Call or text us and we'll see what we can do." &&
@@ -454,9 +461,16 @@ try {
   check("a tap opens the mockup full screen to zoom, and Close brings them back", viewerOpen && !(await viewer.isVisible().catch(() => false)));
 
   // Book my install: it asks once, restating the choice, before it books.
+  // A quick second tap lands where Yes appears; it must not book.
   await page.getByRole("button", { name: "Book my install" }).click();
   const confirm = page.getByTestId("book-confirm");
-  await confirm.getByRole("button", { name: "Yes, book my install" }).waitFor({ timeout: 10000 }).catch(() => {});
+  await confirm.getByRole("button", { name: "Yes, book my install" }).click({ timeout: 2000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+  const { data: afterDoubleTap } = await admin.from("quote_links").select("booked_at").eq("id", link.data.id).single();
+  check(
+    "a quick second tap on Book my install doesn't book: the confirm step is still open",
+    afterDoubleTap?.booked_at === null && (await confirm.getByRole("button", { name: "Yes, book my install" }).isVisible()),
+  );
   const confirmText = flat(await confirm.innerText().catch(() => ""));
   check(
     "Book my install asks first, with the choice, the total and nothing to sign or pay",
@@ -469,6 +483,7 @@ try {
   await page.screenshot({ path: `${out}/ql-phone-confirm.png` });
   const { data: notYet } = await admin.from("quote_links").select("booked_at").eq("id", link.data.id).single();
   check("nothing is booked until they say yes", notYet?.booked_at === null);
+  await page.waitForTimeout(600);
   await confirm.getByRole("button", { name: "Yes, book my install" }).click();
   await page.getByTestId("quote-thanks").waitFor({ timeout: 20000 }).catch(() => {});
   const thanks = flat(await page.getByTestId("quote-thanks").innerText().catch(() => ""));
@@ -555,6 +570,7 @@ try {
   // It opens at the booked choice; switching the front back on offers an update.
   await preview.getByTestId("start-smaller").getByRole("switch", { name: /^Front,/ }).click();
   await preview.getByRole("button", { name: "Update my choice" }).click();
+  await preview.waitForTimeout(600);
   await preview.getByTestId("book-confirm").getByRole("button", { name: "Yes, update it" }).click();
   await preview.getByTestId("thanks-preview").waitFor({ timeout: 20000 }).catch(() => {});
   const previewNote = await preview.getByTestId("thanks-preview").isVisible().catch(() => false);
@@ -600,6 +616,7 @@ try {
   await laterPage.getByTestId("start-smaller").getByRole("switch", { name: /^Front,/ }).click();
   await laterPage.getByRole("button", { name: "Update my choice" }).click();
   const laterConfirm = flat(await laterPage.getByTestId("book-confirm").innerText().catch(() => ""));
+  await laterPage.waitForTimeout(600);
   await laterPage.getByTestId("book-confirm").getByRole("button", { name: "Yes, update it" }).click();
   await laterPage.getByTestId("quote-thanks").waitFor({ timeout: 20000 }).catch(() => {});
   const { data: rebooked } = await admin.from("quote_links").select("booked_option").eq("id", link.data.id).single();
