@@ -12,13 +12,16 @@ export type TeamMeeting = {
   status: string;
   booked_by: string;
   setter_id: string | null;
+  lead_id: string;
   lead: { neighbourhood: string | null; address_line: string };
 };
 
 // whose: "Your booking" for the viewer's own lead (the same bookings as How
 // mine went), "Your lead, booked by Keenan" when Keenan picked the time for
 // it, otherwise "Booked by Zane".
-export type TeamRow = { id: string; startsAt: string; area: string; whose: string; mine: boolean };
+// leadId is set only on the viewer's own rows, which open their lead; a
+// row for someone else's lead carries nothing that leads to it.
+export type TeamRow = { id: string; startsAt: string; area: string; whose: string; mine: boolean; leadId: string | null };
 
 const GONE = new Set(["moved", "cancelled"]);
 
@@ -35,6 +38,7 @@ export function teamRows(meetings: TeamMeeting[], names: Map<string, string>, vi
         area: meeting.lead.neighbourhood?.trim() || streetOf(meeting.lead.address_line) || "Area not set",
         whose: mine ? (meeting.booked_by === viewerId ? "Your booking" : `Your lead, booked by ${booker}`) : `Booked by ${booker}`,
         mine,
+        leadId: mine ? meeting.lead_id : null,
       };
     });
 }

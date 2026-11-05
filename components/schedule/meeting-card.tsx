@@ -138,14 +138,17 @@ export function MeetingCard({
         </p>
       ) : null}
 
-      {prep && !changed ? <PrepFlags leadId={lead.id} missingMockup={prep.missingMockup} missingColour={prep.missingColour} compact={compact} /> : null}
+      {prep && !changed && !started ? <PrepFlags leadId={lead.id} missingMockup={prep.missingMockup} missingColour={prep.missingColour} compact={compact} /> : null}
 
-      {showDetails && !changed && compact ? (
+      {showDetails && !changed && compact && !started ? (
+        // Before the slot only: after it starts, the drive and the call are
+        // done. The next meeting's gold goes to Navigate on a phone (the
+        // drive is the next thing) and to Meeting mode on an iPad.
         <div className="flex flex-wrap gap-2">
           {isOwner ? (
             <a
               href={`/meeting/${lead.id}#start`}
-              className={cn("inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold", next && "border-primary")}
+              className={cn("inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold", next && "md:border-primary")}
             >
               Meeting mode
             </a>
@@ -154,7 +157,7 @@ export function MeetingCard({
             href={navigateUrl(lead)}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold"
+            className={cn("inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold", next && "max-md:border-primary")}
           >
             Navigate
           </a>
@@ -244,12 +247,14 @@ export function MeetingCard({
         <p className="text-sm text-muted-foreground">Keenan marks how it went after the meeting.</p>
       ) : null}
       {isOwner && meeting.status !== "moved" && (started || hasOutcome(meeting.status)) ? (
-        compact && hasOutcome(meeting.status) ? (
-          // Home: a marked outcome is one line until he changes it.
-          <details className="group flex flex-col gap-2" data-testid="outcome-marked">
+        compact ? (
+          // Home: one line until he opens it, so an evening of started
+          // meetings stays a list, not a stack of forms. Marked: "Qualified.
+          // Change". Not marked yet: "How did it go? Mark it".
+          <details className="group flex flex-col gap-2" data-testid={hasOutcome(meeting.status) ? "outcome-marked" : "outcome-unmarked"}>
             <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-              <span className="font-semibold">{MEETING_STATUS_LABELS[meeting.status]}.</span>
-              <span className="underline underline-offset-4 group-open:hidden">Change</span>
+              <span className="font-semibold">{hasOutcome(meeting.status) ? `${MEETING_STATUS_LABELS[meeting.status]}.` : "How did it go?"}</span>
+              <span className="underline underline-offset-4 group-open:hidden">{hasOutcome(meeting.status) ? "Change" : "Mark it"}</span>
             </summary>
             <OutcomeForm meetingId={meeting.id} current={meeting.status} currentReason={meeting.outcome_reason} reasons={reasons} />
           </details>

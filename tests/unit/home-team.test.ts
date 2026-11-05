@@ -7,6 +7,7 @@ const meeting = (over: Partial<TeamMeeting>): TeamMeeting => ({
   status: "booked",
   booked_by: "a",
   setter_id: "a",
+  lead_id: "lead-of-a",
   lead: { neighbourhood: "Bridgeland", address_line: "123 Aspen Crescent SW" },
   ...over,
 });
@@ -38,7 +39,10 @@ describe("teamRows", () => {
 
   it("carries nothing about the customer", () => {
     const [row] = teamRows([meeting({})], new Map(), "me");
-    expect(Object.keys(row).sort()).toEqual(["area", "id", "mine", "startsAt", "whose"]);
+    // Someone else's row leads nowhere; the viewer's own opens its lead.
+    expect(row.leadId).toBeNull();
+    expect(teamRows([meeting({ setter_id: "me", booked_by: "me" })], new Map(), "me")[0].leadId).toBe("lead-of-a");
+    expect(Object.keys(row).sort()).toEqual(["area", "id", "leadId", "mine", "startsAt", "whose"]);
   });
 });
 

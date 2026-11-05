@@ -75,8 +75,10 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
     const distances = legs(
       held.map((meeting) => ({ startsAt: meeting.starts_at, lat: meeting.lead.lat, lng: meeting.lead.lng, neighbourhood: meeting.lead.neighbourhood })),
     );
-    const toPrep = held.filter((meeting) => isLive(meeting.status) && needsPrep(meeting)).length;
-    const upcoming = held.filter((meeting) => isLive(meeting.status)).length;
+    // Prep is for meetings still ahead; once a slot starts it's past fixing.
+    const ahead = held.filter((meeting) => isLive(meeting.status) && new Date(meeting.starts_at).getTime() > now);
+    const toPrep = ahead.filter(needsPrep).length;
+    const upcoming = ahead.length;
     return (
       <div className="flex flex-col gap-3">
         {toPrep > 0 ? (

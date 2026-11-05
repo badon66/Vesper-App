@@ -132,7 +132,9 @@ export async function SalesHome({ profile }: { profile: SessionProfile }) {
           <h2 id="due-heading" className="text-lg font-bold">
             Follow-ups due
           </h2>
-          <p className="text-sm text-pretty text-muted-foreground">Your Follow up leads dated today or earlier, the oldest first.</p>
+          {due.length > 0 ? (
+            <p className="text-sm text-pretty text-muted-foreground">Your Follow up leads dated today or earlier, the oldest first.</p>
+          ) : null}
         </div>
         {due.length === 0 ? (
           <p className="text-sm text-pretty text-muted-foreground">
@@ -165,21 +167,39 @@ export async function SalesHome({ profile }: { profile: SessionProfile }) {
   );
 }
 
-// One evening of the team's meetings: when, where, and who booked it, on
-// one line where it fits. The setter's own bookings read in full strength.
+// One evening of the team's meetings: when, where, and who booked it, two
+// lines each so "who booked" always sits in the same place. The setter's
+// own rows read in full strength and open their lead.
 function TeamList({ rows, empty }: { rows: TeamRow[]; empty: string }) {
   if (rows.length === 0) return <p className="text-sm text-pretty text-muted-foreground">{empty}</p>;
   return (
     <ul className="flex flex-col divide-y rounded-md border">
-      {rows.map((row) => (
-        <li key={row.id} className="flex min-h-12 items-baseline gap-3 px-4 py-2.5" data-testid="team-row" data-mine={row.mine ? "true" : undefined}>
-          <span className="w-[4.75rem] shrink-0 font-bold tabular-nums">{formatTime(row.startsAt)}</span>
-          <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3">
-            <span className="font-semibold text-pretty">{row.area}</span>
-            <span className={cn("text-sm", row.mine ? "font-semibold text-foreground" : "text-muted-foreground")}>{row.whose}</span>
-          </span>
-        </li>
-      ))}
+      {rows.map((row) => {
+        const body = (
+          <>
+            <span className="min-w-[4.75rem] shrink-0 font-bold whitespace-nowrap tabular-nums">{formatTime(row.startsAt)}</span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="font-semibold text-pretty">{row.area}</span>
+              <span className={cn("text-sm", row.mine ? "font-semibold text-foreground" : "text-muted-foreground")}>{row.whose}</span>
+            </span>
+          </>
+        );
+        return (
+          <li key={row.id} data-testid="team-row" data-mine={row.mine ? "true" : undefined}>
+            {row.leadId ? (
+              <Link
+                href={`/app/leads/${row.leadId}`}
+                className="flex min-h-14 items-center gap-3 px-4 py-2 outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+              >
+                {body}
+                <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
+              </Link>
+            ) : (
+              <div className="flex min-h-14 items-center gap-3 px-4 py-2">{body}</div>
+            )}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -216,7 +236,7 @@ function PastRow({ meeting, today }: { meeting: MeetingWithLead; today: string }
           data-testid="past-outcome"
         >
           {meeting.status === "qualified" ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
-          {waiting ? "Waiting for Keenan to mark it" : MEETING_STATUS_LABELS[meeting.status]}
+          {waiting ? "Not marked yet" : MEETING_STATUS_LABELS[meeting.status]}
         </span>
         <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
       </Link>
