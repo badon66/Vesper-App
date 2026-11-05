@@ -655,8 +655,10 @@ try {
     await page.screenshot({ path: `${out}/m2-duplicate-warning.png`, fullPage: false });
     await page.getByRole("button", { name: "Cancel" }).click();
     await page.getByTestId("discard-lead").getByRole("button", { name: "Discard" }).click();
-    await page.waitForURL("**/app/leads", { timeout: 20000 });
+    // While knocking, Cancel goes back to Session (2026-11-05).
+    await page.waitForURL("**/app/session", { timeout: 20000 });
     await settle(page);
+    check("while knocking, New lead's Cancel goes back to Session", new URL(page.url()).pathname === "/app/session");
 
     // The typed lead gets its map position once its address is picked.
     await page.goto(`${base}/app/leads/${typedLead.id}/edit`);
