@@ -86,10 +86,10 @@ const MINI_PX = 128;
 // row shows which part of the house it is and what switching it does at any
 // scroll position (the critique, 2026-11-04).
 export const SEGMENT_CROPS: Record<HouseSegment, Crop> = {
-  "garage-gable": [0, 80, 140, 78],
-  garage: [0, 80, 140, 78],
+  "garage-gable": [0, 84, 120, 67],
+  garage: [0, 84, 120, 67],
   "lower-eave": [100, 70, 230, 128],
-  porch: [172, 108, 130, 72.6],
+  porch: [182, 128, 110, 61.5],
   "upper-eave": [100, 20, 200, 112],
   "upper-gable": [180, 6, 170, 95],
   "lower-sides": [189, 40, 161, 90],

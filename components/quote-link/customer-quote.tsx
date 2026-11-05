@@ -87,6 +87,9 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
   // was, so a quick second tap would land on it; taps in the first half
   // second are ignored (the critique, 2026-11-04).
   const confirmOpenedAt = useRef(0);
+  // When the press on Yes began: a press that starts in that first half
+  // second doesn't count even if it lifts after it.
+  const yesPressedAt = useRef(0);
 
   // A visit, once per opening, even when React runs the effect twice.
   // Keenan's own visits are left out on the server.
@@ -372,7 +375,7 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
               Switch all back on
             </button>
           ) : null}
-          <Breakdown full={full.lines} current={current.lines} beforeMinimum={current.beforeMinimum} total={total} />
+          <Breakdown full={full.lines} current={current.lines} beforeMinimum={current.beforeMinimum} totalSubtotal={current.subtotal} gstEnabled={quote.gstEnabled} />
           <p aria-live="polite" className="sr-only">
             {announced}
           </p>
@@ -456,13 +459,13 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
           <p>{view.company.address}</p>
           <a
             href={phoneHref(view.company.phone, "tel")}
-            className="inline-flex min-h-11 items-center self-start rounded-sm text-foreground tabular-nums underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="-mx-1 inline-flex min-h-11 items-center self-start rounded-sm px-1 text-foreground tabular-nums underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {view.company.phone}
           </a>
           <a
             href={`mailto:${view.company.email}?subject=${encodeURIComponent("My Vesper quote")}`}
-            className="inline-flex min-h-11 items-center self-start rounded-sm text-foreground underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="-mx-1 inline-flex min-h-11 items-center self-start rounded-sm px-1 text-foreground underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {view.company.email}
           </a>
@@ -481,6 +484,7 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
         onBook={() => {
           setError(null);
           confirmOpenedAt.current = performance.now();
+          yesPressedAt.current = 0;
           setPhase("confirm");
         }}
       />
@@ -501,8 +505,14 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
             </button>
             <button
               type="button"
+              onPointerDown={() => {
+                yesPressedAt.current = performance.now();
+              }}
               onClick={() => {
-                if (performance.now() - confirmOpenedAt.current < 500) return;
+                // A keyboard press has no pointer down: its click is the press.
+                const pressed = yesPressedAt.current > confirmOpenedAt.current ? yesPressedAt.current : performance.now();
+                yesPressedAt.current = 0;
+                if (pressed - confirmOpenedAt.current < 500) return;
                 void book();
               }}
               className="inline-flex h-12 items-center rounded-md bg-primary px-5 text-base font-semibold text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -589,11 +599,24 @@ function CountedTotal({ subtotal, gstEnabled }: { subtotal: number; gstEnabled: 
 
 // The price line by line. A line that drops off (upper access when every
 // upper run is off, extra work only with upper runs) or appears (the top-up
-// to the minimum) eases in and out rather than jumping. Under the minimum, a
-// Subtotal shows the lines' own sum, discount taken, so the top-up visibly
+// to the minimum) eases in and out rather than jumping. Under the minimum,
+// "Before the minimum" shows the lines' own sum, discount taken (not called a
+// subtotal, which the PDF uses for the total before GST), so the top-up visibly
 // raises that rather than cancelling the discount; the column closes on its
 // total for anyone checking the sum downwards (the critique, 2026-11-04).
-function Breakdown({ full, current, beforeMinimum, total }: { full: QuoteLine[]; current: QuoteLine[]; beforeMinimum: number; total: string }) {
+function Breakdown({
+  full,
+  current,
+  beforeMinimum,
+  totalSubtotal,
+  gstEnabled,
+}: {
+  full: QuoteLine[];
+  current: QuoteLine[];
+  beforeMinimum: number;
+  totalSubtotal: number;
+  gstEnabled: boolean;
+}) {
   const keyed = (lines: QuoteLine[]) => {
     const seen = new Map<string, number>();
     return lines.map((line) => {
@@ -614,17 +637,30 @@ function Breakdown({ full, current, beforeMinimum, total }: { full: QuoteLine[];
         return (
           <div key={key} className="quote-row" data-shown={shown} aria-hidden={!shown} data-line={line.label}>
             <div>
-              {isMinimum(line) ? <LineRow label="Subtotal" amount={lineAmount(beforeMinimum)} testId="line-subtotal" /> : null}
+              {isMinimum(line) ? <SumRow label="Before the minimum" amount={lineAmount(beforeMinimum)} testId="line-before-minimum" /> : null}
               <LineRow label={line.label} detail={line.detail} amount={lineAmount(line.amount)} />
             </div>
           </div>
         );
       })}
       <div className="flex items-baseline justify-between gap-4 border-t border-navy py-2.5" data-testid="line-total">
-        <dt>Total</dt>
-        <dd className="shrink-0 tabular-nums">{total}</dd>
+        <dt className="font-bold">Total</dt>
+        <dd className="shrink-0 font-bold">
+          <CountedTotal subtotal={totalSubtotal} gstEnabled={gstEnabled} />
+        </dd>
       </div>
     </dl>
+  );
+}
+
+// A sum inside the breakdown: a hairline above and a quiet label, so nobody
+// adding the column counts it as one more line.
+function SumRow({ label, amount, testId }: { label: string; amount: string; testId?: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-t border-b border-t-navy/40 py-2.5" data-testid={testId}>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="shrink-0 font-semibold tabular-nums">{amount}</dd>
+    </div>
   );
 }
 
@@ -664,9 +700,9 @@ const EXPLAINED: { title: string; text: string; lit: HouseSegment[]; crop: Crop 
     crop: WHOLE_HOUSE,
   },
   { title: "Gable", text: "The two sloped edges of a peak.", lit: ["garage-gable", "upper-gable"], crop: WHOLE_HOUSE },
-  { title: "Garage line", text: "The roof edge over the garage door.", lit: ["garage"], crop: [0, 80, 140, 78] },
+  { title: "Garage line", text: "The roof edge over the garage door.", lit: ["garage"], crop: [0, 84, 120, 67] },
   { title: "Sides", text: "The roof edges down each side of the house.", lit: ["lower-sides", "upper-sides"], crop: [189, 40, 161, 90] },
-  { title: "Porch", text: "The small roof over your front door.", lit: ["porch"], crop: [172, 108, 130, 72.6] },
+  { title: "Porch", text: "The small roof over your front door.", lit: ["porch"], crop: [182, 128, 110, 61.5] },
 ];
 
 function PartsExplained() {

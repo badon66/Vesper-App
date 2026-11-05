@@ -434,8 +434,8 @@ try {
   const note = flat(await page.getByTestId("minimum-note").innerText()).trim();
   check(
     "below the minimum, both totals come to it, with the lines' own subtotal, a line saying so and Keenan's two sentences at the total",
-    minLines.includes("Subtotal $1,097 To reach our $2,500 minimum $1,403") &&
-      minLines.trim().endsWith("Total $2,500") &&
+    minLines.includes("Before the minimum $1,097 To reach our $2,500 minimum $1,403") &&
+      (await totalOf(page, "line-total")) === "$2,500" &&
       (await totalOf(page, "smaller-total")) === "$2,500" &&
       (await totalOf(page, "hero-total")) === "$2,500" &&
       note === "That's under our $2,500 minimum, so this option comes to $2,500. Need a repair or something smaller? Call or text us and we'll see what we can do." &&
