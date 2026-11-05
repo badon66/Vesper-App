@@ -1,17 +1,23 @@
 import { describe, expect, it } from "vitest";
+import { UPPER_ACCESS_LABEL } from "@/lib/pricing";
 import {
   choiceInSentence,
   choiceLabel,
   cleanSelection,
+  customerChoice,
+  customerChoiceInSentence,
   customerTotal,
+  lineAmount,
   optionName,
   parseCustomerQuote,
   phoneHref,
+  priceHoldPassed,
   priceSelection,
   quoteFromRow,
   quoteLinkMessage,
   quoteLinkUrl,
   runDetail,
+  smsWithBody,
   TOKEN_PATTERN,
 } from "@/lib/quote-link/view";
 
@@ -68,17 +74,24 @@ describe("reading the database's answer", () => {
     expect(view.company.phone).toBe("(403) 895-9915");
   });
 
-  it("treats anything that isn't a live quote as expired, keeping the company contact", () => {
-    for (const data of [{ state: "expired", company: live.company }, null, "nope", { state: "live" }, { state: "live", first_name: 4 }]) {
+  it("treats anything that isn't a live quote as closed, keeping the company contact", () => {
+    for (const data of [
+      { state: "closed", company: live.company },
+      { state: "expired", company: live.company },
+      null,
+      "nope",
+      { state: "live" },
+      { state: "live", first_name: 4 },
+    ]) {
       const view = parseCustomerQuote(data);
-      expect(view.state).toBe("expired");
-      if (view.state === "expired") expect(view.company.phone).toBe("(403) 895-9915");
+      expect(view.state).toBe("closed");
+      if (view.state === "closed") expect(view.company.phone).toBe("(403) 895-9915");
     }
   });
 
   it("falls back to Vesper's own contact when Settings has a blank", () => {
-    const view = parseCustomerQuote({ state: "expired", company: { phone: " ", email: null } });
-    expect(view.state === "expired" && view.company).toEqual({
+    const view = parseCustomerQuote({ state: "closed", company: { phone: " ", email: null } });
+    expect(view.state === "closed" && view.company).toEqual({
       name: "Vesper Lighting",
       phone: "(403) 895-9915",
       email: "info@vesperlighting.ca",
@@ -156,7 +169,7 @@ describe("the link and the text", () => {
       phone: "(403) 895-9915",
     });
     expect(text).toBe(
-      "Hi Todd, here's your Vesper quote:\nhttps://quote.vesperlighting.ca/q/abcdefghijklmnopqrstuvwx\n\nIt's good until Monday, November 16. When you're ready, tap Book my install, or call or text me with any questions.\n\nKeenan, Vesper Lighting\n(403) 895-9915",
+      "Hi Todd, here's your Vesper quote:\nhttps://quote.vesperlighting.ca/q/abcdefghijklmnopqrstuvwx\n\nYour price is held until Monday, November 16. When you're ready, tap Book my install, or call or text me with any questions.\n\nKeenan, Vesper Lighting\n(403) 895-9915",
     );
     expect(text).not.toMatch(/[–—]/);
     expect(quoteLinkMessage({ firstName: " ", link: "L", validUntil: null, phone: "P" }).startsWith("Here's your Vesper quote:\nL\n\nWhen you're ready")).toBe(true);
@@ -165,5 +178,130 @@ describe("the link and the text", () => {
   it("dials and texts Canadian numbers with the +1", () => {
     expect(phoneHref("(403) 895-9915", "tel")).toBe("tel:+14038959915");
     expect(phoneHref("1-403-895-9915", "sms")).toBe("sms:+14038959915");
+  });
+
+  it("opens a text with a first line they can keep or delete", () => {
+    expect(smsWithBody("(403) 895-9915", "Hi Keenan, a question about the quote for 12 Example Street SW: ")).toBe(
+      "sms:+14038959915?&body=Hi%20Keenan%2C%20a%20question%20about%20the%20quote%20for%2012%20Example%20Street%20SW%3A%20",
+    );
+  });
+});
+
+// The rework (2026-11-04): links that don't expire, the page's new parts,
+// and the new prices as the customer's switches move them.
+const rework = {
+  ...live,
+  valid_until: "2027-03-02",
+  today: "2026-11-04",
+  quote: {
+    ...live.quote,
+    price_per_ft: 24,
+    runs: [
+      { name: "Garage Gable", feet: 34, level: "lower", part: "gable" },
+      { name: "Garage Eave", feet: 30, level: "lower" },
+      { name: "Lower Porch Eave", feet: 13, level: "lower" },
+      { name: "Upper Front Eave", feet: 32, level: "upper" },
+      { name: "Two Upper Gables", feet: 30, level: "upper", part: "gable" },
+      { name: "Upper & Lower Sides", feet: 26, level: "lower", part: "nonsense" },
+    ],
+    adders: [],
+    discounts: [{ label: "Family & Friends Discount", amount: 300 }],
+    colour_timing: "rush",
+    rush_fee: 350,
+    upper_access_fee: 200,
+    upper_gable_access_fee: 400,
+    track_colour_name: "Brown",
+    track_custom: false,
+  },
+  service_call_fee: 200,
+  christmas: { title: "Want them up for Christmas?", text: "We install every day the weather allows." },
+  product_points: [
+    { icon: "lightbulb", text: "RGBW lights with a dedicated white." },
+    { icon: "rocket", text: "An icon Settings doesn't offer." },
+    { icon: "plug", text: "  " },
+  ],
+  install_day: { title: "How install day works", body: "We confirm the plan." },
+  gallery: ["gallery/a.jpg", " "],
+};
+
+describe("the reworked page's answer", () => {
+  const view = parseCustomerQuote(rework);
+  const quote = view.state === "live" ? view.quote : null;
+
+  it("reads the new parts: the hold date, banner, points, install day, gallery and service call", () => {
+    expect(view.state).toBe("live");
+    if (view.state !== "live") return;
+    expect([view.validUntil, view.today]).toEqual(["2027-03-02", "2026-11-04"]);
+    expect(view.christmas).toEqual({ title: "Want them up for Christmas?", text: "We install every day the weather allows." });
+    // An unknown icon is a tick; a blank line is left out.
+    expect(view.productPoints).toEqual([
+      { icon: "lightbulb", text: "RGBW lights with a dedicated white." },
+      { icon: "check", text: "An icon Settings doesn't offer." },
+    ]);
+    expect(view.installDay).toEqual({ title: "How install day works", body: "We confirm the plan." });
+    expect(view.gallery).toEqual(["gallery/a.jpg"]);
+    expect(view.serviceCallFee).toBe(200);
+    expect(view.quote.trackColourName).toBe("Brown");
+  });
+
+  it("gives every run a part: the stored one, or the guess from its name", () => {
+    expect(quote?.runs.map((run) => run.part)).toEqual(["gable", "garage", "porch", "eave", "gable", "sides"]);
+  });
+
+  it("leaves out what Settings hasn't set, and reads a take 1 answer without the new parts", () => {
+    const bare = parseCustomerQuote({ ...rework, christmas: null, install_day: { title: "x", body: " " }, service_call_fee: null, product_points: "junk", gallery: null });
+    expect(bare.state === "live" && [bare.christmas, bare.installDay, bare.serviceCallFee, bare.productPoints, bare.gallery]).toEqual([null, null, null, [], []]);
+    const take1 = parseCustomerQuote(live);
+    expect(take1.state === "live" && [take1.today, take1.christmas, take1.quote.rushFee, take1.quote.upperAccessFee]).toEqual([null, null, null, null]);
+  });
+
+  it("prices the full quote with the upper gable amount and the rush colour fee", () => {
+    if (!quote) throw new Error("not live");
+    const priced = priceSelection(quote, null);
+    expect(priced.lines.map((line) => [line.label, line.amount])).toEqual([
+      ["Track and lights", 3960],
+      ["Control box", 500],
+      [UPPER_ACCESS_LABEL, 400],
+      ["Rush colour fee", 350],
+      ["Family & Friends Discount", -300],
+    ]);
+    expect(priced.lines[3].detail).toBe("Brown track, powder coated this season");
+    expect(customerTotal(quote, null)).toBe("$4,910");
+  });
+
+  it("moves upper access with their switches: the gable off drops it to $200, every upper run off drops it", () => {
+    if (!quote) throw new Error("not live");
+    const noGable = priceSelection(quote, [0, 1, 2, 3, 5]);
+    expect(noGable.lines.find((line) => line.label === UPPER_ACCESS_LABEL)?.amount).toBe(200);
+    const lowerOnly = priceSelection(quote, [0, 1, 2, 5]);
+    expect(lowerOnly.lines.some((line) => line.label === UPPER_ACCESS_LABEL)).toBe(false);
+    // Lower runs: 103 ft x $24 = $2,472 + $500 + $350 - $300 = $3,022.
+    expect(customerTotal(quote, [0, 1, 2, 5])).toBe("$3,022");
+  });
+
+  it("never adds the new lines to a quote made before them", () => {
+    const old = quoteFromRow({ ...rework.quote, rush_fee: null, upper_access_fee: null, upper_gable_access_fee: null });
+    if (!old) throw new Error("unreadable");
+    const labels = priceSelection(old, null).lines.map((line) => line.label);
+    expect(labels).not.toContain(UPPER_ACCESS_LABEL);
+    expect(labels).not.toContain("Rush colour fee");
+  });
+
+  it("holds prices until the date, and only says they may have changed after it", () => {
+    expect(priceHoldPassed("2027-03-02", "2027-03-02")).toBe(false);
+    expect(priceHoldPassed("2027-03-02", "2027-03-03")).toBe(true);
+    expect(priceHoldPassed(null, "2027-03-03")).toBe(false);
+    expect(priceHoldPassed("2027-03-02", null)).toBe(false);
+  });
+
+  it("calls the whole quote the full quote, in the customer's words", () => {
+    expect(customerChoice("Recommended package")).toBe("The full quote");
+    expect(customerChoiceInSentence("Recommended package")).toBe("the full quote");
+    expect(customerChoice("Start smaller: Front, Garage")).toBe("Front and Garage");
+  });
+
+  it("writes a discount with a true minus sign", () => {
+    expect(lineAmount(-300)).toBe("\u2212$300");
+    expect(lineAmount(400)).toBe("$400");
   });
 });
