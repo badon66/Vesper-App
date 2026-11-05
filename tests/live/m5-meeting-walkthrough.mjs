@@ -355,6 +355,36 @@ try {
   await priceScreen.getByLabel("Run 1 feet").press("ArrowLeft");
   await page.waitForTimeout(500);
   check("arrow keys stay with the field being typed in", (await currentScreen(page)) === "The price");
+  // Run parts and upper access (2026-11-04): the part follows the name, and
+  // upper access follows the runs, from this quote's own two amounts.
+  const part = priceScreen.getByLabel("Run 1 part of the house");
+  check("a run's part of the house is guessed from its name", (await part.inputValue()) === "eave");
+  const upperAmount = Number(settings.upper_access_fee ?? 0);
+  const gableAmount = Number(settings.upper_gable_access_fee ?? 0);
+  check(
+    "this quote's upper access amounts come from Settings and can be changed here",
+    (await priceScreen.getByLabel("Upper access").inputValue()) === (upperAmount ? String(upperAmount) : "") &&
+      (await priceScreen.getByLabel("With upper gable").inputValue()) === (gableAmount ? String(gableAmount) : ""),
+  );
+  const billText = async () => (await priceScreen.getByTestId("quote-bill").innerText()).replace(/\s+/g, " ");
+  check("no upper run, no upper access line", !(await billText()).includes("Upper roof access"));
+  await priceScreen.getByRole("button", { name: /^Run 1 level/ }).click();
+  await page.waitForTimeout(300);
+  const withUpper = await billText();
+  await part.selectOption("gable");
+  await page.waitForTimeout(300);
+  const withGable = await billText();
+  check(
+    "an upper run adds upper access, and an upper gable the gable amount instead",
+    (upperAmount > 0 ? withUpper.includes(`Upper roof access`) && withUpper.includes(money(upperAmount)) : true) &&
+      (gableAmount > 0 ? withGable.includes(money(gableAmount)) : true) &&
+      withGable.split("Upper roof access").length === 2,
+    `${withUpper.slice(0, 160)} | ${withGable.slice(0, 160)}`,
+  );
+  await part.selectOption("eave");
+  await priceScreen.getByRole("button", { name: /^Run 1 level/ }).click();
+  await page.waitForTimeout(300);
+  check("back to a lower eave, the line goes and the total is as before", !(await billText()).includes("Upper roof access") && (await priceScreen.getByTestId("quote-total").innerText()).trim() === wanted);
   await page.screenshot({ path: `${out}/m5-price.png` });
 
   // ---------------------------------------------------------------- a reload mid-meeting
