@@ -499,8 +499,8 @@ try {
     await settle(op);
     check(
       "the owner's Home is today: the date, Start knocking or his live session, Meetings and who's out knocking now",
-      (await op.getByRole("heading", { name: "Today", exact: true }).count()) === 1 &&
-        (await op.getByText("Calgary time").count()) >= 1 &&
+      /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), /.test((await op.locator("main h1").first().innerText()).trim()) &&
+        (await op.getByRole("heading", { name: "Meetings today", exact: true }).count()) === 1 &&
         (await op.locator('[data-testid="home-start-knocking"], [data-testid="home-session-bar"]').count()) === 1 &&
         (await op.getByTestId("home-meetings").count()) === 1,
     );
@@ -516,7 +516,13 @@ try {
     await meetings.getByRole("button", { name: /^Tomorrow/ }).click();
     check(
       "Meetings switches between Today and Tomorrow in place",
-      (await meetings.getByRole("button", { name: /^Tomorrow/ }).getAttribute("aria-pressed")) === "true" && (await meetings.locator('[data-day-list="Tomorrow"]').isVisible()),
+      (await meetings.getByRole("button", { name: /^Tomorrow/ }).getAttribute("aria-pressed")) === "true" &&
+        (await meetings.locator('[data-day-list="Tomorrow"]').isVisible()) &&
+        (await meetings.getByRole("heading", { name: "Meetings tomorrow", exact: true }).count()) === 1,
+    );
+    check(
+      "Keenan's Home leaves moved and cancelled bookings to Schedule",
+      (await meetings.locator('[data-testid="meeting-card"][data-status="moved"], [data-testid="meeting-card"][data-status="cancelled"]').count()) === 0,
     );
     await meetings.getByRole("button", { name: /^Today/ }).click();
     check(

@@ -1,13 +1,14 @@
+import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { DaySwitch } from "@/components/home/day-switch";
 import { SessionLink } from "@/components/home/session-link";
-import { MeetingCard } from "@/components/schedule/meeting-card";
 import type { SessionProfile } from "@/lib/auth/profile";
 import { splitMine, teamRows, type TeamRow } from "@/lib/home/team";
 import { followUpLabel } from "@/lib/leads/attention";
 import { followUpsDue, namesById, openKnockSession } from "@/lib/leads/queries";
+import { completenessLabel } from "@/lib/leads/questions";
 import { leadName } from "@/lib/leads/status";
-import { formatMeetingTime, MEETING_STATUS_LABELS } from "@/lib/schedule/meetings";
+import { formatMeetingTime, heldTimeLabel, MEETING_STATUS_LABELS } from "@/lib/schedule/meetings";
 import { bookingSettings, meetingsBetween, meetingsOnDay, type MeetingWithLead } from "@/lib/schedule/queries";
 import { createClient } from "@/lib/supabase/server";
 import { addDays, calgaryDayStart, calgaryToday, formatTime, requestTime } from "@/lib/time";
@@ -19,8 +20,8 @@ const PAST_DAYS = 7;
 // A setter's Home (Keenan, 2026-11-05), top to bottom: Start knocking or the
 // live session; the team's schedule for today, with a switch to tomorrow
 // (every meeting's time, area and who booked it, never a customer's name,
-// phone or email); How mine went (their own bookings, what's coming and how
-// each meeting went); follow-ups due. Every query is scoped to this person
+// phone or email); How mine went (their own bookings: how each meeting in
+// the last 7 days went, then what's coming up); follow-ups due. Every query is scoped to this person
 // or to the team, so View as shows exactly what they would see (CLAUDE.md,
 // View as).
 export async function SalesHome({ profile }: { profile: SessionProfile }) {
@@ -56,17 +57,18 @@ export async function SalesHome({ profile }: { profile: SessionProfile }) {
       <SessionLink session={session} />
 
       <DaySwitch
-        heading="Team schedule"
         headingId="team-heading"
         testId="team-schedule"
         days={[
           {
             label: "Today",
+            title: "Team schedule today",
             count: todayRows.length,
             content: <TeamList rows={todayRows} empty="Nothing booked for today yet. Every meeting the team books shows here, in time order." />,
           },
           {
             label: "Tomorrow",
+            title: "Team schedule tomorrow",
             count: tomorrowRows.length,
             content: <TeamList rows={tomorrowRows} empty="Nothing booked for tomorrow yet." />,
           },
@@ -74,44 +76,30 @@ export async function SalesHome({ profile }: { profile: SessionProfile }) {
       />
 
       <section aria-labelledby="mine-heading" className="flex flex-col gap-3" data-testid="how-mine-went">
-        <div>
-          <h2 id="mine-heading" className="text-lg font-bold">
-            How mine went
-          </h2>
-          <p className="text-sm text-pretty text-muted-foreground">
-            Your bookings: what&apos;s coming up, then how each meeting went this past week, once Keenan marks it.
-          </p>
-        </div>
+        <h2 id="mine-heading" className="text-lg font-bold">
+          How mine went
+        </h2>
         {coming.length === 0 && past.length === 0 ? (
           <p className="text-sm text-pretty text-muted-foreground">
-            No bookings yet. Book a time from Session or Schedule, and it shows here.
+            No bookings in the last 7 days or coming up. Book a time from Session or Schedule, and it shows here.
           </p>
         ) : null}
-        {coming.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            <h3 className="text-base font-semibold">Coming up</h3>
-            {coming.map((meeting) => (
-              <MeetingCard
-                key={meeting.id}
-                meeting={meeting}
-                names={names}
-                now={now}
-                canChange
-                isOwner={false}
-                reasons={[]}
-                showLead
-                showDay
-                viewerId={profile.id}
-              />
-            ))}
-          </div>
-        ) : null}
         {past.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            <h3 className="text-base font-semibold">How they went</h3>
-            <ul className="flex flex-col divide-y rounded-md border" aria-label="How they went">
+          <div className="flex flex-col gap-2">
+            <h3 className="text-base font-semibold">Last 7 days</h3>
+            <ul className="flex flex-col divide-y rounded-md border" aria-label="Last 7 days">
               {past.map((meeting) => (
                 <PastRow key={meeting.id} meeting={meeting} />
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {coming.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            <h3 className="text-base font-semibold">Coming up</h3>
+            <ul className="flex flex-col divide-y rounded-md border" aria-label="Coming up">
+              {coming.map((meeting) => (
+                <ComingRow key={meeting.id} meeting={meeting} />
               ))}
             </ul>
           </div>
@@ -123,10 +111,10 @@ export async function SalesHome({ profile }: { profile: SessionProfile }) {
           <h2 id="due-heading" className="text-lg font-bold">
             Follow-ups due
           </h2>
-          <p className="text-sm text-muted-foreground">Your Follow up leads dated today or earlier, the oldest first.</p>
+          <p className="text-sm text-pretty text-muted-foreground">Your Follow up leads dated today or earlier, the oldest first.</p>
         </div>
         {due.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-pretty text-muted-foreground">
             None due today. When you move a lead to Follow up, it shows here on the day you picked.
           </p>
         ) : (
@@ -166,7 +154,7 @@ function TeamList({ rows, empty }: { rows: TeamRow[]; empty: string }) {
           <span className="w-20 shrink-0 font-bold tabular-nums">{formatTime(row.startsAt)}</span>
           <span className="flex min-w-0 flex-col">
             <span className="font-semibold text-pretty">{row.area}</span>
-            <span className="text-sm text-muted-foreground">{row.mine ? "Your booking" : `Booked by ${row.bookedBy}`}</span>
+            <span className="text-sm text-muted-foreground">{row.whose}</span>
           </span>
         </li>
       ))}
@@ -174,7 +162,7 @@ function TeamList({ rows, empty }: { rows: TeamRow[]; empty: string }) {
   );
 }
 
-// A booking that already happened: when, whose, and how it went.
+// A booking that already happened: whose, when, and how it went.
 function PastRow({ meeting }: { meeting: MeetingWithLead }) {
   const lead = meeting.lead;
   const outcome =
@@ -183,20 +171,51 @@ function PastRow({ meeting }: { meeting: MeetingWithLead }) {
     <li>
       <Link
         href={`/app/leads/${lead.id}`}
-        className="flex min-h-16 flex-col justify-center gap-0.5 px-4 py-3 outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className="flex min-h-16 items-center justify-between gap-3 px-4 py-3 outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         data-testid="past-booking"
       >
-        <span className="flex flex-wrap items-baseline justify-between gap-x-3">
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <span className="font-semibold">{leadName(lead)}</span>
+            <span className={cn("text-sm", meeting.status === "qualified" ? "font-bold" : "font-semibold")}>{outcome}</span>
+          </span>
+          <span className="text-sm text-muted-foreground">
+            {formatMeetingTime(meeting.starts_at)}
+            {lead.neighbourhood ? `, ${lead.neighbourhood}` : ""}
+          </span>
+          {meeting.status === "not_qualified" && meeting.outcome_reason ? (
+            <span className="text-sm text-muted-foreground">Reason: {meeting.outcome_reason}</span>
+          ) : null}
+        </span>
+        <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
+      </Link>
+    </li>
+  );
+}
+
+// A booking still ahead: when, who, where and how complete the lead is. It
+// opens the lead, where Move and Cancel are (as on Schedule).
+function ComingRow({ meeting }: { meeting: MeetingWithLead }) {
+  const lead = meeting.lead;
+  return (
+    <li>
+      <Link
+        href={`/app/leads/${lead.id}`}
+        className="flex min-h-16 items-center justify-between gap-3 px-4 py-3 outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        data-testid="coming-booking"
+      >
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="font-bold tabular-nums">{heldTimeLabel(meeting.starts_at)}</span>
           <span className="font-semibold">{leadName(lead)}</span>
-          <span className="text-sm font-semibold">{outcome}</span>
+          <span className="text-sm text-muted-foreground">
+            {lead.neighbourhood || lead.address_line}
+            <span aria-hidden="true"> · </span>
+            <span className="whitespace-nowrap" data-testid="completeness">
+              {completenessLabel(lead)}
+            </span>
+          </span>
         </span>
-        <span className="text-sm text-muted-foreground">
-          {formatMeetingTime(meeting.starts_at)}
-          {lead.neighbourhood ? `, ${lead.neighbourhood}` : ""}
-        </span>
-        {meeting.status === "not_qualified" && meeting.outcome_reason ? (
-          <span className="text-sm text-muted-foreground">Reason: {meeting.outcome_reason}</span>
-        ) : null}
+        <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
       </Link>
     </li>
   );

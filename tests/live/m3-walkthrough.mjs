@@ -401,7 +401,10 @@ try {
   await team.getByRole("button", { name: /^Tomorrow/ }).click();
   check(
     "the team's schedule switches to tomorrow in place",
-    (await team.getByRole("button", { name: /^Tomorrow/ }).getAttribute("aria-pressed")) === "true" && (await team.locator('[data-day-list="Tomorrow"]').isVisible()) && !(await team.locator('[data-day-list="Today"]').isVisible()),
+    (await team.getByRole("button", { name: /^Tomorrow/ }).getAttribute("aria-pressed")) === "true" &&
+      (await team.locator('[data-day-list="Tomorrow"]').isVisible()) &&
+      !(await team.locator('[data-day-list="Today"]').isVisible()) &&
+      (await team.getByRole("heading", { name: "Team schedule tomorrow", exact: true }).count()) === 1,
   );
   await team.getByRole("button", { name: /^Today/ }).click();
   const teamHtml = await team.innerHTML();
@@ -1160,7 +1163,7 @@ try {
       .filter((id) => ["h1", "home-start-knocking", "home-session-bar", "home-meetings", "out-now"].includes(id)),
   );
   check(
-    "Keenan's Home: Today, then Start knocking or his live session, then Meetings, then who's out knocking now",
+    "Keenan's Home: the date, then Start knocking or his live session, then Meetings, then who's out knocking now",
     ownerOrder[0] === "h1" && ["home-start-knocking", "home-session-bar"].includes(ownerOrder[1]) && ownerOrder[2] === "home-meetings" && ownerOrder[3] === "out-now",
     ownerOrder.join(", "),
   );

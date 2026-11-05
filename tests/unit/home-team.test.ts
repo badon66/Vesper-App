@@ -6,6 +6,7 @@ const meeting = (over: Partial<TeamMeeting>): TeamMeeting => ({
   starts_at: "2026-11-06T01:00:00Z",
   status: "booked",
   booked_by: "a",
+  setter_id: "a",
   lead: { neighbourhood: "Bridgeland", address_line: "123 Aspen Crescent SW" },
   ...over,
 });
@@ -14,25 +15,30 @@ describe("teamRows", () => {
   it("lists every meeting still on, in time order, with the area and who booked it", () => {
     const rows = teamRows(
       [
-        meeting({ id: "2", starts_at: "2026-11-06T01:45:00Z", booked_by: "b" }),
-        meeting({ id: "1", booked_by: "me", lead: { neighbourhood: null, address_line: "12 Mount Pleasant Way NW" } }),
+        meeting({ id: "2", starts_at: "2026-11-06T01:45:00Z", booked_by: "b", setter_id: "b" }),
+        meeting({ id: "1", booked_by: "me", setter_id: "me", lead: { neighbourhood: null, address_line: "12 Mount Pleasant Way NW" } }),
         meeting({ id: "x", status: "cancelled" }),
         meeting({ id: "y", status: "moved" }),
-        meeting({ id: "3", starts_at: "2026-11-06T02:30:00Z", booked_by: "ghost", lead: { neighbourhood: "  ", address_line: "" } }),
-        meeting({ id: "4", starts_at: "2026-11-06T03:15:00Z", status: "qualified", booked_by: "b" }),
+        meeting({ id: "3", starts_at: "2026-11-06T02:30:00Z", booked_by: "ghost", setter_id: "ghost", lead: { neighbourhood: "  ", address_line: "" } }),
+        meeting({ id: "4", starts_at: "2026-11-06T03:15:00Z", status: "qualified", booked_by: "owner", setter_id: "me" }),
       ],
-      new Map([["b", "Jaxon T."]]),
+      new Map([
+        ["b", "Jaxon T."],
+        ["owner", "Keenan H."],
+      ]),
       "me",
     );
     expect(rows.map((row) => row.id)).toEqual(["1", "2", "3", "4"]);
-    expect(rows[0]).toMatchObject({ area: "Mount Pleasant Way NW", bookedBy: "You", mine: true });
-    expect(rows[1]).toMatchObject({ area: "Bridgeland", bookedBy: "Jaxon T.", mine: false });
-    expect(rows[2]).toMatchObject({ area: "Area not set", bookedBy: "Someone" });
+    expect(rows[0]).toMatchObject({ area: "Mount Pleasant Way NW", whose: "Your booking", mine: true });
+    expect(rows[1]).toMatchObject({ area: "Bridgeland", whose: "Booked by Jaxon T.", mine: false });
+    expect(rows[2]).toMatchObject({ area: "Area not set", whose: "Booked by someone" });
+    // Keenan picked the time for this setter's lead: still theirs, as on How mine went.
+    expect(rows[3]).toMatchObject({ whose: "Your lead, booked by Keenan H.", mine: true });
   });
 
   it("carries nothing about the customer", () => {
     const [row] = teamRows([meeting({})], new Map(), "me");
-    expect(Object.keys(row).sort()).toEqual(["area", "bookedBy", "id", "mine", "startsAt"]);
+    expect(Object.keys(row).sort()).toEqual(["area", "id", "mine", "startsAt", "whose"]);
   });
 });
 

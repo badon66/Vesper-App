@@ -1,6 +1,5 @@
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { formatTime } from "@/lib/time";
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
@@ -12,11 +11,21 @@ export type LiveSession = { neighbourhood: string; started_at: string; doors_kno
 // The way into Session from Home (Keenan, 2026-11-05): Start knocking, or,
 // while the person is out, a bar for their live session that opens it.
 export function SessionLink({ session }: { session: LiveSession | null }) {
+  // A quiet row, not a second gold button: the gold Session tab is right
+  // below, and this one opens Session, where the neighbourhood is picked.
   if (!session) {
     return (
-      <Button asChild size="lg" className="h-14 w-full text-lg" data-testid="home-start-knocking">
-        <Link href="/app/session">Start knocking</Link>
-      </Button>
+      <Link
+        href="/app/session"
+        className="flex min-h-14 items-center justify-between gap-3 rounded-xl border px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        data-testid="home-start-knocking"
+      >
+        <span className="flex min-w-0 flex-col">
+          <span className="font-semibold">Start knocking</span>
+          <span className="text-sm text-muted-foreground">Pick the neighbourhood on Session.</span>
+        </span>
+        <ChevronRight aria-hidden="true" className="size-5 shrink-0" />
+      </Link>
     );
   }
   return (

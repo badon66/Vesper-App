@@ -46,6 +46,7 @@ export function MeetingCard({
   showDay = false,
   viewerId = null,
   prep = null,
+  compact = false,
 }: {
   meeting: MeetingWithLead;
   names: Map<string, string>;
@@ -65,6 +66,10 @@ export function MeetingCard({
   // Keenan's Home (2026-11-05): what the meeting still needs, as on the
   // Meetings page. Owner only.
   prep?: { missingMockup: boolean; missingColour: boolean } | null;
+  // Keenan's Home (2026-11-05): a glance, not a workbench. Meeting mode,
+  // Navigate and Call; the prep flags on one line; no map position, notes,
+  // photos, Move or Cancel (those are on Schedule, Meetings and the lead).
+  compact?: boolean;
 }) {
   const lead = meeting.lead;
   const started = new Date(meeting.starts_at).getTime() <= now;
@@ -84,10 +89,10 @@ export function MeetingCard({
       data-status={meeting.status}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-xl font-bold tabular-nums">
+        <p className={cn("font-bold tabular-nums", compact ? "text-lg" : "text-xl")}>
           {showDay ? timePhrase(meeting.starts_at) : showLead ? formatTime(meeting.starts_at) : formatMeetingTime(meeting.starts_at)}
         </p>
-        <p className="text-sm font-semibold">{MEETING_STATUS_LABELS[meeting.status]}</p>
+        {compact && live ? null : <p className="text-sm font-semibold">{MEETING_STATUS_LABELS[meeting.status]}</p>}
       </div>
 
       {showLead ? (
@@ -114,7 +119,7 @@ export function MeetingCard({
         </div>
       ) : null}
 
-      {prep && !changed ? <PrepFlags leadId={lead.id} missingMockup={prep.missingMockup} missingColour={prep.missingColour} /> : null}
+      {prep && !changed ? <PrepFlags leadId={lead.id} missingMockup={prep.missingMockup} missingColour={prep.missingColour} compact={compact} /> : null}
 
       {legKm !== null && previousTime ? (
         <p className="text-sm text-pretty">
@@ -123,7 +128,36 @@ export function MeetingCard({
         </p>
       ) : null}
 
-      {showDetails && !changed ? (
+      {showDetails && !changed && compact ? (
+        <div className="flex flex-wrap gap-2">
+          {isOwner ? (
+            <a
+              href={`/meeting/${lead.id}#start`}
+              className="inline-flex min-h-11 items-center rounded-md border border-primary px-4 text-sm font-semibold"
+            >
+              Meeting mode
+            </a>
+          ) : null}
+          <a
+            href={navigateUrl(lead)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold"
+          >
+            Navigate
+          </a>
+          {lead.phone ? (
+            <a
+              href={`tel:${lead.phone}`}
+              className="inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold"
+              aria-label={`Call ${formatPhone(lead.phone)}`}
+            >
+              Call
+            </a>
+          ) : null}
+        </div>
+      ) : null}
+      {showDetails && !changed && !compact ? (
         <div className="flex flex-wrap gap-2">
           {lead.phone ? (
             <a
@@ -160,10 +194,10 @@ export function MeetingCard({
           {meeting.photos_skip_note ? `, "${meeting.photos_skip_note}"` : ""}
         </p>
       ) : null}
-      {showDetails && position ? <p className="text-sm text-muted-foreground">Map position: {position}</p> : null}
-      {showDetails && lead.notes ? <p className="text-sm whitespace-pre-wrap">{lead.notes}</p> : null}
+      {showDetails && !compact && position ? <p className="text-sm text-muted-foreground">Map position: {position}</p> : null}
+      {showDetails && !compact && lead.notes ? <p className="text-sm whitespace-pre-wrap">{lead.notes}</p> : null}
 
-      {showDetails && photos.length > 0 ? (
+      {showDetails && !compact && photos.length > 0 ? (
         <ul className="grid grid-cols-4 gap-2" aria-label="Photos">
           {photos.map((photo) => (
             <li key={photo.url}>
@@ -191,7 +225,7 @@ export function MeetingCard({
       ) : null}
       {meeting.status === "no_show" && meeting.outcome_note ? <p className="text-sm">Note: {meeting.outcome_note}</p> : null}
 
-      {live && !started && canChange ? (
+      {live && !started && canChange && !compact ? (
         <BookingActions meetingId={meeting.id} leadId={meeting.lead_id} leadName={leadName(lead)} startsAt={meeting.starts_at} />
       ) : null}
       {live && !started && !canChange && !isOwner ? (

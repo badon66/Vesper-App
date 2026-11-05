@@ -7,7 +7,7 @@ import type { SessionProfile } from "@/lib/auth/profile";
 import { outTodayFor } from "@/lib/knock/queries";
 import { namesById, openKnockSession } from "@/lib/leads/queries";
 import { legs } from "@/lib/schedule/distance";
-import { meetingsOnDay, slotPhotoLinks, type MeetingWithLead } from "@/lib/schedule/queries";
+import { meetingsOnDay, type MeetingWithLead } from "@/lib/schedule/queries";
 import { createClient } from "@/lib/supabase/server";
 import { addDays, calgaryToday, formatLongDay, requestTime } from "@/lib/time";
 
@@ -17,7 +17,9 @@ const GONE = new Set(["moved", "cancelled"]);
 // live session; today's meetings with a switch to tomorrow, each with what
 // it still needs (the Meetings page's flags: no mockup, no track colour),
 // how complete the lead is and, after the slot, how it went; who's out
-// knocking right now. Owner only: View as never shows it.
+// knocking right now. Owner only: View as never shows it. A glance, not a
+// workbench: moved and cancelled bookings stay on Schedule, and the cards
+// are compact (Meeting mode, Navigate, Call), so the evening fits a phone.
 export async function OwnerHome({ profile }: { profile: SessionProfile }) {
   const supabase = await createClient();
   const today = calgaryToday();
@@ -31,12 +33,11 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
   ]);
   const all = [...todayMeetings, ...tomorrowMeetings];
   const leadIds = Array.from(new Set(all.map((meeting) => meeting.lead_id)));
-  const [names, photos, colourRows, mockupRows] = await Promise.all([
+  const [names, colourRows, mockupRows] = await Promise.all([
     namesById(
       supabase,
       all.flatMap((meeting) => [meeting.setter_id, meeting.booked_by, meeting.outcome_by]),
     ),
-    slotPhotoLinks(supabase, leadIds),
     leadIds.length > 0
       ? supabase.from("leads").select("id, track_colour_id, track_ral_code").in("id", leadIds).then(({ data }) => data ?? [])
       : Promise.resolve([]),
@@ -51,8 +52,9 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
 
   // One evening's cards, in time order, with the straight-line distance
   // from the meeting before.
-  const cards = (meetings: MeetingWithLead[], empty: string) => {
-    if (meetings.length === 0) {
+  const cards = (all: MeetingWithLead[], empty: string) => {
+    const held = all.filter((meeting) => !GONE.has(meeting.status));
+    if (held.length === 0) {
       return (
         <div className="flex flex-col items-start gap-1">
           <p className="text-sm text-pretty text-muted-foreground">{empty}</p>
@@ -62,14 +64,12 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
         </div>
       );
     }
-    const held = meetings.filter((meeting) => !GONE.has(meeting.status));
     const distances = legs(
       held.map((meeting) => ({ startsAt: meeting.starts_at, lat: meeting.lead.lat, lng: meeting.lead.lng, neighbourhood: meeting.lead.neighbourhood })),
     );
-    const legById = new Map(held.map((meeting, index) => [meeting.id, { km: distances[index], previous: held[index - 1]?.starts_at ?? null }]));
     return (
       <div className="flex flex-col gap-3">
-        {meetings.map((meeting) => (
+        {held.map((meeting, index) => (
           <MeetingCard
             key={meeting.id}
             meeting={meeting}
@@ -78,10 +78,10 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
             canChange
             isOwner
             reasons={reasons}
-            photos={photos.get(meeting.lead_id) ?? []}
-            legKm={legById.get(meeting.id)?.km ?? null}
-            previousTime={legById.get(meeting.id)?.previous ?? null}
+            legKm={distances[index] ?? null}
+            previousTime={held[index - 1]?.starts_at ?? null}
             showDetails
+            compact
             prep={{ missingMockup: !hasMockup.has(meeting.lead_id), missingColour: !hasColour.has(meeting.lead_id) }}
           />
         ))}
@@ -92,25 +92,23 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold">Today</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{formatLongDay(today)}, Calgary time.</p>
-      </div>
+      <h1 className="text-2xl font-bold">{formatLongDay(today)}</h1>
 
       <SessionLink session={session} />
 
       <DaySwitch
-        heading="Meetings"
         headingId="meetings-heading"
         testId="home-meetings"
         days={[
           {
             label: "Today",
+            title: "Meetings today",
             count: count(todayMeetings),
             content: cards(todayMeetings, "No meetings today. When a setter books one, it shows here in time order."),
           },
           {
             label: "Tomorrow",
+            title: "Meetings tomorrow",
             count: count(tomorrowMeetings),
             content: cards(tomorrowMeetings, "Nothing booked for tomorrow yet."),
           },
