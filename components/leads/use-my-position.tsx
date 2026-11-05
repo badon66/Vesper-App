@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, LoaderCircle, LocateFixed } from "lucide-react";
+import { LoaderCircle, LocateFixed } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { DevicePosition } from "@/lib/geo";
@@ -93,9 +93,11 @@ export function UseMyPosition({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // The line that says what's happening comes into view as it changes.
+  // The line that says what's happening comes into view as it changes. A
+  // found position is said by the address it belongs to, which brings
+  // itself into view.
   useEffect(() => {
-    if (state.kind !== "idle") statusRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (state.kind === "finding" || state.kind === "failed") statusRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [state.kind]);
 
   function locate() {
@@ -135,14 +137,7 @@ export function UseMyPosition({
       </Button>
       <div ref={statusRef} aria-live="polite" className="scroll-mb-24" data-testid="position-status">
         {finding ? <p className="text-sm font-semibold text-pretty">{findingText(state.best)}</p> : null}
-        {/* The result where the setter was looking; the hint by the address
-            says how accurate it is. */}
-        {state.kind === "found" ? (
-          <p className="flex items-center gap-1.5 text-sm font-semibold text-pretty">
-            <Check aria-hidden="true" className="size-4 shrink-0" />
-            Position saved. Check the address above.
-          </p>
-        ) : null}
+
         {failed ? (
           <div className="flex flex-col gap-1 rounded-md border border-foreground/60 px-3 py-2 text-sm" data-testid="position-problem">
             <p className="font-semibold text-pretty">{failed.title}</p>

@@ -1,5 +1,6 @@
 "use client";
 
+import { Check } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { findLeadsNear, type DuplicateLead } from "@/app/(app)/app/leads/actions";
@@ -120,6 +121,7 @@ export function AddressField({
   const [nearest, setNearest] = useState<{ state: "looking" | "filled" | "offered" | "none"; address: NearestAddress | null } | null>(null);
   const [locating, setLocating] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const hintRef = useRef<HTMLParagraphElement>(null);
   const report = useRef({ onValue, onWorking });
   useEffect(() => {
     report.current = { onValue, onWorking };
@@ -208,6 +210,8 @@ export function AddressField({
     setOpen(false);
     setPosition({ lat: found.lat, lng: found.lng, placeId: null, source: "device", accuracy: found.accuracy });
     onEdited?.({ addressLine: text, positioned: true });
+    // The result where it belongs, by the address, brought into view.
+    window.requestAnimationFrame(() => hintRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
     findLeadsNear(found.lat, found.lng, leadId).then(setNearby, () => setNearby([]));
     void fillNearest(found.lat, found.lng);
   }
@@ -352,11 +356,15 @@ export function AddressField({
           </div>
         ) : null}
       </div>
+      {/* A saved position is said with a tick, so success is as plain as
+          a failure (round 3). */}
       <p
+        ref={hintRef}
         id="lead-address-hint"
-        className={cn("text-sm", position ? "text-foreground" : "text-muted-foreground")}
+        className={cn("text-sm text-pretty", position && !picking ? "flex gap-1.5 font-semibold text-foreground" : "text-muted-foreground")}
       >
-        {hint}
+        {position && !picking ? <Check aria-hidden="true" className="mt-0.5 size-4 shrink-0" /> : null}
+        <span>{hint}</span>
       </p>
       {position?.source === "device" && nearest ? (
         <div role="status" className="text-sm text-pretty" data-testid="nearest-address" data-state={nearest.state}>

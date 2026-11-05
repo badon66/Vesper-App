@@ -364,7 +364,7 @@ export function AddressScreen({
         name="sheet-house-type"
         legend="House type (optional)"
         options={HOUSE_TYPE_OPTIONS}
-        columns={2}
+        columns={4}
         size="sheet"
         value={draft.house_type}
         onChange={(next) => onChange({ house_type: next as HouseType | null })}
