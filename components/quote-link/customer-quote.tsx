@@ -15,6 +15,7 @@ import { HOUSE_SEGMENTS, segmentsFor, segmentStates, type HouseSegment, type Seg
 import {
   customerChoice,
   customerChoiceInSentence,
+  christmasSeason,
   lineAmount,
   optionName,
   phoneHref,
@@ -395,11 +396,11 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
             White is our stock colour. It costs nothing extra and fits this season’s schedule.
           </p>
           <p className="mt-2 text-pretty" data-testid="quote-colour-rush">
-            Any other colour is powder coated: nothing extra if it can wait for spring
-            {quote.rushFee !== null && quote.rushFee > 0
-              ? `, or the ${formatMoney(quote.rushFee)} rush colour fee to have it before Christmas`
-              : ""}
-            .
+            <TrackColourOptions
+              season={christmasSeason(view.today)}
+              rushFee={quote.rushFee !== null && quote.rushFee > 0 ? quote.rushFee : null}
+              rush={quote.colourTiming === "rush"}
+            />
           </p>
         </section>
 
@@ -550,6 +551,27 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
       </DialogPanel>
     </>
   );
+}
+
+// The other colours, in Keenan's words. From September 1 to November 30 the
+// rush colour fee is "to have it before Christmas". From December 1 nothing
+// promises Christmas: the spring option only, colour matching included; a
+// quote Keenan priced for this season still names its fee, "to have it
+// sooner", so the line never contradicts their own breakdown (Keenan,
+// 2026-11-05). A fee that isn't set drops its clause.
+function TrackColourOptions({ season, rushFee, rush }: { season: boolean; rushFee: number | null; rush: boolean }) {
+  if (season) {
+    return (
+      <>
+        Any other colour is powder coated: nothing extra if it can wait for spring
+        {rushFee !== null ? `, or the ${formatMoney(rushFee)} rush colour fee to have it before Christmas` : ""}.
+      </>
+    );
+  }
+  if (rush && rushFee !== null) {
+    return <>Any other colour is powder coated: nothing extra if it can wait for spring, or the {formatMoney(rushFee)} rush colour fee to have it sooner.</>;
+  }
+  return <>Any other colour is powder coated for a spring install, with colour matching included at no extra cost.</>;
 }
 
 // Keenan's two lines for a choice under the minimum, word for word.

@@ -322,12 +322,17 @@ try {
     lines,
   );
   check("the total, with no mention of GST while GST is off", (await totalOf(page, "smaller-total")) === "$4,959" && !/GST/.test(text));
-  // 6. Track colour, in Keenan's words, with the fee as a dollar amount.
+  // 6. Track colour, in Keenan's words: the rush colour fee "to have it
+  // before Christmas" only from September 1 to November 30, like the banner.
+  const otherColours = (month >= 9 && month <= 11)
+    ? "Any other colour is powder coated: nothing extra if it can wait for spring, or the $350 rush colour fee to have it before Christmas."
+    : "Any other colour is powder coated for a spring install, with colour matching included at no extra cost.";
   check(
-    "track colour: their colour, white is stock, and the rush colour fee as a dollar amount",
+    "track colour: their colour, white is stock, and the other colours for the time of year",
     text.includes("Your colour: White.") &&
       text.includes("White is our stock colour. It costs nothing extra and fits this season's schedule.") &&
-      text.includes("Any other colour is powder coated: nothing extra if it can wait for spring, or the $350 rush colour fee to have it before Christmas."),
+      text.includes(otherColours) &&
+      ((month >= 9 && month <= 11) || !text.includes("Christmas")),
   );
   // 7. Tap to open, closed until tapped.
   const warrantyFirst = (settingsRow?.warranty_text ?? "").split(/\n+/)[0]?.trim() ?? "";

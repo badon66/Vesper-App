@@ -252,6 +252,15 @@ export function parseCustomerQuote(data: unknown): CustomerQuote | ClosedQuote {
   };
 }
 
+// Whether it is the Christmas season on the page: September 1 to November 30
+// by Calgary's date, the same window the database gives the Christmas
+// banner (Keenan, 2026-11-05). Outside it nothing on the page mentions
+// Christmas. Without a date it counts as outside, so nothing is promised.
+export function christmasSeason(today: string | null): boolean {
+  const month = today ? Number(today.slice(5, 7)) : 0;
+  return month >= 9 && month <= 11;
+}
+
 // Whether the price hold has passed: after the valid-until date (Calgary),
 // the page still works and says prices may have changed. Today comes from
 // the database; without it, the hold counts as not passed.

@@ -12,6 +12,7 @@ import {
   parseCustomerQuote,
   phoneHref,
   priceHoldPassed,
+  christmasSeason,
   priceSelection,
   quoteFromRow,
   quoteLinkMessage,
@@ -285,6 +286,17 @@ describe("the reworked page's answer", () => {
     const labels = priceSelection(old, null).lines.map((line) => line.label);
     expect(labels).not.toContain(UPPER_ACCESS_LABEL);
     expect(labels).not.toContain("Rush colour fee");
+  });
+
+  it("keeps the Christmas season to September 1 to November 30, like the banner", () => {
+    expect(["2026-08-31", "2026-09-01", "2026-11-30", "2026-12-01", "2027-01-15", null].map((day) => christmasSeason(day))).toEqual([
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+    ]);
   });
 
   it("holds prices until the date, and only says they may have changed after it", () => {
