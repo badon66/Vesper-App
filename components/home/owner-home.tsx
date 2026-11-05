@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { DaySwitch } from "@/components/home/day-switch";
+import { RefreshOnReturn } from "@/components/home/refresh-on-return";
 import { SessionLink } from "@/components/home/session-link";
 import { MeetingCard } from "@/components/schedule/meeting-card";
 import { OutToday } from "@/components/session/out-today";
@@ -7,6 +8,7 @@ import type { SessionProfile } from "@/lib/auth/profile";
 import { outTodayFor } from "@/lib/knock/queries";
 import { namesById, openKnockSession } from "@/lib/leads/queries";
 import { legs } from "@/lib/schedule/distance";
+import { isLive } from "@/lib/schedule/meetings";
 import { meetingsOnDay, type MeetingWithLead } from "@/lib/schedule/queries";
 import { createClient } from "@/lib/supabase/server";
 import { addDays, calgaryToday, formatLongDay, requestTime } from "@/lib/time";
@@ -52,6 +54,12 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
 
   // One evening's cards, in time order, with the straight-line distance
   // from the meeting before.
+  // His next meeting that hasn't started, across today and tomorrow.
+  const nextId = [...todayMeetings, ...tomorrowMeetings].find(
+    (meeting) => isLive(meeting.status) && new Date(meeting.starts_at).getTime() > now,
+  )?.id;
+  const needsPrep = (meeting: MeetingWithLead) => !hasMockup.has(meeting.lead_id) || !hasColour.has(meeting.lead_id);
+
   const cards = (all: MeetingWithLead[], empty: string) => {
     const held = all.filter((meeting) => !GONE.has(meeting.status));
     if (held.length === 0) {
@@ -67,8 +75,21 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
     const distances = legs(
       held.map((meeting) => ({ startsAt: meeting.starts_at, lat: meeting.lead.lat, lng: meeting.lead.lng, neighbourhood: meeting.lead.neighbourhood })),
     );
+    const toPrep = held.filter((meeting) => isLive(meeting.status) && needsPrep(meeting)).length;
+    const upcoming = held.filter((meeting) => isLive(meeting.status)).length;
     return (
       <div className="flex flex-col gap-3">
+        {toPrep > 0 ? (
+          // The evening's prep in one line, so he needn't add up the cards.
+          <p className="flex flex-wrap items-center gap-x-2 text-sm text-pretty" data-testid="prep-summary">
+            <span>
+              {toPrep} of {upcoming} still {toPrep === 1 ? "needs" : "need"} a mockup or the track colour.
+            </span>
+            <Link href="/app/meetings" className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4">
+              Open Meetings
+            </Link>
+          </p>
+        ) : null}
         {held.map((meeting, index) => (
           <MeetingCard
             key={meeting.id}
@@ -82,6 +103,7 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
             previousTime={held[index - 1]?.starts_at ?? null}
             showDetails
             compact
+            next={meeting.id === nextId}
             prep={{ missingMockup: !hasMockup.has(meeting.lead_id), missingColour: !hasColour.has(meeting.lead_id) }}
           />
         ))}
@@ -93,6 +115,7 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-bold">{formatLongDay(today)}</h1>
+      <RefreshOnReturn />
 
       <SessionLink session={session} />
 

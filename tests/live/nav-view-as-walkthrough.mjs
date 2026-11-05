@@ -266,6 +266,14 @@ try {
     .single();
   if (knockError) throw new Error(`knock session: ${knockError.message}`);
   await a.client.rpc("bump_knock_session", { p_session: knock.id, p_doors: 7, p_conversations: 3 });
+  // B knocked earlier today and finished: Session's Out today lists B as
+  // Finished, Keenan's Out knocking now must not.
+  const finishedB = await admin
+    .from("knock_sessions")
+    .insert({ neighbourhood: TEST_PLACE, user_id: people.b.id, started_at: new Date(Date.now() - 10 * 60_000).toISOString(), ended_at: new Date(Date.now() - 5 * 60_000).toISOString() })
+    .select("id")
+    .single();
+  if (finishedB.error) throw new Error(`B's finished session: ${finishedB.error.message}`);
 
   // The door process on two of the leads: A's lead due today has Find out
   // answers, three guided photos and a custom track colour; B's lead has a
@@ -507,11 +515,11 @@ try {
     const outNow = op.getByTestId("out-now");
     const aText = (await outNow.getByTestId("out-today-row").filter({ hasText: "Nav Test A" }).innerText().catch(() => "")).replace(/\s+/g, " ");
     check(
-      "Out knocking now shows who is out, where, since when, and their doors and conversations",
-      aText.includes("Out now") && aText.includes(TEST_PLACE) && aText.includes(", since ") && aText.includes("7 doors") && aText.includes("3 conversations"),
+      "Out knocking now shows who is out, where, since when, and their doors and conversations today in Calgary time",
+      aText.includes(TEST_PLACE) && aText.includes(", since ") && aText.includes("7 doors") && aText.includes("3 conversations") && (await outNow.innerText()).includes("Calgary time"),
       aText,
     );
-    check("someone who isn't knocking right now doesn't show there", (await outNow.getByTestId("out-today-row").filter({ hasText: "Nav Test B" }).count()) === 0);
+    check("someone who knocked earlier today and finished doesn't show there", (await outNow.getByTestId("out-today-row").filter({ hasText: "Nav Test B" }).count()) === 0);
     const meetings = op.getByTestId("home-meetings");
     await meetings.getByRole("button", { name: /^Tomorrow/ }).click();
     check(

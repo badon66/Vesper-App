@@ -33,7 +33,7 @@ export function OutToday({ rows: allRows, nowOnly = false }: { rows: OutTodayRow
           {nowOnly
             ? rows.length === 0
               ? "Nobody is out knocking right now. When someone starts a session, they show here."
-              : `${plural(out, "person", "people")} out now. Doors and conversations so far today.`
+              : `${plural(out, "person", "people")} out now. Doors and conversations so far today, Calgary time.`
             : rows.length === 0
               ? "Nobody else has knocked yet today. When someone starts, they show here with their neighbourhood, doors and conversations."
               : out === 0
@@ -47,7 +47,7 @@ export function OutToday({ rows: allRows, nowOnly = false }: { rows: OutTodayRow
             <li key={row.userId} className="flex flex-col gap-1 px-4 py-3" data-testid="out-today-row">
               <div className="flex items-baseline justify-between gap-3">
                 <span className="font-semibold">{row.name}</span>
-                <span className="shrink-0 text-sm font-semibold">{row.out ? "Out now" : "Finished"}</span>
+                {nowOnly ? null : <span className="shrink-0 text-sm font-semibold">{row.out ? "Out now" : "Finished"}</span>}
               </div>
               <p className="text-sm text-pretty text-muted-foreground">{whereAndWhen(row)}</p>
               <p className="text-sm tabular-nums">

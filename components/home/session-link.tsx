@@ -17,7 +17,7 @@ export function SessionLink({ session }: { session: LiveSession | null }) {
     return (
       <Link
         href="/app/session"
-        className="flex min-h-14 items-center justify-between gap-3 rounded-xl border px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex min-h-14 items-center justify-between gap-3 rounded-lg border px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-ring"
         data-testid="home-start-knocking"
       >
         <span className="flex min-w-0 flex-col">
@@ -31,7 +31,7 @@ export function SessionLink({ session }: { session: LiveSession | null }) {
   return (
     <Link
       href="/app/session"
-      className="flex min-h-16 items-center justify-between gap-3 rounded-xl border-2 border-primary bg-card px-4 py-3 text-card-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex min-h-16 items-center justify-between gap-3 rounded-lg border-2 border-primary bg-card px-4 py-3 text-card-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
       data-testid="home-session-bar"
     >
       <span className="flex min-w-0 flex-col">

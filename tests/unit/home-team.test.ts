@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { splitMine, teamRows, type TeamMeeting } from "@/lib/home/team";
+import { pastTimeLabel, splitMine, teamRows, type TeamMeeting } from "@/lib/home/team";
 
 const meeting = (over: Partial<TeamMeeting>): TeamMeeting => ({
   id: "m",
@@ -57,5 +57,31 @@ describe("splitMine", () => {
     );
     expect(coming.map((m) => m.id)).toEqual(["soon", "late"]);
     expect(past.map((m) => m.id)).toEqual(["recent", "old"]);
+  });
+});
+
+describe("splitMine and cancellations", () => {
+  it("never lists a cancelled booking as coming up, and shows it as past once its time has gone", () => {
+    const now = Date.parse("2026-11-06T01:30:00Z");
+    const { coming, past } = splitMine(
+      [
+        { id: "cancelled-ahead", starts_at: "2026-11-07T01:30:00Z", status: "cancelled" },
+        { id: "rebooked", starts_at: "2026-11-08T01:30:00Z", status: "booked" },
+        { id: "confirmed", starts_at: "2026-11-06T02:15:00Z", status: "confirmed" },
+        { id: "cancelled-gone", starts_at: "2026-11-05T01:00:00Z", status: "cancelled" },
+      ],
+      now,
+    );
+    expect(coming.map((m) => m.id)).toEqual(["confirmed", "rebooked"]);
+    expect(past.map((m) => m.id)).toEqual(["cancelled-gone"]);
+  });
+});
+
+describe("pastTimeLabel", () => {
+  // 6:00 p.m. in Calgary (UTC-6) is midnight UTC the next day.
+  it("says tonight, last night, or the day", () => {
+    expect(pastTimeLabel("2026-11-06T00:00:00Z", "2026-11-05")).toBe("Tonight, 6:00 p.m.");
+    expect(pastTimeLabel("2026-11-05T00:00:00Z", "2026-11-05")).toBe("Last night, 6:00 p.m.");
+    expect(pastTimeLabel("2026-11-04T00:00:00Z", "2026-11-05")).toMatch(/^Tue, Nov 3, 6:00 p\.m\.$/);
   });
 });

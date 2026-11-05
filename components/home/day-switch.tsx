@@ -31,8 +31,10 @@ export function DaySwitch({
             aria-pressed={index === chosen}
             onClick={() => setChosen(index)}
             className={cn(
-              "min-h-11 rounded px-3 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              index === chosen ? "bg-secondary text-foreground" : "text-muted-foreground",
+              "min-h-11 rounded border px-3 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              // Chosen is an outline in Night Text, not gold (DESIGN.md), so
+              // it still reads in bright sun where a faint fill doesn't.
+              index === chosen ? "border-foreground/80 bg-secondary text-foreground" : "border-transparent text-muted-foreground",
             )}
             data-day={day.label}
           >

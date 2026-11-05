@@ -47,6 +47,7 @@ export function MeetingCard({
   viewerId = null,
   prep = null,
   compact = false,
+  next = false,
 }: {
   meeting: MeetingWithLead;
   names: Map<string, string>;
@@ -70,6 +71,9 @@ export function MeetingCard({
   // Navigate and Call; the prep flags on one line; no map position, notes,
   // photos, Move or Cancel (those are on Schedule, Meetings and the lead).
   compact?: boolean;
+  // Keenan's Home: his next meeting that hasn't started. Only it says Next
+  // and only its Meeting mode is gold, so one gold thing leads the evening.
+  next?: boolean;
 }) {
   const lead = meeting.lead;
   const started = new Date(meeting.starts_at).getTime() <= now;
@@ -92,7 +96,15 @@ export function MeetingCard({
         <p className={cn("font-bold tabular-nums", compact ? "text-lg" : "text-xl")}>
           {showDay ? timePhrase(meeting.starts_at) : showLead ? formatTime(meeting.starts_at) : formatMeetingTime(meeting.starts_at)}
         </p>
-        {compact && live ? null : <p className="text-sm font-semibold">{MEETING_STATUS_LABELS[meeting.status]}</p>}
+        {compact && (live || hasOutcome(meeting.status)) ? (
+          next ? (
+            <p className="text-sm font-semibold" data-testid="next-meeting">
+              Next
+            </p>
+          ) : null
+        ) : (
+          <p className="text-sm font-semibold">{MEETING_STATUS_LABELS[meeting.status]}</p>
+        )}
       </div>
 
       {showLead ? (
@@ -119,8 +131,6 @@ export function MeetingCard({
         </div>
       ) : null}
 
-      {prep && !changed ? <PrepFlags leadId={lead.id} missingMockup={prep.missingMockup} missingColour={prep.missingColour} compact={compact} /> : null}
-
       {legKm !== null && previousTime ? (
         <p className="text-sm text-pretty">
           {formatKm(legKm).replace(/^under/, "Under")} in a straight line from the{" "}
@@ -128,12 +138,14 @@ export function MeetingCard({
         </p>
       ) : null}
 
+      {prep && !changed ? <PrepFlags leadId={lead.id} missingMockup={prep.missingMockup} missingColour={prep.missingColour} compact={compact} /> : null}
+
       {showDetails && !changed && compact ? (
         <div className="flex flex-wrap gap-2">
           {isOwner ? (
             <a
               href={`/meeting/${lead.id}#start`}
-              className="inline-flex min-h-11 items-center rounded-md border border-primary px-4 text-sm font-semibold"
+              className={cn("inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold", next && "border-primary")}
             >
               Meeting mode
             </a>
@@ -232,12 +244,23 @@ export function MeetingCard({
         <p className="text-sm text-muted-foreground">Keenan marks how it went after the meeting.</p>
       ) : null}
       {isOwner && meeting.status !== "moved" && (started || hasOutcome(meeting.status)) ? (
-        <OutcomeForm
-          meetingId={meeting.id}
-          current={meeting.status}
-          currentReason={meeting.outcome_reason}
-          reasons={reasons}
-        />
+        compact && hasOutcome(meeting.status) ? (
+          // Home: a marked outcome is one line until he changes it.
+          <details className="group flex flex-col gap-2" data-testid="outcome-marked">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+              <span className="font-semibold">{MEETING_STATUS_LABELS[meeting.status]}.</span>
+              <span className="underline underline-offset-4 group-open:hidden">Change</span>
+            </summary>
+            <OutcomeForm meetingId={meeting.id} current={meeting.status} currentReason={meeting.outcome_reason} reasons={reasons} />
+          </details>
+        ) : (
+          <OutcomeForm
+            meetingId={meeting.id}
+            current={meeting.status}
+            currentReason={meeting.outcome_reason}
+            reasons={reasons}
+          />
+        )
       ) : null}
       {live && started && !isOwner ? (
         <p className="text-sm text-muted-foreground">Started. Keenan marks how it went.</p>
