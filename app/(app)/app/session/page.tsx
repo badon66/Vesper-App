@@ -8,13 +8,13 @@ import { ScheduleView } from "@/components/schedule/schedule-view";
 import { OutToday } from "@/components/session/out-today";
 import { SessionScreen } from "@/components/session/session-screen";
 import { getViewer } from "@/lib/auth/profile";
-import { outTodayFor, recentNeighbourhoodsOf, sessionTally } from "@/lib/knock/queries";
+import { lastEndedToday, outTodayFor, recentNeighbourhoodsOf, sessionTally } from "@/lib/knock/queries";
 import { closeMyStaleKnockSessions, lastNeighbourhood, openKnockSession } from "@/lib/leads/queries";
 import { leadName } from "@/lib/leads/status";
-import { eveningLabel, eveningsOf, pickEvening } from "@/lib/schedule/board";
+import { eveningsOf, pickEvening } from "@/lib/schedule/board";
 import { bookingSettings, fetchBoard } from "@/lib/schedule/queries";
 import { createClient } from "@/lib/supabase/server";
-import { calgaryToday, requestTime } from "@/lib/time";
+import { addDays, calgaryToday, formatDay, requestTime } from "@/lib/time";
 
 export const metadata: Metadata = {
   title: "Session",
@@ -43,27 +43,36 @@ export default async function SessionPage({ searchParams }: { searchParams: Prom
       ? supabase.from("leads").select("id, first_name, last_name").eq("id", addedId).eq("created_by", profile.id).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
-  const soFar = session ? await sessionTally(supabase, session.id) : { leads: 0, bookings: 0 };
+  const [soFar, lastEnded] = await Promise.all([
+    session ? sessionTally(supabase, session.id) : Promise.resolve({ leads: 0, bookings: 0 }),
+    session ? Promise.resolve(null) : lastEndedToday(supabase, profile.id),
+  ]);
   const addedLead = addedResult.data;
+  // Tonight's open times; when tonight has nothing left, the heading names
+  // the evening the times are for.
   const opening = pickEvening(eveningsOf(board, today, settings.windowDays), today);
-  const timesHeading = opening.tonightFull
-    ? opening.tonightHasTimes
-      ? "Nothing left tonight"
-      : "No meetings tonight"
-    : "Tonight's open times";
-  const timesNote = opening.tonightFull
-    ? opening.day === today
-      ? "No open times in the next two weeks right now."
-      : `${eveningLabel(opening.day, today)} has the next open times. Tap one to hold it while you book.`
-    : null;
+  const timesHeading = !opening.tonightFull
+    ? "Tonight's open times"
+    : opening.day === today
+      ? "No open times"
+      : opening.day === addDays(today, 1)
+        ? "Open times tomorrow"
+        : `Open times on ${formatDay(opening.day)}`;
+  const timesNote = !opening.tonightFull
+    ? null
+    : opening.day === today
+      ? "Nothing open in the next two weeks right now."
+      : `${opening.tonightHasTimes ? "Nothing left tonight." : "No meetings tonight."} Tap a time to hold it while you book.`;
 
   return (
     <SessionScreen
       session={session}
+      lastEnded={lastEnded}
       lastNeighbourhood={last}
       recent={recent}
       soFar={soFar}
       renderedAt={requestTime()}
+      savedKey={addedLead?.id ?? null}
       saved={
         addedLead ? (
           <>
@@ -113,7 +122,7 @@ export default async function SessionPage({ searchParams }: { searchParams: Prom
           />
         </section>
       }
-      unfinished={<UnfinishedBookings userId={profile.id} />}
+      unfinished={<UnfinishedBookings userId={profile.id} compact />}
       outToday={<OutToday rows={out} />}
     />
   );

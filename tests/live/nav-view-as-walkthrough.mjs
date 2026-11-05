@@ -354,7 +354,7 @@ try {
   // 3. The setter's Home: the follow-ups due. The knock session is on
   // Session (2026-11-05).
   check("Home greets the setter", (await page.getByRole("heading", { name: /^Hello, Nav/ }).count()) === 1);
-  check("Home no longer holds the knock session", (await page.getByRole("button", { name: /^Add one to doors/ }).count()) === 0 && (await page.getByRole("button", { name: "Start knocking" }).count()) === 0);
+  check("Home no longer holds the knock session", (await page.getByRole("button", { name: /^Doors \+1/ }).count()) === 0 && (await page.getByRole("button", { name: "Start knocking" }).count()) === 0);
   const dueLinks = await page.getByRole("list", { name: "Follow-ups due" }).getByRole("link").evaluateAll((links) => links.map((link) => [link.getAttribute("href"), link.innerText]));
   check(
     "Home lists the follow-ups due, overdue first, and leaves later ones out",
@@ -373,7 +373,7 @@ try {
   check(
     "Session shows the knock session that is running, with its counts",
     (await page.getByRole("heading", { name: `Knocking in ${TEST_PLACE}` }).count()) === 1 &&
-      ((await page.getByRole("button", { name: /^Add one to doors/ }).getAttribute("aria-label")) ?? "").endsWith("now 7"),
+      ((await page.getByRole("button", { name: /^Doors \+1/ }).getAttribute("aria-label")) ?? "").endsWith("now 7"),
   );
   check(
     "the Session tab is the current tab, and Leads has a New lead button at the top",
@@ -843,10 +843,10 @@ try {
   // out, and the Unfinished list says where drafts live.
   await op.goto(`${base}/app/session`);
   await settle(op);
-  const doorsBefore = Number((await op.getByRole("button", { name: /^Add one to doors, now (\d+)/ }).getAttribute("aria-label")).match(/now (\d+)/)[1]);
-  await op.getByRole("button", { name: /^Add one to doors/ }).click();
-  await op.getByRole("button", { name: /^Add one to doors/ }).click();
-  const doorsAfter = Number((await op.getByRole("button", { name: /^Add one to doors, now (\d+)/ }).getAttribute("aria-label")).match(/now (\d+)/)[1]);
+  const doorsBefore = Number((await op.getByRole("button", { name: /^Doors \+1, now (\d+)/ }).getAttribute("aria-label")).match(/now (\d+)/)[1]);
+  await op.getByRole("button", { name: /^Doors \+1/ }).click();
+  await op.getByRole("button", { name: /^Doors \+1/ }).click();
+  const doorsAfter = Number((await op.getByRole("button", { name: /^Doors \+1, now (\d+)/ }).getAttribute("aria-label")).match(/now (\d+)/)[1]);
   const knockNote = await calm(op.locator("main"));
   check("the knock counters count on screen while viewing, and say nothing was saved", doorsAfter === doorsBefore + 2 && knockNote === "View as: nothing was saved.", `${doorsBefore} then ${doorsAfter}; ${knockNote}`);
   check("Session shows no Unfinished list while viewing: a setter's drafts stay on their own phone", (await op.getByTestId("unfinished").count()) === 0);

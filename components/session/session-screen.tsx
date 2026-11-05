@@ -2,7 +2,8 @@
 
 import { Plus } from "lucide-react";
 import Link from "next/link";
-import { useActionState, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   bumpKnockSession,
   endKnockSession,
@@ -15,7 +16,6 @@ import {
 import { ActionMessage } from "@/components/action-message";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useViewAs } from "@/components/view-as-context";
 import { submitKeepingValues } from "@/lib/forms/submit";
 import { timeOutLabel } from "@/lib/knock/session";
@@ -38,47 +38,57 @@ export type SessionSoFar = { leads: number; bookings: number };
 type Counts = { doors: number; conversations: number };
 const ZERO: Counts = { doors: 0, conversations: 0 };
 const initialState: KnockState = {};
+// "Saving." only shows when a save takes longer than this, so a quick tap
+// doesn't flicker.
+const SLOW_SAVE_MS = 800;
 
-// "5:16 p.m." already ends a sentence; "17:16" needs the full stop.
+// "5:16 a.m." already ends a sentence; "17:16" needs the full stop.
 const sentenceEnd = (text: string) => (text.endsWith(".") ? text : `${text}.`);
 
 // The Session tab (Keenan, 2026-11-05). Not knocking: the neighbourhood and
 // Start knocking, then who else is out today. Knocking: where and since
-// when, the counters, tonight's open times, New lead, Unfinished and End
-// knocking. While Keenan views the app as someone, starting, counting,
+// when, the counters, tonight's open times, New lead and End knocking, then
+// Unfinished. While Keenan views the app as someone, starting, counting,
 // fixing the start and ending are acted out on this screen only, and it
 // says nothing was saved.
 export function SessionScreen({
   session,
+  lastEnded,
   lastNeighbourhood,
   recent,
   soFar,
   renderedAt,
   saved,
+  savedKey,
   times,
   unfinished,
   outToday,
 }: {
   session: KnockSessionView | null;
+  // The person's last session that ended today, shown until the next start.
+  lastEnded: KnockSummary | null;
   lastNeighbourhood: string | null;
   recent: string[];
   soFar: SessionSoFar;
   // The server's clock when the page was drawn, so the first paint matches.
   renderedAt: number;
-  // "Lead saved. On to the next door.", after a save while knocking.
+  // "Lead saved. On to the next door.", after a save while knocking, and
+  // the saved lead's id, so each new save shows it again.
   saved: ReactNode;
+  savedKey: string | null;
   times: ReactNode;
   unfinished: ReactNode;
   outToday: ReactNode;
 }) {
   const { viewingAs } = useViewAs();
-  const [summary, setSummary] = useState<KnockSummary | null>(null);
+  const [summary, setSummary] = useState<{ value: KnockSummary; fresh: boolean } | null>(null);
   // A session this screen just ended stays ended, even before the server's
   // next drawing arrives.
   const [endedId, setEndedId] = useState<string | null>(null);
   const [actedOut, setActedOut] = useState<{ session: KnockSessionView | null } | null>(null);
   const shown = viewingAs && actedOut ? actedOut.session : session;
   const live = shown && shown.id !== endedId ? shown : null;
+  const shownSummary = summary ?? (lastEnded && !(viewingAs && actedOut) ? { value: lastEnded, fresh: false } : null);
 
   if (live) {
     return (
@@ -89,10 +99,11 @@ export function SessionScreen({
         soFar={viewingAs && live.id === "view-as" ? { leads: 0, bookings: 0 } : soFar}
         renderedAt={renderedAt}
         saved={saved}
+        savedKey={savedKey}
         times={times}
         unfinished={unfinished}
         onEnded={(next) => {
-          setSummary(next);
+          setSummary({ value: next, fresh: true });
           setEndedId(live.id);
           if (viewingAs) setActedOut({ session: null });
           // End knocking sits at the bottom; the summary shows at the top.
@@ -103,9 +114,10 @@ export function SessionScreen({
   }
   return (
     <div className="flex flex-col gap-6">
-      {summary ? <Summary summary={summary} actedOut={viewingAs} onClose={() => setSummary(null)} /> : null}
+      <h1 className="sr-only">Session</h1>
+      {shownSummary ? <Summary summary={shownSummary.value} focus={shownSummary.fresh} actedOut={viewingAs && Boolean(actedOut)} /> : null}
       <StartKnocking
-        lastNeighbourhood={summary?.neighbourhood ?? lastNeighbourhood}
+        lastNeighbourhood={shownSummary?.value.neighbourhood ?? lastNeighbourhood}
         recent={recent}
         onActedOutStart={
           viewingAs
@@ -146,13 +158,14 @@ function StartKnocking({
   const [value, setValue] = useState(lastNeighbourhood ?? "");
   const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
   return (
-    <section aria-labelledby="start-heading" className="flex flex-col gap-4">
+    <section aria-labelledby="start-heading" className="flex flex-col gap-3">
       <div>
-        <h1 id="start-heading" className="text-2xl font-bold">
-          Start knocking
-        </h1>
+        <h2 id="start-heading" className="text-2xl font-bold">
+          <label htmlFor="knock-neighbourhood">Where are you knocking?</label>
+        </h2>
         <p className="mt-1 text-sm text-pretty text-muted-foreground">
-          Count doors and conversations as you go. Leads you add while it runs link to it.
+          Count every door you knock, and a conversation each time someone answers and talks. Leads and bookings you
+          make while you&apos;re out show in your summary.
         </p>
       </div>
       <form
@@ -166,12 +179,12 @@ function StartKnocking({
         }}
         className="flex flex-col gap-3"
       >
-        <Label htmlFor="knock-neighbourhood">Neighbourhood</Label>
         <Input
           id="knock-neighbourhood"
           name="neighbourhood"
           value={value}
           onChange={(event) => setValue(event.target.value)}
+          placeholder="The neighbourhood, like Bridgeland"
           autoComplete="off"
           autoCapitalize="words"
           enterKeyHint="go"
@@ -186,7 +199,7 @@ function StartKnocking({
                 aria-pressed={same(name, value)}
                 onClick={() => setValue(name)}
                 className={cn(
-                  "min-h-11 rounded-full border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "min-h-11 rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   same(name, value) ? "border-2 border-foreground bg-secondary" : "bg-background",
                 )}
               >
@@ -204,39 +217,40 @@ function StartKnocking({
   );
 }
 
-function Summary({ summary, actedOut, onClose }: { summary: KnockSummary; actedOut: boolean; onClose: () => void }) {
+// How the session went (Keenan, 2026-11-05): time out, doors, conversations,
+// leads and bookings. A status, not an action, so no gold.
+function Summary({ summary, focus, actedOut }: { summary: KnockSummary; focus: boolean; actedOut: boolean }) {
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (focus) heading.current?.focus({ preventScroll: true });
+  }, [focus]);
   const stats = [
-    { label: "Doors", value: summary.doors },
-    { label: "Conversations", value: summary.conversations },
-    { label: "Leads", value: summary.leads },
-    { label: "Bookings", value: summary.bookings },
+    { label: "Time out", value: timeOutLabel(summary.startedAt, new Date(summary.endedAt).getTime()) },
+    { label: "Doors", value: String(summary.doors) },
+    { label: "Conversations", value: String(summary.conversations) },
+    { label: "Leads", value: String(summary.leads) },
+    { label: "Bookings", value: String(summary.bookings) },
   ];
   return (
     <section
       role="status"
       aria-labelledby="summary-heading"
-      className="flex flex-col gap-3 rounded-xl border border-primary bg-accent p-4 text-accent-foreground"
+      className="flex flex-col gap-3 rounded-xl border bg-card p-4 text-card-foreground"
       data-testid="session-summary"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 id="summary-heading" className="text-lg font-bold text-pretty">
-            Done in {summary.neighbourhood}
-          </h2>
-          <p className="text-sm">
-            {formatTime(summary.startedAt)} to {sentenceEnd(formatTime(summary.endedAt))} Out{" "}
-            {timeOutLabel(summary.startedAt, new Date(summary.endedAt).getTime()).toLowerCase()}.
-          </p>
-        </div>
-        <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={onClose}>
-          Close
-        </Button>
+      <div>
+        <h2 id="summary-heading" ref={heading} tabIndex={-1} className="text-lg font-bold text-pretty outline-none">
+          Done in {summary.neighbourhood}
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {formatTime(summary.startedAt)} to {sentenceEnd(formatTime(summary.endedAt))}
+        </p>
       </div>
-      <dl className="grid grid-cols-2 gap-x-3 gap-y-2">
+      <dl className="grid grid-cols-3 gap-x-3 gap-y-3">
         {stats.map((stat) => (
-          <div key={stat.label} className="flex flex-row-reverse items-baseline justify-end gap-2">
-            <dt className="text-sm">{stat.label}</dt>
-            <dd className="text-xl font-bold tabular-nums">{stat.value}</dd>
+          <div key={stat.label} className="min-w-0">
+            <dt className="text-xs text-muted-foreground">{stat.label}</dt>
+            <dd className="text-lg leading-tight font-bold tabular-nums">{stat.value}</dd>
           </div>
         ))}
       </dl>
@@ -253,6 +267,7 @@ function Knocking({
   soFar,
   renderedAt,
   saved,
+  savedKey,
   times,
   unfinished,
   onEnded,
@@ -263,21 +278,50 @@ function Knocking({
   soFar: SessionSoFar;
   renderedAt: number;
   saved: ReactNode;
+  savedKey: string | null;
   times: ReactNode;
   unfinished: ReactNode;
   onEnded: (summary: KnockSummary) => void;
 }) {
+  const router = useRouter();
   const counts = useKnockCounts(session, actedOut);
   const [startedAt, setStartedAt] = useState(session.started_at);
   const [fixing, setFixing] = useState(false);
-  const [fixNote, setFixNote] = useState<string | null>(null);
+  const [fixNote, setFixNote] = useState<{ text: string; calm: boolean } | null>(null);
+  // The saved line shows until the next tap, and a reload doesn't bring it
+  // back; the next save shows it again.
+  const [savedHiddenFor, setSavedHiddenFor] = useState<string | null>(null);
   const now = useMinuteClock(renderedAt);
+  const heading = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    // Just started (the form is gone) or just arrived: the heading takes
+    // focus, so a screen reader hears where the session is.
+    if (!document.activeElement || document.activeElement === document.body) heading.current?.focus({ preventScroll: true });
+  }, []);
+
+  useEffect(() => {
+    if (savedKey && window.location.search.includes("added=")) {
+      window.history.replaceState(window.history.state, "", window.location.pathname);
+    }
+  }, [savedKey]);
+
+  function tap(kind: keyof Counts, delta: 1 | -1) {
+    setSavedHiddenFor(savedKey);
+    setFixNote(null);
+    counts.tap(kind, delta);
+  }
 
   return (
     <div className="flex flex-col gap-4">
-      {saved}
+      {savedKey && savedKey !== savedHiddenFor ? saved : null}
       <header className="flex flex-col">
-        <h1 className="text-2xl font-bold text-pretty">Knocking in {session.neighbourhood}</h1>
+        {/* A size down from other page titles, so long neighbourhood names
+            ("Knocking in Crescent Heights") stay on one line and the
+            knocking view fits one screen. */}
+        <h1 ref={heading} tabIndex={-1} className="text-xl font-bold text-pretty outline-none">
+          Knocking in {session.neighbourhood}
+        </h1>
         <div className="flex flex-wrap items-center gap-x-3 text-sm text-muted-foreground">
           <span data-testid="session-started">
             Started {sentenceEnd(formatTime(startedAt))}{" "}
@@ -286,7 +330,10 @@ function Knocking({
           {fixing ? null : (
             <button
               type="button"
-              onClick={() => setFixing(true)}
+              onClick={() => {
+                setFixNote(null);
+                setFixing(true);
+              }}
               className="inline-flex min-h-11 items-center font-semibold text-foreground underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
               data-testid="fix-start"
             >
@@ -294,7 +341,15 @@ function Knocking({
             </button>
           )}
         </div>
-        {fixNote ? <ActionMessage text={fixNote} /> : null}
+        {fixNote ? (
+          fixNote.calm ? (
+            <p role="status" className="text-sm text-foreground" data-testid="fix-start-saved">
+              {fixNote.text}
+            </p>
+          ) : (
+            <ActionMessage text={fixNote.text} />
+          )
+        ) : null}
       </header>
       {fixing ? (
         <FixStart
@@ -311,26 +366,27 @@ function Knocking({
 
       <div className="flex flex-col gap-2">
         <div className="grid grid-cols-2 gap-3">
-          <Counter label="Doors" count={counts.shown.doors} onAdd={() => counts.tap("doors", 1)} onUndo={() => counts.tap("doors", -1)} />
+          <Counter
+            label="Doors"
+            one="door"
+            count={counts.shown.doors}
+            disabled={counts.ended}
+            onAdd={() => tap("doors", 1)}
+            onUndo={() => tap("doors", -1)}
+          />
           <Counter
             label="Conversations"
+            one="conversation"
             count={counts.shown.conversations}
-            onAdd={() => counts.tap("conversations", 1)}
-            onUndo={() => counts.tap("conversations", -1)}
+            disabled={counts.ended}
+            onAdd={() => tap("conversations", 1)}
+            onUndo={() => tap("conversations", -1)}
           />
         </div>
-        {counts.note === VIEW_AS_NOTHING_SAVED ? (
-          <ActionMessage text={counts.note} />
-        ) : (
-          <p aria-live="polite" className="text-sm text-muted-foreground">
-            {counts.note ?? (counts.saving ? "Saving" : "All taps saved.")}
-          </p>
-        )}
+        <TapStatus counts={counts} onStartAgain={() => router.refresh()} />
       </div>
 
       {times}
-
-      {unfinished}
 
       <EndKnocking
         session={session}
@@ -342,20 +398,43 @@ function Knocking({
         onStopTaps={counts.stop}
         onEnded={onEnded}
       />
+
+      {unfinished}
     </div>
   );
 }
 
-// New lead, for a door that wants a follow-up instead of a time, smaller
-// than the counters and the times.
-function NewLeadButton() {
+// What the counters' taps are doing, in words. A retry is a warning with how
+// many taps are waiting; a session ended on another phone stops the counters
+// and offers to start again.
+function TapStatus({ counts, onStartAgain }: { counts: KnockCounts; onStartAgain: () => void }) {
+  if (counts.note === VIEW_AS_NOTHING_SAVED) return <ActionMessage text={counts.note} />;
+  if (counts.ended) {
+    return (
+      <div role="alert" className="flex flex-col gap-2 rounded-md border-2 border-foreground/60 px-3 py-2" data-testid="tap-status">
+        <p className="text-sm font-semibold text-pretty">{counts.note ?? "This session has ended."}</p>
+        <Button type="button" variant="outline" className="w-fit" onClick={onStartAgain}>
+          Start again
+        </Button>
+      </div>
+    );
+  }
+  if (counts.note) {
+    return (
+      <div role="status" className="rounded-md border-2 border-foreground/60 px-3 py-2" data-testid="tap-status">
+        <p className="text-sm font-semibold">
+          {counts.pending === 1 ? "1 tap" : `${counts.pending} taps`} not saved yet. Retrying.
+        </p>
+        <p className="text-sm text-muted-foreground">They stay on this phone until they save.</p>
+      </div>
+    );
+  }
+  // A quick save keeps the line as it was; "Saving." shows once a save is
+  // slow. data-pending says how many taps are on their way, for the tests.
   return (
-    <Button asChild variant="outline" className="h-11 w-full">
-      <Link href="/app/leads/new">
-        <Plus aria-hidden="true" className="size-5" />
-        New lead
-      </Link>
-    </Button>
+    <p className="text-sm text-muted-foreground" data-testid="tap-status" data-pending={counts.pending}>
+      {counts.slow ? "Saving." : "All taps saved."}
+    </p>
   );
 }
 
@@ -388,7 +467,7 @@ function FixStart({
   startedAt: string;
   actedOut: boolean;
   // The new start, or null when nothing changed, and what to say.
-  onDone: (startedAt: string | null, note: string | null) => void;
+  onDone: (startedAt: string | null, note: { text: string; calm: boolean } | null) => void;
 }) {
   const [value, setValue] = useState(calgaryClock(startedAt));
   const [busy, setBusy] = useState(false);
@@ -398,7 +477,7 @@ function FixStart({
     if (actedOut) {
       const day = calgaryDateOf(startedAt);
       const moment = /^\d{2}:\d{2}$/.test(value) ? calgaryInstant(day, value) : null;
-      onDone(moment && new Date(moment).getTime() <= Date.now() ? moment : null, VIEW_AS_NOTHING_SAVED);
+      onDone(moment && new Date(moment).getTime() <= Date.now() ? moment : null, { text: VIEW_AS_NOTHING_SAVED, calm: false });
       return;
     }
     setBusy(true);
@@ -409,7 +488,7 @@ function FixStart({
         setMessage(result.error);
         return;
       }
-      onDone(result.startedAt, null);
+      onDone(result.startedAt, { text: `Start time saved: ${sentenceEnd(formatTime(result.startedAt))}`, calm: true });
     } catch {
       setMessage("No signal. Try again in a moment.");
     } finally {
@@ -419,7 +498,9 @@ function FixStart({
 
   return (
     <div className="flex flex-col gap-3 rounded-md border p-3" data-testid="fix-start-panel">
-      <Label htmlFor="fix-start-time">When did you start?</Label>
+      <label htmlFor="fix-start-time" className="text-sm font-semibold">
+        When did you start?
+      </label>
       <div className="flex items-center gap-3">
         <Input
           id="fix-start-time"
@@ -440,18 +521,65 @@ function FixStart({
   );
 }
 
+// ---------------------------------------------------------------- counting
+
+type KnockCounts = {
+  shown: Counts;
+  saving: boolean;
+  slow: boolean;
+  note: string | null;
+  // Taps on this phone not saved yet.
+  pending: number;
+  // The session ended elsewhere (or can't be counted): the counters stop.
+  ended: boolean;
+  tap: (kind: keyof Counts, delta: 1 | -1) => void;
+  stop: () => void;
+};
+
+const pendingKey = (sessionId: string) => `vesper:knock-pending:${sessionId}`;
+
+function readPending(sessionId: string): Counts {
+  try {
+    const raw = localStorage.getItem(pendingKey(sessionId));
+    if (!raw) return ZERO;
+    const parsed = JSON.parse(raw) as Partial<Counts>;
+    const doors = Number.isInteger(parsed.doors) ? Number(parsed.doors) : 0;
+    const conversations = Number.isInteger(parsed.conversations) ? Number(parsed.conversations) : 0;
+    return { doors: Math.max(-100, Math.min(100, doors)), conversations: Math.max(-100, Math.min(100, conversations)) };
+  } catch {
+    return ZERO;
+  }
+}
+
+function writePending(sessionId: string, counts: Counts) {
+  try {
+    if (counts.doors === 0 && counts.conversations === 0) localStorage.removeItem(pendingKey(sessionId));
+    else localStorage.setItem(pendingKey(sessionId), JSON.stringify(counts));
+  } catch {
+    // Private browsing or full storage: the taps still send from memory.
+  }
+}
+
 // The counters change the moment a button is tapped. Taps are queued and
 // sent one batch at a time; a failed batch goes back in the queue and is
-// retried, so fast tapping never loses a count.
-function useKnockCounts(session: KnockSessionView, actedOut: boolean) {
+// retried, so fast tapping never loses a count. Taps not saved yet are also
+// kept on the phone, so an app reload (the camera can cause one) sends them
+// when Session opens again. Never under View as.
+function useKnockCounts(session: KnockSessionView, actedOut: boolean): KnockCounts {
   const [shown, setShown] = useState<Counts>({ doors: session.doors_knocked, conversations: session.conversations });
   const [saving, setSaving] = useState(false);
+  const [slow, setSlow] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [pending, setPending] = useState(0);
+  const [ended, setEnded] = useState(false);
   const confirmed = useRef<Counts>({ doors: session.doors_knocked, conversations: session.conversations });
   const queued = useRef<Counts>(ZERO);
   const sending = useRef<Counts>(ZERO);
   const flushing = useRef(false);
   const stopped = useRef(false);
+  // Until the taps kept from an earlier visit are read back, nothing is
+  // written over them.
+  const restored = useRef(false);
 
   function total(): Counts {
     return {
@@ -460,24 +588,25 @@ function useKnockCounts(session: KnockSessionView, actedOut: boolean) {
     };
   }
 
-  function tap(kind: keyof Counts, delta: 1 | -1) {
-    if (stopped.current) return;
-    if (total()[kind] + delta < 0) return;
-    if (actedOut) {
-      confirmed.current = { ...confirmed.current, [kind]: confirmed.current[kind] + delta };
-      setShown(total());
-      setNote(VIEW_AS_NOTHING_SAVED);
-      return;
-    }
-    queued.current = { ...queued.current, [kind]: queued.current[kind] + delta };
+  function unsent(): Counts {
+    return {
+      doors: sending.current.doors + queued.current.doors,
+      conversations: sending.current.conversations + queued.current.conversations,
+    };
+  }
+
+  function show() {
+    const waiting = unsent();
     setShown(total());
-    void flush();
+    setPending(Math.abs(waiting.doors) + Math.abs(waiting.conversations));
+    if (!actedOut && !stopped.current && restored.current) writePending(session.id, waiting);
   }
 
   async function flush() {
     if (flushing.current) return;
     flushing.current = true;
     setSaving(true);
+    const slowTimer = window.setTimeout(() => setSlow(true), SLOW_SAVE_MS);
     try {
       while (!stopped.current && (queued.current.doors !== 0 || queued.current.conversations !== 0)) {
         sending.current = queued.current;
@@ -492,45 +621,107 @@ function useKnockCounts(session: KnockSessionView, actedOut: boolean) {
           confirmed.current = { doors: result.doors, conversations: result.conversations };
           sending.current = ZERO;
           setNote(null);
-        } else {
-          queued.current = {
-            doors: queued.current.doors + sending.current.doors,
-            conversations: queued.current.conversations + sending.current.conversations,
-          };
-          sending.current = ZERO;
-          setNote(result.error);
-          if (result.fatal) stopped.current = true;
-          else await new Promise((resolve) => setTimeout(resolve, 2000));
+          show();
+          continue;
         }
-        setShown(total());
+        queued.current = {
+          doors: queued.current.doors + sending.current.doors,
+          conversations: queued.current.conversations + sending.current.conversations,
+        };
+        sending.current = ZERO;
+        if (result.fatal) {
+          stopped.current = true;
+          writePending(session.id, ZERO);
+          setEnded(true);
+          setNote(result.error.startsWith("This session has ended") ? "This session has ended." : result.error);
+          show();
+          break;
+        }
+        setNote(result.error);
+        show();
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     } finally {
+      window.clearTimeout(slowTimer);
       flushing.current = false;
       setSaving(false);
+      setSlow(false);
     }
+  }
+
+  // Taps left on this phone by an earlier visit go out first, just after
+  // the screen is up.
+  useEffect(() => {
+    if (actedOut) return;
+    const timer = window.setTimeout(() => {
+      const left = readPending(session.id);
+      restored.current = true;
+      if (left.doors === 0 && left.conversations === 0) {
+        show();
+        return;
+      }
+      queued.current = { doors: queued.current.doors + left.doors, conversations: queued.current.conversations + left.conversations };
+      show();
+      void flush();
+    }, 0);
+    return () => window.clearTimeout(timer);
+    // Runs once per session shown; show and flush read refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.id, actedOut]);
+
+  function tap(kind: keyof Counts, delta: 1 | -1) {
+    if (stopped.current) return;
+    if (total()[kind] + delta < 0) return;
+    if (actedOut) {
+      confirmed.current = { ...confirmed.current, [kind]: confirmed.current[kind] + delta };
+      setShown(total());
+      setNote(VIEW_AS_NOTHING_SAVED);
+      return;
+    }
+    queued.current = { ...queued.current, [kind]: queued.current[kind] + delta };
+    show();
+    void flush();
   }
 
   return {
     shown,
     saving,
+    slow,
     note,
+    pending,
+    ended,
     tap,
     // Once the session ends, no more taps are sent.
     stop: () => {
       stopped.current = true;
+      writePending(session.id, ZERO);
     },
   };
 }
 
-function Counter({ label, count, onAdd, onUndo }: { label: string; count: number; onAdd: () => void; onUndo: () => void }) {
-  const name = label.toLowerCase();
+function Counter({
+  label,
+  one,
+  count,
+  disabled,
+  onAdd,
+  onUndo,
+}: {
+  label: string;
+  one: string;
+  count: number;
+  disabled: boolean;
+  onAdd: () => void;
+  onUndo: () => void;
+}) {
   return (
     <div className="flex flex-col gap-2">
       <button
         type="button"
         onClick={onAdd}
-        aria-label={`Add one to ${name}, now ${count}`}
-        className="flex h-22 touch-manipulation flex-col items-center justify-center rounded-xl bg-primary text-primary-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:bg-primary/85"
+        disabled={disabled}
+        aria-label={`${label} +1, now ${count}`}
+        className="flex h-22 touch-manipulation flex-col items-center justify-center rounded-xl bg-primary text-primary-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:bg-primary/85 disabled:opacity-50"
       >
         <span className="text-4xl leading-none font-bold tabular-nums" aria-hidden="true">
           {count}
@@ -539,10 +730,30 @@ function Counter({ label, count, onAdd, onUndo }: { label: string; count: number
           {label} +1
         </span>
       </button>
-      <Button type="button" variant="outline" className="h-10 touch-manipulation" onClick={onUndo} aria-label={`Take one off ${name}`}>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-11 touch-manipulation"
+        onClick={onUndo}
+        disabled={disabled}
+        aria-label={`Undo ${one}`}
+      >
         Undo
       </Button>
     </div>
+  );
+}
+
+// New lead, for a door that wants a follow-up instead of a time, smaller
+// than the counters and the times.
+function NewLeadButton() {
+  return (
+    <Button asChild variant="outline" className="h-11 w-full">
+      <Link href="/app/leads/new">
+        <Plus aria-hidden="true" className="size-5" />
+        New lead
+      </Link>
+    </Button>
   );
 }
 
@@ -568,6 +779,14 @@ function EndKnocking({
   const [confirm, setConfirm] = useState(false);
   const [ending, setEnding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const question = useRef<HTMLDivElement>(null);
+
+  // The question opens above the tab bar, never under it, and takes focus.
+  useEffect(() => {
+    if (!confirm) return;
+    question.current?.scrollIntoView({ block: "end" });
+    question.current?.focus({ preventScroll: true });
+  }, [confirm]);
 
   async function end() {
     if (actedOut) {
@@ -599,20 +818,28 @@ function EndKnocking({
     }
   }
 
-  // New lead and End knocking share the last row, so the knocking view fits
-  // one screen; End asks first, so a slip costs nothing.
+  // End knocking and New lead share a row, so the knocking view fits one
+  // screen; New lead, used all evening, takes the thumb's corner. End asks
+  // first, so a slip costs nothing.
   if (!confirm) {
     return (
       <div className="grid grid-cols-2 gap-3">
-        <NewLeadButton />
         <Button type="button" variant="outline" className="h-11 w-full" onClick={() => setConfirm(true)}>
           End knocking
         </Button>
+        <NewLeadButton />
       </div>
     );
   }
   return (
-    <div role="group" aria-labelledby="end-heading" className="flex flex-col gap-3 rounded-md border p-3" data-testid="end-confirm">
+    <div
+      ref={question}
+      role="group"
+      tabIndex={-1}
+      aria-labelledby="end-heading"
+      className="flex scroll-mb-[calc(6rem+env(safe-area-inset-bottom))] flex-col gap-3 rounded-md border p-3 outline-none"
+      data-testid="end-confirm"
+    >
       <p id="end-heading" className="font-semibold text-pretty">
         End knocking in {session.neighbourhood}? You can start again any time.
       </p>

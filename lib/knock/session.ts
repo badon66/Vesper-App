@@ -6,9 +6,11 @@ import { calgaryDayStart, calgaryInstant } from "@/lib/time";
 
 const MINUTE = 60_000;
 
-// "1 h 12 min", "12 min", or "Under a minute". Never negative.
+// "1 h 12 min", "12 min", or "Under a minute". Never negative. Counted in
+// whole minutes of the clock, so it agrees with the times shown beside it
+// ("4:32 to 7:10 p.m." is 2 h 38 min, whatever the seconds were).
 export function timeOutLabel(startIso: string, endMs: number): string {
-  const minutes = Math.max(0, Math.floor((endMs - new Date(startIso).getTime()) / MINUTE));
+  const minutes = Math.max(0, Math.floor(endMs / MINUTE) - Math.floor(new Date(startIso).getTime() / MINUTE));
   if (minutes < 1) return "Under a minute";
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;

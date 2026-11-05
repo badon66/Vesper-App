@@ -169,7 +169,7 @@ try {
   await page.click("button[type=submit]");
   await page.waitForURL("**/app", { timeout: 20000 });
   await settle(page);
-  check("Home no longer holds the knock session", (await page.locator("#knock-neighbourhood").count()) === 0 && (await page.getByRole("button", { name: /^Add one to doors/ }).count()) === 0);
+  check("Home no longer holds the knock session", (await page.locator("#knock-neighbourhood").count()) === 0 && (await page.getByRole("button", { name: /^Doors \+1/ }).count()) === 0);
   await page.locator('nav[aria-label="Tabs"]:visible').getByRole("link", { name: "Session", exact: true }).click();
   await page.waitForURL("**/app/session", { timeout: 20000 });
   await settle(page);
@@ -177,7 +177,7 @@ try {
   const outText = (await outRow.innerText().catch(() => "")).replace(/\s+/g, " ");
   check(
     "Out today shows who else is out: name, neighbourhood, since when, doors and conversations",
-    outText.includes(B_PLACE) && outText.includes("Since ") && outText.includes("12 doors") && outText.includes("3 conversations"),
+    outText.includes(B_PLACE) && outText.includes("Out now") && outText.includes(", since ") && outText.includes("12 doors") && outText.includes("3 conversations"),
     outText,
   );
   check("Out today leaves the setter themselves out", (await page.getByTestId("out-today-row").filter({ hasText: people.a.name }).count()) === 0);
@@ -189,16 +189,16 @@ try {
   check("a knock session starts with a neighbourhood", true);
 
   // 2. Counters: fast taps show at once and all land in the database.
-  const addDoor = page.getByRole("button", { name: /^Add one to doors/ });
-  const addTalk = page.getByRole("button", { name: /^Add one to conversations/ });
+  const addDoor = page.getByRole("button", { name: /^Doors \+1/ });
+  const addTalk = page.getByRole("button", { name: /^Conversations \+1/ });
   for (let i = 0; i < 5; i += 1) await addDoor.click({ delay: 0 });
   await addTalk.click();
   await addTalk.click();
-  await page.getByRole("button", { name: "Take one off doors" }).click();
+  await page.getByRole("button", { name: "Undo door" }).click();
   const shownDoors = (await addDoor.getAttribute("aria-label")) ?? "";
   const shownTalks = (await addTalk.getAttribute("aria-label")) ?? "";
   check("counters update the moment they are tapped", shownDoors.endsWith("now 4") && shownTalks.endsWith("now 2"), `${shownDoors} | ${shownTalks}`);
-  await page.getByText("All taps saved.").waitFor({ timeout: 20000 });
+  await page.locator('[data-testid="tap-status"][data-pending="0"]').waitFor({ timeout: 20000 });
   const { data: sessionRow } = await admin
     .from("knock_sessions")
     .select("id, doors_knocked, conversations")
@@ -206,7 +206,7 @@ try {
     .is("ended_at", null)
     .single();
   check("every tap is saved: 4 doors and 2 conversations", sessionRow?.doors_knocked === 4 && sessionRow?.conversations === 2, JSON.stringify(sessionRow));
-  for (const name of [/^Add one to doors/, /^Add one to conversations/]) {
+  for (const name of [/^Doors \+1/, /^Conversations \+1/]) {
     const box = await page.getByRole("button", { name }).boundingBox();
     check(`the ${String(name).includes("doors") ? "doors" : "conversations"} counter is on screen without scrolling`, box !== null && box.y >= 0 && box.y + box.height <= viewport.height, box ? `${Math.round(box.y)}-${Math.round(box.y + box.height)} of ${viewport.height}` : "missing");
   }
@@ -221,10 +221,13 @@ try {
   for (const size of [{ width: 430, height: 932, inset: 93 }, { width: 390, height: 844, inset: 81 }]) {
     await page.setViewportSize({ width: size.width, height: size.height });
     await page.waitForTimeout(300);
+    // The tab bar's top, or the raised gold Session button's if higher.
     const fit = await page.evaluate(() => {
       const end = [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "End knocking");
       const bar = [...document.querySelectorAll('nav[aria-label="Tabs"]')].find((nav) => getComputedStyle(nav).display !== "none");
-      return { end: end ? Math.round(end.getBoundingClientRect().bottom + window.scrollY) : null, bar: bar ? Math.round(bar.getBoundingClientRect().top) : null };
+      const raised = bar?.querySelector(".rounded-full.bg-primary.ring-4");
+      const top = bar ? Math.min(bar.getBoundingClientRect().top, raised ? raised.getBoundingClientRect().top : Infinity) : null;
+      return { end: end ? Math.round(end.getBoundingClientRect().bottom + window.scrollY) : null, bar: top === null ? null : Math.round(top) };
     });
     const fits = fit.end !== null && fit.bar !== null && fit.end <= fit.bar - size.inset;
     const detail = `End knocking ends at ${fit.end}, the tab bar starts at ${fit.bar}, ${size.inset} px kept for the phone, ${slotsTonight} times tonight`;
@@ -390,7 +393,7 @@ try {
   const tops = await page.evaluate(() => {
     const top = (element) => (element ? Math.round(element.getBoundingClientRect().top + window.scrollY) : null);
     const button = (text) => [...document.querySelectorAll("button, a")].find((el) => el.textContent.trim() === text);
-    const doors = [...document.querySelectorAll("button")].find((el) => (el.getAttribute("aria-label") ?? "").startsWith("Add one to doors"));
+    const doors = [...document.querySelectorAll("button")].find((el) => (el.getAttribute("aria-label") ?? "").startsWith("Doors +1"));
     return {
       saved: top(document.querySelector('[data-testid="lead-saved"]')),
       heading: top(document.querySelector("main h1")),
@@ -706,7 +709,7 @@ try {
   const summaryText = (await page.getByTestId("session-summary").innerText()).replace(/\s+/g, " ");
   check(
     "End knocking shows a short summary: time out, doors, conversations, leads and bookings",
-    summaryText.includes(`Done in ${TEST_PLACE}`) && /Out \d/.test(summaryText) && summaryText.includes(`Doors ${ended?.doors_knocked}`) &&
+    summaryText.includes(`Done in ${TEST_PLACE}`) && /Time out (Under a minute|\d)/.test(summaryText) && summaryText.includes(`Doors ${ended?.doors_knocked}`) &&
       summaryText.includes(`Conversations ${ended?.conversations}`) && summaryText.includes(`Leads ${linked}`) && summaryText.includes("Bookings 0"),
     summaryText,
   );

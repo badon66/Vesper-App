@@ -833,3 +833,20 @@ Keenan approved the scope up front, merge on green, aiming to be live before 3:0
 - **The end summary.** Time out (start to end), doors, conversations, leads (saved while it ran, which is how leads link to a session) and bookings (those leads with a booking still on: booked, confirmed or marked; a move keeps it, a cancel doesn't). It shows after End knocking until it's closed or the page is left.
 - **Where saves land.** While a session runs, New lead's Save lead lands on Session with "Lead saved. On to the next door.", for Keenan too (before, only setters went back to Home, and Keenan to Leads). Save and book returns to Session once the booking is done. The booking sheet's Done after a booking made from Session shows the same line: a booking saves the lead too, so Keenan's wording fits both. New lead's Cancel goes back to Session while knocking, otherwise to Leads.
 - **The welcome tour** now says "Start knocking on Session."
+- **Critique and polish (impeccable).** Two isolated reviewers, a design review and a detector with browser measurements: 28/40 before polish. The detector found nothing in six views (its planted-page control found six), and the browser found the End question opening under the tab bar at 390 wide and 40 px Undo buttons. Fixed:
+  - End's question scrolls above the tab bar and takes focus;
+  - Undo is 44 px, and the counters' names match what they show ("Doors +1, now 3", "Undo door");
+  - "Saving." shows only when a save is slow;
+  - a retry is a bordered warning with how many taps are waiting, and taps not saved yet stay on the phone until they land (checked by going offline and reloading: they arrived);
+  - a session ended on another phone stops the counters and offers Start again, instead of "Reload the page", which an installed app can't do;
+  - the summary comes from the database, stays until the next start, shows time out as one of its numbers (whole clock minutes, so it agrees with the times shown) and has no gold edge;
+  - New lead and End share the last row with New lead in the thumb corner, and Unfinished moves under them;
+  - the saved line clears on the next tap;
+  - the knocking heading is a size down, so "Knocking in Crescent Heights" stays on one line;
+  - "Where are you knocking?" labels the field, with a line on what counts as a door and a conversation;
+  - Out today says Out now or Finished.
+- **Not changed, for Keenan to decide.** The design review suggested docking the counters just above the tab bar, where the thumb rests, instead of second from the top as Keenan listed them; and asked whether every conversation should also count a door, so a talk is one tap. Both change what Keenan specified, so neither was built.
+- **Tests that were already failing on main.** The full database suite had five failures unrelated to Session:
+  - one day-schedule test picked "the first closed evening" which, on a Thursday, is Sunday, today + 3, an evening two earlier tests in the same file give their own schedule (on the throwaway test host; it stopped at its first check, so nothing was changed);
+  - main's four quote-link checks expected take 1's database, but the quote link rework's migrations are already live (closed instead of expired, no expiry by date, new fields).
+  The first now skips evenings its neighbours use; the second now checks what the live database does, copied from the rework branch's checks without its new-column reads (main's types don't have those columns until the rework merges).

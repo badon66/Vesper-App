@@ -18,8 +18,8 @@ export function OutToday({ rows }: { rows: OutTodayRow[] }) {
           {rows.length === 0
             ? "Nobody else has knocked yet today. When someone starts, they show here with their neighbourhood, doors and conversations."
             : out === 0
-              ? "Nobody else is knocking right now. Doors and conversations are today's."
-              : `${plural(out, "person", "people")} knocking now. Doors and conversations are today's.`}
+              ? "Nobody else is knocking right now. Counts are for today."
+              : `${plural(out, "person", "people")} knocking now. Counts are for today.`}
         </p>
       </div>
       {rows.length > 0 ? (
@@ -28,11 +28,12 @@ export function OutToday({ rows }: { rows: OutTodayRow[] }) {
             <li key={row.userId} className="flex flex-col gap-1 px-4 py-3" data-testid="out-today-row">
               <div className="flex items-baseline justify-between gap-3">
                 <span className="font-semibold">{row.name}</span>
-                <span className="shrink-0 text-sm font-semibold">
-                  {row.out ? `Since ${formatTime(row.from)}` : `${formatTime(row.from)} to ${formatTime(row.until ?? row.from)}`}
-                </span>
+                <span className="shrink-0 text-sm font-semibold">{row.out ? "Out now" : "Finished"}</span>
               </div>
-              <p className="text-sm text-muted-foreground">{row.neighbourhoods.join(", then ")}</p>
+              <p className="text-sm text-muted-foreground">
+                {row.neighbourhoods.join(", then ")}
+                {row.out ? `, since ${formatTime(row.from)}` : `, ${formatTime(row.from)} to ${formatTime(row.until ?? row.from)}`}
+              </p>
               <p className="text-sm tabular-nums">
                 {plural(row.doors, "door", "doors")}, {plural(row.conversations, "conversation", "conversations")}
               </p>

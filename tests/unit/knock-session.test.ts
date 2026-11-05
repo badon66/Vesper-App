@@ -12,6 +12,11 @@ describe("timeOutLabel", () => {
     expect(timeOutLabel("2026-11-05T22:00:00Z", at("2026-11-05T23:12:00Z"))).toBe("1 h 12 min");
     expect(timeOutLabel("2026-11-05T22:00:00Z", at("2026-11-05T21:00:00Z"))).toBe("Under a minute");
   });
+  it("counts whole minutes of the clock, so it matches the times shown", () => {
+    // 4:32:50 to 7:10:10 shows as 4:32 to 7:10, which is 2 h 38 min.
+    expect(timeOutLabel("2026-11-05T22:32:50Z", at("2026-11-06T01:10:10Z"))).toBe("2 h 38 min");
+    expect(timeOutLabel("2026-11-05T22:32:59Z", at("2026-11-05T22:33:00Z"))).toBe("1 min");
+  });
 });
 
 describe("recentNeighbourhoods", () => {

@@ -27,6 +27,40 @@ export async function sessionTally(supabase: Client, sessionId: string): Promise
   return { leads: ids.length, bookings: new Set((meetings ?? []).map((meeting) => meeting.lead_id)).size };
 }
 
+// The person's last session that ended today, with how it went, for the
+// summary Session shows until the next start. Scoped to the person, so View
+// as shows theirs.
+export async function lastEndedToday(supabase: Client, userId: string): Promise<{
+  neighbourhood: string;
+  startedAt: string;
+  endedAt: string;
+  doors: number;
+  conversations: number;
+  leads: number;
+  bookings: number;
+} | null> {
+  const { data } = await supabase
+    .from("knock_sessions")
+    .select("id, neighbourhood, started_at, ended_at, doors_knocked, conversations")
+    .eq("user_id", userId)
+    .not("ended_at", "is", null)
+    .gte("started_at", calgaryDayStart(calgaryToday()))
+    .order("ended_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data?.ended_at) return null;
+  const tally = await sessionTally(supabase, data.id);
+  return {
+    neighbourhood: data.neighbourhood,
+    startedAt: data.started_at,
+    endedAt: data.ended_at,
+    doors: data.doors_knocked,
+    conversations: data.conversations,
+    leads: tally.leads,
+    bookings: tally.bookings,
+  };
+}
+
 // The person's own recent neighbourhoods, newest first, for one-tap chips.
 // Scoped to the person, so View as shows theirs.
 export async function recentNeighbourhoodsOf(supabase: Client, userId: string): Promise<string[]> {

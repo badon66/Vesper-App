@@ -25,12 +25,15 @@ function subscribeMinute(onChange: () => void) {
 }
 const thisMinute = () => Math.floor(Date.now() / 60_000);
 
-// Unfinished bookings on Home (round 2, Keenan, 2026-11-03): what a setter
+// Unfinished bookings (round 2, Keenan, 2026-11-03; on Session from
+// 2026-11-05): what a setter
 // entered in the booking sheet and left, kept on this phone for 24 hours.
 // Tapping one reopens the sheet, asks for a time, then picks up where they
 // left off. Nothing shows when there are none, and nothing while Keenan
 // views the app as someone: their drafts are on their own phone.
-export function UnfinishedBookings({ userId }: { userId: string }) {
+// compact (Session, 2026-11-05): a one-line explainer, so the knocking view
+// stays short.
+export function UnfinishedBookings({ userId, compact = false }: { userId: string; compact?: boolean }) {
   const { viewingAs, name } = useViewAs();
   const raw = useSyncExternalStore(subscribeDrafts, () => rawDrafts(userId), () => null);
   const minute = useSyncExternalStore(subscribeMinute, thisMinute, () => 0);
@@ -54,7 +57,9 @@ export function UnfinishedBookings({ userId }: { userId: string }) {
           Unfinished
         </h2>
         <p className="text-sm text-pretty text-muted-foreground">
-          Bookings you started on this phone. Tap one, pick a time, and carry on where you left off. Each is kept for 24 hours.
+          {compact
+            ? "Kept on this phone for 24 hours. Tap one, pick a time, carry on."
+            : "Bookings you started on this phone. Tap one, pick a time, and carry on where you left off. Each is kept for 24 hours."}
         </p>
       </div>
       <ul className="flex flex-col divide-y rounded-md border" aria-label="Unfinished bookings">

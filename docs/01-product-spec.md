@@ -80,18 +80,17 @@ The greeting has no role line under it.
 **Session (Keenan, 2026-11-05).** The gold tab, for setters and Keenan. The evening runs from here: start, count, book, end. It has two states.
 
 Not knocking, top to bottom:
-- After a session ends, its summary: the neighbourhood, time out, doors, conversations, leads (saved while it ran) and bookings (those leads with a booking still on).
-- Neighbourhood, filled in with the last one used, and the recent ones (up to four) under it to tap. Start knocking.
+- After a session ends, its summary: the neighbourhood, from when to when, time out, doors, conversations, leads (saved while it ran) and bookings (those leads with a booking still on). It stays, a reload included, until the next Start knocking.
+- Where are you knocking: the neighbourhood, filled in with the last one used, and the recent ones (up to four) under it to tap. Start knocking. A line says what counts: every door knocked, and a conversation each time someone answers and talks.
 - Unfinished bookings, when there are any (see below).
 - Out today: everyone else who has knocked today, the ones still out first: name, neighbourhood, since when (or from when to when, once they've finished), doors and conversations. Setters see this because they work as a team and don't knock the same doors twice.
 
 Knocking, top to bottom, aiming to fit one screen at 430 wide:
 - The neighbourhood as the heading, with when it started and the time out so far. Fix changes the start time, for a setter who tapped Start late: any time earlier today, never in the future.
-- The doors and conversations counters, smaller than they were on Home but still easy to hit with a thumb, each with Undo. A tap counts at once; taps are queued and retried, so none are lost on a weak signal.
-- Tonight's open times, the same as Schedule: tap a time, it holds, and the booking sheet opens over Session. If tonight has nothing left it shows the next evening with open times. "All evenings" opens Schedule.
-- A smaller New lead button, for doors that want a follow-up instead of a time.
-- Unfinished bookings: what a setter entered in the booking sheet and left, kept on that phone for 24 hours. Tapping one reopens it, asks for a time, and picks up where they left off. Under View as, a line says they stay on that person's phone.
-- End knocking asks first, then shows the summary.
+- The doors and conversations counters, smaller than they were on Home but still easy to hit with a thumb, each with Undo. A tap counts at once; taps are queued and retried, so none are lost on a weak signal, and taps not saved yet stay on the phone and go out when Session opens again (after an app reload, say). A retry says how many taps are waiting; a session ended on another phone stops the counters and offers Start again.
+- Tonight's open times, the same as Schedule: tap a time, it holds, and the booking sheet opens over Session. If tonight has nothing left, the heading names the evening shown ("Open times tomorrow"). "All evenings" opens Schedule.
+- End knocking and a smaller New lead button, for doors that want a follow-up instead of a time, share the last row; New lead takes the bottom right, in thumb reach. End knocking asks first (the question scrolls above the tab bar), then shows the summary.
+- Unfinished bookings, when there are any: what a setter entered in the booking sheet and left, kept on that phone for 24 hours. Tapping one reopens it, asks for a time, and picks up where they left off. Under View as, a line says they stay on that person's phone.
 
 Saving a lead or a booking while a session runs comes back to Session with "Lead saved. On to the next door." and a link to the lead: New lead's Save lead lands there, Save and book returns there once the booking is done, and the booking sheet's Done does too. Leads saved while the session runs link to it, as before. One open session per person; a session left open from an earlier day closes at its last tap. This is what feeds the funnel on the dashboard, so it has to be effortless or nobody will do it.
 
