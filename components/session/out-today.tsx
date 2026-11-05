@@ -17,7 +17,9 @@ export function OutToday({ rows }: { rows: OutTodayRow[] }) {
         <p className="text-sm text-pretty text-muted-foreground">
           {rows.length === 0
             ? "Nobody else has knocked yet today. When someone starts, they show here with their neighbourhood, doors and conversations."
-            : `${plural(out, "person", "people")} knocking now. Doors and conversations are today's.`}
+            : out === 0
+              ? "Nobody else is knocking right now. Doors and conversations are today's."
+              : `${plural(out, "person", "people")} knocking now. Doors and conversations are today's.`}
         </p>
       </div>
       {rows.length > 0 ? (
