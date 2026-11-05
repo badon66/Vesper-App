@@ -858,3 +858,23 @@ What they found wrong with take 1: the first screen read like a record (full nam
 - **"Within a day".** Four seats wanted it cut from the thank-you as a promise the business might not keep. It stays: it is Keenan's wording in the spec (take 1), and he decides what he promises. Worth a look from Keenan.
 - **"To have it before Christmas".** The homeowner read it as a promised date. It is Keenan's own sentence, so it stays as written; the breakdown line says "this season" instead.
 - **Prefilled names.** The homeowner wanted "it's Todd" in the text; the address works whoever sends it.
+
+### After the build: the five seats' screenshot review (2026-11-04)
+
+The same five agents reviewed screenshots of the built page at 390 and 430 (all runs on, uppers off, under the minimum, everything opened, the confirm step, after the price hold, a closed link). Changed:
+
+- **The total sits right under the switches** (all five). The first build put the breakdown between the switches and the total, so a flip changed a number about 300 px out of sight, with the hero far above and no total in the bar; the seats who gave up a bar total in round 2 had counted on a total beside the switches. Now the total, and Keenan's minimum box when it applies, follow the last switch; the lines that make it up come after. The walk-through checks the gap (60 px or less).
+- **Switching off takes away the light, not the roof** (designer). Roof edges stay solid in every state; a switched-off part shows a dashed line where the track was, in navy at 60% (over 3:1 on white, the homeowner measured the first version at 2.6:1).
+- **More gold** (designer, homeowner). Nodes 3.2 units across at a 5.5-unit pitch on the 4.5-unit track, so the lights read as gold rather than a dark bead line. The five small drawings are each cropped to their own part and their lines and lights are drawn the same size on screen as the big drawing's, so the porch and the sides are long enough to see (UX).
+- **"Upper & Lower Sides" lights both sides** (editor): a sides run named for both floors lights both returns, whatever level it was saved with.
+- **The hero** (editor, closer, UX). The greeting comes first (the grey street address above it went: the photo shows the house). The no-payment line sits right under "Price held until", semibold, with no rule between, which also brings the Christmas banner onto the first screen at 390. Keenan's minimum sentences show once, in the box at the total, not in the hero, where "That" read as the full quote.
+- **Words.** "For work up high: $200, or $400 with an upper gable" (closer, designer); "The track sits on the soffit, the underside of that edge" (editor); curly apostrophes in the page's own words, so the font no longer mixes the two (designer, editor; Keenan's own texts from Settings stay as he typed them).
+- **Touch.** The footer's phone and email are their own 44 px rows, underlined (UX). The closed page puts Call and Text in the same bottom bar as the quote page, in thumb reach (UX). The expand button on the photo is navy with a white icon, so it no longer outshines the house and the price (designer). The runs list above the drawing reads as a legend, without dividers.
+- **One visit per opening.** The first walk-through counted each visit twice on the development server, which runs a page's start-up twice; the page now records one visit however often that runs.
+
+Not changed:
+
+- **"No extra cost" tags on switched-off rows under the minimum** (closer). True and friendly, but the debate turned down extra minimum copy 4 to 1, and the total staying at $2,500 as parts come back on already shows it.
+- **"Still thinking it over? Text Keenan any question." above the footer** (closer, from the homeowner's round 1). The bar's Text already carries a first line about their quote; left out as a second ask.
+- **A sticky total inside Start smaller** (UX): the total right under the switches does the same job with no motion.
+- **A "both floors" level in meeting mode** (editor): not asked for; the name rule above covers Todd's quote.
