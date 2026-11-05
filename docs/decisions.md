@@ -845,6 +845,14 @@ Keenan approved the scope up front, merge on green, aiming to be live before 3:0
   - the knocking heading is a size down, so "Knocking in Crescent Heights" stays on one line;
   - "Where are you knocking?" labels the field, with a line on what counts as a door and a conversation;
   - Out today says Out now or Finished.
+- **Re-score and a second polish.** The re-score came to 29/40 and found two more problems: the saved line appeared above the counters, so they jumped down under the thumb and a quick second tap could land on Undo; and on a 390-wide iPhone used as an installed app the End and New lead row sat under the tab bar. Second polish:
+  - one status row under the counters, always the same height, holds the save state, the saved line with Open, a retry with how many taps wait, the start-time note and Start again; nothing is ever added above the counters;
+  - one Undo there takes back the last tap and names it, instead of an Undo under each counter (a low tap no longer quietly removes a count);
+  - Unfinished is one row saying how many, which opens the list, above the times;
+  - End knocking is a quiet text button, New lead the outlined one in the thumb corner;
+  - the links beside the heading and the start time keep their 44 px tap area without adding line height;
+  - Out today says where each person is now ("Bridgeland, since 4:32 p.m. Earlier: Renfrew.") and lists a finished person's places in the order they knocked them.
+  With six times tonight the End and New lead row now clears the raised Session button by 42 px on a 390-wide iPhone in the installed app (status bar and home indicator emulated) and by 118 px on Keenan's 430.
 - **Not changed, for Keenan to decide.** The design review suggested docking the counters just above the tab bar, where the thumb rests, instead of second from the top as Keenan listed them; and asked whether every conversation should also count a door, so a talk is one tap. Both change what Keenan specified, so neither was built.
 - **Tests that were already failing on main.** The full database suite had five failures unrelated to Session:
   - one day-schedule test picked "the first closed evening" which, on a Thursday, is Sunday, today + 3, an evening two earlier tests in the same file give their own schedule (on the throwaway test host; it stopped at its first check, so nothing was changed);

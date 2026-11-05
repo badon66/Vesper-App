@@ -35,6 +35,8 @@ export type KnockSessionView = {
 // View as acts out.
 export type SessionSoFar = { leads: number; bookings: number };
 
+export type SavedLead = { id: string; name: string };
+
 type Counts = { doors: number; conversations: number };
 const ZERO: Counts = { doors: 0, conversations: 0 };
 const initialState: KnockState = {};
@@ -47,8 +49,8 @@ const sentenceEnd = (text: string) => (text.endsWith(".") ? text : `${text}.`);
 
 // The Session tab (Keenan, 2026-11-05). Not knocking: the neighbourhood and
 // Start knocking, then who else is out today. Knocking: where and since
-// when, the counters, tonight's open times, New lead and End knocking, then
-// Unfinished. While Keenan views the app as someone, starting, counting,
+// when, the counters with one status row under them, Unfinished when there
+// is any, tonight's open times, then End knocking and New lead. While Keenan views the app as someone, starting, counting,
 // fixing the start and ending are acted out on this screen only, and it
 // says nothing was saved.
 export function SessionScreen({
@@ -58,8 +60,7 @@ export function SessionScreen({
   recent,
   soFar,
   renderedAt,
-  saved,
-  savedKey,
+  savedLead,
   times,
   unfinished,
   outToday,
@@ -72,10 +73,9 @@ export function SessionScreen({
   soFar: SessionSoFar;
   // The server's clock when the page was drawn, so the first paint matches.
   renderedAt: number;
-  // "Lead saved. On to the next door.", after a save while knocking, and
-  // the saved lead's id, so each new save shows it again.
-  saved: ReactNode;
-  savedKey: string | null;
+  // The lead just saved while knocking, for "Lead saved. On to the next
+  // door." in the status row.
+  savedLead: SavedLead | null;
   times: ReactNode;
   unfinished: ReactNode;
   outToday: ReactNode;
@@ -98,8 +98,7 @@ export function SessionScreen({
         actedOut={viewingAs}
         soFar={viewingAs && live.id === "view-as" ? { leads: 0, bookings: 0 } : soFar}
         renderedAt={renderedAt}
-        saved={saved}
-        savedKey={savedKey}
+        savedLead={savedLead}
         times={times}
         unfinished={unfinished}
         onEnded={(next) => {
@@ -246,9 +245,9 @@ function Summary({ summary, focus, actedOut }: { summary: KnockSummary; focus: b
           {formatTime(summary.startedAt)} to {sentenceEnd(formatTime(summary.endedAt))}
         </p>
       </div>
-      <dl className="grid grid-cols-3 gap-x-3 gap-y-3">
-        {stats.map((stat) => (
-          <div key={stat.label} className="min-w-0">
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-3">
+        {stats.map((stat, index) => (
+          <div key={stat.label} className={cn("min-w-0", index === 0 && "col-span-2")}>
             <dt className="text-xs text-muted-foreground">{stat.label}</dt>
             <dd className="text-lg leading-tight font-bold tabular-nums">{stat.value}</dd>
           </div>
@@ -266,8 +265,7 @@ function Knocking({
   actedOut,
   soFar,
   renderedAt,
-  saved,
-  savedKey,
+  savedLead,
   times,
   unfinished,
   onEnded,
@@ -277,8 +275,7 @@ function Knocking({
   actedOut: boolean;
   soFar: SessionSoFar;
   renderedAt: number;
-  saved: ReactNode;
-  savedKey: string | null;
+  savedLead: SavedLead | null;
   times: ReactNode;
   unfinished: ReactNode;
   onEnded: (summary: KnockSummary) => void;
@@ -293,6 +290,7 @@ function Knocking({
   const [savedHiddenFor, setSavedHiddenFor] = useState<string | null>(null);
   const now = useMinuteClock(renderedAt);
   const heading = useRef<HTMLHeadingElement>(null);
+  const saved = savedLead && savedLead.id !== savedHiddenFor ? savedLead : null;
 
   useEffect(() => {
     // Just started (the form is gone) or just arrived: the heading takes
@@ -301,20 +299,25 @@ function Knocking({
   }, []);
 
   useEffect(() => {
-    if (savedKey && window.location.search.includes("added=")) {
+    if (savedLead && window.location.search.includes("added=")) {
       window.history.replaceState(window.history.state, "", window.location.pathname);
     }
-  }, [savedKey]);
+  }, [savedLead]);
 
-  function tap(kind: keyof Counts, delta: 1 | -1) {
-    setSavedHiddenFor(savedKey);
+  function tap(kind: keyof Counts) {
+    setSavedHiddenFor(savedLead?.id ?? null);
     setFixNote(null);
-    counts.tap(kind, delta);
+    counts.tap(kind, 1);
+  }
+
+  function undo() {
+    setSavedHiddenFor(savedLead?.id ?? null);
+    setFixNote(null);
+    counts.undoLast();
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {savedKey && savedKey !== savedHiddenFor ? saved : null}
+    <div className="flex flex-col gap-3">
       <header className="flex flex-col">
         {/* A size down from other page titles, so long neighbourhood names
             ("Knocking in Crescent Heights") stay on one line and the
@@ -334,22 +337,13 @@ function Knocking({
                 setFixNote(null);
                 setFixing(true);
               }}
-              className="inline-flex min-h-11 items-center font-semibold text-foreground underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="-my-2.5 inline-flex min-h-11 items-center font-semibold text-foreground underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
               data-testid="fix-start"
             >
               Fix start time
             </button>
           )}
         </div>
-        {fixNote ? (
-          fixNote.calm ? (
-            <p role="status" className="text-sm text-foreground" data-testid="fix-start-saved">
-              {fixNote.text}
-            </p>
-          ) : (
-            <ActionMessage text={fixNote.text} />
-          )
-        ) : null}
       </header>
       {fixing ? (
         <FixStart
@@ -364,27 +358,15 @@ function Knocking({
         />
       ) : null}
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1">
         <div className="grid grid-cols-2 gap-3">
-          <Counter
-            label="Doors"
-            one="door"
-            count={counts.shown.doors}
-            disabled={counts.ended}
-            onAdd={() => tap("doors", 1)}
-            onUndo={() => tap("doors", -1)}
-          />
-          <Counter
-            label="Conversations"
-            one="conversation"
-            count={counts.shown.conversations}
-            disabled={counts.ended}
-            onAdd={() => tap("conversations", 1)}
-            onUndo={() => tap("conversations", -1)}
-          />
+          <Counter label="Doors" count={counts.shown.doors} disabled={counts.ended} onAdd={() => tap("doors")} />
+          <Counter label="Conversations" count={counts.shown.conversations} disabled={counts.ended} onAdd={() => tap("conversations")} />
         </div>
-        <TapStatus counts={counts} onStartAgain={() => router.refresh()} />
+        <StatusRow counts={counts} saved={saved} fixNote={fixNote} onUndo={undo} onStartAgain={() => router.refresh()} />
       </div>
+
+      {unfinished}
 
       {times}
 
@@ -398,43 +380,91 @@ function Knocking({
         onStopTaps={counts.stop}
         onEnded={onEnded}
       />
-
-      {unfinished}
     </div>
   );
 }
 
-// What the counters' taps are doing, in words. A retry is a warning with how
-// many taps are waiting; a session ended on another phone stops the counters
-// and offers to start again.
-function TapStatus({ counts, onStartAgain }: { counts: KnockCounts; onStartAgain: () => void }) {
-  if (counts.note === VIEW_AS_NOTHING_SAVED) return <ActionMessage text={counts.note} />;
+// One row under the counters, always the same height, so nothing ever
+// pushes the counters down under the thumb: on the left what the taps are
+// doing (or "Lead saved. On to the next door." after a save, or a note on
+// the start time); on the right one action: Undo for the last tap, Open
+// the saved lead, or Start again when the session ended on another phone.
+function StatusRow({
+  counts,
+  saved,
+  fixNote,
+  onUndo,
+  onStartAgain,
+}: {
+  counts: KnockCounts;
+  saved: SavedLead | null;
+  fixNote: { text: string; calm: boolean } | null;
+  onUndo: () => void;
+  onStartAgain: () => void;
+}) {
+  const undoButton =
+    counts.lastKind && !counts.ended ? (
+      <Button type="button" variant="ghost" className="h-11 shrink-0 px-3 font-semibold underline underline-offset-4" onClick={onUndo}>
+        Undo {counts.lastKind === "doors" ? "door" : "conversation"}
+      </Button>
+    ) : null;
+
+  let message: ReactNode;
+  let action: ReactNode = undoButton;
   if (counts.ended) {
-    return (
-      <div role="alert" className="flex flex-col gap-2 rounded-md border-2 border-foreground/60 px-3 py-2" data-testid="tap-status">
-        <p className="text-sm font-semibold text-pretty">{counts.note ?? "This session has ended."}</p>
-        <Button type="button" variant="outline" className="w-fit" onClick={onStartAgain}>
-          Start again
-        </Button>
-      </div>
+    message = (
+      <p role="alert" className="text-sm font-semibold text-pretty">
+        {counts.note ?? "This session has ended."}
+      </p>
+    );
+    action = (
+      <Button type="button" variant="outline" className="h-11 shrink-0" onClick={onStartAgain}>
+        Start again
+      </Button>
+    );
+  } else if (counts.note === VIEW_AS_NOTHING_SAVED) {
+    message = <ActionMessage text={counts.note} />;
+  } else if (saved) {
+    message = (
+      <p role="status" className="text-sm font-semibold text-pretty" data-testid="lead-saved">
+        Lead saved. On to the next door.
+      </p>
+    );
+    action = (
+      <Link
+        href={`/app/leads/${saved.id}`}
+        className="inline-flex min-h-11 max-w-[45%] shrink-0 items-center text-sm font-semibold underline underline-offset-4"
+      >
+        <span className="truncate">Open {saved.name}</span>
+      </Link>
+    );
+  } else if (fixNote) {
+    message = fixNote.calm ? (
+      <p role="status" className="text-sm text-pretty" data-testid="fix-start-saved">
+        {fixNote.text}
+      </p>
+    ) : (
+      <ActionMessage text={fixNote.text} />
+    );
+  } else if (counts.note) {
+    message = (
+      <p role="status" className="text-sm font-semibold text-pretty">
+        {counts.pending === 1 ? "1 tap" : `${counts.pending} taps`} not saved yet. Retrying.
+      </p>
+    );
+  } else {
+    message = (
+      <p className="text-sm text-muted-foreground">
+        {counts.slow ? "Saving." : counts.tapped ? "All taps saved." : "Counts save as you tap."}
+      </p>
     );
   }
-  if (counts.note) {
-    return (
-      <div role="status" className="rounded-md border-2 border-foreground/60 px-3 py-2" data-testid="tap-status">
-        <p className="text-sm font-semibold">
-          {counts.pending === 1 ? "1 tap" : `${counts.pending} taps`} not saved yet. Retrying.
-        </p>
-        <p className="text-sm text-muted-foreground">They stay on this phone until they save.</p>
-      </div>
-    );
-  }
-  // A quick save keeps the line as it was; "Saving." shows once a save is
-  // slow. data-pending says how many taps are on their way, for the tests.
+
   return (
-    <p className="text-sm text-muted-foreground" data-testid="tap-status" data-pending={counts.pending}>
-      {counts.slow ? "Saving." : "All taps saved."}
-    </p>
+    <div className="flex min-h-11 items-center justify-between gap-3" data-testid="tap-status" data-pending={counts.pending}>
+      <div className="min-w-0">{message}</div>
+      {action}
+    </div>
   );
 }
 
@@ -532,7 +562,11 @@ type KnockCounts = {
   pending: number;
   // The session ended elsewhere (or can't be counted): the counters stop.
   ended: boolean;
+  // Any tap on this screen yet, and the last one, which Undo takes back.
+  tapped: boolean;
+  lastKind: keyof Counts | null;
   tap: (kind: keyof Counts, delta: 1 | -1) => void;
+  undoLast: () => void;
   stop: () => void;
 };
 
@@ -572,6 +606,10 @@ function useKnockCounts(session: KnockSessionView, actedOut: boolean): KnockCoun
   const [note, setNote] = useState<string | null>(null);
   const [pending, setPending] = useState(0);
   const [ended, setEnded] = useState(false);
+  const [tapped, setTapped] = useState(false);
+  // The taps on this screen, newest last, so Undo takes back the last one.
+  const history = useRef<(keyof Counts)[]>([]);
+  const [lastKind, setLastKind] = useState<keyof Counts | null>(null);
   const confirmed = useRef<Counts>({ doors: session.doors_knocked, conversations: session.conversations });
   const queued = useRef<Counts>(ZERO);
   const sending = useRef<Counts>(ZERO);
@@ -672,6 +710,9 @@ function useKnockCounts(session: KnockSessionView, actedOut: boolean): KnockCoun
   function tap(kind: keyof Counts, delta: 1 | -1) {
     if (stopped.current) return;
     if (total()[kind] + delta < 0) return;
+    setTapped(true);
+    if (delta === 1) history.current = [...history.current.slice(-49), kind];
+    setLastKind(history.current[history.current.length - 1] ?? null);
     if (actedOut) {
       confirmed.current = { ...confirmed.current, [kind]: confirmed.current[kind] + delta };
       setShown(total());
@@ -683,6 +724,13 @@ function useKnockCounts(session: KnockSessionView, actedOut: boolean): KnockCoun
     void flush();
   }
 
+  function undoLast() {
+    const kind = history.current[history.current.length - 1];
+    if (!kind) return;
+    history.current = history.current.slice(0, -1);
+    tap(kind, -1);
+  }
+
   return {
     shown,
     saving,
@@ -690,7 +738,10 @@ function useKnockCounts(session: KnockSessionView, actedOut: boolean): KnockCoun
     note,
     pending,
     ended,
+    tapped,
+    lastKind,
     tap,
+    undoLast,
     // Once the session ends, no more taps are sent.
     stop: () => {
       stopped.current = true;
@@ -699,48 +750,22 @@ function useKnockCounts(session: KnockSessionView, actedOut: boolean): KnockCoun
   };
 }
 
-function Counter({
-  label,
-  one,
-  count,
-  disabled,
-  onAdd,
-  onUndo,
-}: {
-  label: string;
-  one: string;
-  count: number;
-  disabled: boolean;
-  onAdd: () => void;
-  onUndo: () => void;
-}) {
+function Counter({ label, count, disabled, onAdd }: { label: string; count: number; disabled: boolean; onAdd: () => void }) {
   return (
-    <div className="flex flex-col gap-2">
-      <button
-        type="button"
-        onClick={onAdd}
-        disabled={disabled}
-        aria-label={`${label} +1, now ${count}`}
-        className="flex h-22 touch-manipulation flex-col items-center justify-center rounded-xl bg-primary text-primary-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:bg-primary/85 disabled:opacity-50"
-      >
-        <span className="text-4xl leading-none font-bold tabular-nums" aria-hidden="true">
-          {count}
-        </span>
-        <span className="mt-1.5 text-base font-semibold" aria-hidden="true">
-          {label} +1
-        </span>
-      </button>
-      <Button
-        type="button"
-        variant="outline"
-        className="h-11 touch-manipulation"
-        onClick={onUndo}
-        disabled={disabled}
-        aria-label={`Undo ${one}`}
-      >
-        Undo
-      </Button>
-    </div>
+    <button
+      type="button"
+      onClick={onAdd}
+      disabled={disabled}
+      aria-label={`${label} +1, now ${count}`}
+      className="flex h-20 touch-manipulation flex-col items-center justify-center rounded-xl bg-primary text-primary-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background active:bg-primary/85 disabled:opacity-50"
+    >
+      <span className="text-4xl leading-none font-bold tabular-nums" aria-hidden="true">
+        {count}
+      </span>
+      <span className="mt-1 text-base font-semibold" aria-hidden="true">
+        {label} +1
+      </span>
+    </button>
   );
 }
 
@@ -824,7 +849,7 @@ function EndKnocking({
   if (!confirm) {
     return (
       <div className="grid grid-cols-2 gap-3">
-        <Button type="button" variant="outline" className="h-11 w-full" onClick={() => setConfirm(true)}>
+        <Button type="button" variant="ghost" className="h-11 w-full text-muted-foreground underline underline-offset-4" onClick={() => setConfirm(true)}>
           End knocking
         </Button>
         <NewLeadButton />
