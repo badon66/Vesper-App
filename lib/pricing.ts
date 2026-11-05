@@ -48,6 +48,9 @@ export type QuoteInputs = {
   minJobTotal?: number | null;
   gstEnabled: boolean;
   gstRate: number;
+  // The track colour's name, for the rush colour line's detail ("Brown
+  // track, powder coated this season"); left out, the detail says less.
+  colourName?: string | null;
 };
 
 export type QuoteLine = {
@@ -109,13 +112,26 @@ export function upperAccessAmount(
 ): number | null {
   const upper = runs.filter((run) => run.level === "upper" && cleanFeet(run.feet) > 0);
   if (upper.length === 0) return null;
-  const amount = upper.some((run) => runPart(run) === "gable") ? fees.upperGableAccessFee : fees.upperAccessFee;
-  return amount !== null && amount !== undefined && Number.isFinite(amount) && amount > 0 ? amount : null;
+  return usable(upper.some((run) => runPart(run) === "gable") ? fees.upperGableAccessFee : fees.upperAccessFee);
 }
 
-// The breakdown's names for the two lines added on 2026-11-04.
-export const UPPER_ACCESS_LABEL = "Upper access";
-export const RUSH_COLOUR_LABEL = "Colour before Christmas";
+// The breakdown's names for the two lines added on 2026-11-04, settled in
+// the quote link debate (decisions.md): every dollar line says what it is
+// for where it appears, and never says "level", which reads as a basement.
+export const UPPER_ACCESS_LABEL = "Upper roof access";
+export const RUSH_COLOUR_LABEL = "Rush colour fee";
+
+const usable = (amount: number | null | undefined): number | null =>
+  amount !== null && amount !== undefined && Number.isFinite(amount) && amount > 0 ? amount : null;
+
+// "$200, or $400 with an upper gable": why the amount is what it is, so a
+// switch that moves it never looks like a trick. Only when both are set.
+export function upperAccessDetail(fees: { upperAccessFee?: number | null; upperGableAccessFee?: number | null }): string | null {
+  const upper = usable(fees.upperAccessFee);
+  const gable = usable(fees.upperGableAccessFee);
+  if (upper === null || gable === null || upper === gable) return null;
+  return `${formatMoney(upper)}, or ${formatMoney(gable)} with an upper gable`;
+}
 
 // The runs a customer has switched on: positions into the quote's runs, in
 // the quote's order, or every run when positions is null. Positions that
@@ -142,7 +158,7 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
   if (boxes > 0) {
     lines.push({
       label: boxes === 1 ? "Control box" : `Control boxes (${boxes})`,
-      detail: boxes === 1 ? null : `${boxes} at ${formatMoney(inputs.boxPrice)}`,
+      detail: boxes === 1 ? "Always included" : `${boxes} at ${formatMoney(inputs.boxPrice)}`,
       amount: toDollars(boxCents),
     });
   }
@@ -151,13 +167,18 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
   const access = upperAccessAmount(inputs.runs, inputs);
   if (access !== null) {
     accessCents = toCents(access);
-    lines.push({ label: UPPER_ACCESS_LABEL, detail: null, amount: toDollars(accessCents) });
+    lines.push({ label: UPPER_ACCESS_LABEL, detail: upperAccessDetail(inputs), amount: toDollars(accessCents) });
   }
 
   let rushCents = 0;
   if (inputs.colourTiming === "rush" && inputs.rushFee !== null && Number.isFinite(inputs.rushFee) && inputs.rushFee > 0) {
     rushCents = toCents(inputs.rushFee);
-    lines.push({ label: RUSH_COLOUR_LABEL, detail: null, amount: toDollars(rushCents) });
+    const colour = inputs.colourName?.trim();
+    lines.push({
+      label: RUSH_COLOUR_LABEL,
+      detail: colour ? `${colour} track, powder coated this season` : "Powder coated this season",
+      amount: toDollars(rushCents),
+    });
   }
 
   let adderCents = 0;

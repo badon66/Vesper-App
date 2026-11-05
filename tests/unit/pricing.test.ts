@@ -52,6 +52,7 @@ describe("A plain house", () => {
   it("names the breakdown the way Keenan says it", () => {
     const quote = priceQuote(base());
     expect(quote.lines[0].detail).toBe("100 ft at $23/ft");
+    expect(quote.lines[1].detail).toBe("Always included");
   });
 });
 
@@ -93,7 +94,13 @@ describe("The rush colour fee", () => {
   // A flat amount a job since 2026-11-04, not a fee per foot.
   it("adds the flat fee once, only when the colour comes this season", () => {
     const rush = priceQuote(base({ colourTiming: "rush", rushFee: 350 }));
-    expect(rush.lines.find((line) => line.label === RUSH_COLOUR_LABEL)).toEqual({ label: RUSH_COLOUR_LABEL, detail: null, amount: 350 });
+    expect(rush.lines.find((line) => line.label === RUSH_COLOUR_LABEL)).toEqual({
+      label: RUSH_COLOUR_LABEL,
+      detail: "Powder coated this season",
+      amount: 350,
+    });
+    const named = priceQuote(base({ colourTiming: "rush", rushFee: 350, colourName: "Brown" }));
+    expect(named.lines.find((line) => line.label === RUSH_COLOUR_LABEL)?.detail).toBe("Brown track, powder coated this season");
     expect(rush.subtotal).toBe(3150);
     const longer = priceQuote(base({ colourTiming: "rush", rushFee: 350, runs: [{ name: "Front", feet: 400, level: "lower" }] }));
     expect(longer.lines.find((line) => line.label === RUSH_COLOUR_LABEL)?.amount).toBe(350);
@@ -125,7 +132,14 @@ describe("Upper access", () => {
 
   it("adds the upper amount with upper runs and no upper gable", () => {
     const quote = priceQuote(base(fees));
-    expect(quote.lines.find((line) => line.label === UPPER_ACCESS_LABEL)).toEqual({ label: UPPER_ACCESS_LABEL, detail: null, amount: 200 });
+    expect(quote.lines.find((line) => line.label === UPPER_ACCESS_LABEL)).toEqual({
+      label: UPPER_ACCESS_LABEL,
+      detail: "$200, or $400 with an upper gable",
+      amount: 200,
+    });
+    // Only one amount set, or both the same: nothing to explain.
+    expect(priceQuote(base({ upperAccessFee: 200, upperGableAccessFee: null })).lines.find((line) => line.label === UPPER_ACCESS_LABEL)?.detail).toBeNull();
+    expect(priceQuote(base({ upperAccessFee: 300, upperGableAccessFee: 300 })).lines.find((line) => line.label === UPPER_ACCESS_LABEL)?.detail).toBeNull();
     expect(quote.subtotal).toBe(3000);
   });
 
