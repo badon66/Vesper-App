@@ -1131,6 +1131,15 @@ function BookingSheet({
     }
   }
 
+  // Done (or Escape, or a back gesture, on the done screen): a booking made
+  // from Session, or from New lead's Save and book while knocking, lands
+  // back on Session with the saved line (Keenan, 2026-11-05).
+  function finishClose() {
+    const toSession = done && (pathname === "/app/session" || (request.kind === "lead" && request.backTo === "session"));
+    close();
+    if (toSession && done) router.replace(`/app/session?added=${done.leadId}`);
+  }
+
   function close() {
     if (!viewingAs) writeOpen(userId, null);
     dialogRef.current?.close();
@@ -1140,7 +1149,7 @@ function BookingSheet({
   }
 
   // Let go: the time is free for anyone at once, and what was entered stays
-  // in Unfinished on Home.
+  // in Unfinished on Session.
   async function letGo(then?: "open-lead") {
     setLetGoOpen(false);
     setMenuOpen(false);
@@ -1226,7 +1235,7 @@ function BookingSheet({
     }
     if (view === "done" || view === "moved" || view === "not-bookable" || view === "loading" || !held) {
       if (!done) keepDraft(currentDraft(), draftScreen);
-      close();
+      finishClose();
     } else setLetGoOpen(true);
   }
 
@@ -1627,12 +1636,7 @@ function BookingSheet({
               onMove={() => void confirmMove()}
               onClose={() => {
                 if (!done) keepDraft(currentDraft(), draftScreen);
-                // A booking made from Session, or from New lead's Save and
-                // book while knocking, lands back on Session with the
-                // saved line (Keenan, 2026-11-05).
-                const toSession = done && (pathname === "/app/session" || (request.kind === "lead" && request.backTo === "session"));
-                close();
-                if (toSession && done) router.replace(`/app/session?added=${done.leadId}`);
+                finishClose();
               }}
               onOpenLead={() => {
                 const leadId = done?.leadId ?? (request.kind === "move" ? request.leadId : draft.leadId);
@@ -1692,8 +1696,8 @@ function BookingSheet({
               : viewingAs
                 ? "Anyone can then pick this time."
                 : draft.leadId
-                  ? `${personName} stays saved as a lead, and what you entered stays in Unfinished on Home. Anyone can then pick this time.`
-                  : "What you entered stays in Unfinished on Home for 24 hours. Anyone can then pick this time."}
+                  ? `${personName} stays saved as a lead, and what you entered stays in Unfinished on Session. Anyone can then pick this time.`
+                  : "What you entered stays in Unfinished on Session for 24 hours. Anyone can then pick this time."}
           </p>
           {draft.leadId && !isMove ? (
             <Button type="button" variant="link" size="sm" className="self-start px-0" onClick={() => void letGo("open-lead")}>

@@ -99,6 +99,10 @@ describe("fixedStart", () => {
     if (!before.ok) expect(before.error).toContain("3:30");
     expect(fixedStart("2026-11-05", "15:30", now, ended).ok).toBe(true);
   });
+  it("allows the very minute the last session ended, whatever its seconds", () => {
+    expect(fixedStart("2026-11-05", "15:30", now, "2026-11-05T21:30:42Z").ok).toBe(true);
+    expect(fixedStart("2026-11-05", "15:29", now, "2026-11-05T21:30:42Z").ok).toBe(false);
+  });
 });
 
 describe("calgaryClock", () => {

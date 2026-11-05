@@ -18,8 +18,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useViewAs } from "@/components/view-as-context";
 import { submitKeepingValues } from "@/lib/forms/submit";
-import { timeOutLabel } from "@/lib/knock/session";
-import { calgaryClock, calgaryDateOf, calgaryInstant, formatTime } from "@/lib/time";
+import { fixedStart, timeOutLabel } from "@/lib/knock/session";
+import { calgaryClock, calgaryDateOf, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { VIEW_AS_NOTHING_SAVED } from "@/lib/view-as";
 
@@ -89,7 +89,22 @@ export function SessionScreen({
   const [actedOut, setActedOut] = useState<{ session: KnockSessionView | null } | null>(null);
   const shown = viewingAs && actedOut ? actedOut.session : session;
   const live = shown && shown.id !== endedId ? shown : null;
-  const shownSummary = summary ?? (lastEnded && !(viewingAs && actedOut) ? { value: lastEnded, fresh: false } : null);
+  // The later of the summary this screen just showed and the server's last
+  // session ended today (one ended on another phone, say).
+  const serverSummary = lastEnded && !(viewingAs && actedOut) ? { value: lastEnded, fresh: false } : null;
+  const shownSummary =
+    summary && serverSummary
+      ? new Date(serverSummary.value.endedAt).getTime() > new Date(summary.value.endedAt).getTime()
+        ? serverSummary
+        : summary
+      : (summary ?? serverSummary);
+
+  // ?added= has done its job once the page is drawn: drop it from the
+  // address, through Next's router (null state), so a reload or the next
+  // action's redraw doesn't bring the saved line back.
+  useEffect(() => {
+    if (window.location.search.includes("added=")) window.history.replaceState(null, "", window.location.pathname);
+  }, [savedLead]);
 
   if (live) {
     return (
@@ -127,7 +142,7 @@ export function SessionScreen({
                 setActedOut({
                   session: {
                     id: "view-as",
-                    neighbourhood: neighbourhood || "this neighbourhood",
+                    neighbourhood,
                     started_at: new Date().toISOString(),
                     doors_knocked: 0,
                     conversations: 0,
@@ -156,6 +171,7 @@ function StartKnocking({
 }) {
   const [state, formAction, pending] = useActionState(startKnockSession, initialState);
   const [value, setValue] = useState(lastNeighbourhood ?? "");
+  const [actedError, setActedError] = useState<string | null>(null);
   const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
   return (
     <section aria-labelledby="start-heading" className="flex flex-col gap-3">
@@ -172,7 +188,13 @@ function StartKnocking({
         onSubmit={(event) => {
           if (onActedOutStart) {
             event.preventDefault();
-            onActedOutStart(value.trim());
+            // The same checks the server makes, so View as answers as it
+            // would for the setter.
+            const name = value.trim();
+            if (name.length === 0) return setActedError("Enter the neighbourhood.");
+            if (name.length > 80) return setActedError("That neighbourhood name is too long.");
+            setActedError(null);
+            onActedOutStart(name);
             return;
           }
           submitKeepingValues(formAction)(event);
@@ -225,7 +247,7 @@ function StartKnocking({
             ))}
           </div>
         ) : null}
-        <ActionMessage text={state.error} />
+        <ActionMessage text={actedError ?? state.error} />
         <Button type="submit" size="lg" className="h-14 text-lg" disabled={pending}>
           {pending ? "Starting" : "Start knocking"}
         </Button>
@@ -243,7 +265,16 @@ function Summary({ summary, focus, actedOut }: { summary: KnockSummary; focus: b
     if (focus) heading.current?.focus({ preventScroll: true });
   }, [focus]);
   const out = timeOutLabel(summary.startedAt, new Date(summary.endedAt).getTime());
-  const booked = summary.leads === 0 ? "" : summary.bookings === 0 ? ", none booked" : `, ${summary.bookings} of them booked`;
+  const booked =
+    summary.leads === 0
+      ? ""
+      : summary.leads === 1
+        ? summary.bookings === 1
+          ? ", booked"
+          : ", not booked"
+        : summary.bookings === 0
+          ? ", none booked"
+          : `, ${summary.bookings} of them booked`;
   return (
     <section
       role="status"
@@ -307,12 +338,6 @@ function Knocking({
     // focus, so a screen reader hears where the session is.
     if (!document.activeElement || document.activeElement === document.body) heading.current?.focus({ preventScroll: true });
   }, []);
-
-  useEffect(() => {
-    if (savedLead && window.location.search.includes("added=")) {
-      window.history.replaceState(window.history.state, "", window.location.pathname);
-    }
-  }, [savedLead]);
 
   function tap(kind: keyof Counts) {
     setSavedHiddenFor(savedLead?.id ?? null);
@@ -532,9 +557,13 @@ function FixStart({
 
   async function save() {
     if (actedOut) {
-      const day = calgaryDateOf(startedAt);
-      const moment = /^\d{2}:\d{2}$/.test(value) ? calgaryInstant(day, value) : null;
-      onDone(moment && new Date(moment).getTime() <= Date.now() ? moment : null, { text: VIEW_AS_NOTHING_SAVED, calm: false });
+      // The same rules as the server, then acted out.
+      const fixed = fixedStart(calgaryDateOf(startedAt), value, Date.now());
+      if (!fixed.ok) {
+        setMessage(fixed.error);
+        return;
+      }
+      onDone(fixed.startsAt, { text: VIEW_AS_NOTHING_SAVED, calm: false });
       return;
     }
     setBusy(true);
@@ -601,6 +630,15 @@ type KnockCounts = {
 
 const pendingKey = (sessionId: string) => `vesper:knock-pending:${sessionId}`;
 
+// A send still on its way from a Session screen that has since closed (the
+// setter went to New lead and back, say). The next screen waits for it
+// before reading the taps kept on the phone, so none goes out twice.
+const flushesInFlight = new Map<string, Promise<void>>();
+
+// The server takes at most 100 taps of each kind per call; a longer queue
+// (a long stretch with no signal) goes out in turns.
+const batch = (n: number) => Math.max(-100, Math.min(100, n));
+
 function readPending(sessionId: string): Counts {
   try {
     const raw = localStorage.getItem(pendingKey(sessionId));
@@ -608,7 +646,8 @@ function readPending(sessionId: string): Counts {
     const parsed = JSON.parse(raw) as Partial<Counts>;
     const doors = Number.isInteger(parsed.doors) ? Number(parsed.doors) : 0;
     const conversations = Number.isInteger(parsed.conversations) ? Number(parsed.conversations) : 0;
-    return { doors: Math.max(-100, Math.min(100, doors)), conversations: Math.max(-100, Math.min(100, conversations)) };
+    const sane = (n: number) => Math.max(-10_000, Math.min(10_000, n));
+    return { doors: sane(doors), conversations: sane(conversations) };
   } catch {
     return ZERO;
   }
@@ -649,6 +688,16 @@ function useKnockCounts(session: KnockSessionView, actedOut: boolean): KnockCoun
   // Until the taps kept from an earlier visit are read back, nothing is
   // written over them.
   const restored = useRef(false);
+  // Whether this screen is still up: a closed one stops sending, and what it
+  // hadn't sent stays on the phone for the next one.
+  const alive = useRef(true);
+
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   function total(): Counts {
     return {
@@ -668,18 +717,31 @@ function useKnockCounts(session: KnockSessionView, actedOut: boolean): KnockCoun
     const waiting = unsent();
     setShown(total());
     setPending(Math.abs(waiting.doors) + Math.abs(waiting.conversations));
+    // Nothing left waiting (an Undo took back the last unsaved tap, say):
+    // no retry line for zero taps.
+    if (waiting.doors === 0 && waiting.conversations === 0 && !stopped.current) setNote(null);
     if (!actedOut && !stopped.current && restored.current) writePending(session.id, waiting);
   }
 
   async function flush() {
     if (flushing.current) return;
     flushing.current = true;
+    const run = sendQueued();
+    flushesInFlight.set(session.id, run);
+    await run;
+    if (flushesInFlight.get(session.id) === run) flushesInFlight.delete(session.id);
+  }
+
+  async function sendQueued() {
     setSaving(true);
     const slowTimer = window.setTimeout(() => setSlow(true), SLOW_SAVE_MS);
     try {
-      while (!stopped.current && (queued.current.doors !== 0 || queued.current.conversations !== 0)) {
-        sending.current = queued.current;
-        queued.current = ZERO;
+      while (!stopped.current && alive.current && (queued.current.doors !== 0 || queued.current.conversations !== 0)) {
+        sending.current = { doors: batch(queued.current.doors), conversations: batch(queued.current.conversations) };
+        queued.current = {
+          doors: queued.current.doors - sending.current.doors,
+          conversations: queued.current.conversations - sending.current.conversations,
+        };
         let result: KnockBumpResult;
         try {
           result = await bumpKnockSession(session.id, sending.current.doors, sending.current.conversations);
@@ -727,7 +789,10 @@ function useKnockCounts(session: KnockSessionView, actedOut: boolean): KnockCoun
   // the screen is up.
   useEffect(() => {
     if (actedOut) return;
-    const timer = window.setTimeout(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      await (flushesInFlight.get(session.id) ?? Promise.resolve());
+      if (cancelled || !alive.current) return;
       const left = readPending(session.id);
       restored.current = true;
       if (left.doors === 0 && left.conversations === 0) {
@@ -738,7 +803,10 @@ function useKnockCounts(session: KnockSessionView, actedOut: boolean): KnockCoun
       show();
       void flush();
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
     // Runs once per session shown; show and flush read refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id, actedOut]);
