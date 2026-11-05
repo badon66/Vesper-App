@@ -4,7 +4,32 @@ One milestone per build session. A milestone is done when every criterion passes
 
 **Focus (Keenan, 2026-11-02).** The app's fundamentals are three things: the setter sessions (knocking, leads and booking), the sales meetings (meeting mode on the iPad), and the shareable quote links for customers. Everything else is parked until Keenan says otherwise: M4 (pipeline board), M6 (sales dashboard), M7 (website lead form and daily email) and the backlog ideas. Parked milestones are not started or planned.
 
-**Current milestone: Setter side, round 2, and View as** (Keenan, 2026-11-03; approved, merge on green straight to live). No pay rules change. Then M5 take 2 and the quote link's take 2, together, after Keenan's first meetings and the first links go out. The setter side was released on 2026-11-03 (merge `372ee85`), the customer quote link's take 1 the same day (merge `947a3fd`); M5 take 1 on 2026-11-02 (merge `b075554`), and the Meetings page the same day (merge `13b737d`).
+**Current milestone: the Session tab, then the new Homes** (Keenan, 2026-11-05; approved, each merges on green straight to live, nothing customer facing). Built from main, so nothing from the unreviewed quote page goes live. The quote link rework (take 1's second pass) waits on a preview for Keenan's "push the changes". Setter side round 2 was released on 2026-11-03; the setter side and the customer quote link's take 1 the same day (merges `372ee85`, `947a3fd`); M5 take 1 on 2026-11-02 (merge `b075554`), and the Meetings page the same day (merge `13b737d`).
+
+## The Session tab (Keenan, 2026-11-05; merge on green, approved)
+Setters are out the afternoon of 2026-11-05, so it aims to be live before 3:00 pm Calgary. Nothing customer facing.
+- [ ] The gold button is Session instead of New lead. Setters: Home, Schedule, Session, Leads, My pay. Keenan: Home, Schedule, Meetings, Session, Leads
+- [ ] Not knocking: the neighbourhood (the last one filled in, with recent ones to tap) and Start knocking; below it, who else is out today: name, neighbourhood, since when, doors and conversations
+- [ ] Knocking: the neighbourhood and start time at the top with the time out so far, and a way to fix the start time for a late start; the doors and conversations counters, smaller than before but easy to hit with a thumb; tonight's open times, the same as Schedule (tap a time, it holds, the booking sheet opens); a smaller New lead button; Unfinished bookings, moved from Home; End knocking with a short summary: time out, doors, conversations, leads and bookings
+- [ ] Saving a lead or a booking during a session comes back to Session with "Lead saved. On to the next door."
+- [ ] The knocking view fits one screen at 430 wide; tested at 390 and 430
+- [ ] The knock card leaves Home (Keenan's included); Leads gets a New lead button at the top; Schedule stays as it is
+- [ ] View as shows Session exactly as each person sees it, and acts out every write
+- [ ] Design: impeccable shape, then critique and polish at both phone sizes; plain copy, no em dashes
+- [ ] The full suite passes, the branch merges on green, and production is verified
+
+## The new Homes (Keenan, 2026-11-05; merge on green, approved)
+Replaces the setter Home with open times on top that is live now. Nothing customer facing.
+- [ ] Keenan: today's meetings with a switch to tomorrow, each with the flags the Meetings page already shows; who's out knocking right now; Start knocking, or a bar for his live session that opens Session
+- [ ] Setters: the team's schedule for today with a switch to tomorrow (every meeting, its time, area and who booked it, never other setters' customers' phone or email); then "How mine went" (their own bookings and how each meeting went); then follow-ups due as now; plus Start knocking, or a bar for their live session
+- [ ] Tested at 390 and 430; View as shows everything exactly as each person sees it
+- [ ] Design: impeccable shape, then critique and polish; plain copy, no em dashes
+- [ ] The full suite passes, the branch merges on green, and production is verified
+
+## Later: the Meetings tab as Keenan's prep list (recorded 2026-11-05, not built)
+Keenan asked to record this for later. Not started or planned until he says so.
+- Each meeting says Ready, or "Prepare for the meeting" with what's left: the mockup uploaded; the track colour set; the quote drafted ahead (runs measured from the photos, so meeting mode opens ready); the time confirmed (Call and Text buttons with no prewritten text, then a Confirmed tap that records who and when; setters can confirm their own bookings); missing answers filled
+- Keenan's Home then shows how ready each meeting is
 
 ## M5: Meeting mode (iPad), in two takes
 Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a preview link by 9 am Calgary that day. Keenan approved take 1's direction, pricing and schema up front; the short plan is in `decisions.md`. Meeting mode is customer-facing the whole time: full screen, no tabs, and nothing internal on screen, ever: no costs, margins, setter names, pipeline or other customers.
