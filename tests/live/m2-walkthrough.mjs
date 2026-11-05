@@ -152,7 +152,16 @@ try {
     .single();
   if (bLeadError) throw new Error(`B's lead: ${bLeadError.message}`);
 
-  // 1. Sign in and start a knock session.
+  // B is out knocking already, since 30 minutes ago, so Session's Out today
+  // has someone in it. The service key keeps the times given.
+  const B_PLACE = "TEST Out Today (automated)";
+  const bStart = new Date(Date.now() - 30 * 60_000).toISOString();
+  const { error: bSessionError } = await admin
+    .from("knock_sessions")
+    .insert({ user_id: people.b.id, neighbourhood: B_PLACE, started_at: bStart, doors_knocked: 12, conversations: 3 });
+  if (bSessionError) throw new Error(`B's session: ${bSessionError.message}`);
+
+  // 1. Sign in, open Session (the gold tab, 2026-11-05) and start knocking.
   await page.goto(`${base}/login`);
   await settle(page);
   await page.fill("#email", people.a.email);
@@ -160,22 +169,41 @@ try {
   await page.click("button[type=submit]");
   await page.waitForURL("**/app", { timeout: 20000 });
   await settle(page);
+  check("Home no longer holds the knock session", (await page.locator("#knock-neighbourhood").count()) === 0 && (await page.getByRole("button", { name: /^Doors \+1/ }).count()) === 0);
+  await page.locator('nav[aria-label="Tabs"]:visible').getByRole("link", { name: "Session", exact: true }).click();
+  await page.waitForURL("**/app/session", { timeout: 20000 });
+  await settle(page);
+  const outRow = page.getByTestId("out-today-row").filter({ hasText: people.b.name });
+  const outText = (await outRow.innerText().catch(() => "")).replace(/\s+/g, " ");
+  check(
+    "Out today shows who else is out: name, neighbourhood, since when, doors and conversations",
+    outText.includes(B_PLACE) && outText.includes("Out now") && outText.includes(", since ") && outText.includes("12 doors") && outText.includes("3 conversations"),
+    outText,
+  );
+  check("Out today leaves the setter themselves out", (await page.getByTestId("out-today-row").filter({ hasText: people.a.name }).count()) === 0);
+  await checkTapTargets(page, "Session, not knocking");
+  await page.screenshot({ path: `${out}/m2-session-start.png`, fullPage: true });
   await page.fill("#knock-neighbourhood", TEST_PLACE);
   await page.getByRole("button", { name: "Start knocking" }).click();
   await page.getByRole("heading", { name: `Knocking in ${TEST_PLACE}` }).waitFor({ timeout: 20000 });
   check("a knock session starts with a neighbourhood", true);
 
   // 2. Counters: fast taps show at once and all land in the database.
-  const addDoor = page.getByRole("button", { name: /^Add one to doors/ });
-  const addTalk = page.getByRole("button", { name: /^Add one to conversations/ });
+  const addDoor = page.getByRole("button", { name: /^Doors \+1/ });
+  const addTalk = page.getByRole("button", { name: /^Conversations \+1/ });
   for (let i = 0; i < 5; i += 1) await addDoor.click({ delay: 0 });
+  // One Undo, in the status row under the counters, takes back the last tap
+  // and says which (2026-11-05).
+  const undoLast = page.getByTestId("tap-status").getByRole("button", { name: /^Undo/ });
+  check("Undo names the last tap: a door", (await undoLast.innerText()).trim() === "Undo door");
+  await undoLast.click();
   await addTalk.click();
   await addTalk.click();
-  await page.getByRole("button", { name: "Take one off doors" }).click();
+  check("after a conversation, Undo names a conversation", (await undoLast.innerText()).trim() === "Undo conversation");
   const shownDoors = (await addDoor.getAttribute("aria-label")) ?? "";
   const shownTalks = (await addTalk.getAttribute("aria-label")) ?? "";
   check("counters update the moment they are tapped", shownDoors.endsWith("now 4") && shownTalks.endsWith("now 2"), `${shownDoors} | ${shownTalks}`);
-  await page.getByText("All taps saved.").waitFor({ timeout: 20000 });
+  await page.locator('[data-testid="tap-status"][data-pending="0"]').waitFor({ timeout: 20000 });
   const { data: sessionRow } = await admin
     .from("knock_sessions")
     .select("id, doors_knocked, conversations")
@@ -183,12 +211,61 @@ try {
     .is("ended_at", null)
     .single();
   check("every tap is saved: 4 doors and 2 conversations", sessionRow?.doors_knocked === 4 && sessionRow?.conversations === 2, JSON.stringify(sessionRow));
-  for (const name of [/^Add one to doors/, /^Add one to conversations/]) {
+  for (const name of [/^Doors \+1/, /^Conversations \+1/]) {
     const box = await page.getByRole("button", { name }).boundingBox();
     check(`the ${String(name).includes("doors") ? "doors" : "conversations"} counter is on screen without scrolling`, box !== null && box.y >= 0 && box.y + box.height <= viewport.height, box ? `${Math.round(box.y)}-${Math.round(box.y + box.height)} of ${viewport.height}` : "missing");
   }
-  await checkTapTargets(page, "Home with a session running");
-  await page.screenshot({ path: `${out}/m2-home-session.png`, fullPage: true });
+  await checkTapTargets(page, "Session while knocking");
+  await page.screenshot({ path: `${out}/m2-session-knocking.png`, fullPage: true });
+
+  // The knocking view fits one screen at 430 wide (Keenan, 2026-11-05): End
+  // knocking clears the tab bar, with room for the status bar and home
+  // indicator an iPhone 15 Pro Max adds in the installed app (59 + 34 px).
+  // Up to six times tonight; more is Keenan's choice and only noted.
+  const slotsTonight = await page.getByTestId("session-times").locator("button[data-time]").count();
+  for (const size of [{ width: 430, height: 932, inset: 93 }, { width: 390, height: 844, inset: 81 }]) {
+    await page.setViewportSize({ width: size.width, height: size.height });
+    await page.waitForTimeout(300);
+    // The tab bar's top, or the raised gold Session button's if higher.
+    const fit = await page.evaluate(() => {
+      const end = [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "End knocking");
+      const bar = [...document.querySelectorAll('nav[aria-label="Tabs"]')].find((nav) => getComputedStyle(nav).display !== "none");
+      const raised = bar?.querySelector(".rounded-full.bg-primary.ring-4");
+      const top = bar ? Math.min(bar.getBoundingClientRect().top, raised ? raised.getBoundingClientRect().top : Infinity) : null;
+      return { end: end ? Math.round(end.getBoundingClientRect().bottom + window.scrollY) : null, bar: top === null ? null : Math.round(top) };
+    });
+    const fits = fit.end !== null && fit.bar !== null && fit.end <= fit.bar - size.inset;
+    const detail = `End knocking ends at ${fit.end}, the tab bar starts at ${fit.bar}, ${size.inset} px kept for the phone, ${slotsTonight} times tonight`;
+    if (size.width === 430 && slotsTonight <= 6) check("the knocking view fits one screen at 430 x 932, in the installed app", fits, detail);
+    else note(`At ${size.width} x ${size.height} the knocking view ${fits ? "fits one screen" : "scrolls a little"} (${detail}).`);
+    await page.screenshot({ path: `${out}/m2-session-knocking-${size.width}.png`, fullPage: false });
+  }
+  await page.setViewportSize(viewport);
+  await page.waitForTimeout(300);
+
+  // Fix the start time (Keenan, 2026-11-05): never in the future; any
+  // earlier time today saves.
+  await page.getByTestId("fix-start").click();
+  await page.fill("#fix-start-time", "23:59");
+  await page.getByTestId("fix-start-panel").getByRole("button", { name: "Save", exact: true }).click();
+  const calgaryMinutes = (Math.floor((Date.now() - 6 * 3600_000) / 60_000) % 1440 + 1440) % 1440;
+  if (calgaryMinutes < 23 * 60 + 58) {
+    check("a start time in the future is refused, and says so", (await page.getByTestId("fix-start-panel").getByRole("alert").innerText().catch(() => "")).includes("hasn't happened yet"));
+  }
+  if (calgaryMinutes >= 15) {
+    const earlier = calgaryMinutes - 10;
+    const hhmm = `${String(Math.floor(earlier / 60)).padStart(2, "0")}:${String(earlier % 60).padStart(2, "0")}`;
+    await page.fill("#fix-start-time", hhmm);
+    await page.getByTestId("fix-start-panel").getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByTestId("fix-start-panel").waitFor({ state: "detached", timeout: 15000 }).catch(() => {});
+    const { data: fixedRow } = await admin.from("knock_sessions").select("started_at").eq("id", sessionRow.id).single();
+    const fixedCalgary = new Date(new Date(fixedRow?.started_at ?? 0).getTime() - 6 * 3600_000);
+    const fixedHhmm = `${String(fixedCalgary.getUTCHours()).padStart(2, "0")}:${String(fixedCalgary.getUTCMinutes()).padStart(2, "0")}`;
+    check("fixing the start time saves the earlier time today", fixedHhmm === hhmm, `${fixedHhmm} for ${hhmm}`);
+    check("and the time out counts from it", /Out (9|10|11) min\./.test(await page.getByTestId("session-started").innerText()), await page.getByTestId("session-started").innerText());
+  } else {
+    note("Fixing the start time was not checked: it is within 15 minutes of midnight in Calgary.");
+  }
 
   // 3. New lead: the step notes, a typed address and phone, the Find out
   // questions and the guided photos.
@@ -309,30 +386,33 @@ try {
   await question(page, "Christmas lights now").getByText("Not collected", { exact: true }).click();
   check("Not collected is one tap, and the notice goes once nothing is open", (await checkedValue(page, "Christmas lights now")) === "not_collected" && (await page.getByTestId("questions-still-open").count()) === 0);
   await save.click();
-  await page.waitForURL("**/app?added=*", { timeout: 30000 });
+  await page.waitForURL("**/app/session?added=*", { timeout: 30000 });
   await settle(page);
   const seconds = (Date.now() - started) / 1000;
-  check("while knocking, save returns Home", true, `${seconds.toFixed(1)} s for the scripted flow`);
+  check("while knocking, save returns to Session", true, `${seconds.toFixed(1)} s for the scripted flow`);
   check("the scripted new-lead flow takes well under 30 seconds", seconds < 30, `${seconds.toFixed(1)} s`);
   await page.getByTestId("lead-saved").waitFor({ timeout: 10000 });
-  // Home's order (Keenan, 2026-11-04): the saved line, tonight's open times,
-  // my bookings, the knock session, follow-ups due.
+  check("Session says the lead is saved, and on to the next door", (await page.getByTestId("lead-saved").innerText()).includes("Lead saved. On to the next door."));
+  // Session's order while knocking (Keenan, 2026-11-05): where and since
+  // when, the counters, the status row under them (here the saved line, so
+  // nothing pushes the counters down), tonight's open times, End and New lead.
   const tops = await page.evaluate(() => {
     const top = (element) => (element ? Math.round(element.getBoundingClientRect().top + window.scrollY) : null);
-    const doors = [...document.querySelectorAll("button")].find((button) => (button.getAttribute("aria-label") ?? "").startsWith("Add one to doors"));
-    const followUps = [...document.querySelectorAll("h2, h3, [data-slot='card-title']")].find((heading) => heading.textContent?.trim() === "Follow-ups due");
+    const button = (text) => [...document.querySelectorAll("button, a")].find((el) => el.textContent.trim() === text);
+    const doors = [...document.querySelectorAll("button")].find((el) => (el.getAttribute("aria-label") ?? "").startsWith("Doors +1"));
     return {
       saved: top(document.querySelector('[data-testid="lead-saved"]')),
-      tonight: top(document.querySelector('[data-testid="tonight-times"]')),
-      bookings: top(document.querySelector('[data-testid="my-bookings"]')),
-      knock: top(doors),
-      followUps: top(followUps),
+      heading: top(document.querySelector("main h1")),
+      doors: top(doors),
+      times: top(document.querySelector('[data-testid="session-times"]')),
+      newLead: top(button("New lead")),
+      end: top(button("End knocking")),
     };
   });
-  const order = [tops.saved, tops.tonight, tops.bookings, tops.knock, tops.followUps];
+  const order = [tops.heading, tops.doors, tops.saved, tops.times, tops.newLead];
   check(
-    "Home names the saved lead first, then tonight's open times, my bookings, the knock session and follow-ups due",
-    order.every((value) => value !== null) && order.every((value, index) => index === 0 || value > order[index - 1]),
+    "Session runs: where and since when, the counters, the saved line under them, tonight's open times, and New lead beside End knocking",
+    order.every((value) => value !== null) && order.every((value, index) => index === 0 || value > order[index - 1]) && tops.end === tops.newLead,
     JSON.stringify(tops),
   );
 
@@ -558,7 +638,7 @@ try {
     await page.fill("#lead-first_name", TEST_LEAD);
     await page.getByTestId("mark-rest").click();
     await page.getByRole("button", { name: "Save lead" }).click();
-    await page.waitForURL("**/app?added=*", { timeout: 30000 });
+    await page.waitForURL("**/app/session?added=*", { timeout: 30000 });
     await settle(page);
     const { data: googleLead } = await admin
       .from("leads")
@@ -581,8 +661,10 @@ try {
     await page.screenshot({ path: `${out}/m2-duplicate-warning.png`, fullPage: false });
     await page.getByRole("button", { name: "Cancel" }).click();
     await page.getByTestId("discard-lead").getByRole("button", { name: "Discard" }).click();
-    await page.waitForURL("**/app/leads", { timeout: 20000 });
+    // While knocking, Cancel goes back to Session (2026-11-05).
+    await page.waitForURL("**/app/session", { timeout: 20000 });
     await settle(page);
+    check("while knocking, New lead's Cancel goes back to Session", new URL(page.url()).pathname === "/app/session");
 
     // The typed lead gets its map position once its address is picked.
     await page.goto(`${base}/app/leads/${typedLead.id}/edit`);
@@ -622,15 +704,29 @@ try {
     const older = order.indexOf(`/app/leads/${bLead.id}`);
     check("within a group the newest lead comes first", newer !== -1 && older !== -1 && newer < older, `positions ${newer} and ${older}`);
   }
-  await page.goto(`${base}/app`);
+  await page.goto(`${base}/app/session`);
   await settle(page);
-  await page.getByRole("button", { name: "End session" }).click();
+  await page.getByRole("button", { name: "End knocking" }).click();
   await page.getByRole("button", { name: "Yes, end it" }).click();
+  await page.getByTestId("session-summary").waitFor({ timeout: 20000 });
   await page.getByRole("button", { name: "Start knocking" }).waitFor({ timeout: 20000 });
-  const { data: ended } = await admin.from("knock_sessions").select("ended_at").eq("id", sessionRow.id).single();
+  const { data: ended } = await admin.from("knock_sessions").select("ended_at, doors_knocked, conversations").eq("id", sessionRow.id).single();
   const { count: linked } = await admin.from("leads").select("id", { count: "exact", head: true }).eq("knock_session_id", sessionRow.id);
   check("ending the session stamps its end", ended?.ended_at !== null);
   check("every lead added during the session is linked to it", linked === (mapsKey ? 2 : 1), `${linked} linked`);
+  const summaryText = (await page.getByTestId("session-summary").innerText()).replace(/\s+/g, " ");
+  check(
+    "End knocking shows a short summary: time out, doors, conversations, leads and bookings",
+    summaryText.includes(`Done in ${TEST_PLACE}`) && /Out (under a minute|\d)/.test(summaryText) &&
+      summaryText.includes(`${ended?.doors_knocked} ${ended?.doors_knocked === 1 ? "door" : "doors"}`) &&
+      summaryText.includes(`${ended?.conversations} ${ended?.conversations === 1 ? "conversation" : "conversations"}`) &&
+      summaryText.includes(linked === 1 ? "1 lead, not booked" : `${linked} leads, none booked`),
+    summaryText,
+  );
+  const summaryBox = await page.getByTestId("session-summary").boundingBox();
+  check("the summary shows at the top of the screen, not scrolled away", summaryBox !== null && summaryBox.y >= 0 && summaryBox.y < viewport.height / 2, summaryBox ? `${Math.round(summaryBox.y)}` : "missing");
+  check("Start knocking offers the neighbourhood just knocked", (await page.inputValue("#knock-neighbourhood")) === TEST_PLACE && (await page.getByRole("group", { name: "Recent neighbourhoods" }).getByRole("button", { name: TEST_PLACE }).count()) === 1);
+  await page.screenshot({ path: `${out}/m2-session-summary.png`, fullPage: false });
 
   // 8. New lead's save, its answer lost to the signal (2026-11-04). The
   // server makes the lead and the answer never reaches the phone: the form

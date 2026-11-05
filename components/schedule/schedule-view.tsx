@@ -17,6 +17,7 @@ export function ScheduleView({
   initialDay,
   followDay,
   tonightOnly = false,
+  hideDayHeading = false,
 }: {
   board: BoardSlot[];
   today: string;
@@ -26,6 +27,7 @@ export function ScheduleView({
   initialDay?: string | null;
   followDay: boolean;
   tonightOnly?: boolean;
+  hideDayHeading?: boolean;
 }) {
   const router = useRouter();
   const refresh = useCallback(() => router.refresh(), [router]);
@@ -45,6 +47,7 @@ export function ScheduleView({
       mode="book"
       initialDay={initialDay}
       tonightOnly={tonightOnly}
+      hideDayHeading={hideDayHeading}
       onDayChange={onDayChange}
       onBoardChange={refresh}
     />

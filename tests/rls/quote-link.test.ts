@@ -5,8 +5,11 @@ import type { Database } from "@/types/database";
 
 // Proves the customer quote link's rules in the database itself (Keenan,
 // 2026-11-02): an anonymous caller reads no table; a token returns its own
-// quote and nothing else, with customer-safe fields only; unknown, revoked
-// and out-of-date links come back expired with no name and no prices; the
+// quote and nothing else, with customer-safe fields only; unknown and
+// revoked links come back closed with no name and no prices, while a link
+// past its price-held-until date stays live (2026-11-04, live in the
+// database since the quote link rework's migrations; its page waits for
+// Keenan's preview); the
 // page's writes change only their own link; Book my install never accepts
 // the quote or pays anyone; push addresses come back sealed, only for the
 // link's maker; and Storage lets a request carrying a live token sign that
@@ -62,11 +65,11 @@ const RUNS = [
   { name: "Garage", feet: 30, level: "lower" },
 ];
 
-// An expired answer: the state and Vesper's public contact, nothing about
+// A closed answer: the state and Vesper's public contact, nothing about
 // the customer and no prices.
-function expectExpired(data: unknown) {
+function expectClosed(data: unknown) {
   const view = data as { state?: string; company?: Record<string, unknown> };
-  expect(view.state).toBe("expired");
+  expect(view.state).toBe("closed");
   expect(Object.keys(view).sort()).toEqual(["company", "state"]);
   expect(Object.keys(view.company ?? {}).sort()).toEqual(["email", "name", "phone"]);
   expect(JSON.stringify(view)).not.toContain("Linktest");
@@ -252,6 +255,12 @@ describe("what a token shows", () => {
         "state",
         "valid_until",
         "warranty",
+        "today",
+        "service_call_fee",
+        "christmas",
+        "product_points",
+        "install_day",
+        "gallery",
       ].sort(),
     );
     expect(Object.keys(view.quote as object).sort()).toEqual(
@@ -267,7 +276,11 @@ describe("what a token shows", () => {
         "price_per_ft",
         "runs",
         "runs_fingerprint",
-        "rush_fee_per_ft",
+        "rush_fee",
+        "upper_access_fee",
+        "upper_gable_access_fee",
+        "track_colour_name",
+        "track_custom",
       ].sort(),
     );
     const text = JSON.stringify(view);
@@ -281,10 +294,10 @@ describe("what a token shows", () => {
     expect((other.data as { address: string }).address).toBe("2 Linktest Street NW");
   });
 
-  it("shows unknown and malformed links as expired, with nothing else", async () => {
+  it("shows unknown and malformed links as closed, with nothing else", async () => {
     for (const token of ["AAAAAAAAAAAAAAAAAAAAAAAA", "short", "' or 1=1 --", tokenA.slice(0, 23) + "_"]) {
       const { data } = await anon.rpc("quote_for_customer", { p_token: token });
-      expectExpired(data);
+      expectClosed(data);
     }
   });
 });
@@ -439,22 +452,27 @@ describe("the mockup", () => {
 });
 
 describe("turning a link off, and dates", () => {
-  it("a past valid-until date shows expired and refuses writes", async () => {
+  it("a past price-held-until date keeps the link live: the page, its writes and Book my install all still work", async () => {
     await admin.from("quotes").update({ valid_until: calgaryDay(-1) }).eq("id", quoteB);
-    const view = await anon.rpc("quote_for_customer", { p_token: tokenB });
-    expectExpired(view.data);
-    const book = await anon.rpc("quote_link_book", { p_token: tokenB, p_positions: [] });
-    expect(book.data).toEqual({ ok: false, state: "expired" });
-    expect((await anon.rpc("quote_link_visit", { p_token: tokenB })).data).toBe(false);
+    const view = (await anon.rpc("quote_for_customer", { p_token: tokenB })).data as { state: string; valid_until: string; today: string };
+    expect(view.state).toBe("live");
+    expect(view.valid_until < view.today).toBe(true);
+    expect((await anon.rpc("quote_link_visit", { p_token: tokenB })).data).toBe(true);
+    expect((await anon.rpc("quote_link_select", { p_token: tokenB, p_positions: [1] })).data).toBe(true);
+    const book = await anon.rpc("quote_link_book", { p_token: tokenB, p_positions: [1] });
+    expect((book.data as { ok: boolean; option: string }).ok).toBe(true);
+    expect((book.data as { option: string }).option).toBe("Start smaller: Upper front");
+    const signed = await withToken(tokenB).storage.from(BUCKET).createSignedUrl(mockupPath, 600);
+    // Link B's lead has no mockup; A's mockup stays A's alone.
+    expect(signed.error).not.toBeNull();
     await admin.from("quotes").update({ valid_until: calgaryDay(14) }).eq("id", quoteB);
-    expect(((await anon.rpc("quote_for_customer", { p_token: tokenB })).data as { state: string }).state).toBe("live");
   });
 
   it("revoking kills the link and its mockup, and sending again makes a new one", async () => {
     const off = await admin.rpc("revoke_quote_link", { p_lead_id: leadA });
     expect(off.data).toBe(true);
     const view = await anon.rpc("quote_for_customer", { p_token: tokenA });
-    expectExpired(view.data);
+    expectClosed(view.data);
     const signed = await withToken(tokenA).storage.from(BUCKET).createSignedUrl(mockupPath, 600);
     expect(signed.error).not.toBeNull();
     const { data: revokedEvent } = await admin.from("lead_events").select("type").eq("lead_id", leadA).eq("type", "quote_link_revoked");
@@ -464,7 +482,7 @@ describe("turning a link off, and dates", () => {
     expect(fresh.data).toMatch(/^[A-Za-z0-9_-]{24}$/);
     expect(fresh.data).not.toBe(tokenA);
     expect(((await anon.rpc("quote_for_customer", { p_token: fresh.data! })).data as { state: string }).state).toBe("live");
-    expectExpired((await anon.rpc("quote_for_customer", { p_token: tokenA })).data);
+    expectClosed((await anon.rpc("quote_for_customer", { p_token: tokenA })).data);
   });
 
   it("updating the quote changes what the same link shows, and an old selection no longer applies", async () => {

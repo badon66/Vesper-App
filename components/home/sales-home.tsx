@@ -1,8 +1,4 @@
 import Link from "next/link";
-import { z } from "zod";
-import { UnfinishedBookings } from "@/components/home/unfinished-bookings";
-import { KnockCard } from "@/components/knock/knock-card";
-import { ClearLeadDraft } from "@/components/leads/clear-lead-draft";
 import { MeetingCard } from "@/components/schedule/meeting-card";
 import { ScheduleView } from "@/components/schedule/schedule-view";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,87 +6,46 @@ import type { SessionProfile } from "@/lib/auth/profile";
 import { followUpLabel } from "@/lib/leads/attention";
 import { eveningLabel, eveningsOf, pickEvening } from "@/lib/schedule/board";
 import { bookingSettings, fetchBoard, meetingsBetween } from "@/lib/schedule/queries";
-import {
-  closeMyStaleKnockSessions,
-  followUpsDue,
-  lastNeighbourhood,
-  namesById,
-  openKnockSession,
-} from "@/lib/leads/queries";
+import { followUpsDue, namesById } from "@/lib/leads/queries";
 import { leadName } from "@/lib/leads/status";
 import { createClient } from "@/lib/supabase/server";
 import { addDays, calgaryDayStart, calgaryToday, requestTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
-// A setter's Home, built for the door (Keenan, 2026-11-01), top to bottom:
-// the knock session first, since its counters are the evening's most tapped
-// control (2026-11-03), then tonight's open times, their bookings (from last
-// night on, so a result Keenan marks the next morning still shows) and
-// follow-ups due. Every query is scoped to this person, so View as shows
-// exactly what they would see, and nothing is written while viewing
-// (CLAUDE.md, View as).
+// A setter's Home, top to bottom: tonight's open times, their bookings (from
+// last night on, so a result Keenan marks the next morning still shows) and
+// follow-ups due. The knock session and Unfinished bookings are on Session
+// (Keenan, 2026-11-05). Every query is scoped to this person, so View as
+// shows exactly what they would see (CLAUDE.md, View as).
 export async function SalesHome({
   profile,
   readOnly,
   realRole,
-  added = null,
 }: {
   profile: SessionProfile;
   readOnly: boolean;
   realRole: string;
-  // A lead just saved while knocking (?added=), named at the top.
-  added?: string | null;
 }) {
   const supabase = await createClient();
   const today = calgaryToday();
   const settings = await bookingSettings(supabase);
-  const addedId = added && z.uuid().safeParse(added).success ? added : null;
-  const [session, last, due, board, bookings, addedResult] = await Promise.all([
-    openKnockSession(supabase, profile.id),
-    lastNeighbourhood(supabase, profile.id),
+  const [due, board, bookings] = await Promise.all([
     followUpsDue(supabase, profile.id, today),
     fetchBoard(supabase, profile, realRole),
     meetingsBetween(supabase, calgaryDayStart(addDays(today, -1)), calgaryDayStart(addDays(today, settings.windowDays + 1)), {
       setterId: profile.id,
       viewer: profile,
     }),
-    addedId
-      ? supabase.from("leads").select("id, first_name, last_name").eq("id", addedId).eq("created_by", profile.id).maybeSingle()
-      : Promise.resolve({ data: null }),
-    readOnly ? null : closeMyStaleKnockSessions(supabase),
   ]);
-  const addedLead = addedResult.data;
   const firstName = profile.full_name.split(" ")[0] || profile.full_name;
   const opening = pickEvening(eveningsOf(board, today, settings.windowDays), today);
   const mine = bookings.filter((meeting) => meeting.status !== "moved" && meeting.status !== "cancelled");
   const names = await namesById(supabase, mine.flatMap((meeting) => [meeting.setter_id, meeting.booked_by]));
   const now = requestTime();
 
-  // Top to bottom (Keenan, 2026-11-04, the spec's order again): after a save
-  // the saved line, Unfinished bookings, tonight's open times, my bookings,
-  // the knock session, follow-ups due.
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-bold">Hello, {firstName}</h1>
-
-      {addedLead && !readOnly ? <ClearLeadDraft userId={profile.id} /> : null}
-      {addedLead ? (
-        <div
-          role="status"
-          className="flex flex-wrap items-center justify-between gap-x-3 rounded-md border border-primary bg-accent px-4 py-1 text-sm text-accent-foreground"
-          data-testid="lead-saved"
-        >
-          <span>Lead saved. On to the next door.</span>
-          <Link
-            href={`/app/leads/${addedLead.id}`}
-            className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4"
-          >
-            Open {leadName(addedLead)}
-          </Link>
-        </div>
-      ) : null}
-
-      <UnfinishedBookings userId={profile.id} />
 
       <Card data-testid="tonight-times">
         <CardHeader>
@@ -150,8 +105,6 @@ export async function SalesHome({
           ))
         )}
       </section>
-
-      <KnockCard key={session?.id ?? "none"} session={session} lastNeighbourhood={last} />
 
       <Card>
         <CardHeader>

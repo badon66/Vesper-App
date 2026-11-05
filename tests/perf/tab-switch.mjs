@@ -33,9 +33,9 @@ const person = {
 // The tab bar, whichever version of the app is running.
 const TAB_BAR = 'nav[aria-label="Phone"], nav[aria-label="Tabs"]';
 const screens = {
-  "/app": { tab: "Home", ready: "#knock-neighbourhood" },
+  "/app": { tab: "Home", ready: '[data-testid="my-bookings"], #knock-neighbourhood' },
   "/app/leads": { tab: "Leads", ready: 'input[name="q"]' },
-  "/app/leads/new": { tab: "New lead", ready: "#lead-address" },
+  "/app/session": { tab: "Session", ready: "#knock-neighbourhood" },
 };
 
 const median = (values) => {
@@ -139,7 +139,7 @@ try {
     record("Home to Leads", await switchTo("/app/leads"));
     record("Leads to Home", await switchTo("/app"));
     if (i % 2 === 0) {
-      record("Home to New lead", await switchTo("/app/leads/new"));
+      record("Home to Session", await switchTo("/app/session"));
       await page.goto(`${base}/app`);
       await page.locator(screens["/app"].ready).first().waitFor({ state: "visible", timeout: 30000 });
       await page.waitForLoadState("networkidle").catch(() => {});

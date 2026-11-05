@@ -19,16 +19,16 @@ export function BookLeadButton({ leadId, className = "w-fit" }: { leadId: string
 
 // Opens the sheet once when the page arrives with ?book=1, then drops the
 // flag so a reload or the back button doesn't open it again.
-export function OpenBookingSheet({ leadId }: { leadId: string }) {
+export function OpenBookingSheet({ leadId, backToSession = false }: { leadId: string; backToSession?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const opened = useRef(false);
   useEffect(() => {
     if (opened.current) return;
     opened.current = true;
-    bookingSheet.open({ kind: "lead", leadId });
+    bookingSheet.open(backToSession ? { kind: "lead", leadId, backTo: "session" } : { kind: "lead", leadId });
     router.replace(pathname, { scroll: false });
-  }, [leadId, pathname, router]);
+  }, [leadId, pathname, router, backToSession]);
   return null;
 }
 

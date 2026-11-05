@@ -70,11 +70,11 @@ export default async function LeadPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ photos?: string | string[]; booked?: string; moved?: string; book?: string }>;
+  searchParams: Promise<{ photos?: string | string[]; booked?: string; moved?: string; book?: string; from?: string }>;
 }) {
   const me = await requireProfile();
   const { id } = await params;
-  const { photos: photosParam, booked: bookedParam, moved: movedParam, book: bookParam } = await searchParams;
+  const { photos: photosParam, booked: bookedParam, moved: movedParam, book: bookParam, from: fromParam } = await searchParams;
   if (!z.uuid().safeParse(id).success) notFound();
 
   const supabase = await createClient();
@@ -236,7 +236,7 @@ export default async function LeadPage({
             The lead saved, but its photos didn&apos;t attach. Add them again below.
           </p>
         ) : null}
-        {canBook && bookParam === "1" ? <OpenBookingSheet leadId={lead.id} /> : null}
+        {canBook && bookParam === "1" ? <OpenBookingSheet leadId={lead.id} backToSession={fromParam === "session"} /> : null}
         {(bookParam === "1" || photosParam === "failed") && lead.created_by === me.id ? <ClearLeadDraft userId={me.id} /> : null}
         {/* Gold only for the next step: Book a meeting. Call and Edit are plain. */}
         {canBook || lead.phone || canEdit ? (

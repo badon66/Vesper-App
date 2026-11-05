@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, House, List, Plus, Presentation, Wallet, type LucideIcon } from "lucide-react";
+import { CalendarClock, DoorOpen, House, List, Presentation, Wallet, type LucideIcon } from "lucide-react";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { currentTab, hidesBottomBar, tabsFor, type Tab, type TabIcon } from "@/lib/nav";
@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 
 const ICONS: Record<TabIcon, LucideIcon> = {
   home: House,
-  plus: Plus,
+  session: DoorOpen,
   list: List,
   schedule: CalendarClock,
   meetings: Presentation,

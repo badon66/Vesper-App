@@ -203,8 +203,8 @@ try {
   check(
     "the last screen is how a door goes: knock session, pick a time, the booking sheet",
     (await page.getByTestId("welcome-title").innerText()) === "How a door goes" &&
-      tour.includes("Start knocking on Home.") &&
-      tour.includes("Pick a time on Schedule.") &&
+      tour.includes("Start knocking on Session.") &&
+      tour.includes("Pick a time on Session or Schedule.") &&
       tour.includes("Book it in the sheet.") &&
       tour.includes("At the door, After the door, then Book."),
   );

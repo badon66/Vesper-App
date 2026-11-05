@@ -498,11 +498,11 @@ function TourStep() {
       <Steps
         items={[
           <>
-            <strong>Start knocking on Home.</strong> Name the neighbourhood, then count Doors and Conversations as you
-            go. Leads you add while it runs link to it.
+            <strong>Start knocking on Session.</strong> Name the neighbourhood, then count Doors and Conversations as
+            you go. Leads you add while it runs link to it.
           </>,
           <>
-            <strong>Pick a time on Schedule.</strong> Tapping an open time holds it for you. Everyone else sees your
+            <strong>Pick a time on Session or Schedule.</strong> Tapping an open time holds it for you. Everyone else sees your
             initials on it until you book it or let it go.
           </>,
           <>

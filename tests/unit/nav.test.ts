@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { currentTab, hidesBottomBar, inAdmin, showsAdminGear, tabsFor } from "@/lib/nav";
 
 describe("tabsFor", () => {
-  it("gives the owner Home, Schedule, Meetings, New lead and Leads, with no Dashboard", () => {
-    expect(tabsFor("owner").map((tab) => tab.label)).toEqual(["Home", "Schedule", "Meetings", "New lead", "Leads"]);
+  it("gives the owner Home, Schedule, Meetings, Session and Leads, with no Dashboard", () => {
+    expect(tabsFor("owner").map((tab) => tab.label)).toEqual(["Home", "Schedule", "Meetings", "Session", "Leads"]);
   });
 
   it("puts the owner's Admin in a header gear, never in the tabs", () => {
@@ -20,8 +20,8 @@ describe("tabsFor", () => {
     expect(tabsFor("sales").map((tab) => tab.label)).not.toContain("Meetings");
   });
 
-  it("gives a setter Home, Schedule, New lead, Leads and My pay", () => {
-    expect(tabsFor("sales").map((tab) => tab.label)).toEqual(["Home", "Schedule", "New lead", "Leads", "My pay"]);
+  it("gives a setter Home, Schedule, Session, Leads and My pay", () => {
+    expect(tabsFor("sales").map((tab) => tab.label)).toEqual(["Home", "Schedule", "Session", "Leads", "My pay"]);
   });
 
   it("keeps My pay for setters, and gives crew nothing yet", () => {
@@ -31,8 +31,10 @@ describe("tabsFor", () => {
     expect(tabsFor("crew")).toEqual([]);
   });
 
-  it("makes New lead the prominent button", () => {
-    expect(tabsFor("sales").filter((tab) => tab.prominent).map((tab) => tab.label)).toEqual(["New lead"]);
+  it("makes Session the prominent button, for both roles, and New lead no tab", () => {
+    expect(tabsFor("sales").filter((tab) => tab.prominent).map((tab) => tab.href)).toEqual(["/app/session"]);
+    expect(tabsFor("owner").filter((tab) => tab.prominent).map((tab) => tab.href)).toEqual(["/app/session"]);
+    expect([...tabsFor("owner"), ...tabsFor("sales")].map((tab) => tab.label)).not.toContain("New lead");
   });
 });
 
@@ -42,7 +44,9 @@ describe("currentTab", () => {
     expect(currentTab("/app", owner)).toBe("/app");
     expect(currentTab("/app/leads", owner)).toBe("/app/leads");
     expect(currentTab("/app/leads/0b6f6f0e-2c1a-4e8b-9a7d-5c3e2f1a0b9c", owner)).toBe("/app/leads");
-    expect(currentTab("/app/leads/new", owner)).toBe("/app/leads/new");
+    expect(currentTab("/app/leads/new", owner)).toBe("/app/leads");
+    expect(currentTab("/app/session", owner)).toBe("/app/session");
+    expect(currentTab("/app/session", tabsFor("sales"))).toBe("/app/session");
     expect(currentTab("/app/admin/people", owner)).toBeNull();
     expect(currentTab("/app/meetings", owner)).toBe("/app/meetings");
     expect(currentTab("/app/schedule", owner)).toBe("/app/schedule");

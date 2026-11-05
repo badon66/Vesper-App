@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 
 // Opens the booking sheet from anywhere in the app: a tapped time on
-// Schedule or Home, a lead's Book a meeting, New lead's Save and book, or a
+// Schedule, Session or Home, a lead's Book a meeting, New lead's Save and book, or a
 // booking's Move. The sheet itself lives once, in the app layout.
 
 // When a hold runs out, by the database's clock (round 2).
@@ -13,8 +13,10 @@ export type SheetRequest =
   // A time someone just tapped, already held for them, with its timer. No
   // timer while Keenan views the app as someone: the hold is acted out.
   | { kind: "book"; startsAt: string; timer: SheetTimer | null }
-  // A lead to book: the sheet opens on the times first.
-  | { kind: "lead"; leadId: string }
+  // A lead to book: the sheet opens on the times first. backTo: New lead's
+  // Save and book while knocking returns to Session once it's booked
+  // (2026-11-05).
+  | { kind: "lead"; leadId: string; backTo?: "session" }
   // A booking to move: the sheet opens on the times, then confirms.
   | { kind: "move"; meetingId: string; leadId: string; leadName: string; from: string }
   // An unfinished booking from Home: the times first, then where it was left.

@@ -22,6 +22,7 @@ const dateTime = zoned({ month: "short", day: "numeric", hour: "numeric", minute
 const time = zoned({ hour: "numeric", minute: "2-digit" });
 const date = zoned({ month: "short", day: "numeric", year: "numeric" });
 const calendarDay = zoned({ year: "numeric", month: "2-digit", day: "2-digit" });
+const clock = zoned({ hour: "2-digit", minute: "2-digit", hourCycle: "h23" }, "en-GB");
 const offsetName = zoned({ timeZoneName: "shortOffset" }, "en-US");
 
 const at = (iso: string) => new Date(iso);
@@ -33,6 +34,12 @@ export const formatDate = (iso: string) => date(at(iso)).format(at(iso));
 // column uses.
 export function calgaryToday(now: Date = new Date()): string {
   return calendarDay(now).format(now);
+}
+
+// A moment's Calgary wall time as "16:32", the form a time field takes.
+export function calgaryClock(iso: string): string {
+  const moment = at(iso);
+  return clock(moment).format(moment);
 }
 
 // The Calgary date a moment falls on.

@@ -8,13 +8,35 @@ import {
   requireSalesSideForAction,
   type SessionProfile,
 } from "@/lib/auth/profile";
+import { sessionTally } from "@/lib/knock/queries";
+import { fixedStart } from "@/lib/knock/session";
 import { createClient } from "@/lib/supabase/server";
+import { calgaryDateOf, calgaryDayStart } from "@/lib/time";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 
 export type KnockState = { ok?: boolean; error?: string };
 export type KnockBumpResult =
   | { ok: true; doors: number; conversations: number }
   | { ok: false; error: string; fatal: boolean };
+
+// What End knocking shows (Keenan, 2026-11-05).
+export type KnockSummary = {
+  neighbourhood: string;
+  startedAt: string;
+  endedAt: string;
+  doors: number;
+  conversations: number;
+  leads: number;
+  bookings: number;
+};
+export type KnockEndResult = { ok: true; summary: KnockSummary } | { ok: false; error: string };
+export type KnockFixResult = { ok: true; startedAt: string } | { ok: false; error: string };
+
+// Session and Home both show the session, so both are drawn again.
+function redrawSession() {
+  revalidatePath("/app/session");
+  revalidatePath("/app");
+}
 
 // Who is acting, or the message to show instead.
 async function salesSide(): Promise<SessionProfile | string> {
@@ -55,7 +77,7 @@ export async function startKnockSession(
           : "The session could not start. Check your signal and try again.",
     };
   }
-  revalidatePath("/app");
+  redrawSession();
   return { ok: true };
 }
 
@@ -91,23 +113,98 @@ export async function bumpKnockSession(
   return { ok: true, doors: row.doors_knocked, conversations: row.conversations };
 }
 
-export async function endKnockSession(
-  _previous: KnockState,
-  formData: FormData,
-): Promise<KnockState> {
+const ENDED = "This session has ended. Reload the page to start a new one.";
+
+// Fixes the start time of the person's own running session, for a setter who
+// tapped Start late: any time earlier that day, never in the future. A
+// session's end can't come before its start, so only a running one changes.
+export async function fixKnockStart(sessionId: string, hhmm: string): Promise<KnockFixResult> {
   const me = await salesSide();
-  if (typeof me === "string") return { error: me };
-  const id = z.uuid().safeParse(formData.get("id"));
-  if (!id.success) return { error: "That session was not found." };
+  if (typeof me === "string") return { ok: false, error: me };
+  const id = z.uuid().safeParse(sessionId);
+  if (!id.success) return { ok: false, error: "That session was not found." };
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data: session, error: readError } = await supabase
+    .from("knock_sessions")
+    .select("id, started_at")
+    .eq("id", id.data)
+    .eq("user_id", me.id)
+    .is("ended_at", null)
+    .maybeSingle();
+  if (readError) return { ok: false, error: "The start time could not be saved. Check your signal and try again." };
+  if (!session) return { ok: false, error: ENDED };
+  const day = calgaryDateOf(session.started_at);
+  // Never back into an earlier session today.
+  const { data: earlier, error: earlierError } = await supabase
+    .from("knock_sessions")
+    .select("ended_at")
+    .eq("user_id", me.id)
+    .neq("id", session.id)
+    .not("ended_at", "is", null)
+    .gte("started_at", calgaryDayStart(day))
+    .lte("started_at", session.started_at)
+    .order("ended_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (earlierError) return { ok: false, error: "The start time could not be saved. Check your signal and try again." };
+  const fixed = fixedStart(day, String(hhmm ?? ""), Date.now(), earlier?.ended_at ?? null);
+  if (!fixed.ok) return fixed;
+  const { data, error } = await supabase
+    .from("knock_sessions")
+    .update({ started_at: fixed.startsAt })
+    .eq("id", session.id)
+    .eq("user_id", me.id)
+    .is("ended_at", null)
+    .select("started_at");
+  if (error) return { ok: false, error: "The start time could not be saved. Check your signal and try again." };
+  if (!data || data.length === 0) return { ok: false, error: ENDED };
+  redrawSession();
+  return { ok: true, startedAt: data[0].started_at };
+}
+
+// Ends the person's own running session and says how it went: time out,
+// doors, conversations, leads and bookings. A session already ended (on
+// another phone, say) still gets its summary.
+export async function endKnockSession(sessionId: string): Promise<KnockEndResult> {
+  const me = await salesSide();
+  if (typeof me === "string") return { ok: false, error: me };
+  const id = z.uuid().safeParse(sessionId);
+  if (!id.success) return { ok: false, error: "That session was not found." };
+
+  const supabase = await createClient();
+  const columns = "neighbourhood, started_at, ended_at, doors_knocked, conversations";
+  const { data, error } = await supabase
     .from("knock_sessions")
     .update({ ended_at: new Date().toISOString() })
     .eq("id", id.data)
     .eq("user_id", me.id)
-    .is("ended_at", null);
-  if (error) return { error: "The session could not end. Try again." };
-  revalidatePath("/app");
-  return { ok: true };
+    .is("ended_at", null)
+    .select(columns);
+  if (error) return { ok: false, error: "The session could not end. Check your signal and try again." };
+  let row = data?.[0] ?? null;
+  if (!row) {
+    const { data: already } = await supabase
+      .from("knock_sessions")
+      .select(columns)
+      .eq("id", id.data)
+      .eq("user_id", me.id)
+      .maybeSingle();
+    if (!already?.ended_at) return { ok: false, error: "That session was not found." };
+    row = already;
+  }
+  const tally = await sessionTally(supabase, id.data);
+  redrawSession();
+  return {
+    ok: true,
+    summary: {
+      neighbourhood: row.neighbourhood,
+      startedAt: row.started_at,
+      endedAt: row.ended_at ?? new Date().toISOString(),
+      doors: row.doors_knocked,
+      conversations: row.conversations,
+      leads: tally.leads,
+      bookings: tally.bookings,
+    },
+  };
 }

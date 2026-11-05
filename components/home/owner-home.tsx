@@ -1,16 +1,10 @@
 import Link from "next/link";
-import { KnockCard } from "@/components/knock/knock-card";
 import { StatusBadge } from "@/components/leads/status-badge";
 import { TonightMeetings } from "@/components/schedule/tonight";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { SessionProfile } from "@/lib/auth/profile";
 import { summariseToday } from "@/lib/home/today";
-import {
-  closeMyStaleKnockSessions,
-  lastNeighbourhood,
-  namesById,
-  openKnockSession,
-} from "@/lib/leads/queries";
+import { namesById } from "@/lib/leads/queries";
 import { leadName } from "@/lib/leads/status";
 import { createClient } from "@/lib/supabase/server";
 import { calgaryDayStart, calgaryToday, formatLongDay, formatTime } from "@/lib/time";
@@ -18,15 +12,15 @@ import { calgaryDayStart, calgaryToday, formatLongDay, formatTime } from "@/lib/
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 // The owner's Home is the dashboard: tonight's meetings at the top, then
-// today across the team, Keenan's own knock session (he knocks too), and
-// today's leads. M6 adds the sales dashboard below. Every number says what
+// today across the team and today's leads. His own knock session is on
+// Session, like everyone's (2026-11-05). M6 adds the sales dashboard below. Every number says what
 // it counts: knock sessions started today and leads added today, in Calgary
 // time.
 export async function OwnerHome({ profile }: { profile: SessionProfile }) {
   const supabase = await createClient();
   const today = calgaryToday();
   const dayStart = calgaryDayStart(today);
-  const [sessionsResult, leadsResult, mySession, myLast] = await Promise.all([
+  const [sessionsResult, leadsResult] = await Promise.all([
     supabase
       .from("knock_sessions")
       .select("user_id, neighbourhood, started_at, ended_at, doors_knocked, conversations")
@@ -37,9 +31,6 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
       .gte("created_at", dayStart)
       .order("created_at", { ascending: false })
       .limit(200),
-    openKnockSession(supabase, profile.id),
-    lastNeighbourhood(supabase, profile.id),
-    closeMyStaleKnockSessions(supabase),
   ]);
   if (sessionsResult.error || leadsResult.error) throw new Error("Today's numbers could not be loaded.");
   const sessions = sessionsResult.data;
@@ -111,8 +102,6 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
           )}
         </CardContent>
       </Card>
-
-      <KnockCard key={mySession?.id ?? "none"} session={mySession} lastNeighbourhood={myLast} />
 
       <Card>
         <CardHeader>
