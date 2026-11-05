@@ -12,6 +12,7 @@ import {
 import { ActionMessage } from "@/components/action-message";
 import { FieldError } from "@/components/field-error";
 import { AddressField, type AddressDefaults } from "@/components/leads/address-field";
+import { CheckGroup } from "@/components/leads/check-group";
 import { ChoiceGroup } from "@/components/leads/choice-group";
 import { bookingRuledOut, LeadQuestions, type QuestionDefaults } from "@/components/leads/find-out-fields";
 import { PhotoPicker } from "@/components/leads/photo-picker";
@@ -23,6 +24,17 @@ import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Textarea } from "@/components/ui/textarea";
 import { useViewAs } from "@/components/view-as-context";
 import type { PhotoSlot } from "@/lib/leads/door";
+import {
+  CONFIRM_BY_LABEL,
+  CONFIRM_BY_OPTIONS,
+  HOT_BUTTON_OPTIONS,
+  HOT_BUTTONS_LABEL,
+  SETTER_READ_LABEL,
+  SETTER_READ_OPTIONS,
+  type ConfirmBy,
+  type HotButton,
+  type SetterRead,
+} from "@/lib/leads/extras";
 import { defaultsFromDraft, draftFromFormData, draftHasContent, draftKey, draftPhotoPaths, readDraft, type LeadDraft } from "@/lib/leads/draft";
 import { timed } from "@/lib/answer-within";
 import { takeHandOff } from "@/lib/leads/hand-off";
@@ -45,6 +57,10 @@ export type LeadFormDefaults = {
   email: string;
   neighbourhood: string;
   house_type: HouseType | null;
+  // Round 3: optional, never counted.
+  setter_read?: SetterRead | null;
+  hot_buttons?: HotButton[];
+  confirm_by?: ConfirmBy | null;
   // The answers as the form holds them: a choice, Not collected, or nothing.
   questions: QuestionDefaults;
   phone_not_collected: boolean;
@@ -469,6 +485,35 @@ export function LeadForm({
         onOpenChange={(open) => setOpenNow((current) => (current === null ? null : open.length > 0 ? open : null))}
         onBookingChange={setBookingBlocked}
         markRestRef={markRestRef}
+        afterPhone={
+          <ChoiceGroup
+            name="confirm_by"
+            legend={`${CONFIRM_BY_LABEL} (optional)`}
+            options={CONFIRM_BY_OPTIONS}
+            defaultValue={shown?.confirm_by}
+            error={errors.confirm_by}
+          />
+        }
+        afterQuestions={
+          <>
+            <ChoiceGroup
+              name="setter_read"
+              legend={`${SETTER_READ_LABEL} (optional)`}
+              options={SETTER_READ_OPTIONS}
+              columns={3}
+              defaultValue={shown?.setter_read}
+              error={errors.setter_read}
+            />
+            <CheckGroup
+              name="hot_buttons"
+              legend={HOT_BUTTONS_LABEL}
+              hint="(optional, any that apply)"
+              options={HOT_BUTTON_OPTIONS}
+              exclusive="not_sure"
+              defaultValue={shown?.hot_buttons ?? []}
+            />
+          </>
+        }
       />
 
       {mode === "create" ? (

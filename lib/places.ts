@@ -177,3 +177,64 @@ export function mapsLink(lead: {
       : `${lead.address_line}, ${lead.city}`;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
+
+// "Use where I'm standing" (round 3, 2026-11-05): the nearest street address
+// to the phone's GPS position, for the setter to confirm. Geocoding API v4,
+// called from the browser with the same key as the address search (it was
+// checked to allow it on 2026-11-05). On a street Google doesn't have yet it
+// can come back as a neighbour's address or just the street, so it is only
+// ever filled in for the setter to check; the map position stays the phone's.
+const REVERSE_URL = "https://geocode.googleapis.com/v4/geocode/location/";
+export const REVERSE_FIELD_MASK = "results.placeId,results.formattedAddress,results.addressComponents,results.types";
+
+export type NearestAddress = {
+  addressLine: string;
+  city: string;
+  postalCode: string | null;
+  neighbourhood: string | null;
+  // True for a house address; false when Google only knows the street.
+  exact: boolean;
+};
+
+type ReverseResponse = {
+  results?: Array<{ placeId?: string; formattedAddress?: string; addressComponents?: AddressComponent[]; types?: string[] }>;
+};
+
+// The best answer in a reverse lookup: the first house address, or else the
+// first answer that names a street.
+export function nearestFromReverse(json: unknown, lat: number, lng: number, fallbackNeighbourhood?: string | null): NearestAddress | null {
+  const results = (json as ReverseResponse | null)?.results ?? [];
+  const isHouse = (types?: string[]) => Boolean(types?.some((type) => type === "street_address" || type === "premise" || type === "subpremise"));
+  const hasStreet = (parts?: AddressComponent[]) => Boolean(parts?.some((part) => part.types?.includes("route")));
+  const house = results.find((result) => isHouse(result.types) && hasStreet(result.addressComponents));
+  const street = house ?? results.find((result) => hasStreet(result.addressComponents));
+  if (!street) return null;
+  const picked = addressFromPlace(
+    { id: street.placeId ?? "reverse", formattedAddress: street.formattedAddress, addressComponents: street.addressComponents, location: { latitude: lat, longitude: lng } },
+    fallbackNeighbourhood,
+  );
+  if (!picked) return null;
+  const numbered = Boolean(street.addressComponents?.some((part) => part.types?.includes("street_number")));
+  return {
+    addressLine: picked.addressLine,
+    city: picked.city,
+    postalCode: picked.postalCode,
+    neighbourhood: picked.neighbourhood,
+    exact: Boolean(house) && numbered,
+  };
+}
+
+export async function fetchNearestAddress(
+  apiKey: string,
+  lat: number,
+  lng: number,
+  fallbackNeighbourhood?: string | null,
+  signal?: AbortSignal,
+): Promise<NearestAddress | null> {
+  const response = await fetch(`${REVERSE_URL}${lat},${lng}?languageCode=en&regionCode=ca`, {
+    headers: { "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": REVERSE_FIELD_MASK },
+    signal,
+  });
+  if (!response.ok) throw new PlacesUnavailableError(`Nearest address failed with ${response.status}`);
+  return nearestFromReverse(await response.json(), lat, lng, fallbackNeighbourhood);
+}

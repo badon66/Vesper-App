@@ -20,6 +20,8 @@ export type MeetingItemData = {
   missingColour: boolean;
   // "6 of 8 collected" (round 2): information only.
   completeness: string;
+  // The setter's read and hot buttons (round 3), or null.
+  read: string | null;
   next: boolean;
   // The latest change to anything its meeting page shows (the lead, its
   // mockup, Settings), so an older save counts as out of date.
@@ -54,6 +56,11 @@ export function MeetingItem({
         <p className="text-sm text-muted-foreground" data-testid="completeness">
           {item.completeness}
         </p>
+        {item.read ? (
+          <p className="text-sm font-semibold text-pretty" data-testid="setter-read-line">
+            {item.read}
+          </p>
+        ) : null}
         {item.host ? <p className="text-sm text-muted-foreground">Host: {item.host}</p> : null}
         {item.outcome ? <p className="text-sm font-semibold">{item.outcome}</p> : null}
         <PrepFlags leadId={item.leadId} missingMockup={item.missingMockup} missingColour={item.missingColour} />

@@ -72,7 +72,7 @@ const MEETING_COLUMNS =
 // lead is ("6 of 8 collected", round 2). Never the phone or email: those come
 // from lead_contacts, for the leads the viewer may contact (2026-11-04).
 const LEAD_COLUMNS =
-  "id, first_name, last_name, address_line, city, neighbourhood, phone_saved, lat, lng, notes, position_source, position_accuracy_m, status, created_by, assigned_to, owns_home, wants_price, both_decision_makers, christmas_lights_now, looked_into_before, areas_wanted, install_timing, not_collected";
+  "id, first_name, last_name, address_line, city, neighbourhood, phone_saved, lat, lng, notes, position_source, position_accuracy_m, status, created_by, assigned_to, owns_home, wants_price, both_decision_makers, christmas_lights_now, looked_into_before, areas_wanted, install_timing, not_collected, setter_read, hot_buttons";
 
 export type MeetingRow = Pick<
   Database["public"]["Tables"]["meetings"]["Row"],
@@ -118,6 +118,9 @@ export type MeetingLead = Pick<
   | "areas_wanted"
   | "install_timing"
   | "not_collected"
+  // Round 3: Keenan sees these on his Meetings page and Home.
+  | "setter_read"
+  | "hot_buttons"
 > & {
   // The phone, only on a lead the viewer may contact (contact privacy).
   phone: string | null;

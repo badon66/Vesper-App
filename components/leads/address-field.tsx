@@ -9,8 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   fetchAddressSuggestions,
+  fetchNearestAddress,
   fetchPickedAddress,
   type AddressSuggestion,
+  type NearestAddress,
   type PickedAddress,
 } from "@/lib/places";
 import { cn } from "@/lib/utils";
@@ -90,6 +92,11 @@ export function AddressField({
   const [active, setActive] = useState(-1);
   const [unavailable, setUnavailable] = useState(!apiKey);
   const [picking, setPicking] = useState(false);
+  // After "Use where I'm standing" (round 3): the nearest address Google
+  // knows, filled in for the setter to check, or offered when something is
+  // already typed.
+  const [nearest, setNearest] = useState<{ state: "looking" | "filled" | "offered" | "none"; address: NearestAddress | null } | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const token = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const request = useRef<AbortController | null>(null);
@@ -132,6 +139,7 @@ export function AddressField({
 
   function onChange(value: string) {
     setText(value);
+    if (nearest?.state === "offered") setNearest(null);
     const dropped = position?.source === "picked";
     if (dropped) {
       setPosition(null);
@@ -151,6 +159,42 @@ export function AddressField({
     setPosition({ lat: found.lat, lng: found.lng, placeId: null, source: "device", accuracy: found.accuracy });
     onEdited?.({ addressLine: text, positioned: true });
     findLeadsNear(found.lat, found.lng, leadId).then(setNearby, () => setNearby([]));
+    void fillNearest(found.lat, found.lng);
+  }
+
+  // The nearest street address, filled in when the box is empty (the setter
+  // checks the house number), or offered when something is already typed.
+  // Without a key or signal the position still saves and the box is theirs.
+  async function fillNearest(lat: number, lng: number) {
+    if (!apiKey) {
+      setNearest({ state: "none", address: null });
+      inputRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    setNearest({ state: "looking", address: null });
+    try {
+      const address = await fetchNearestAddress(apiKey, lat, lng, fallbackNeighbourhood);
+      if (!address) {
+        setNearest({ state: "none", address: null });
+        return;
+      }
+      const typed = inputRef.current?.value.trim() ?? "";
+      if (typed === "") {
+        applyNearest(address);
+      } else {
+        setNearest({ state: "offered", address });
+      }
+    } catch {
+      setNearest({ state: "none", address: null });
+    }
+  }
+
+  function applyNearest(address: NearestAddress) {
+    setText(address.addressLine);
+    setCity(address.city);
+    setPostalCode(address.postalCode ?? "");
+    setNearest({ state: "filled", address });
+    onEdited?.({ addressLine: address.addressLine, positioned: true });
   }
 
   async function pick(suggestion: AddressSuggestion) {
@@ -194,12 +238,11 @@ export function AddressField({
     }
   }
 
+  const where = place === "house" ? "this device at the house" : "this phone at the door";
   const hint = picking
     ? "Getting the map position."
     : position?.source === "device"
-      ? place === "house"
-        ? `Map position from this device at the house, accurate to about ${Math.round(position.accuracy ?? 0)} m.`
-        : `Map position from this phone at the door, accurate to about ${Math.round(position.accuracy ?? 0)} m.`
+      ? `Position saved from ${where}, accurate to about ${Math.round(position.accuracy ?? 0)} m.`
       : position
         ? "Map position saved."
       : unavailable
@@ -213,6 +256,7 @@ export function AddressField({
       <Label htmlFor="lead-address">Address</Label>
       <div className="relative">
         <Input
+          ref={inputRef}
           id="lead-address"
           name="address_line"
           value={text}
@@ -264,6 +308,33 @@ export function AddressField({
       >
         {hint}
       </p>
+      {position?.source === "device" && nearest ? (
+        <div role="status" className="text-sm text-pretty" data-testid="nearest-address" data-state={nearest.state}>
+          {nearest.state === "looking" ? <p className="text-muted-foreground">Looking up the nearest address.</p> : null}
+          {nearest.state === "filled" && nearest.address ? (
+            <p className="font-semibold">
+              {nearest.address.exact
+                ? "Filled in the nearest address Google knows. Check the house number is this house."
+                : "Google only knows the street here. Add the house number."}
+            </p>
+          ) : null}
+          {nearest.state === "offered" && nearest.address ? (
+            <div className="flex flex-wrap items-center gap-x-3">
+              <p>
+                Nearest address: <span className="font-semibold">{nearest.address.addressLine}</span>
+              </p>
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4"
+                onClick={() => nearest.address && applyNearest(nearest.address)}
+              >
+                Use it
+              </button>
+            </div>
+          ) : null}
+          {nearest.state === "none" ? <p className="font-semibold">Type the house number and street.</p> : null}
+        </div>
+      ) : null}
       <FieldError id="lead-address-error" message={error} />
       <input type="hidden" name="city" value={city} />
       <input type="hidden" name="postal_code" value={postalCode} />

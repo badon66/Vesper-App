@@ -42,6 +42,7 @@ export function PhotoSlots({
   layout = "list",
   onBusyChange,
   onTakenChange,
+  onPathsChange,
   initial,
 }: {
   userId: string;
@@ -54,6 +55,9 @@ export function PhotoSlots({
   onBusyChange?: (busy: boolean) => void;
   // Which slots have a photo ready to save, for Before you book on New lead.
   onTakenChange?: (slots: PhotoSlot[]) => void;
+  // A form's uploaded paths by slot, for the booking sheet (round 3), which
+  // keeps them with a person not saved yet and attaches them at the save.
+  onPathsChange?: (paths: Partial<Record<PhotoSlot, string>>) => void;
   // A form's photos already uploaded, brought back from a draft after a
   // reload: the path and a signed link to show it.
   initial?: Partial<Record<PhotoSlot, { path: string; preview: string }>>;
@@ -85,6 +89,19 @@ export function PhotoSlots({
   useEffect(() => {
     onTakenChange?.(doneKey ? (doneKey.split(",") as PhotoSlot[]) : []);
   }, [doneKey, onTakenChange]);
+
+  const pathsKey = PHOTO_SLOTS.map(({ slot }) => (taken[slot]?.status === "done" && taken[slot]?.path ? `${slot}=${taken[slot]?.path}` : ""))
+    .filter(Boolean)
+    .join("|");
+  useEffect(() => {
+    if (!onPathsChange) return;
+    const paths: Partial<Record<PhotoSlot, string>> = {};
+    for (const pair of pathsKey ? pathsKey.split("|") : []) {
+      const [slot, path] = pair.split("=");
+      paths[slot as PhotoSlot] = path;
+    }
+    onPathsChange(paths);
+  }, [pathsKey, onPathsChange]);
 
   function preview(blob: Blob): string {
     const url = URL.createObjectURL(blob);

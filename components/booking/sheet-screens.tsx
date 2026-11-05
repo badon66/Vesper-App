@@ -1,9 +1,10 @@
 "use client";
 
-import { Check } from "lucide-react";
-import { useState, type RefObject } from "react";
+import { Check, ChevronRight } from "lucide-react";
+import { useEffect, useState, type RefObject } from "react";
 import { AddressField } from "@/components/leads/address-field";
 import { AnswerGroup, NotCollectedToggle } from "@/components/leads/answer-group";
+import { CheckGroup } from "@/components/leads/check-group";
 import { PhotoSlots } from "@/components/leads/photo-slots";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,30 +13,44 @@ import {
   bookingBlockers,
   draftAnswers,
   guidedPhotoCount,
-  PROBLEM_SCREENS,
-  readinessLead,
   screenOpenQuestions,
+  sheetMissing,
+  type MissingItem,
   type SheetDraft,
   type SheetScreen,
 } from "@/lib/booking/sheet";
+import {
+  CONFIRM_BY_OPTIONS,
+  HOT_BUTTON_OPTIONS,
+  HOT_BUTTONS_LABEL,
+  SETTER_READ_LABEL,
+  SETTER_READ_OPTIONS,
+  type ConfirmBy,
+  type HotButton,
+  type SetterRead,
+} from "@/lib/leads/extras";
 import { FIND_OUT_QUESTIONS, type PhotoSlot } from "@/lib/leads/door";
 import { EVERYONE_OPTIONS, NOT_COLLECTED, NOT_COLLECTED_LABEL, QUESTION_LABELS, type CountedQuestion } from "@/lib/leads/questions";
 import type { DuplicateLead } from "@/app/(app)/app/leads/actions";
 import type { PickedAddress } from "@/lib/places";
-import { SOFFIT_OPTIONS, type SoffitColour } from "@/lib/leads/status";
+import { HOUSE_TYPE_OPTIONS, SOFFIT_OPTIONS, type HouseType, type SoffitColour } from "@/lib/leads/status";
+import { PHOTO_BUCKET } from "@/lib/photos";
+import { createClient } from "@/lib/supabase/client";
 import { formatPhone, normalizePhone } from "@/lib/phone";
 import { formatMeetingTime } from "@/lib/schedule/meetings";
-import { leadReadiness, PHOTO_SKIP_OPTIONS, READINESS_NAMES, type PhotoSkip } from "@/lib/schedule/readiness";
-import { cn } from "@/lib/utils";
+import { PHOTO_SKIP_OPTIONS, type PhotoSkip } from "@/lib/schedule/readiness";
 
 type Change = (patch: Partial<SheetDraft>) => void;
 type Answer = (question: CountedQuestion, value: string | null) => void;
 
-// The booking sheet's screens (round 2, Keenan, 2026-11-03). Each question
-// takes an answer or Not collected; a screen's "Mark the rest Not collected"
-// answers what's left in one tap. Answers grow on a wide phone. The moment
-// an answer rules booking out, the screen says so, in the plain warning
-// style: a neutral border and a bold first line, never red.
+// The booking sheet's screens (round 2, Keenan, 2026-11-03; round 3,
+// 2026-11-05). Each question takes an answer or Not collected; a screen's
+// "Mark the rest Not collected" answers what's left in one tap. Answers grow
+// on a wide phone. The moment an answer rules booking out, the screen says
+// so, in the plain warning style: a neutral border and a bold first line,
+// never red. Round 3: the phone is on Book, last; the optional answers
+// (house type, setter's read, hot buttons, call or text) are one tap each
+// and never block anything.
 
 // A note that doesn't block: what an answer means for booking, and, once
 // booking is ruled out, the way on: Keep as a lead, the one gold button.
@@ -67,20 +82,16 @@ function BookingNote({
 
 // ---------------------------------------------------------------- At the door: who
 
+// Just the name (round 3): the number comes last, on Book.
 export function WhoScreen({
   draft,
   onChange,
-  onAnswer,
   onExisting,
-  onKeepAsLead,
 }: {
   draft: SheetDraft;
   onChange: Change;
-  onAnswer: Answer;
   onExisting: (() => void) | null;
-  onKeepAsLead: () => void;
 }) {
-  const phoneNotCollected = draft.not_collected.includes("phone");
   return (
     <div className="flex flex-col gap-4">
       {onExisting ? (
@@ -115,59 +126,16 @@ export function WhoScreen({
             id="sheet-last-name"
             autoComplete="off"
             autoCapitalize="words"
-            enterKeyHint="next"
+            enterKeyHint="done"
             className="min-[420px]:h-14 min-[420px]:text-lg"
-            onKeyDown={(event) => nextField(event, "sheet-phone")}
+            onKeyDown={(event) => nextField(event, null)}
             value={draft.last_name}
             maxLength={80}
             onChange={(event) => onChange({ last_name: event.target.value })}
           />
         </div>
       </div>
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <Label htmlFor="sheet-phone" className="min-[420px]:text-base">
-            Phone
-          </Label>
-          <NotCollectedToggle
-            pressed={phoneNotCollected}
-            size="sheet"
-            label="Phone: Not collected"
-            testId="sheet-phone-not-collected"
-            onToggle={() => onAnswer("phone", phoneNotCollected ? null : NOT_COLLECTED)}
-          />
-        </div>
-        <Input
-          id="sheet-phone"
-          type="tel"
-          inputMode="tel"
-          enterKeyHint="done"
-          autoComplete="off"
-          className="min-[420px]:h-14 min-[420px]:text-lg"
-          value={draft.phone}
-          maxLength={40}
-          disabled={phoneNotCollected}
-          placeholder={phoneNotCollected ? NOT_COLLECTED_LABEL : undefined}
-          aria-describedby="sheet-phone-hint"
-          onChange={(event) => onChange({ phone: event.target.value })}
-          onKeyDown={(event) => nextField(event, null)}
-          onBlur={(event) => {
-            const phone = normalizePhone(event.currentTarget.value);
-            if (phone.ok && phone.e164) onChange({ phone: formatPhone(phone.e164) });
-          }}
-        />
-        {phoneNotCollected ? (
-          <div id="sheet-phone-hint">
-            <BookingNote title="Without a number, this time can't be booked." testId="rule-phone" onKeepAsLead={onKeepAsLead}>
-              Ask before you leave the door, or keep them as a lead.
-            </BookingNote>
-          </div>
-        ) : (
-          <p id="sheet-phone-hint" className="-mt-1 text-sm text-muted-foreground min-[420px]:text-base">
-            Needed to book and to confirm the meeting.
-          </p>
-        )}
-      </div>
+      <p className="text-sm text-pretty text-muted-foreground min-[420px]:text-base">The number comes last, on Book.</p>
     </div>
   );
 }
@@ -226,6 +194,7 @@ export function QuestionsScreen({
   onAnswer,
   onMarkRest,
   onKeepAsLead,
+  onChange,
 }: {
   screen: SheetScreen;
   questions: CountedQuestion[];
@@ -233,6 +202,8 @@ export function QuestionsScreen({
   onAnswer: Answer;
   onMarkRest: () => void;
   onKeepAsLead: () => void;
+  // The learned step's optional answers (round 3).
+  onChange?: Change;
 }) {
   const answers = draftAnswers(draft);
   const open = screenOpenQuestions(screen, draft);
@@ -259,6 +230,29 @@ export function QuestionsScreen({
         <Button type="button" variant="link" size="sm" className="-mt-3 self-start px-0 min-[420px]:text-base" onClick={onMarkRest} data-testid="mark-rest">
           Mark the rest Not collected
         </Button>
+      ) : null}
+      {screen === "learned" && onChange ? (
+        <div className="flex flex-col gap-5 border-t pt-4 min-[420px]:gap-6" data-testid="sheet-extras">
+          <AnswerGroup
+            name="sheet-setter-read"
+            legend={`${SETTER_READ_LABEL} (optional)`}
+            options={SETTER_READ_OPTIONS}
+            columns={3}
+            size="sheet"
+            value={draft.setter_read}
+            onChange={(next) => onChange({ setter_read: next as SetterRead | null })}
+          />
+          <CheckGroup
+            name="sheet-hot-buttons"
+            legend={HOT_BUTTONS_LABEL}
+            hint="(optional, any that apply)"
+            options={HOT_BUTTON_OPTIONS}
+            exclusive="not_sure"
+            size="sheet"
+            value={draft.hot_buttons}
+            onChange={(next) => onChange({ hot_buttons: next as HotButton[] })}
+          />
+        </div>
       ) : null}
     </div>
   );
@@ -357,11 +351,24 @@ export function AddressScreen({
           </div>
         ) : null}
       </section>
+
+      <AnswerGroup
+        name="sheet-house-type"
+        legend="House type (optional)"
+        options={HOUSE_TYPE_OPTIONS}
+        columns={4}
+        size="sheet"
+        value={draft.house_type}
+        onChange={(next) => onChange({ house_type: next as HouseType | null })}
+      />
     </form>
   );
 }
 
 // The four guided photos, as large tiles: each tile is its Take photo button.
+// A saved lead's photos go straight into its slots; a person not saved yet
+// (round 3: usually, since the phone is asked last) has them uploaded to the
+// setter's own folder at once, kept with the draft and attached at the save.
 export function PhotosScreen({
   draft,
   userId,
@@ -370,7 +377,6 @@ export function PhotosScreen({
   onBusyChange,
   skipOpen,
   onSkipOpen,
-  onAddress,
   local,
 }: {
   draft: SheetDraft;
@@ -380,33 +386,70 @@ export function PhotosScreen({
   onBusyChange: (busy: boolean) => void;
   skipOpen: boolean;
   onSkipOpen: () => void;
-  onAddress: () => void;
   // View as: the photos are acted out on screen and attach to nothing.
   local: boolean;
 }) {
   const complete = guidedPhotoCount(draft) >= 3;
-  const canTake = Boolean(draft.leadId) || local;
+  const saved = Boolean(draft.leadId);
+  const pending = draft.photo_paths;
+  // Photos already uploaded for a person not saved yet, shown again with a
+  // signed link when the screen comes back (from Unfinished or a reload).
+  const [initial, setInitial] = useState<Partial<Record<PhotoSlot, { path: string; preview: string }>> | null>(
+    saved || local || Object.keys(pending).length === 0 ? {} : null,
+  );
+  useEffect(() => {
+    if (initial !== null) return;
+    let cancelled = false;
+    const entries = Object.entries(pending) as [PhotoSlot, string][];
+    createClient()
+      .storage.from(PHOTO_BUCKET)
+      .createSignedUrls(entries.map(([, path]) => path), 3600)
+      .then(
+        ({ data }) => {
+          if (cancelled) return;
+          const shown: Partial<Record<PhotoSlot, { path: string; preview: string }>> = {};
+          for (const [slot, path] of entries) {
+            const url = data?.find((item) => item.path === path)?.signedUrl;
+            if (url) shown[slot] = { path, preview: url };
+          }
+          setInitial(shown);
+        },
+        () => {
+          if (!cancelled) setInitial({});
+        },
+      );
+    return () => {
+      cancelled = true;
+    };
+    // Only when the screen opens: later changes are the slots' own.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <div className="flex flex-col gap-4">
-      {!canTake ? (
-        <div className="flex flex-col items-start gap-2">
-          <p className="text-sm text-pretty text-muted-foreground">Photos attach to the person once they&apos;re saved, which happens when the address is in.</p>
-          <Button type="button" variant="outline" size="sm" onClick={onAddress}>
-            Add the address
-          </Button>
-        </div>
+      {initial === null ? (
+        <p className="text-sm text-muted-foreground">Loading the photos.</p>
       ) : (
         <PhotoSlots
           userId={userId}
-          mode={local ? "form" : "attach"}
+          mode={local || !saved ? "form" : "attach"}
           layout="tiles"
           leadId={draft.leadId ?? undefined}
           saved={photos}
+          initial={initial}
           onBusyChange={onBusyChange}
           onTakenChange={(slots) => {
             const merged = Array.from(new Set([...draft.photo_slots, ...slots]));
             if (merged.length !== draft.photo_slots.length) onChange({ photo_slots: merged });
           }}
+          onPathsChange={
+            saved || local
+              ? undefined
+              : (paths) => {
+                  if (JSON.stringify(paths) !== JSON.stringify(draft.photo_paths)) {
+                    onChange({ photo_paths: paths, photo_slots: Array.from(new Set([...draft.photo_slots, ...(Object.keys(paths) as PhotoSlot[])])) });
+                  }
+                }
+          }
         />
       )}
       {complete ? null : skipOpen || draft.skip ? (
@@ -441,20 +484,11 @@ export function PhotosScreen({
 
 // ---------------------------------------------------------------- Book
 
-// A phone as people read it, whatever form it was typed in.
-function shownPhone(typed: string): string {
-  const phone = normalizePhone(typed);
-  return phone.ok && phone.e164 ? formatPhone(phone.e164) : typed;
-}
 
-// What each Before you book item needs, said for a Not collected answer.
-const NEEDS: Record<string, string> = {
-  phone: "Booking needs a number.",
-  owns_home: "Booking needs Yes.",
-  wants_price: "Booking needs Yes.",
-  everyone_deciding_present: "Booking needs Yes.",
-};
-
+// Book, round 3 (Keenan, 2026-11-05): the only gate. It lists everything
+// still missing, each with a tap to its step; says when an answer rules
+// booking out, with Keep as a lead; and holds the phone, asked last, with
+// Call or text to confirm beside it, right above the Book button.
 export function BookScreen({
   draft,
   name,
@@ -462,6 +496,8 @@ export function BookScreen({
   warnings,
   onFix,
   onKeepAsLead,
+  onChange,
+  onAnswer,
 }: {
   draft: SheetDraft;
   name: string;
@@ -469,39 +505,15 @@ export function BookScreen({
   warnings: string[];
   onFix: (screen: SheetScreen) => void;
   onKeepAsLead: () => void;
+  onChange: Change;
+  onAnswer: Answer;
 }) {
-  const guided = guidedPhotoCount(draft);
-  const notCollected = (key: string) =>
-    draft.not_collected.includes((key === "everyone_deciding_present" ? "both_decision_makers" : key) as CountedQuestion);
-  const ruledOut = (key: string) =>
-    (key === "owns_home" && draft.owns_home === false) ||
-    (key === "wants_price" && draft.wants_price === false) ||
-    (key === "everyone_deciding_present" && draft.everyone === false);
-  const items = leadReadiness(readinessLead(draft), guided).map((item) => {
-    const ok =
-      item.key === "photos"
-        ? guided >= 3 || (draft.skip !== null && (draft.skip !== "other" || draft.skip_note.trim() !== ""))
-        : item.ok;
-    const shown = ok
-      ? item.key === "photos" && guided < 3 && draft.skip
-        ? `Photos skipped: ${PHOTO_SKIP_OPTIONS.find((option) => option.value === draft.skip)?.label ?? ""}`
-        : item.label
-      : ruledOut(item.key)
-        ? item.key === "owns_home"
-          ? "Owns the home: No. Only homeowners can be booked."
-          : item.key === "wants_price"
-            ? "Wants a price: Not yet. Book once they want one."
-            : "Everyone who decides: No. Book once they can all be there."
-        : notCollected(item.key)
-          ? `${READINESS_NAMES[item.key]}: ${NOT_COLLECTED_LABEL}`
-          : item.label;
-    const note = !ok && !ruledOut(item.key) && notCollected(item.key) ? NEEDS[item.key] : null;
-    return { key: item.key as string, label: item.label, ok, shown, note };
-  });
-  // In the order of the screens that ask for them.
-  const order = ["phone", "owns_home", "wants_price", "everyone_deciding_present", "map_position", "soffit_colour", "photos"];
-  items.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
   const answers = draftAnswers(draft);
+  const missing = sheetMissing(draft);
+  const elsewhere = missing.filter((item) => item.screen !== "book");
+  const ruledOut = ruledOutTitle(draft, true);
+  const phoneNotCollected = draft.not_collected.includes("phone");
+  const photosSkipped = guidedPhotoCount(draft) < 3 && draft.skip !== null && missing.every((item) => item.screen !== "house");
   return (
     <div className="flex flex-col gap-4">
       <div data-testid="sheet-summary" className="flex flex-col gap-0.5">
@@ -509,50 +521,33 @@ export function BookScreen({
         {heldAt ? <p className="text-base font-semibold min-[420px]:text-lg">{formatMeetingTime(heldAt)}</p> : null}
         <p className="text-sm text-pretty text-muted-foreground min-[420px]:text-base">
           {[draft.address_line, draft.neighbourhood].filter(Boolean).join(", ") || "No address yet"}
-          {draft.phone ? ` · ${shownPhone(draft.phone)}` : answers.phone === NOT_COLLECTED ? " · phone not collected" : ""}
         </p>
+        {photosSkipped ? (
+          <p className="text-sm text-muted-foreground min-[420px]:text-base">
+            Photos skipped: {PHOTO_SKIP_OPTIONS.find((option) => option.value === draft.skip)?.label ?? ""}
+          </p>
+        ) : null}
       </div>
 
-      <section aria-labelledby="sheet-ready-heading" className="flex flex-col gap-1">
+      <section aria-labelledby="sheet-ready-heading" className="flex flex-col gap-1" data-testid="book-checklist" data-missing={missing.length}>
         <h3 id="sheet-ready-heading" className="text-sm font-bold min-[420px]:text-base">
-          Before you book
+          {elsewhere.length > 0 ? `Still to answer (${elsewhere.length})` : "Before you book"}
         </h3>
-        <ul className="flex flex-col" data-testid="readiness">
-          {items.map((item) => (
-            <li
-              key={item.key}
-              className={cn("flex items-center justify-between gap-3", item.ok ? "min-h-8" : "min-h-12")}
-              data-ok={item.ok ? "yes" : "no"}
-              data-item={item.key}
-            >
-              <span className="flex items-start gap-2 text-sm min-[420px]:text-base">
-                {item.ok ? (
-                  <Check role="img" aria-label="Done" className="mt-0.5 size-4 shrink-0" />
-                ) : (
-                  <span role="img" aria-label="Missing" className="mt-0.5 size-4 shrink-0 rounded-full border-2 border-muted-foreground" />
-                )}
-                <span className="flex flex-col">
-                  <span className={item.ok ? "" : "font-semibold"}>{item.shown}</span>
-                  {item.note ? <span className="text-muted-foreground">{item.note}</span> : null}
-                </span>
-              </span>
-              {!item.ok ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onFix(PROBLEM_SCREENS[item.key] ?? "who")}
-                  aria-label={ruledOut(item.key) ? `Change answer: ${READINESS_NAMES[item.key as keyof typeof READINESS_NAMES]}` : `Fix: ${item.label}`}
-                >
-                  {ruledOut(item.key) ? "Change answer" : "Fix"}
-                </Button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        {elsewhere.length > 0 ? (
+          <ul className="flex flex-col" data-testid="readiness">
+            {elsewhere.map((item) => (
+              <MissingRow key={`${item.screen}-${item.key}`} item={item} onFix={onFix} />
+            ))}
+          </ul>
+        ) : (
+          <p className="flex items-center gap-2 text-sm min-[420px]:text-base" data-testid="readiness" data-ok="yes">
+            <Check aria-hidden="true" className="size-4 shrink-0" />
+            {missing.length === 0 ? "Everything is answered." : "Everything else is answered."}
+          </p>
+        )}
       </section>
 
-      {ruledOutTitle(draft, true) ? <BookingNote title={ruledOutTitle(draft, true) ?? ""} testId="book-ruled-out" onKeepAsLead={onKeepAsLead} /> : null}
+      {ruledOut ? <BookingNote title={ruledOut} testId="book-ruled-out" onKeepAsLead={onKeepAsLead} /> : null}
 
       {warnings.length > 0 ? (
         <div role="status" className="rounded-md border border-foreground/60 px-3 py-2 text-sm" data-testid="distance-warning">
@@ -564,9 +559,91 @@ export function BookScreen({
           <p className="text-muted-foreground">You can still book it, or pick another time.</p>
         </div>
       ) : null}
+
+      {/* Last, right above Book: the number, and how to confirm. */}
+      <section className="mt-auto flex flex-col gap-3 border-t pt-4" data-testid="sheet-phone-block" data-question="sheet-phone">
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="sheet-phone" className="text-base font-semibold min-[420px]:text-lg">
+            Phone
+          </Label>
+          <NotCollectedToggle
+            pressed={phoneNotCollected}
+            size="sheet"
+            label="Phone: Not collected"
+            testId="sheet-phone-not-collected"
+            onToggle={() => onAnswer("phone", phoneNotCollected ? null : NOT_COLLECTED)}
+          />
+        </div>
+        <Input
+          id="sheet-phone"
+          type="tel"
+          inputMode="tel"
+          enterKeyHint="done"
+          autoComplete="off"
+          className="min-[420px]:h-14 min-[420px]:text-lg"
+          value={draft.phone}
+          maxLength={40}
+          disabled={phoneNotCollected}
+          placeholder={phoneNotCollected ? NOT_COLLECTED_LABEL : undefined}
+          aria-describedby="sheet-phone-hint"
+          onChange={(event) => onChange({ phone: event.target.value })}
+          onKeyDown={(event) => nextField(event, null)}
+          onBlur={(event) => {
+            const phone = normalizePhone(event.currentTarget.value);
+            if (phone.ok && phone.e164) onChange({ phone: formatPhone(phone.e164) });
+          }}
+        />
+        {answers.phone === NOT_COLLECTED ? null : (
+          <p id="sheet-phone-hint" className="-mt-1 text-sm text-muted-foreground min-[420px]:text-base">
+            To confirm the meeting. Needed to book.
+          </p>
+        )}
+        <AnswerGroup
+          name="sheet-confirm-by"
+          legend="Call or text to confirm (optional)"
+          options={CONFIRM_BY_OPTIONS}
+          columns={2}
+          size="sheet"
+          value={draft.confirm_by}
+          onChange={(next) => onChange({ confirm_by: next as ConfirmBy | null })}
+        />
+      </section>
     </div>
   );
 }
+
+// One thing still missing, with a tap to the step that asks it.
+function MissingRow({ item, onFix }: { item: MissingItem; onFix: (screen: SheetScreen) => void }) {
+  return (
+    <li data-ok="no" data-item={item.key}>
+      <button
+        type="button"
+        onClick={() => onFix(item.screen)}
+        className="flex min-h-11 w-full items-center justify-between gap-3 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring min-[420px]:min-h-12 min-[420px]:text-base"
+        aria-label={`${item.label}: go to ${STEP_NAMES[item.screen]}`}
+      >
+        <span className="flex items-center gap-2">
+          <span aria-hidden="true" className="size-4 shrink-0 rounded-full border-2 border-muted-foreground" />
+          <span className="font-semibold">{item.label}</span>
+        </span>
+        <span className="flex items-center gap-1 text-muted-foreground">
+          {STEP_NAMES[item.screen]}
+          <ChevronRight aria-hidden="true" className="size-4 shrink-0" />
+        </span>
+      </button>
+    </li>
+  );
+}
+
+// Where each step's things are, as the setter thinks of them.
+const STEP_NAMES: Record<SheetScreen, string> = {
+  who: "Name",
+  door: "At the door",
+  learned: "What they learned",
+  address: "The house",
+  house: "Photos",
+  book: "Book",
+};
 
 // ---------------------------------------------------------------- Existing lead
 

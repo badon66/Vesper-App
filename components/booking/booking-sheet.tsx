@@ -67,23 +67,24 @@ import {
   draftToLeadInput,
   emptyDraft,
   firstScreenToVisit,
-  isScreenComplete,
   leadDraftFromSheet,
   LEARNED_QUESTIONS,
   markScreenNotCollected,
   nextScreen,
-  photosNeed,
   previousScreen,
   PROBLEM_SCREENS,
   savedFingerprint,
   SCREEN_QUESTIONS,
   SCREEN_TITLES,
   SCREENS,
+  screenMissing,
   screenOpenQuestions,
+  sheetMissing,
   stepCount,
   STEPS,
   stepOf,
   withAnswer,
+  withDraftDefaults,
   type SheetDraft,
   type SheetScreen,
 } from "@/lib/booking/sheet";
@@ -250,7 +251,7 @@ export function BookingSheetHost({ enabled, userId }: { enabled: boolean; userId
 // Where a sheet starts, before anything is loaded.
 function startingPoint(request: SheetRequest, userId: string, restored: Restored | null) {
   if (restored) {
-    return { view: restored.view, draft: restored.draft, name: restored.name, returnTo: restored.returnTo, record: null };
+    return { view: restored.view, draft: withDraftDefaults(restored.draft), name: restored.name, returnTo: restored.returnTo, record: null };
   }
   if (request.kind === "draft") {
     const record = loadDrafts(userId).find((item) => item.id === request.draftId) ?? null;
@@ -351,6 +352,11 @@ function BookingSheet({
   // The address step's typed text and whether it has a map position, as the
   // setter changes it: the step is done once both are in.
   const [addressLive, setAddressLive] = useState<{ addressLine: string; positioned: boolean } | null>(null);
+  // Round 3: the steps the setter has been on, for the progress bar's
+  // markers (a step passed with something missing), and whether this step
+  // was opened from Book's list, so Next goes back to Book.
+  const [visited, setVisited] = useState<SheetScreen[]>(() => (isScreen(start.view) ? [start.view] : []));
+  const [fromBook, setFromBook] = useState(false);
   const mapsKey = getPublicEnv().NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null;
   const holdMinutes = context?.holdMinutes ?? DEFAULT_HOLD_MINUTES;
 
@@ -432,6 +438,11 @@ function BookingSheet({
         setDraft((current) => ({
           ...current,
           photo_slots: Array.from(new Set([...current.photo_slots, ...lead.draft.photo_slots])),
+          // A draft kept before round 3 never asked the optional answers:
+          // the lead's own come back, so a save can't blank them.
+          ...(current.extras === false
+            ? { house_type: lead.draft.house_type, setter_read: lead.draft.setter_read, hot_buttons: lead.draft.hot_buttons, confirm_by: lead.draft.confirm_by, extras: true }
+            : {}),
         }));
         if (!lead.bookable) {
           setNotBookable(lead.notBookableReason);
@@ -450,6 +461,8 @@ function BookingSheet({
     bodyRef.current?.scrollTo({ top: 0 });
     headingRef.current?.focus({ preventScroll: true });
   }, [view]);
+
+  if (isScreen(view) && !visited.includes(view)) setVisited([...visited, view]);
 
   // ------------------------------------------------------------ the hold
   const explainLost = useCallback(
@@ -765,7 +778,19 @@ function BookingSheet({
   function go(next: View) {
     setError(null);
     setMenuOpen(false);
+    setFromBook(false);
     setView(next);
+  }
+
+  // A tap on one of Book's missing things: that step, with Next back to Book.
+  function fixFromBook(screen: SheetScreen) {
+    keepAddress();
+    if (screen === "book") {
+      showMissing("book", draft);
+      return;
+    }
+    go(screen);
+    setFromBook(true);
   }
 
   function readAddressForm(current: SheetDraft): SheetDraft {
@@ -792,7 +817,8 @@ function BookingSheet({
   // Which screen fixes a field the server didn't accept.
   function screenForField(field: string | null): SheetScreen | null {
     if (!field) return null;
-    if (field === "first_name" || field === "last_name" || field === "phone") return "who";
+    if (field === "first_name" || field === "last_name") return "who";
+    if (field === "phone") return "book";
     if (field.startsWith("address") || field === "lat" || field === "lng") return "address";
     if (field === "soffit_colour" || field === "soffit_note") return "house";
     const screen = (Object.keys(SCREEN_QUESTIONS) as SheetScreen[]).find((key) =>
@@ -825,31 +851,27 @@ function BookingSheet({
       setError({ text: result.error, fix: fix === view ? null : fix });
       return null;
     }
-    const saved = { ...keyed, leadId: result.leadId };
+    // The photos taken before this first save are on the lead now.
+    const attached = Object.keys(keyed.photo_paths).length > 0;
+    const saved = { ...keyed, leadId: result.leadId, photo_paths: {} };
     setDraft(saved);
     setSavedPrint(savedFingerprint(saved));
+    if (attached) {
+      sheetLead(result.leadId).then(
+        (lead) => {
+          if (lead.ok) setPhotos(lead.photos);
+        },
+        () => {},
+      );
+    }
     return saved;
   }
 
-  // Whether the screen on show is done, and if not, what Next says.
+  // What Next says. Round 3: answers come out of order at the door, so on
+  // every step but Book, Next always moves on; Book says what it still
+  // needs, listed just above it.
   function needs(screen: SheetScreen, current: SheetDraft): string | null {
-    switch (screen) {
-      case "who":
-        if (current.first_name.trim() === "") return "Add their name first";
-        return screenOpenQuestions("who", current).length > 0 ? "Add the phone first" : null;
-      case "door":
-      case "learned":
-        return screenOpenQuestions(screen, current).length > 0 ? "Answer the rest first" : null;
-      case "address": {
-        const placed = addressLive ? addressLive.addressLine.trim() !== "" && addressLive.positioned : addressPlaced(current);
-        if (!placed) return "Add the address first";
-        return current.soffit_colour === null ? "Pick the soffit first" : null;
-      }
-      case "house":
-        return photosNeed(current);
-      case "book":
-        return bookNeed(current);
-    }
+    return screen === "book" ? bookNeed(current) : null;
   }
 
   // Next while a screen isn't done: the first thing it still needs comes
@@ -875,9 +897,20 @@ function BookingSheet({
       marked = root.querySelector('[aria-label="Guided photos"]');
       target = root.querySelector('[data-slot="front"] button');
     } else if (screen === "book") {
-      const first = draftProblems(current)[0];
-      if (first) go(PROBLEM_SCREENS[first] ?? "who");
-      return;
+      // Book that isn't ready: the phone when it's the one thing left on
+      // this screen, otherwise the list of what's still missing.
+      const elsewhere = sheetMissing(current).filter((item) => item.screen !== "book");
+      if (elsewhere.length === 0 && screenMissing("book", current).length > 0) {
+        target = root.querySelector("#sheet-phone");
+        marked = root.querySelector('[data-testid="sheet-phone-block"]');
+      } else if (elsewhere.length > 0) {
+        marked = root.querySelector('[data-testid="book-checklist"]');
+        target = marked?.querySelector<HTMLElement>("button") ?? null;
+      } else {
+        const first = draftProblems(current)[0];
+        if (first) go(PROBLEM_SCREENS[first] ?? "who");
+        return;
+      }
     }
     marked?.scrollIntoView({ block: "center" });
     if (focus) target?.focus({ preventScroll: true });
@@ -888,10 +921,12 @@ function BookingSheet({
     }
   }
 
-  // Next, or a swipe to the left. A screen is done when every question on
-  // it has an answer or Not collected. Saves the lead when it can and
-  // something changed, then moves on.
+  // Next, or a swipe to the left. Round 3: it always moves on, answers
+  // missing or not; the progress bar marks a step left with something
+  // missing, and Book lists it. Saves the lead when it can and something
+  // changed, then moves on.
   async function advance(viaSwipe = false) {
+    void viaSwipe;
     if (!isScreen(view) || busy) return;
     setError(null);
     if (view === "book") {
@@ -908,27 +943,18 @@ function BookingSheet({
       current = readAddressForm(draft);
       setDraft(current);
     }
-    if (!isScreenComplete(view, current)) {
-      showMissing(view, current, !viaSwipe);
-      return;
-    }
-    if (view === "who" && !current.not_collected.includes("phone")) {
-      const phone = normalizePhone(current.phone);
-      if (!phone.ok) {
-        setError({ text: phone.error, fix: null });
-        return;
-      }
-    }
     setBusy(true);
     try {
-      const destination = nextScreen(view, current, skipDone);
+      const destination = fromBook ? "book" : nextScreen(view, current, skipDone);
       // A lead is saved once every question has an answer or Not collected,
-      // and a new person once they have an address too, so the photos have a
-      // lead to attach to.
+      // and a new person once they have an address too. With the phone
+      // asked last, that's usually Book.
       const answers = draftAnswers(current);
       const allAnswered = COUNTED_QUESTIONS.every((question) => isQuestionDone(answers[question]));
+      const phoneOk = current.not_collected.includes("phone") || normalizePhone(current.phone).ok;
       const needsSave =
         allAnswered &&
+        phoneOk &&
         ((!current.leadId && canSaveLead(current) && SCREENS.indexOf(destination) > SCREENS.indexOf("address")) ||
           (current.leadId !== null && savedFingerprint(current) !== savedPrint));
       if (needsSave) {
@@ -964,6 +990,20 @@ function BookingSheet({
 
   async function book(current: SheetDraft) {
     if (!heldAt) return;
+    // Book is the only gate (round 3): everything answered, the phone a real
+    // number (or Not collected, which rules booking out anyway).
+    if (!current.not_collected.includes("phone") && current.phone.trim() !== "") {
+      const phone = normalizePhone(current.phone);
+      if (!phone.ok) {
+        setError({ text: phone.error, fix: null });
+        bodyRef.current?.querySelector<HTMLElement>("#sheet-phone")?.focus();
+        return;
+      }
+    }
+    if (sheetMissing(current).length > 0 || bookingBlockers(current).length > 0) {
+      showMissing("book", current);
+      return;
+    }
     if (viewingAs) {
       setError({ text: VIEW_AS_NOTHING_SAVED, fix: null });
       return;
@@ -1045,6 +1085,10 @@ function BookingSheet({
       return;
     }
     if (isScreen(view)) {
+      if (fromBook) {
+        go("book");
+        return;
+      }
       const previous = previousScreen(view);
       if (previous) go(previous);
     }
@@ -1276,7 +1320,7 @@ function BookingSheet({
   // An answer rules booking out: Keep as a lead is the gold button where it
   // shows (the phone, the door, Book), and Next steps back there.
   const ruledOut = bookingBlockers(draft).length > 0;
-  const stepBack = ruledOut && (view === "who" || view === "door" || view === "book");
+  const stepBack = ruledOut && (view === "door" || view === "book");
   const title =
     view === "times"
       ? isMove
@@ -1409,7 +1453,7 @@ function BookingSheet({
               </div>
             )}
           </div>
-          {isScreen(view) ? <Progress screen={view} /> : <div className="h-2" aria-hidden="true" />}
+          {isScreen(view) ? <Progress screen={view} draft={draft} visited={visited} /> : <div className="h-2" aria-hidden="true" />}
           <p className="sr-only" aria-live="polite">
             {held && phase === "under_a_minute" ? phaseAnnouncement(phase) : ""}
           </p>
@@ -1503,9 +1547,7 @@ function BookingSheet({
               <WhoScreen
                 draft={draft}
                 onChange={change}
-                onAnswer={answer}
                 onExisting={request.kind === "book" && !draft.leadId ? () => void openExisting() : null}
-                onKeepAsLead={() => void keepAsLead()}
               />
             ) : null}
             {view === "door" ? (
@@ -1526,6 +1568,7 @@ function BookingSheet({
                 onAnswer={answer}
                 onMarkRest={() => setDraft((current) => markScreenNotCollected("learned", current))}
                 onKeepAsLead={() => void keepAsLead()}
+                onChange={change}
               />
             ) : null}
             {view === "address" ? (
@@ -1553,7 +1596,6 @@ function BookingSheet({
                 onBusyChange={setPhotosBusy}
                 skipOpen={skipOpen}
                 onSkipOpen={() => setSkipOpen(true)}
-                onAddress={() => go("address")}
                 local={viewingAs}
               />
             ) : null}
@@ -1563,8 +1605,10 @@ function BookingSheet({
                 name={personName}
                 heldAt={heldAt}
                 warnings={warnings}
-                onFix={(screen) => go(screen)}
+                onFix={fixFromBook}
                 onKeepAsLead={() => void keepAsLead()}
+                onChange={change}
+                onAnswer={answer}
               />
             ) : null}
             {view === "done" && done ? (
@@ -1626,6 +1670,7 @@ function BookingSheet({
               saving={busy}
               uploading={photosBusy}
               need={need}
+              backToBook={fromBook}
               held={held}
               stepBack={stepBack}
               canBook={problems.length === 0 && held}
@@ -1728,24 +1773,35 @@ function MenuItem({ onClick, children }: { onClick: () => void; children: React.
 }
 
 // The steps as one bar of segments, grouped by part of the visit, with
-// "Step 3 of 6, 3 left" beside it.
-function Progress({ screen }: { screen: SheetScreen }) {
-  const { number, total, left } = stepCount(screen);
+// "Step 3 of 6, 4 to finish" beside it. Round 3: a step the setter has been
+// on and left with something missing carries a small marker under its
+// segment. It never blocks: Book lists what's missing.
+function Progress({ screen, draft, visited }: { screen: SheetScreen; draft: SheetDraft; visited: SheetScreen[] }) {
+  const { number, total, left } = stepCount(screen, draft);
   const firstOfPart = new Set(STEPS.slice(1).map((part) => part.screens[0]));
+  const current = SCREENS.indexOf(screen);
+  const marked = SCREENS.filter(
+    (item, index) => item !== screen && item !== "book" && (visited.includes(item) || index < current) && screenMissing(item, draft).length > 0,
+  );
   return (
     <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-4 pb-2">
-      <ol className="flex flex-1 items-center gap-1" aria-hidden="true">
+      <ol className="flex flex-1 items-start gap-1" aria-hidden="true" data-testid="sheet-progress">
         {SCREENS.map((item, index) => (
-          <li
-            key={item}
-            className={cn("h-1.5 flex-1 rounded-full", index < number ? "bg-foreground" : "bg-input", firstOfPart.has(item) && "ml-2")}
-          />
+          <li key={item} className={cn("flex flex-1 flex-col items-center gap-1", firstOfPart.has(item) && "ml-2")} data-step={item} data-missing={marked.includes(item) ? "yes" : undefined}>
+            <span className={cn("h-1.5 w-full rounded-full", index < number ? "bg-foreground" : "bg-input")} />
+            <span className={cn("size-1.5 rounded-full", marked.includes(item) ? "bg-foreground" : "bg-transparent")} />
+          </li>
         ))}
       </ol>
       <p className="shrink-0 text-sm font-semibold tabular-nums min-[420px]:text-base" data-testid="sheet-step-count">
         Step {number} of {total}
-        {left > 0 ? <span className="font-normal text-muted-foreground">, {left} left</span> : null}
+        {left > 0 ? <span className="font-normal text-muted-foreground">, {left} to finish</span> : null}
       </p>
+      {marked.length > 0 ? (
+        <span className="sr-only">
+          {marked.length === 1 ? "One step you've passed still needs something." : `${marked.length} steps you've passed still need something.`} Book lists it.
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -1757,6 +1813,7 @@ function BottomBar({
   saving,
   uploading,
   need,
+  backToBook,
   held,
   stepBack,
   canBook,
@@ -1776,6 +1833,8 @@ function BottomBar({
   uploading: boolean;
   // What the screen still needs, said on Next; null when it's done.
   need: string | null;
+  // Opened from Book's list: Next goes back to Book (round 3).
+  backToBook: boolean;
   // Whether the time is still held: once it runs out, Hold it again is the
   // one gold button, and Next steps back.
   held: boolean;
@@ -1865,7 +1924,7 @@ function BottomBar({
         data-ready={need ? "no" : "yes"}
         data-step-back={stepBack ? "yes" : "no"}
       >
-        {saving ? (booking ? "Booking" : "Saving") : uploading ? "Uploading photos" : need ?? (booking ? (canBook ? bookLabel : "Time not held") : "Next")}
+        {saving ? (booking ? "Booking" : "Saving") : uploading ? "Uploading photos" : need ?? (booking ? (canBook ? bookLabel : "Time not held") : backToBook ? "Back to Book" : "Next")}
       </Button>
     </div>
   );

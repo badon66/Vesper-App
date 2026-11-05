@@ -1,4 +1,4 @@
-import { emptyDraft, SCREENS, type SheetDraft, type SheetScreen } from "@/lib/booking/sheet";
+import { emptyDraft, SCREENS, withDraftDefaults, type SheetDraft, type SheetScreen } from "@/lib/booking/sheet";
 
 // Unfinished bookings (round 2, Keenan, 2026-11-03): leaving the sheet keeps
 // what was entered on that phone, under the setter's own key, and Home lists
@@ -33,7 +33,7 @@ export function draftHasContent(draft: SheetDraft): boolean {
   const blank = emptyDraft();
   return (Object.keys(blank) as (keyof SheetDraft)[]).some((key) => {
     // The city starts filled in, and a save key isn't something entered.
-    if (key === "city" || key === "saveKey") return false;
+    if (key === "city" || key === "saveKey" || key === "extras") return false;
     return JSON.stringify(draft[key]) !== JSON.stringify(blank[key]);
   });
 }
@@ -59,7 +59,7 @@ export function readDrafts(raw: string | null, now: number): SheetDraftRecord[] 
     return parsed
       .filter(isRecord)
       .filter((record) => now - record.savedAt < DRAFT_TTL_MS && record.savedAt <= now + 60_000)
-      .map((record) => ({ ...record, draft: { ...emptyDraft(), ...record.draft } }))
+      .map((record) => ({ ...record, draft: withDraftDefaults(record.draft) }))
       .sort((a, b) => b.savedAt - a.savedAt);
   } catch {
     return [];

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MeetingItem, type MeetingItemData } from "@/components/meetings/meeting-item";
+import { readLine } from "@/lib/leads/extras";
 import { completenessLabel } from "@/lib/leads/questions";
 import { StartMeeting } from "@/components/meetings/start-meeting";
 import { TonightList } from "@/components/meetings/tonight-list";
@@ -75,6 +76,7 @@ export default async function MeetingsPage() {
     missingMockup: !hasMockup.has(meeting.lead_id),
     missingColour: !hasColour.has(meeting.lead_id),
     completeness: completenessLabel(meeting.lead),
+    read: readLine(meeting.lead),
     next: meeting.id === nextTonight,
     changedAt: new Date(changedAt.get(meeting.lead_id) ?? settingsChanged).toISOString(),
   });

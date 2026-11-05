@@ -19,7 +19,7 @@ import { LEAD_FIELDS } from "@/lib/leads/fields";
 import { insertLeadOnce, NOT_SAVED, readSaveKey } from "@/lib/leads/save-key";
 import { leadColumnsFromValues, parseLeadForm, type LeadFormErrors } from "@/lib/leads/schema";
 import { leadName, STATUS_LABELS } from "@/lib/leads/status";
-import { PHOTO_BUCKET } from "@/lib/photos";
+import { isOwnPhotoPath, PHOTO_BUCKET } from "@/lib/photos";
 import type { BoardSlot } from "@/lib/schedule/board";
 import { distanceWarnings, formatKm } from "@/lib/schedule/distance";
 import { isLive, LIVE_STATUSES } from "@/lib/schedule/meetings";
@@ -185,8 +185,14 @@ export async function sheetLead(leadId: string): Promise<SheetLead> {
       soffit_colour: lead.soffit_colour,
       soffit_note: lead.soffit_note ?? "",
       photo_slots: Object.keys(photos) as PhotoSlot[],
+      photo_paths: {},
       skip: null,
       skip_note: "",
+      house_type: lead.house_type,
+      setter_read: lead.setter_read,
+      hot_buttons: lead.hot_buttons ?? [],
+      confirm_by: lead.confirm_by,
+      extras: true,
     },
   };
 }
@@ -261,7 +267,15 @@ export async function saveSheetLead(leadId: string | null, input: Record<string,
       knock_session_id: session?.id ?? null,
     });
     if (!first.ok) return { ok: false, error: first.error };
-    if (first.again) return updateSheetLead(supabase, first.leadId, columns);
+    if (first.again) {
+      const updated = await updateSheetLead(supabase, first.leadId, columns);
+      if (!updated.ok) return updated;
+    }
+    // Round 3: the photos taken before this first save, uploaded to the
+    // setter's own folder, go into their slots now. A try after a lost
+    // answer adds only the ones the lead doesn't have yet.
+    const attached = await attachSlotPhotos(supabase, me.id, first.leadId, parsed.values.slot_photos);
+    if (!attached) return { ok: false, error: "The photos didn't attach. Try again." };
     revalidatePath("/app/leads");
     return { ok: true, leadId: first.leadId };
   }
@@ -271,18 +285,33 @@ export async function saveSheetLead(leadId: string | null, input: Record<string,
   return updateSheetLead(supabase, existing.data, columns);
 }
 
+async function attachSlotPhotos(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  leadId: string,
+  photos: { slot: PhotoSlot; path: string }[],
+): Promise<boolean> {
+  if (photos.length === 0) return true;
+  if (photos.some((photo) => !isOwnPhotoPath(photo.path, userId))) return false;
+  const { data: have } = await supabase.from("lead_photos").select("storage_path").eq("lead_id", leadId);
+  const known = new Set((have ?? []).map((row) => row.storage_path));
+  const fresh = photos.filter((photo) => !known.has(photo.path));
+  if (fresh.length === 0) return true;
+  const { error } = await supabase.from("lead_photos").insert(fresh.map((photo) => ({ lead_id: leadId, storage_path: photo.path, slot: photo.slot })));
+  return !error;
+}
+
 // A saved lead's save from the sheet: only the sheet's own columns. An
-// existing lead's email, notes, house type and source are never touched
-// from the sheet.
+// existing lead's email, notes and source are never touched from the sheet.
+// Its house type is (round 3: the house step asks it).
 async function updateSheetLead(
   supabase: Awaited<ReturnType<typeof createClient>>,
   leadId: string,
   columns: ReturnType<typeof leadColumnsFromValues>,
 ): Promise<SheetSave> {
-  const { email: _email, notes: _notes, house_type: _house, source: _source, ...update } = columns;
+  const { email: _email, notes: _notes, source: _source, ...update } = columns;
   void _email;
   void _notes;
-  void _house;
   void _source;
   const { data, error } = await supabase.from("leads").update(update).eq("id", leadId).select("id");
   if (error) {
