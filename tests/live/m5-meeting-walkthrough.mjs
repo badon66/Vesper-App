@@ -183,7 +183,7 @@ try {
   const ownerId = ownerRow.id;
   const { data: settings } = await admin
     .from("settings")
-    .select("presentation, warranty_text, price_per_ft, box_price, gst_enabled")
+    .select("presentation, warranty_text, price_per_ft, box_price, gst_enabled, upper_access_fee, upper_gable_access_fee")
     .eq("id", 1)
     .single();
   const { data: colour } = await admin.from("track_colours").select("id, name").eq("active", true).order("sort_order").limit(1).single();
