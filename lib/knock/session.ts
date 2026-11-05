@@ -2,7 +2,7 @@
 // out, the neighbourhoods to offer, who else is out today, and when a fixed
 // start time is allowed. Pure functions, unit tested.
 
-import { calgaryDayStart, calgaryInstant } from "@/lib/time";
+import { calgaryDayStart, calgaryInstant, formatTime } from "@/lib/time";
 
 const MINUTE = 60_000;
 
@@ -99,14 +99,20 @@ export function outToday(sessions: OutSession[], names: Map<string, string>, exc
 // A fixed start time, from the time field ("16:05"), on the session's own
 // Calgary day: any time earlier that day, never in the future. Returns the
 // moment, or what to say instead.
+// notBefore: when the person's last session today ended, so two sessions
+// never overlap (and time out never counts twice).
 export function fixedStart(
   day: string,
   hhmm: string,
   nowMs: number,
+  notBefore: string | null = null,
 ): { ok: true; startsAt: string } | { ok: false; error: string } {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(hhmm)) return { ok: false, error: "Pick the time you started." };
   const startsAt = calgaryInstant(day, hhmm);
   if (new Date(startsAt).getTime() > nowMs) return { ok: false, error: "That time hasn't happened yet. Pick a time earlier today." };
   if (startsAt < calgaryDayStart(day)) return { ok: false, error: "Pick a time earlier today." };
+  if (notBefore && new Date(startsAt).getTime() < new Date(notBefore).getTime()) {
+    return { ok: false, error: `Your last session today ended at ${formatTime(notBefore)}. Pick that time or later.` };
+  }
   return { ok: true, startsAt };
 }
