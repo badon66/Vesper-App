@@ -566,7 +566,7 @@ async function loadQuoteCard(
     total: screenTotal(whole.subtotal, quote.gstEnabled),
     feet: totalFeet(quote.runs),
     validUntil: quoteRow.valid_until,
-    expired: quoteRow.valid_until !== null && quoteRow.valid_until < calgaryToday(),
+    holdPassed: quoteRow.valid_until !== null && quoteRow.valid_until < calgaryToday(),
   };
   if (!linkRow) return card;
 

@@ -15,7 +15,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { POINT_ICON_NAMES } from "@/components/quote-link/point-icon";
 import { submitKeepingValues } from "@/lib/forms/submit";
+import { POINT_ICONS } from "@/lib/quote-link/view";
 import { PAGE_LABELS, type PresentationKind } from "@/lib/presentation";
 import { formatTime } from "@/lib/time";
 import {
@@ -193,6 +195,62 @@ export function SettingsForm({
               {(p) => <Textarea {...p} rows={10} defaultValue={defaults.faq_text} />}
             </Field>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Customer quote page</CardTitle>
+          <CardDescription>
+            What every customer&apos;s quote link shows besides their own quote.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <Switch id="settings-christmas_banner_on" name="christmas_banner_on" defaultChecked={defaults.christmas_banner_on} />
+              <Label htmlFor="settings-christmas_banner_on">Show the Christmas banner</Label>
+            </div>
+            <p className="-mt-2 text-sm text-muted-foreground">
+              It shows from September 1 to December 24 while this is on, and hides itself after that.
+            </p>
+            <Field name="christmas_banner_title" label="Banner heading" errors={errors}>
+              {(p) => <Input {...p} maxLength={80} defaultValue={defaults.christmas_banner_title} />}
+            </Field>
+            <Field name="christmas_banner_text" label="Banner words" hint="No dates or promises: it reads like an invitation, not a deadline." errors={errors}>
+              {(p) => <Textarea {...p} rows={2} maxLength={300} defaultValue={defaults.christmas_banner_text} />}
+            </Field>
+          </div>
+          <fieldset className="flex flex-col gap-3" aria-describedby="settings-product_points-hint">
+            <legend className="text-sm font-semibold">What you&apos;re getting</legend>
+            <p id="settings-product_points-hint" className="text-sm text-muted-foreground">
+              Six short lines, one each, with a line icon. A blank line is left out.
+            </p>
+            {defaults.product_points.map((point, at) => (
+              <div key={at} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <select
+                  name={`point_icon_${at}`}
+                  aria-label={`Point ${at + 1} icon`}
+                  defaultValue={point.icon}
+                  className="h-11 rounded-md border border-input bg-background px-3 text-sm sm:w-44"
+                >
+                  {POINT_ICONS.map((icon) => (
+                    <option key={icon} value={icon}>
+                      {POINT_ICON_NAMES[icon]}
+                    </option>
+                  ))}
+                </select>
+                <Input
+                  name={`point_text_${at}`}
+                  aria-label={`Point ${at + 1}`}
+                  maxLength={160}
+                  defaultValue={point.text}
+                  className="min-w-0 flex-1"
+                />
+              </div>
+            ))}
+            <FieldError id="settings-product_points-error" message={errors?.product_points} />
+          </fieldset>
         </CardContent>
       </Card>
 

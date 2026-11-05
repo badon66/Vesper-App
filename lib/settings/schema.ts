@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { POINT_ICONS, type PointIcon } from "@/lib/quote-link/view";
 import type { Database } from "@/types/database";
 
 // Settings form: validation, conversion between what the inputs hold and
@@ -179,7 +180,35 @@ export const settingsFormSchema = z.object({
     z.email({ error: "must be an email address" }),
   ]),
   company_address: z.string().trim().max(200, { error: "is too long" }),
+  // The customer quote page (2026-11-04): the Christmas banner and the six
+  // product points under "What you're getting".
+  christmas_banner_on: z.boolean(),
+  christmas_banner_title: z
+    .string()
+    .trim()
+    .min(1, { error: "cannot be empty" })
+    .max(80, { error: "keep it under 80 characters" }),
+  christmas_banner_text: z
+    .string()
+    .transform((text) => text.replace(/\s+/g, " ").trim())
+    .pipe(z.string().max(300, { error: "keep it under 300 characters" })),
+  product_points: z
+    .array(
+      z.object({
+        icon: z.enum(POINT_ICONS).catch("check"),
+        text: z
+          .string()
+          .transform((text) => text.replace(/\s+/g, " ").trim())
+          .pipe(z.string().max(160, { error: "keep each line under 160 characters" })),
+      }),
+    )
+    // A blank line is left out.
+    .transform((points) => points.filter((point) => point.text !== ""))
+    .pipe(z.array(z.object({ icon: z.enum(POINT_ICONS), text: z.string() })).max(8)),
 });
+
+// The number of product point rows the form offers.
+export const POINT_ROWS = 6;
 
 export type SettingsFormInput = z.input<typeof settingsFormSchema>;
 export type SettingsFormValues = z.output<typeof settingsFormSchema>;
@@ -234,6 +263,13 @@ export function settingsFormDataToInput(
     company_phone: text("company_phone"),
     company_email: text("company_email"),
     company_address: text("company_address"),
+    christmas_banner_on: formData.get("christmas_banner_on") === "on",
+    christmas_banner_title: text("christmas_banner_title"),
+    christmas_banner_text: text("christmas_banner_text"),
+    product_points: Array.from({ length: POINT_ROWS }, (_, at) => ({
+      icon: text(`point_icon_${at}`),
+      text: text(`point_text_${at}`),
+    })),
     rush_colour_fee: text("rush_colour_fee"),
     upper_access_fee: text("upper_access_fee"),
     upper_gable_access_fee: text("upper_gable_access_fee"),
@@ -281,6 +317,10 @@ export function settingsUpdateFromValues(v: SettingsFormValues): SettingsUpdate 
       email: v.company_email,
       address: v.company_address,
     },
+    christmas_banner_on: v.christmas_banner_on,
+    christmas_banner_title: v.christmas_banner_title,
+    christmas_banner_text: v.christmas_banner_text,
+    product_points: v.product_points,
     rush_colour_fee: v.rush_colour_fee,
     upper_access_fee: v.upper_access_fee,
     upper_gable_access_fee: v.upper_gable_access_fee,
@@ -325,6 +365,11 @@ export type SettingsFormDefaults = {
   company_phone: string;
   company_email: string;
   company_address: string;
+  christmas_banner_on: boolean;
+  christmas_banner_title: string;
+  christmas_banner_text: string;
+  // Always POINT_ROWS rows, blank ones included, for the form.
+  product_points: { icon: PointIcon; text: string }[];
   rush_colour_fee: string;
   upper_access_fee: string;
   upper_gable_access_fee: string;
@@ -370,6 +415,10 @@ export function settingsRowToFormDefaults(row: SettingsRow): SettingsFormDefault
     company_phone: companyField("phone"),
     company_email: companyField("email"),
     company_address: companyField("address"),
+    christmas_banner_on: row.christmas_banner_on,
+    christmas_banner_title: row.christmas_banner_title,
+    christmas_banner_text: row.christmas_banner_text,
+    product_points: pointRows(row.product_points),
     rush_colour_fee: row.rush_colour_fee === null ? "" : row.rush_colour_fee.toFixed(2),
     upper_access_fee: row.upper_access_fee === null ? "" : row.upper_access_fee.toFixed(2),
     upper_gable_access_fee: row.upper_gable_access_fee === null ? "" : row.upper_gable_access_fee.toFixed(2),
@@ -378,4 +427,19 @@ export function settingsRowToFormDefaults(row: SettingsRow): SettingsFormDefault
     min_job_total: row.min_job_total === null ? "" : row.min_job_total.toFixed(2),
     faq_text: row.faq_text,
   };
+}
+
+// The stored product points as the form's rows: anything unreadable is
+// skipped, an unknown icon becomes a tick, and blank rows fill up to
+// POINT_ROWS.
+function pointRows(value: unknown): { icon: PointIcon; text: string }[] {
+  const rows = (Array.isArray(value) ? value : []).flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const { icon, text } = item as { icon?: unknown; text?: unknown };
+    if (typeof text !== "string" || text.trim() === "") return [];
+    const known = (POINT_ICONS as readonly string[]).includes(String(icon)) ? (icon as PointIcon) : "check";
+    return [{ icon: known, text: text.trim() }];
+  });
+  while (rows.length < POINT_ROWS) rows.push({ icon: "check", text: "" });
+  return rows.slice(0, Math.max(POINT_ROWS, rows.length));
 }
