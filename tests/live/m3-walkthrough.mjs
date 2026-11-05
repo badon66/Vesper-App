@@ -826,6 +826,10 @@ try {
   await letGo(pageB);
   await pageB.goto(`${base}/app/session`);
   await settle(pageB);
+  // On Session it's one row saying how many, which opens the list.
+  const unfinishedToggle = pageB.getByTestId("unfinished-toggle");
+  check("Session shows unfinished bookings as one row saying how many", ((await unfinishedToggle.innerText().catch(() => "")) ?? "").includes("1 unfinished booking"));
+  await unfinishedToggle.click();
   const unfinished = (await pageB.getByTestId("unfinished").innerText().catch(() => "")).replace(/\s+/g, " ");
   check(
     "leaving the sheet keeps what was entered: Session lists it under Unfinished, where it stopped, even before knocking starts",
@@ -1038,7 +1042,13 @@ try {
   await pageA.goto(`${base}/app/leads/new`);
   await settle(pageA);
   check("New lead has no Hold a time any more: booking happens in the sheet", (await pageA.getByRole("button", { name: "Hold a time" }).count()) === 0);
-  check("while knocking, New lead's Cancel goes back to Session", (await pageA.getByRole("link", { name: "Cancel", exact: true }).getAttribute("href")) === "/app/session");
+  // New lead's Cancel (the X at the top) leaves at once when nothing is
+  // entered: while knocking, back to Session.
+  await pageA.getByRole("button", { name: "Cancel", exact: true }).click();
+  await pageA.waitForURL("**/app/session", { timeout: 20000 }).catch(() => {});
+  check("while knocking, New lead's Cancel goes back to Session", new URL(pageA.url()).pathname === "/app/session", pageA.url());
+  await pageA.goto(`${base}/app/leads/new`);
+  await settle(pageA);
   await pageA.fill("#lead-address", "305 Brand New Test Way NW (TEST)");
   await pageA.keyboard.press("Escape");
   await pageA.getByRole("button", { name: "Use where I'm standing" }).click();

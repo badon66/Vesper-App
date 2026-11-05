@@ -382,7 +382,7 @@ try {
       ((await page.getByRole("button", { name: /^Doors \+1/ }).getAttribute("aria-label")) ?? "").endsWith("now 7"),
   );
   check(
-    "the Session tab is the current tab, and Leads has a New lead button at the top",
+    "the Session tab is the current tab",
     (await page.locator('nav[aria-label="Tabs"]:visible a[aria-current="page"]').innerText()).trim() === "Session",
   );
 
@@ -390,6 +390,13 @@ try {
   await page.locator('nav[aria-label="Tabs"]:visible').getByRole("link", { name: "Leads", exact: true }).click();
   await page.waitForURL("**/app/leads", { timeout: 20000 });
   await settle(page);
+  const newLeadLink = page.locator("main").getByRole("link", { name: "New lead" });
+  const newLeadBox = await newLeadLink.first().boundingBox();
+  check(
+    "Leads has a New lead button at the top",
+    (await newLeadLink.count()) === 1 && (await newLeadLink.getAttribute("href")) === "/app/leads/new" && newLeadBox !== null && newLeadBox.y < 200,
+    newLeadBox ? `at ${Math.round(newLeadBox.y)}` : "missing",
+  );
   await page.locator("main section").first().waitFor({ timeout: 20000 });
   const sectionOrder = await page.locator("main section").evaluateAll((sections) =>
     sections.map((section) => [section.querySelector("h2").textContent.trim(), [...section.querySelectorAll("a")].map((link) => link.getAttribute("href"))]),

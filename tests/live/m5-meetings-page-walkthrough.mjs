@@ -160,8 +160,8 @@ try {
   await settle(page);
   const railTabs = await visibleTabs(page);
   check(
-    "the owner's rail is Home, Schedule, Meetings, New lead and Leads, with Admin as a gear in the header",
-    JSON.stringify(railTabs) === JSON.stringify(["Home", "Schedule", "Meetings", "New lead", "Leads"]) &&
+    "the owner's rail is Home, Schedule, Meetings, Session and Leads, with Admin as a gear in the header",
+    JSON.stringify(railTabs) === JSON.stringify(["Home", "Schedule", "Meetings", "Session", "Leads"]) &&
       (await page.getByTestId("admin-gear").getAttribute("href")) === "/app/admin" &&
       (await page.getByTestId("admin-gear").innerText()).trim() === "Admin",
     railTabs.join(", "),

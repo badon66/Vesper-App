@@ -3,6 +3,18 @@ import { formatTime } from "@/lib/time";
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
+// Still out: where they are now and since when, then where they were
+// earlier ("Bridgeland, since 4:32 p.m. Earlier: Renfrew."). Finished: the
+// places in the order they knocked them, then the times.
+function whereAndWhen(row: OutTodayRow): string {
+  const [now, ...before] = row.neighbourhoods;
+  if (row.out) {
+    const earlier = before.length > 0 ? ` Earlier: ${[...before].reverse().join(", ")}.` : "";
+    return `${now}, since ${formatTime(row.from)}${earlier.length > 0 && !formatTime(row.from).endsWith(".") ? "." : ""}${earlier}`;
+  }
+  return `${[...row.neighbourhoods].reverse().join(", then ")}, ${formatTime(row.from)} to ${formatTime(row.until ?? row.from)}`;
+}
+
 // Who else is out today (Keenan, 2026-11-05): the ones still knocking first,
 // then the ones who finished, so a setter knows which streets were knocked.
 // nowOnly (Keenan's Home): only the ones out knocking right now. Read only;
@@ -37,10 +49,7 @@ export function OutToday({ rows: allRows, nowOnly = false }: { rows: OutTodayRow
                 <span className="font-semibold">{row.name}</span>
                 <span className="shrink-0 text-sm font-semibold">{row.out ? "Out now" : "Finished"}</span>
               </div>
-              <p className="text-sm text-muted-foreground">
-                {row.neighbourhoods.join(", then ")}
-                {row.out ? `, since ${formatTime(row.from)}` : `, ${formatTime(row.from)} to ${formatTime(row.until ?? row.from)}`}
-              </p>
+              <p className="text-sm text-pretty text-muted-foreground">{whereAndWhen(row)}</p>
               <p className="text-sm tabular-nums">
                 {plural(row.doors, "door", "doors")}, {plural(row.conversations, "conversation", "conversations")}
               </p>

@@ -192,9 +192,14 @@ try {
   const addDoor = page.getByRole("button", { name: /^Doors \+1/ });
   const addTalk = page.getByRole("button", { name: /^Conversations \+1/ });
   for (let i = 0; i < 5; i += 1) await addDoor.click({ delay: 0 });
+  // One Undo, in the status row under the counters, takes back the last tap
+  // and says which (2026-11-05).
+  const undoLast = page.getByTestId("tap-status").getByRole("button", { name: /^Undo/ });
+  check("Undo names the last tap: a door", (await undoLast.innerText()).trim() === "Undo door");
+  await undoLast.click();
   await addTalk.click();
   await addTalk.click();
-  await page.getByRole("button", { name: "Undo door" }).click();
+  check("after a conversation, Undo names a conversation", (await undoLast.innerText()).trim() === "Undo conversation");
   const shownDoors = (await addDoor.getAttribute("aria-label")) ?? "";
   const shownTalks = (await addTalk.getAttribute("aria-label")) ?? "";
   check("counters update the moment they are tapped", shownDoors.endsWith("now 4") && shownTalks.endsWith("now 2"), `${shownDoors} | ${shownTalks}`);
@@ -388,8 +393,9 @@ try {
   check("the scripted new-lead flow takes well under 30 seconds", seconds < 30, `${seconds.toFixed(1)} s`);
   await page.getByTestId("lead-saved").waitFor({ timeout: 10000 });
   check("Session says the lead is saved, and on to the next door", (await page.getByTestId("lead-saved").innerText()).includes("Lead saved. On to the next door."));
-  // Session's order while knocking (Keenan, 2026-11-05): the saved line, where
-  // and since when, the counters, tonight's open times, New lead and End.
+  // Session's order while knocking (Keenan, 2026-11-05): where and since
+  // when, the counters, the status row under them (here the saved line, so
+  // nothing pushes the counters down), tonight's open times, End and New lead.
   const tops = await page.evaluate(() => {
     const top = (element) => (element ? Math.round(element.getBoundingClientRect().top + window.scrollY) : null);
     const button = (text) => [...document.querySelectorAll("button, a")].find((el) => el.textContent.trim() === text);
@@ -403,9 +409,9 @@ try {
       end: top(button("End knocking")),
     };
   });
-  const order = [tops.saved, tops.heading, tops.doors, tops.times, tops.newLead];
+  const order = [tops.heading, tops.doors, tops.saved, tops.times, tops.newLead];
   check(
-    "Session names the saved lead first, then where and since when, the counters, tonight's open times, and New lead beside End knocking",
+    "Session runs: where and since when, the counters, the saved line under them, tonight's open times, and New lead beside End knocking",
     order.every((value) => value !== null) && order.every((value, index) => index === 0 || value > order[index - 1]) && tops.end === tops.newLead,
     JSON.stringify(tops),
   );
@@ -655,8 +661,10 @@ try {
     await page.screenshot({ path: `${out}/m2-duplicate-warning.png`, fullPage: false });
     await page.getByRole("button", { name: "Cancel" }).click();
     await page.getByTestId("discard-lead").getByRole("button", { name: "Discard" }).click();
-    await page.waitForURL("**/app/leads", { timeout: 20000 });
+    // While knocking, Cancel goes back to Session (2026-11-05).
+    await page.waitForURL("**/app/session", { timeout: 20000 });
     await settle(page);
+    check("while knocking, New lead's Cancel goes back to Session", new URL(page.url()).pathname === "/app/session");
 
     // The typed lead gets its map position once its address is picked.
     await page.goto(`${base}/app/leads/${typedLead.id}/edit`);
