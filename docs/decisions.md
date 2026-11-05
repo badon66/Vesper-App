@@ -889,3 +889,14 @@ Not changed:
 - **The Christmas banner's season is a judgment call.** Keenan said it hides itself after December 24. It shows from September 1 to December 24 (Calgary) while it is on, so "Want them up for Christmas?" never appears in the spring; Keenan can turn it off or change the words in Settings.
 - **Status.** Vercel Pro is in place. Keenan is turning off Vercel Authentication for previews, so the preview link should open on his phone without a Vercel sign-in (the report says if it still asks). Meeting times stay at 5:00 pm with six 35-minute meetings.
 
+### The design critique, before the preview (2026-11-05)
+
+The impeccable skill's critique ran as two isolated agents (a design review, and the detector in a browser) on a staged TEST quote on the production build. Take 1 ended at 30/40 (75%). The rework scored 27/36 (75%, flexibility scored n/a on a sales page), then 30/36 (83%) after its fixes; snapshots are in `.impeccable/critique/`. The detector found one advisory, the hero total's 2.75rem size, which is deliberate (DESIGN.md's type steps are the app's and have no display size).
+
+- **A quick second tap can't book** (P1). The confirm step's Yes sits where Book my install was; a tap on it within half a second of the step opening, timed from the press, is ignored. The walk-through taps twice and checks nothing books.
+- **Each switch has a small drawing of its own part** (P1). With Safari's toolbar showing (about 660 px of a 390 phone), the big drawing sat off screen while the thumb was on the switches; now every row shows its part lit while on and dashed once off. The big drawing stays as the overview.
+- **Focus shows everywhere** (P2): the photo's outline draws (Tailwind's `outline-none` had been cancelling it) and the footer links have the page's ring.
+- **The breakdown adds up downwards** (P2): it closes on a Total row, and under the minimum "Before the minimum" (the lines' own sum, discount taken) sits above the top-up, so the discount visibly still counts. Not "Subtotal", which the PDF will use for the total before GST.
+- **Smaller.** The small drawings drop the windows and are cropped tighter.
+- **For Keenan, not changed.** "Garage Eave" in the run names and "Garage line" in the explainer are two names for one part; "Two Upper Gables" is drawn as one gable; and "Upper & Lower Sides" lights the upper side on the drawing while upper access follows the level it was saved with (lower), so a quote whose only upper work is that run charges no upper access. Setting that run to upper in meeting mode would charge it.
+
