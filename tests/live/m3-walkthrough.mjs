@@ -1071,9 +1071,14 @@ try {
   await sheet(pageA).getByRole("button", { name: "Done", exact: true }).click();
   await pageA.waitForURL("**/app/session?added=*", { timeout: 20000 }).catch(() => {});
   await settle(pageA);
+  // Session shows the saved line, then tidies ?added= out of the address so
+  // a reload doesn't show it again.
+  const savedRow = pageA.getByTestId("tap-status");
   check(
-    "while knocking, Done after Save and book comes back to Session with the saved line",
-    new URL(pageA.url()).searchParams.get("added") === newLeadId && ((await pageA.getByTestId("lead-saved").innerText().catch(() => "")) ?? "").includes("Lead saved. On to the next door."),
+    "while knocking, Done after Save and book comes back to Session with the saved line and a link to the lead",
+    new URL(pageA.url()).pathname === "/app/session" &&
+      ((await pageA.getByTestId("lead-saved").innerText().catch(() => "")) ?? "").includes("Lead saved. On to the next door.") &&
+      (await savedRow.getByRole("link").getAttribute("href").catch(() => null)) === `/app/leads/${newLeadId}`,
     pageA.url(),
   );
   const { data: knockLinked } = await admin.from("leads").select("knock_session_id").eq("id", newLeadId).single();
