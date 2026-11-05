@@ -382,13 +382,13 @@ try {
   await signIn(pageB, people.b);
   check("a setter's Home has no role line under the greeting", (await pageA.getByText("Signed in as").count()) === 0 && (await pageA.getByRole("heading", { name: /^Hello, TEST$/ }).count()) === 1);
   const homeOrder = await pageA.evaluate(() => [...document.querySelectorAll("main [data-testid]")].map((el) => el.getAttribute("data-testid")).filter((id) => ["tonight-times", "my-bookings"].includes(id)));
-  const knockY = await pageA.getByRole("button", { name: /Start knocking/ }).boundingBox().catch(() => null);
+  const knockCount = await pageA.getByRole("button", { name: /Start knocking/ }).count();
   const timesY = await pageA.getByTestId("tonight-times").boundingBox();
   const bookingsY = await pageA.getByTestId("my-bookings").boundingBox();
   const dueY = await pageA.getByRole("heading", { name: "Follow-ups due" }).boundingBox().catch(() => null);
   check(
-    "Home runs top to bottom (Keenan, 2026-11-04): tonight's open times, my bookings, the knock session, follow-ups due",
-    JSON.stringify(homeOrder) === JSON.stringify(["tonight-times", "my-bookings"]) && timesY && bookingsY && knockY && dueY && timesY.y < bookingsY.y && bookingsY.y < knockY.y && knockY.y < dueY.y,
+    "Home runs top to bottom: tonight's open times, my bookings, follow-ups due; the knock session is on Session (2026-11-05)",
+    JSON.stringify(homeOrder) === JSON.stringify(["tonight-times", "my-bookings"]) && timesY && bookingsY && dueY && knockCount === 0 && timesY.y < bookingsY.y && bookingsY.y < dueY.y,
   );
   const tonight = (byDay.get(today) ?? []).filter((row) => row.state === "open");
   const homeDay = (await pageA.getByTestId("picker-day").first().innerText()).trim();
@@ -813,11 +813,11 @@ try {
   scrollsB.book = await sheetScrolls(pageB);
   check("no step of the sheet scrolls at 390 x 844 either", Object.entries(scrollsB).every(([key, value]) => value === false || key === "houseSkipped"), JSON.stringify(scrollsB));
   await letGo(pageB);
-  await pageB.goto(`${base}/app`);
+  await pageB.goto(`${base}/app/session`);
   await settle(pageB);
   const unfinished = (await pageB.getByTestId("unfinished").innerText().catch(() => "")).replace(/\s+/g, " ");
   check(
-    "leaving the sheet keeps what was entered: Home lists it under Unfinished, where it stopped",
+    "leaving the sheet keeps what was entered: Session lists it under Unfinished, where it stopped, even before knocking starts",
     unfinished.includes(`${TEST_LEAD} Narrow`) && unfinished.includes("307 Narrow Test Way NW (TEST)") && unfinished.includes("Stopped at Book"),
     unfinished.slice(0, 200),
   );
@@ -1016,9 +1016,18 @@ try {
   await pageA.goto(`${base}/app/schedule/book?start=${encodeURIComponent(Y)}`);
   await pageA.waitForURL("**/app/schedule", { timeout: 20000 }).catch(() => {});
   check("the old booking page is gone: its address goes to Schedule", new URL(pageA.url()).pathname === "/app/schedule", pageA.url());
+  // While knocking (2026-11-05), Save and book comes back to Session once
+  // it's booked, with the saved line.
+  const { data: aKnock, error: aKnockError } = await admin
+    .from("knock_sessions")
+    .insert({ user_id: people.a.id, neighbourhood: TEST_PLACE, started_at: new Date().toISOString() })
+    .select("id")
+    .single();
+  if (aKnockError) throw new Error(`A's knock session: ${aKnockError.message}`);
   await pageA.goto(`${base}/app/leads/new`);
   await settle(pageA);
   check("New lead has no Hold a time any more: booking happens in the sheet", (await pageA.getByRole("button", { name: "Hold a time" }).count()) === 0);
+  check("while knocking, New lead's Cancel goes back to Session", (await pageA.getByRole("link", { name: "Cancel", exact: true }).getAttribute("href")) === "/app/session");
   await pageA.fill("#lead-address", "305 Brand New Test Way NW (TEST)");
   await pageA.keyboard.press("Escape");
   await pageA.getByRole("button", { name: "Use where I'm standing" }).click();
@@ -1049,8 +1058,18 @@ try {
   check("the new lead keeps its phone position, accuracy and booked status", newLead?.position_source === "device" && Number(newLead?.position_accuracy_m) === 10 && newLead?.status === "meeting_booked", JSON.stringify(newLead));
   const seenNewBooked = await waitForState(pageB, Y, "booked");
   check("and the time greys out on other phones", seenNewBooked !== null);
-  await sheet(pageA).getByRole("button", { name: "Open the lead" }).click();
-  await sheet(pageA).waitFor({ state: "detached", timeout: 15000 });
+  await sheet(pageA).getByRole("button", { name: "Done", exact: true }).click();
+  await pageA.waitForURL("**/app/session?added=*", { timeout: 20000 }).catch(() => {});
+  await settle(pageA);
+  check(
+    "while knocking, Done after Save and book comes back to Session with the saved line",
+    new URL(pageA.url()).searchParams.get("added") === newLeadId && ((await pageA.getByTestId("lead-saved").innerText().catch(() => "")) ?? "").includes("Lead saved. On to the next door."),
+    pageA.url(),
+  );
+  const { data: knockLinked } = await admin.from("leads").select("knock_session_id").eq("id", newLeadId).single();
+  check("and the lead links to the knock session", knockLinked?.knock_session_id === aKnock.id);
+  await admin.from("knock_sessions").update({ ended_at: new Date().toISOString() }).eq("id", aKnock.id);
+  await pageA.goto(`${base}/app/leads/${newLeadId}`);
   await settle(pageA);
   check("the position source shows on the lead", (await pageA.getByTestId("position-source").innerText()).includes("Placed from the phone at the door"));
   check("the lead page says how complete it is: 4 of 8 collected", (await pageA.getByTestId("completeness").innerText()).trim() === "4 of 8 collected", await pageA.getByTestId("completeness").innerText());

@@ -93,7 +93,9 @@ async function settleDevice(page) {
 function capture(page) {
   return page.evaluate(() => {
     const main = document.querySelector("main");
-    const device = [...(main?.querySelectorAll("[data-device]") ?? [])];
+    // data-clock marks text that ticks with the minute, like Session's "Out
+    // 12 min.", which two loads a few seconds apart can't promise to agree on.
+    const device = [...(main?.querySelectorAll("[data-device], [data-clock]") ?? [])];
     const shown = device.map((el) => el.style.display);
     device.forEach((el) => (el.style.display = "none"));
     const text = (main?.innerText ?? "").replace(/\s+/g, " ").trim();
@@ -343,15 +345,16 @@ try {
   await settle(page);
 
   // 2. Tabs on a phone: a bottom bar with the setter's three tabs, nothing at the top.
-  check("a setter's tabs are Home, Schedule, New lead, Leads and My pay", JSON.stringify(await visibleTabs(page)) === JSON.stringify(["Home", "Schedule", "New lead", "Leads", "My pay"]), (await visibleTabs(page)).join(", "));
+  check("a setter's tabs are Home, Schedule, Session, Leads and My pay", JSON.stringify(await visibleTabs(page)) === JSON.stringify(["Home", "Schedule", "Session", "Leads", "My pay"]), (await visibleTabs(page)).join(", "));
   const bar = await page.locator('nav[aria-label="Tabs"]:visible').boundingBox();
   const viewport = page.viewportSize();
   check("on a phone the tabs sit in a bar at the bottom", bar !== null && Math.abs(bar.y + bar.height - viewport.height) <= 2 && bar.width >= viewport.width - 2, bar ? `${Math.round(bar.y)}+${Math.round(bar.height)} of ${viewport.height}` : "missing");
   check("there are no top tabs", (await page.locator("nav:visible").count()) === 1 && (await page.locator('nav[aria-label="Main"]').count()) === 0);
 
-  // 3. The setter's Home: the knock session and the follow-ups due.
+  // 3. The setter's Home: the follow-ups due. The knock session is on
+  // Session (2026-11-05).
   check("Home greets the setter", (await page.getByRole("heading", { name: /^Hello, Nav/ }).count()) === 1);
-  check("Home shows the knock session that is running", (await page.getByRole("heading", { name: `Knocking in ${TEST_PLACE}` }).count()) === 1 && ((await page.getByRole("button", { name: /^Add one to doors/ }).getAttribute("aria-label")) ?? "").endsWith("now 7"));
+  check("Home no longer holds the knock session", (await page.getByRole("button", { name: /^Add one to doors/ }).count()) === 0 && (await page.getByRole("button", { name: "Start knocking" }).count()) === 0);
   const dueLinks = await page.getByRole("list", { name: "Follow-ups due" }).getByRole("link").evaluateAll((links) => links.map((link) => [link.getAttribute("href"), link.innerText]));
   check(
     "Home lists the follow-ups due, overdue first, and leaves later ones out",
@@ -362,6 +365,20 @@ try {
   );
   await checkTapTargets(page, "the setter's Home");
   await page.screenshot({ path: `${out}/m25-sales-home.png`, fullPage: true });
+
+  // 3b. Session, the gold tab (2026-11-05): the knock session that is running.
+  await page.locator('nav[aria-label="Tabs"]:visible').getByRole("link", { name: "Session", exact: true }).click();
+  await page.waitForURL("**/app/session", { timeout: 20000 });
+  await settle(page);
+  check(
+    "Session shows the knock session that is running, with its counts",
+    (await page.getByRole("heading", { name: `Knocking in ${TEST_PLACE}` }).count()) === 1 &&
+      ((await page.getByRole("button", { name: /^Add one to doors/ }).getAttribute("aria-label")) ?? "").endsWith("now 7"),
+  );
+  check(
+    "the Session tab is the current tab, and Leads has a New lead button at the top",
+    (await page.locator('nav[aria-label="Tabs"]:visible a[aria-current="page"]').innerText()).trim() === "Session",
+  );
 
   // 4. Leads opens to Active, in the order things need attention.
   await page.locator('nav[aria-label="Tabs"]:visible').getByRole("link", { name: "Leads", exact: true }).click();
@@ -426,7 +443,7 @@ try {
   await page.waitForTimeout(300);
   const rail = await page.locator('nav[aria-label="Tabs"]:visible').boundingBox();
   check("at 1024 px and wider the tabs move to a slim rail on the left", rail !== null && rail.x === 0 && rail.width <= 96 && rail.height >= 790, rail ? `${Math.round(rail.x)},${Math.round(rail.y)} ${Math.round(rail.width)}x${Math.round(rail.height)}` : "missing");
-  check("the rail holds the same tabs", JSON.stringify(await visibleTabs(page)) === JSON.stringify(["Home", "Schedule", "New lead", "Leads", "My pay"]));
+  check("the rail holds the same tabs", JSON.stringify(await visibleTabs(page)) === JSON.stringify(["Home", "Schedule", "Session", "Leads", "My pay"]));
   await page.screenshot({ path: `${out}/m25-desktop-rail.png`, fullPage: false });
   await page.setViewportSize(viewport);
 
@@ -474,8 +491,8 @@ try {
     check("someone who only added a lead today shows too", /Leads 1\b/.test(bText) && bText.includes("No knock session today"), bText);
     check("today's leads are listed", (await op.getByRole("list", { name: "Today's leads" }).locator(`a[href="/app/leads/${leads.other}"]`).count()) === 1);
     check(
-      "the owner's tabs are Home, Schedule, Meetings, New lead and Leads, with Admin as a gear in the header",
-      JSON.stringify(await visibleTabs(op)) === JSON.stringify(["Home", "Schedule", "Meetings", "New lead", "Leads"]) &&
+      "the owner's tabs are Home, Schedule, Meetings, Session and Leads, with Admin as a gear in the header",
+      JSON.stringify(await visibleTabs(op)) === JSON.stringify(["Home", "Schedule", "Meetings", "Session", "Leads"]) &&
         (await op.getByTestId("admin-gear").getAttribute("href")) === "/app/admin",
       (await visibleTabs(op)).join(", "),
     );
@@ -578,6 +595,7 @@ try {
     ["New lead", "/app/leads/new"],
     ["Edit lead", `/app/leads/${leads.newOld}/edit`],
     ["Schedule", "/app/schedule"],
+    ["Session", "/app/session"],
     ["Meetings", "/app/meetings"],
     ["a lead opened to book", `/app/leads/${leads.later}?book=1`],
     ["My pay", "/app/pay"],
@@ -821,8 +839,9 @@ try {
     `${keptNotice} | ${keptStored.join(", ")}`,
   );
 
-  // Home: the knock counters are acted out, and the Unfinished list says where drafts live.
-  await op.goto(`${base}/app`);
+  // Session: the knock counters, the start time and End knocking are acted
+  // out, and the Unfinished list says where drafts live.
+  await op.goto(`${base}/app/session`);
   await settle(op);
   const doorsBefore = Number((await op.getByRole("button", { name: /^Add one to doors, now (\d+)/ }).getAttribute("aria-label")).match(/now (\d+)/)[1]);
   await op.getByRole("button", { name: /^Add one to doors/ }).click();
@@ -830,10 +849,28 @@ try {
   const doorsAfter = Number((await op.getByRole("button", { name: /^Add one to doors, now (\d+)/ }).getAttribute("aria-label")).match(/now (\d+)/)[1]);
   const knockNote = await calm(op.locator("main"));
   check("the knock counters count on screen while viewing, and say nothing was saved", doorsAfter === doorsBefore + 2 && knockNote === "View as: nothing was saved.", `${doorsBefore} then ${doorsAfter}; ${knockNote}`);
-  check("Home shows no Unfinished list while viewing: a setter's drafts stay on their own phone", (await op.getByTestId("unfinished").count()) === 0);
+  check("Session shows no Unfinished list while viewing: a setter's drafts stay on their own phone", (await op.getByTestId("unfinished").count()) === 0);
   check(
-    "and Home says why, for Keenan",
+    "and Session says why, for Keenan",
     (await op.getByTestId("unfinished-view-as").innerText().catch(() => "")).trim() === "Unfinished bookings stay on Nav Test A's phone, so they don't show here.",
+  );
+  await op.getByTestId("fix-start").click();
+  await op.fill("#fix-start-time", "00:01");
+  await op.getByTestId("fix-start-panel").getByRole("button", { name: "Save", exact: true }).click();
+  const fixedLine = (await op.getByTestId("session-started").innerText()).trim();
+  check(
+    "fixing the start time is acted out while viewing, and says nothing was saved",
+    fixedLine.startsWith("Started 12:01") && (await calm(op.locator("main"))) === "View as: nothing was saved.",
+    fixedLine,
+  );
+  await op.getByRole("button", { name: "End knocking" }).click();
+  await op.getByRole("button", { name: "Yes, end it" }).click();
+  const actedSummary = (await op.getByTestId("session-summary").innerText().catch(() => "")).replace(/\s+/g, " ");
+  check(
+    "End knocking is acted out too: the summary shows, says nothing was saved, and Start knocking is back",
+    actedSummary.includes(`Done in ${TEST_PLACE}`) && actedSummary.includes(`Doors ${doorsAfter}`) && actedSummary.includes("View as: nothing was saved.") &&
+      (await op.getByRole("button", { name: "Start knocking" }).count()) === 1,
+    actedSummary,
   );
 
   // New lead: Save is refused calmly; a photo is acted out.

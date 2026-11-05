@@ -16,6 +16,11 @@ test("the Meetings page is behind the login wall", async ({ page }) => {
   await expect(page).toHaveURL(/\/login\?next=%2Fapp%2Fmeetings$/);
 });
 
+test("Session is behind the login wall", async ({ page }) => {
+  await page.goto("/app/session");
+  await expect(page).toHaveURL(/\/login\?next=%2Fapp%2Fsession$/);
+});
+
 test("a setter's welcome and Notifications are behind the login wall", async ({ page }) => {
   await page.goto("/app/welcome");
   await expect(page).toHaveURL(/\/login\?next=%2Fapp%2Fwelcome$/);

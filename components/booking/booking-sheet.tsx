@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronDown, CircleHelp } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { findLeadsAtPlace, type DuplicateLead } from "@/app/(app)/app/leads/actions";
 import {
@@ -275,6 +275,7 @@ function BookingSheet({
   onClosed: () => void;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { viewingAs, name: viewedName } = useViewAs();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -1626,7 +1627,12 @@ function BookingSheet({
               onMove={() => void confirmMove()}
               onClose={() => {
                 if (!done) keepDraft(currentDraft(), draftScreen);
+                // A booking made from Session, or from New lead's Save and
+                // book while knocking, lands back on Session with the
+                // saved line (Keenan, 2026-11-05).
+                const toSession = done && (pathname === "/app/session" || (request.kind === "lead" && request.backTo === "session"));
                 close();
+                if (toSession && done) router.replace(`/app/session?added=${done.leadId}`);
               }}
               onOpenLead={() => {
                 const leadId = done?.leadId ?? (request.kind === "move" ? request.leadId : draft.leadId);

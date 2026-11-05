@@ -34,7 +34,7 @@ export default async function NewLeadPage() {
         userId={me.id}
         mapsKey={getPublicEnv().NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null}
         sessionNeighbourhood={session?.neighbourhood ?? null}
-        cancelHref="/app/leads"
+        cancelHref={session ? "/app/session" : "/app/leads"}
       />
     </div>
   );

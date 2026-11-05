@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Form from "next/form";
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { ClearLeadDraft } from "@/components/leads/clear-lead-draft";
 import { StatusBadge } from "@/components/leads/status-badge";
 import { Button } from "@/components/ui/button";
@@ -108,7 +109,15 @@ export default async function LeadsPage({
 
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="text-2xl font-bold">Leads</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold">Leads</h1>
+        <Button asChild className="h-11">
+          <Link href="/app/leads/new">
+            <Plus aria-hidden="true" className="size-5" />
+            New lead
+          </Link>
+        </Button>
+      </div>
 
       {addedLead && addedLead.created_by === me.id ? <ClearLeadDraft userId={me.id} /> : null}
       {addedLead ? (

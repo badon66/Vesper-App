@@ -45,6 +45,7 @@ export function TimePicker({
   meetingId,
   initialDay,
   tonightOnly = false,
+  hideDayHeading = false,
   onHeld,
   onDayChange,
   onBoardChange,
@@ -60,6 +61,8 @@ export function TimePicker({
   meetingId?: string | null;
   initialDay?: string | null;
   tonightOnly?: boolean;
+  // Session names the evening in its own heading (2026-11-05).
+  hideDayHeading?: boolean;
   onHeld?: (startsAt: string, timer: SheetTimer | null) => void;
   onDayChange?: (day: string) => void;
   onBoardChange?: () => void;
@@ -195,16 +198,18 @@ export function TimePicker({
         </div>
       ) : null}
 
-      <div>
-        <h2 className="text-lg font-bold" data-testid="picker-day">
-          {day === today ? "Tonight" : formatLongDay(day)}
-        </h2>
-        {tonightFullNote ? (
-          <p className="text-sm text-pretty text-muted-foreground" data-testid="tonight-full">
-            {opening.tonightHasTimes ? "Nothing left tonight." : "No meetings tonight."} This is the next evening with an opening.
-          </p>
-        ) : null}
-      </div>
+      {hideDayHeading ? null : (
+        <div>
+          <h2 className="text-lg font-bold" data-testid="picker-day">
+            {day === today ? "Tonight" : formatLongDay(day)}
+          </h2>
+          {tonightFullNote ? (
+            <p className="text-sm text-pretty text-muted-foreground" data-testid="tonight-full">
+              {opening.tonightHasTimes ? "Nothing left tonight." : "No meetings tonight."} This is the next evening with an opening.
+            </p>
+          ) : null}
+        </div>
+      )}
 
       {message ? (
         <p role="alert" className="text-sm font-semibold text-destructive" data-testid="picker-message">
