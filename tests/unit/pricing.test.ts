@@ -386,6 +386,8 @@ describe("The quote link's choices", () => {
     const minimum = small.lines.find((line) => line.label.startsWith("To reach"));
     expect(minimum).toEqual({ label: "To reach our $2,500 minimum", detail: null, amount: 1385 });
     expect(small.minimumApplied).toBe(true);
+    // The lines' own sum, before the top-up, for the breakdown's Subtotal.
+    expect(small.beforeMinimum).toBe(1115);
     expect(small.subtotal).toBe(2500);
     expect(small.lines.reduce((sum, line) => sum + Math.round(line.amount * 100), 0)).toBe(250000);
   });
@@ -394,6 +396,7 @@ describe("The quote link's choices", () => {
     const whole = priceQuote(house({ minJobTotal: 2500 }));
     expect(whole.minimumApplied).toBe(false);
     expect(whole.subtotal).toBe(3565);
+    expect(whole.beforeMinimum).toBe(3565);
     const exact = priceQuote(house({ runs: selectRuns(house().runs, [0, 2]), minJobTotal: 2495 }));
     expect(exact.minimumApplied).toBe(false);
     for (const none of [null, 0, undefined]) {

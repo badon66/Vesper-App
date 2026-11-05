@@ -56,13 +56,17 @@ const OUTLINE = [
   "M259 146 L259 196",
 ];
 
-// Finer lines: doors, windows and panels.
-const DETAILS = [
+// Finer lines: doors, windows and panels. The doors say "garage" and
+// "front door" even at the small size, so the small drawings keep them and
+// leave the windows out (the critique, 2026-11-04).
+const DOORS = [
   // garage door and panels
   "M26 196 L26 148 L102 148 L102 196",
   "M26 160 L102 160 M26 172 L102 172 M26 184 L102 184",
   // front door
   "M228 196 L228 158 L246 158 L246 196",
+];
+const WINDOWS = [
   // main floor windows
   "M132 146 L196 146 L196 176 L132 176 Z M164 146 L164 176",
   "M272 148 L292 148 L292 174 L272 174 Z",
@@ -78,12 +82,28 @@ export type Crop = [x: number, y: number, width: number, height: number];
 // The small drawings in "What do these mean?" are this wide on screen.
 const MINI_PX = 128;
 
+// Each part's own close-up, for the small drawing beside its switch, so a
+// row shows which part of the house it is and what switching it does at any
+// scroll position (the critique, 2026-11-04).
+export const SEGMENT_CROPS: Record<HouseSegment, Crop> = {
+  "garage-gable": [0, 80, 140, 78],
+  garage: [0, 80, 140, 78],
+  "lower-eave": [100, 70, 230, 128],
+  porch: [172, 108, 130, 72.6],
+  "upper-eave": [100, 20, 200, 112],
+  "upper-gable": [180, 6, 170, 95],
+  "lower-sides": [189, 40, 161, 90],
+  "upper-sides": [189, 40, 161, 90],
+};
+
 export function HouseDiagram({
   states,
   className,
   mini = false,
   crop = WHOLE_HOUSE,
+  px = MINI_PX,
   label,
+  decorative = false,
 }: {
   states: Record<HouseSegment, SegmentState>;
   className?: string;
@@ -91,19 +111,22 @@ export function HouseDiagram({
   // lit, cropped to that part so it reads at the small size.
   mini?: boolean;
   crop?: Crop;
+  // How wide a small drawing is on screen, so its lines can be scaled to it.
+  px?: number;
   // Overrides the description a screen reader hears.
   label?: string;
+  // Beside a control that already says what it is: hidden from screen readers.
+  decorative?: boolean;
 }) {
   // Lines are set in the drawing's units. A small drawing scales them by
   // its own zoom, so its lines and lights look the same size on screen as
   // the big drawing's, however it is cropped.
-  const k = mini ? crop[2] / MINI_PX : 1;
+  const k = mini ? crop[2] / px : 1;
   const line = (mini ? 1.2 : 1.5) * k;
   return (
     <svg
       viewBox={crop.join(" ")}
-      role="img"
-      aria-label={label ?? houseDescription(states)}
+      {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": label ?? houseDescription(states) })}
       className={cn("house block h-auto w-full text-navy", mini && "house-mini", className)}
       fill="none"
       strokeLinecap="round"
@@ -114,7 +137,7 @@ export function HouseDiagram({
         {OUTLINE.map((d) => (
           <path key={d} d={d} strokeWidth={line} />
         ))}
-        {DETAILS.map((d) => (
+        {(mini ? DOORS : [...DOORS, ...WINDOWS]).map((d) => (
           <path key={d} d={d} strokeWidth={1 * k} opacity={0.4} />
         ))}
       </g>

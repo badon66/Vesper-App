@@ -68,6 +68,9 @@ export type QuoteTotals = {
   total: number;
   // True when the total was raised to the minimum job total.
   minimumApplied: boolean;
+  // The total before GST and before any rise to the minimum, so a
+  // breakdown can show the lines' own sum above the top-up.
+  beforeMinimum: number;
 };
 
 const toCents = (dollars: number) => Math.round(dollars * 100);
@@ -207,6 +210,7 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
   // The line names what the amount is: the top-up to the minimum.
   const minimum = inputs.minJobTotal ?? 0;
   const minCents = Number.isFinite(minimum) && minimum > 0 ? toCents(minimum) : 0;
+  const beforeMinimumCents = subtotalCents;
   const minimumApplied = minCents > subtotalCents;
   if (minimumApplied) {
     lines.push({
@@ -226,6 +230,7 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
     gst: toDollars(gstCents),
     total: toDollars(subtotalCents + gstCents),
     minimumApplied,
+    beforeMinimum: toDollars(beforeMinimumCents),
   };
 }
 

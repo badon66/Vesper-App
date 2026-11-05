@@ -5,13 +5,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { bookInstall, recordVisit, saveSelection } from "@/app/q/[token]/actions";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
 import { Disclosure } from "@/components/quote-link/disclosure";
-import { HouseDiagram, WHOLE_HOUSE, type Crop } from "@/components/quote-link/house-diagram";
+import { HouseDiagram, SEGMENT_CROPS, WHOLE_HOUSE, type Crop } from "@/components/quote-link/house-diagram";
 import { useCountTo } from "@/components/quote-link/motion";
 import { PointIconMark } from "@/components/quote-link/point-icon";
 import { ClosedQuote, ContactButtons } from "@/components/quote-link/quote-shell";
 import { DialogPanel } from "@/components/ui/dialog-panel";
 import { formatMoney, screenTotal, type QuoteLine } from "@/lib/pricing";
-import { segmentStates, type HouseSegment } from "@/lib/quote-link/house";
+import { HOUSE_SEGMENTS, segmentsFor, segmentStates, type HouseSegment, type SegmentState } from "@/lib/quote-link/house";
 import {
   customerChoice,
   customerChoiceInSentence,
@@ -83,6 +83,10 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
   const sending = phase === "sending";
   const heading = useRef<HTMLHeadingElement>(null);
   const smallerHeading = useRef<HTMLHeadingElement>(null);
+  // When the confirm step opened. Its Yes sits right where Book my install
+  // was, so a quick second tap would land on it; taps in the first half
+  // second are ignored (the critique, 2026-11-04).
+  const confirmOpenedAt = useRef(0);
 
   // A visit, once per opening, even when React runs the effect twice.
   // Keenan's own visits are left out on the server.
@@ -308,8 +312,9 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
                         aria-describedby={locked ? "smaller-hint" : undefined}
                         aria-label={`${runName(run, at)}, ${Math.round(run.feet)} feet`}
                         onClick={() => toggle(at)}
-                        className="flex min-h-[3.25rem] w-full items-center gap-4 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                        className="flex min-h-[3.25rem] w-full items-center gap-3 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                       >
+                        <RunMark run={run} on={isOn} />
                         <span className={cn("min-w-0 flex-1 text-pretty transition-colors duration-200", !isOn && "text-muted-foreground")}>
                           <span className="font-medium">{runName(run, at)}</span>
                           <span className="ml-2 text-base text-muted-foreground tabular-nums">{Math.round(run.feet)} ft</span>
@@ -367,7 +372,7 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
               Switch all back on
             </button>
           ) : null}
-          <Breakdown full={full.lines} current={current.lines} />
+          <Breakdown full={full.lines} current={current.lines} beforeMinimum={current.beforeMinimum} total={total} />
           <p aria-live="polite" className="sr-only">
             {announced}
           </p>
@@ -449,12 +454,15 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
         <footer className="mt-10 flex flex-col gap-1 px-5 text-sm text-pretty text-muted-foreground" data-testid="quote-footer">
           <p className="font-semibold text-foreground">{view.company.name}</p>
           <p>{view.company.address}</p>
-          <a href={phoneHref(view.company.phone, "tel")} className="inline-flex min-h-11 items-center self-start text-foreground tabular-nums underline underline-offset-4">
+          <a
+            href={phoneHref(view.company.phone, "tel")}
+            className="inline-flex min-h-11 items-center self-start rounded-sm text-foreground tabular-nums underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             {view.company.phone}
           </a>
           <a
             href={`mailto:${view.company.email}?subject=${encodeURIComponent("My Vesper quote")}`}
-            className="inline-flex min-h-11 items-center self-start text-foreground underline underline-offset-4"
+            className="inline-flex min-h-11 items-center self-start rounded-sm text-foreground underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {view.company.email}
           </a>
@@ -472,6 +480,7 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
         error={error}
         onBook={() => {
           setError(null);
+          confirmOpenedAt.current = performance.now();
           setPhase("confirm");
         }}
       />
@@ -492,7 +501,10 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
             </button>
             <button
               type="button"
-              onClick={() => void book()}
+              onClick={() => {
+                if (performance.now() - confirmOpenedAt.current < 500) return;
+                void book();
+              }}
               className="inline-flex h-12 items-center rounded-md bg-primary px-5 text-base font-semibold text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               {booked ? "Yes, update it" : "Yes, book my install"}
@@ -577,8 +589,11 @@ function CountedTotal({ subtotal, gstEnabled }: { subtotal: number; gstEnabled: 
 
 // The price line by line. A line that drops off (upper access when every
 // upper run is off, extra work only with upper runs) or appears (the top-up
-// to the minimum) eases in and out rather than jumping.
-function Breakdown({ full, current }: { full: QuoteLine[]; current: QuoteLine[] }) {
+// to the minimum) eases in and out rather than jumping. Under the minimum, a
+// Subtotal shows the lines' own sum, discount taken, so the top-up visibly
+// raises that rather than cancelling the discount; the column closes on its
+// total for anyone checking the sum downwards (the critique, 2026-11-04).
+function Breakdown({ full, current, beforeMinimum, total }: { full: QuoteLine[]; current: QuoteLine[]; beforeMinimum: number; total: string }) {
   const keyed = (lines: QuoteLine[]) => {
     const seen = new Map<string, number>();
     return lines.map((line) => {
@@ -590,6 +605,7 @@ function Breakdown({ full, current }: { full: QuoteLine[]; current: QuoteLine[] 
   const now = new Map(keyed(current).map(({ key, line }) => [key, line]));
   const rows = [...keyed(full)];
   for (const entry of keyed(current)) if (!rows.some((row) => row.key === entry.key)) rows.push(entry);
+  const isMinimum = (line: QuoteLine) => line.label.startsWith("To reach");
   return (
     <dl className="mt-5 flex flex-col border-t" data-testid="quote-lines">
       {rows.map(({ key, line: before }) => {
@@ -598,19 +614,43 @@ function Breakdown({ full, current }: { full: QuoteLine[]; current: QuoteLine[] 
         return (
           <div key={key} className="quote-row" data-shown={shown} aria-hidden={!shown} data-line={line.label}>
             <div>
-              <div className="flex items-baseline justify-between gap-4 border-b py-2.5">
-                <dt className="min-w-0">
-                  <span className="font-medium">{line.label}</span>
-                  {line.detail ? <span className="block text-sm text-muted-foreground">{line.detail}</span> : null}
-                </dt>
-                <dd className="shrink-0 font-semibold tabular-nums">{lineAmount(line.amount)}</dd>
-              </div>
+              {isMinimum(line) ? <LineRow label="Subtotal" amount={lineAmount(beforeMinimum)} testId="line-subtotal" /> : null}
+              <LineRow label={line.label} detail={line.detail} amount={lineAmount(line.amount)} />
             </div>
           </div>
         );
       })}
+      <div className="flex items-baseline justify-between gap-4 border-t border-navy py-2.5" data-testid="line-total">
+        <dt>Total</dt>
+        <dd className="shrink-0 tabular-nums">{total}</dd>
+      </div>
     </dl>
   );
+}
+
+function LineRow({ label, detail, amount, testId }: { label: string; detail?: string | null; amount: string; testId?: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-b py-2.5" data-testid={testId}>
+      <dt className="min-w-0">
+        <span className="font-medium">{label}</span>
+        {detail ? <span className="block text-sm text-muted-foreground">{detail}</span> : null}
+      </dt>
+      <dd className="shrink-0 font-semibold tabular-nums">{amount}</dd>
+    </div>
+  );
+}
+
+// Beside each switch: a small close-up of that run's own part of the house,
+// lit while the run is on and dashed once it's off, so the house answers the
+// thumb wherever the page is scrolled. A run drawn nowhere ("other") keeps
+// the space empty so the names still line up.
+function RunMark({ run, on }: { run: CustomerQuote["quote"]["runs"][number]; on: boolean }) {
+  const segments = segmentsFor(run);
+  if (segments.length === 0) return <span aria-hidden="true" className="w-14 shrink-0" />;
+  const states = Object.fromEntries(
+    HOUSE_SEGMENTS.map((segment) => [segment, segments.includes(segment) ? (on ? "on" : "off") : "none"]),
+  ) as Record<HouseSegment, SegmentState>;
+  return <HouseDiagram states={states} mini decorative crop={SEGMENT_CROPS[segments[0]]} px={56} className="w-14 shrink-0" />;
 }
 
 // "What do these mean?": the same house, small, one part lit at a time,
@@ -824,7 +864,7 @@ function Mockup({ url }: { url: string }) {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Open the picture of your house full screen"
-        className="group block aspect-[3/2] w-full overflow-hidden bg-navy outline-none focus-visible:outline-3 focus-visible:-outline-offset-4 focus-visible:outline-white"
+        className="group block aspect-[3/2] w-full overflow-hidden bg-navy outline-none focus-visible:outline-solid focus-visible:outline-3 focus-visible:-outline-offset-4 focus-visible:outline-white"
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- a private photo behind a ten-minute signed link */}
         <img
