@@ -878,3 +878,14 @@ Not changed:
 - **"Still thinking it over? Text Keenan any question." above the footer** (closer, from the homeowner's round 1). The bar's Text already carries a first line about their quote; left out as a second ask.
 - **A sticky total inside Start smaller** (UX): the total right under the switches does the same job with no motion.
 - **A "both floors" level in meeting mode** (editor): not asked for; the name rule above covers Todd's quote.
+
+### Prices and status that came with the rework (2026-11-04)
+
+- **Settings changed at once** (migration `20261104230300`): $24 a foot, the $2,500 minimum, the $200 service call fee, prices held 120 days. Quotes already made keep their own prices.
+- **Price hold days are a new column.** `settings.quote_valid_days` has a check that allows 1 to 90, so 120 couldn't go in it; changing that check means dropping it, which needs Keenan at the screen (rule 4). The new `price_hold_days` (1 to 365, 120) is what the app uses; `quote_valid_days` was set to 90 and is no longer read. Dropping the old column's check is left for Keenan's go-ahead.
+- **The rush colour fee per foot is no longer used.** No quote ever had one, so nothing needs carrying over; the per-foot columns stay, unused, per the additive rule.
+- **A quote keeps its rush colour fee whatever the colour timing**, so the customer's link can name it in the track colour sentence and switching to this season at the table finds it; the price counts it only for this season.
+- **Todd Dean's quote** (the only quote so far): "Family & Friends Discount", prices held until March 2, 2027 (120 days from November 2, the day it was made, Calgary), and the $2,500 minimum. It was made before upper access existed, so it has no upper access or rush colour line.
+- **The Christmas banner's season is a judgment call.** Keenan said it hides itself after December 24. It shows from September 1 to December 24 (Calgary) while it is on, so "Want them up for Christmas?" never appears in the spring; Keenan can turn it off or change the words in Settings.
+- **Status.** Vercel Pro is in place. Keenan is turning off Vercel Authentication for previews, so the preview link should open on his phone without a Vercel sign-in (the report says if it still asks). Meeting times stay at 5:00 pm with six 35-minute meetings.
+

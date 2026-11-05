@@ -65,9 +65,17 @@ presentation jsonb not null          -- M5: six pages in order, [{kind, title, b
                                      -- paths point into the 'presentation' bucket; a page with no content is skipped on the iPad
 booking_pay numeric(10,2) not null default 20.00      -- flat pay per qualified booking
 commission_rate numeric(5,4) not null default 0.0500  -- share of the accepted quote total before GST
-rush_colour_fee_per_ft numeric(10,2)             -- M5: per foot, for a non-stock colour installed this season; null = not set, the line is hidden
-service_call_fee numeric(10,2)                   -- M5: warranty years 6 to 10; null = not set, no amount shows
-quote_valid_days int not null default 14         -- M5: a new quote's valid-until date is this many days out
+rush_colour_fee_per_ft numeric(10,2)             -- M5: per foot; unused since 2026-11-04 (rush_colour_fee replaced it), kept per the additive rule
+rush_colour_fee numeric(10,2)                    -- 2026-11-04: one flat amount a job ($350) for a non-stock colour powder coated this season; null = not set, the choice and its line are hidden. Copied onto each quote
+upper_access_fee numeric(10,2)                   -- 2026-11-04: added to a quote with upper runs and no upper gable ($200); null = no line. Copied onto each quote
+upper_gable_access_fee numeric(10,2)             -- 2026-11-04: added instead when an upper gable is in the quote ($400); null = no line. Copied onto each quote
+service_call_fee numeric(10,2)                   -- M5: warranty years 6 to 10 ($200 since 2026-11-04); null = not set, no amount shows
+quote_valid_days int not null default 14         -- M5: unused since 2026-11-04 (price_hold_days replaced it; its 1..90 check stays, at 90, until Keenan approves dropping it)
+price_hold_days int not null default 120         -- 2026-11-04: a new quote holds its prices until this many days out (1..365), shown to the customer as "Price held until"
+christmas_banner_on boolean not null default true  -- 2026-11-04: the customer quote page's Christmas banner; it shows only from September 1 to December 24 (Calgary) while on
+christmas_banner_title text not null             -- its bold first line, "Want them up for Christmas?" (1..80 characters)
+christmas_banner_text text not null              -- its words, "We install every day the weather allows. Book now to get on the schedule." (up to 300)
+product_points jsonb not null                    -- 2026-11-04: [{icon, text}], up to 8 (the form offers 6), under "What you're getting" on the quote page; icon is one of lightbulb, house, zap, smartphone, plug, shield-check, paintbrush, sun, snowflake, wrench, clock, check
 min_job_total numeric(10,2)                      -- quote link (2026-11-02): the least a job can cost before GST; null = no minimum. Copied onto each quote when it is saved
 faq_text text not null default ''                -- M5: the folder's FAQ (take 2); seeded as a draft
 lost_reasons text[] not null default '{price, other company, not now, could not reach, other}'
@@ -313,7 +321,7 @@ status quote_status not null default 'draft'
 price_per_ft numeric(10,2) not null              -- copied from settings at creation
 box_price numeric(10,2) not null
 box_count int not null default 1
-runs jsonb not null default '[]'                 -- [{name, feet, level}]
+runs jsonb not null default '[]'                 -- [{name, feet, level, part}]; part (2026-11-04): eave | gable | garage | porch | sides | other, guessed from the name in the quote builder and changeable; a run saved before then has none and its name gives the guess
 total_feet int not null default 0
 adders jsonb not null default '[]'               -- [{label, amount, upper_only?}]; upper_only (2026-11-02): the line counts only while an upper run is selected
 discounts jsonb not null default '[]'            -- [{label, amount}]
@@ -324,7 +332,10 @@ gst numeric(10,2) not null default 0
 total numeric(10,2) not null default 0
 financing_offered boolean not null default false
 colour_timing text                               -- M5: stock | factory_order | rush; how the colour is priced (see the spec)
-rush_fee_per_ft numeric(10,2)                    -- M5: the rush colour fee this quote used, when colour_timing = 'rush'
+rush_fee_per_ft numeric(10,2)                    -- M5: unused since 2026-11-04 (no quote ever had one), kept per the additive rule
+rush_fee numeric(10,2)                           -- 2026-11-04: this quote's flat rush colour fee, kept whatever the timing (the link names it); counted only when colour_timing = 'rush'; null on a quote made before
+upper_access_fee numeric(10,2)                   -- 2026-11-04: this quote's upper access amount without an upper gable; null on a quote made before, so no line
+upper_gable_access_fee numeric(10,2)             -- 2026-11-04: this quote's amount with an upper gable; null on a quote made before
 track_colour_name text                           -- copied from the lead's track colour when the quote is made ready (take 1 copies what is already set)
 track_ral_code text                              -- the RAL code used, when there is one
 track_custom boolean not null default false      -- a Custom RAL colour, which needs powder coating
@@ -335,7 +346,7 @@ min_job_total numeric(10,2)                      -- 2026-11-02: copied from sett
 presented_at, accepted_at, declined_at timestamptz
 created_at, updated_at
 ```
-A quote can't be marked ready until the lead's track colour is set; the quote stores the colour name and RAL code it used, prints them, and shows a Custom colour as needing powder coating. Totals are computed in one pure function in `lib/pricing.ts`, used by the UI and the server action, and covered by unit tests. The database stores the result so history is stable if prices change later. `subtotal` is the total before GST and is the base for commission. Every price on a quote belongs to that quote: `price_per_ft`, `box_price`, each adder and discount amount, and custom lines in `adders` and `discounts`. Settings supplies the defaults when the quote is created; later changes to settings never alter an existing quote. Accepting a quote creates a `commission` earning (see `earnings`). Take 1 (M5) writes drafts only, one draft per lead reused; presented, accepted, declined, the ready rule and the PDF arrive in take 2. The rush line is `total_feet` times `rush_fee_per_ft` when `colour_timing` is 'rush'; a stocked colour and a factory order add nothing.
+A quote can't be marked ready until the lead's track colour is set; the quote stores the colour name and RAL code it used, prints them, and shows a Custom colour as needing powder coating. Totals are computed in one pure function in `lib/pricing.ts`, used by the UI and the server action, and covered by unit tests. The database stores the result so history is stable if prices change later. `subtotal` is the total before GST and is the base for commission. Every price on a quote belongs to that quote: `price_per_ft`, `box_price`, each adder and discount amount, and custom lines in `adders` and `discounts`. Settings supplies the defaults when the quote is created; later changes to settings never alter an existing quote. Accepting a quote creates a `commission` earning (see `earnings`). Take 1 (M5) writes drafts only, one draft per lead reused; presented, accepted, declined, the ready rule and the PDF arrive in take 2. The rush line ("Rush colour fee", 2026-11-04) is the quote's flat `rush_fee` when `colour_timing` is 'rush'; a stocked colour and a factory order add nothing. Upper access ("Upper roof access") follows the runs that are on: nothing without an upper run with feet, `upper_gable_access_fee` when an upper run's part is a gable, otherwise `upper_access_fee`; on the customer's link it changes as they switch runs. Quotes made before 2026-11-04 have neither amount, so neither line. Commission (recorded 2026-11-04, built with M5 take 2) is the commission rate times the lights and control box after discounts, as priced, before GST; the rush colour fee and upper access are left out.
 
 ### quote_links
 The customer quote link (2026-11-02). Owner only; anonymous callers and sales users read nothing here. The public page reaches it only through the token functions below.
@@ -345,7 +356,7 @@ lead_id uuid not null references leads
 token text not null unique                        -- 24 characters, base64url of 18 random bytes (144 bits), made in the database
 created_by uuid not null references profiles      -- who made it; Book my install notifies this person
 created_at
-revoked_at timestamptz                            -- turned off; a revoked link shows "expired" and can't be turned back on
+revoked_at timestamptz                            -- turned off; a revoked link shows the closed page and can't be turned back on
 revoked_by uuid references profiles
 view_count int not null default 0                 -- visits, no IP address or device details stored
 first_viewed_at, last_viewed_at timestamptz
@@ -359,12 +370,13 @@ notified_option text                              -- the option last pushed to t
 updated_at
 unique (lead_id) where revoked_at is null         -- one live link per lead
 ```
-The page shows the lead's latest quote, so updating the quote updates what the same link shows. A link is live while it is not revoked and its quote's `valid_until` is today or later (Calgary).
+The page shows the lead's latest quote, so updating the quote updates what the same link shows. A link is live while it is not revoked and the lead has a quote (2026-11-04: links don't expire). The quote's `valid_until` is the day its prices are held until; after it the page still works and says prices may have changed, and Book my install still works.
 
 Functions (all `security definer`, `search_path = ''`):
 - `issue_quote_link(lead_id)`: owner only. Returns the live link's token, making one (and a `quote_link_created` event) when there is none and the lead has a quote.
 - `revoke_quote_link(lead_id)`: owner only. Stamps the live link revoked and writes `quote_link_revoked`.
-- `quote_for_customer(token)`: anyone. One call returns what the page shows: `{state: 'live', name, address, valid_until, quote: {runs, prices, adders, discounts, colour timing, rush fee, minimum, box count}, gst_enabled, warranty, company, mockup_path, selection, booked}` for a live token, and `{state: 'expired', company: {name, phone, email}}` for anything else (unknown, revoked or out of date): Vesper's public contact for the call and text buttons, with no customer name and no prices. No notes, costs, setter, status, timeline or other customer, ever.
+- `quote_for_customer(token)`: anyone. One call returns what the page shows: `{state: 'live', first_name, last_name, address, city, valid_until, today, quote: {runs (with parts), runs_fingerprint, price_per_ft, box_price, box_count, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, min_job_total, gst_enabled, gst_rate, track_colour_name, track_custom}, warranty, service_call_fee, christmas, product_points, install_day, gallery, company, mockup_path, selection, booked_at, booked_option}` for a live token. `today` is Calgary's date, so the page knows whether the price hold has passed without trusting the phone's clock; `christmas` is `{title, text}` only while Settings has it on and the date is September 1 to December 24, otherwise null; `install_day` is the presentation's install day page; `gallery` is the presentation gallery's photo paths. For anything else (unknown or revoked) it returns `{state: 'closed', company: {name, phone, email}}` (2026-11-04; it was 'expired'): Vesper's public contact for the call and text buttons, with no customer name and no prices. No notes, costs, setter, status, timeline or other customer, ever.
+- `quote_gallery_signable(name)`: storage's rule for the presentation bucket (2026-11-04): true only for a request carrying a live token in `x-quote-token` and an object that is one of the gallery's photos. Nothing else in that bucket can be signed or listed by an anonymous caller.
 - `quote_link_visit(token)`: anyone. Adds one visit and stamps the time; the first visit writes `quote_link_opened`.
 - `quote_link_select(token, positions int[])`: anyone. Saves which runs they have on.
 - `quote_link_book(token, positions int[])`: anyone. Saves Book my install with the option in words, writes `install_requested` (the option and run names, no price), and returns the maker's sealed push addresses when this option hasn't been pushed yet. Never accepts the quote and never creates an earning.
