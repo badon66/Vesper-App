@@ -137,3 +137,69 @@ html:has(.quote-light) {
     @apply bg-background font-sans text-foreground antialiased;
   }
 }
+
+/* The customer quote link (2026-11-04). One easing for the page's quiet
+   motion; with reduce motion on, nothing slides or counts, and a change
+   swaps with a short fade at most (decisions.md). */
+.quote-light {
+  --ease-quiet: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* The house diagram: each part shows one of three looks and cross-fades
+   between them when a run is switched. */
+.house-part .house-none,
+.house-part .house-off,
+.house-part .house-on {
+  opacity: 0;
+  transition: opacity 240ms var(--ease-quiet, ease-out);
+}
+.house-part[data-state="none"] .house-none {
+  opacity: 1;
+}
+.house-mini .house-part[data-state="none"] .house-none {
+  opacity: 0.35;
+}
+.house-part[data-state="off"] .house-off {
+  opacity: 0.45;
+}
+.house-part[data-state="on"] .house-on {
+  opacity: 1;
+}
+
+/* A line that appears or drops off in the breakdown: its row opens or
+   closes over 200 ms, by grid rows, so nothing jumps. */
+.quote-row {
+  display: grid;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 200ms var(--ease-quiet, ease-out),
+    opacity 200ms var(--ease-quiet, ease-out);
+}
+.quote-row[data-shown="false"] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.quote-row > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* A switch's thumb. */
+.quote-switch-thumb {
+  transition: transform 150ms var(--ease-quiet, ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .house-part .house-none,
+  .house-part .house-off,
+  .house-part .house-on {
+    transition-duration: 100ms;
+  }
+  .quote-row {
+    transition: opacity 100ms linear;
+  }
+  .quote-switch-thumb {
+    transition: none;
+  }
+}
