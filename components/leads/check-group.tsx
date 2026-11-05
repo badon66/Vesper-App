@@ -59,14 +59,18 @@ export function CheckGroup<T extends string>({
               key={option.value}
               data-answer={option.value}
               className={cn(
-                "flex min-h-12 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 py-1 text-center font-semibold transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
-                size === "sheet" ? "text-sm min-[420px]:min-h-14 min-[420px]:text-base" : "text-base",
+                "flex min-h-12 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-2 py-1 text-center text-base leading-tight font-semibold transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
+                size === "sheet" && "min-[420px]:min-h-14 min-[420px]:text-lg",
                 on && "border-foreground bg-foreground text-background",
               )}
             >
               <input type="checkbox" name={name} value={option.value} checked={on} onChange={() => toggle(option.value)} className="sr-only" />
-              {on ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
-              {option.label}
+              {/* The same type and tick as a one-tap answer: the tick runs in
+                  the words' own line, so choosing never moves them. */}
+              <span>
+                {on ? <Check aria-hidden="true" className="mr-1 inline-block size-4 align-[-0.15em]" /> : null}
+                {option.label}
+              </span>
             </label>
           );
         })}

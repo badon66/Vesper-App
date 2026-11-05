@@ -58,11 +58,13 @@ export function stepOf(screen: SheetScreen): StepKey {
   return STEPS.find((step) => step.screens.includes(screen))?.key ?? "door";
 }
 
-// "Step 3 of 6, 4 to finish": where the setter is, and how many steps still
-// need something (round 3: a step can be passed with answers missing).
+// "Step 3 of 6, 7 to answer": where the setter is, and how many answers are
+// still missing on all the steps (round 3: a step can be passed with answers
+// missing). The same count as Book's button, "7 left to answer", so the two
+// never disagree.
 export function stepCount(screen: SheetScreen, draft: SheetDraft): { number: number; total: number; left: number } {
   const number = SCREENS.indexOf(screen) + 1;
-  return { number, total: SCREENS.length, left: SCREENS.filter((item) => screenMissing(item, draft).length > 0).length };
+  return { number, total: SCREENS.length, left: sheetMissing(draft).length };
 }
 
 // Everything the sheet asks, held on the phone until the lead is saved.

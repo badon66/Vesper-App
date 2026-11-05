@@ -2,7 +2,7 @@
 
 import { Check, ChevronRight } from "lucide-react";
 import { useEffect, useState, type RefObject } from "react";
-import { AddressField } from "@/components/leads/address-field";
+import { AddressField, type AddressFieldValue } from "@/components/leads/address-field";
 import { AnswerGroup, NotCollectedToggle } from "@/components/leads/answer-group";
 import { CheckGroup } from "@/components/leads/check-group";
 import { PhotoSlots } from "@/components/leads/photo-slots";
@@ -37,7 +37,6 @@ import { HOUSE_TYPE_OPTIONS, SOFFIT_OPTIONS, type HouseType, type SoffitColour }
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/client";
 import { formatPhone, normalizePhone } from "@/lib/phone";
-import { formatMeetingTime } from "@/lib/schedule/meetings";
 import { PHOTO_SKIP_OPTIONS, type PhotoSkip } from "@/lib/schedule/readiness";
 
 type Change = (patch: Partial<SheetDraft>) => void;
@@ -245,7 +244,7 @@ export function QuestionsScreen({
           <CheckGroup
             name="sheet-hot-buttons"
             legend={HOT_BUTTONS_LABEL}
-            hint="(optional, any that apply)"
+            hint="(optional, pick any)"
             options={HOT_BUTTON_OPTIONS}
             exclusive="not_sure"
             size="sheet"
@@ -269,6 +268,9 @@ export function AddressScreen({
   duplicates,
   onPicked,
   onEdited,
+  onValue,
+  onWorking,
+  onLocateFailed,
   onChange,
 }: {
   draft: SheetDraft;
@@ -277,6 +279,9 @@ export function AddressScreen({
   duplicates: DuplicateLead[];
   onPicked: (picked: PickedAddress | null) => void;
   onEdited: (value: { addressLine: string; positioned: boolean }) => void;
+  onValue: (value: AddressFieldValue) => void;
+  onWorking: (working: boolean) => void;
+  onLocateFailed: (title: string) => void;
   onChange: Change;
 }) {
   return (
@@ -286,10 +291,13 @@ export function AddressScreen({
           apiKey={apiKey}
           linkLeads={false}
           leadId={draft.leadId}
-          place="house"
+          place="door"
           fallbackNeighbourhood={draft.neighbourhood || null}
           onPicked={onPicked}
           onEdited={onEdited}
+          onValue={onValue}
+          onWorking={onWorking}
+          onLocateFailed={onLocateFailed}
           defaults={{
             addressLine: draft.address_line,
             city: draft.city,
@@ -356,7 +364,7 @@ export function AddressScreen({
         name="sheet-house-type"
         legend="House type (optional)"
         options={HOUSE_TYPE_OPTIONS}
-        columns={4}
+        columns={2}
         size="sheet"
         value={draft.house_type}
         onChange={(next) => onChange({ house_type: next as HouseType | null })}
@@ -502,14 +510,12 @@ export function PhotosScreen({
 export function BookScreen({
   draft,
   name,
-  heldAt,
   warnings,
   onFix,
   onKeepAsLead,
 }: {
   draft: SheetDraft;
   name: string;
-  heldAt: string | null;
   warnings: string[];
   onFix: (screen: SheetScreen) => void;
   onKeepAsLead: () => void;
@@ -521,8 +527,9 @@ export function BookScreen({
   return (
     <div className="flex flex-col gap-4">
       <div data-testid="sheet-summary" className="flex flex-col gap-0.5">
+        {/* The time is in the header, with its countdown, so it isn't said
+            twice: the room goes to the list of what's missing. */}
         <p className="text-lg font-bold text-balance min-[420px]:text-xl">{name}</p>
-        {heldAt ? <p className="text-base font-semibold min-[420px]:text-lg">{formatMeetingTime(heldAt)}</p> : null}
         <p className="text-sm text-pretty text-muted-foreground min-[420px]:text-base">
           {[draft.address_line, draft.neighbourhood].filter(Boolean).join(", ") || "No address yet"}
         </p>
@@ -539,8 +546,8 @@ export function BookScreen({
         </h3>
         {elsewhere.length > 0 ? (
           <ul className="flex flex-col" data-testid="readiness">
-            {elsewhere.map((item) => (
-              <MissingRow key={`${item.screen}-${item.key}`} item={item} onFix={onFix} />
+            {groupByStep(elsewhere).map((group) => (
+              <MissingRow key={group.screen} group={group} onFix={onFix} />
             ))}
           </ul>
         ) : (
@@ -625,22 +632,33 @@ export function BookPhone({ draft, onChange, onAnswer }: { draft: SheetDraft; on
   );
 }
 
-// One thing still missing, with a tap to the step that asks it.
-function MissingRow({ item, onFix }: { item: MissingItem; onFix: (screen: SheetScreen) => void }) {
+// What's still missing, one row per step in the order of the visit, so the
+// list stays short enough to see whole on a 390-wide phone.
+type MissingGroup = { screen: SheetScreen; items: MissingItem[] };
+function groupByStep(items: MissingItem[]): MissingGroup[] {
+  const order = Object.keys(STEP_NAMES) as SheetScreen[];
+  return order
+    .map((screen) => ({ screen, items: items.filter((item) => item.screen === screen) }))
+    .filter((group) => group.items.length > 0);
+}
+
+// A step's missing things, with a tap to that step.
+function MissingRow({ group, onFix }: { group: MissingGroup; onFix: (screen: SheetScreen) => void }) {
+  const labels = group.items.map((item) => item.label).join(", ");
   return (
-    <li data-ok="no" data-item={item.key}>
+    <li data-ok="no" data-item={group.items[0].key} data-items={group.items.map((item) => item.key).join(" ")} data-step={group.screen}>
       <button
         type="button"
-        onClick={() => onFix(item.screen)}
-        className="flex min-h-11 w-full items-center justify-between gap-3 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring min-[420px]:min-h-12 min-[420px]:text-base"
-        aria-label={`${item.label}: go to ${STEP_NAMES[item.screen]}`}
+        onClick={() => onFix(group.screen)}
+        className="flex min-h-11 w-full items-center justify-between gap-3 py-1 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring min-[420px]:min-h-12 min-[420px]:text-base"
+        aria-label={`${labels}: go to ${STEP_NAMES[group.screen]}`}
       >
-        <span className="flex items-center gap-2">
+        <span className="flex min-w-0 items-center gap-2">
           <span aria-hidden="true" className="size-4 shrink-0 rounded-full border-2 border-muted-foreground" />
-          <span className="font-semibold">{item.label}</span>
+          <span className="font-semibold text-pretty">{labels}</span>
         </span>
-        <span className="flex items-center gap-1 text-muted-foreground">
-          {STEP_NAMES[item.screen]}
+        <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
+          {STEP_NAMES[group.screen]}
           <ChevronRight aria-hidden="true" className="size-4 shrink-0" />
         </span>
       </button>

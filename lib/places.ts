@@ -214,13 +214,15 @@ export function nearestFromReverse(json: unknown, lat: number, lng: number, fall
     fallbackNeighbourhood,
   );
   if (!picked) return null;
-  const numbered = Boolean(street.addressComponents?.some((part) => part.types?.includes("street_number")));
+  // Exact when the line filled in has a house number, whatever kind of
+  // answer it came from (a show home can come back as a point of interest).
+  const number = street.addressComponents?.find((part) => part.types?.includes("street_number"))?.longText?.trim();
   return {
     addressLine: picked.addressLine,
     city: picked.city,
     postalCode: picked.postalCode,
     neighbourhood: picked.neighbourhood,
-    exact: Boolean(house) && numbered,
+    exact: Boolean(number) && picked.addressLine.startsWith(`${number} `),
   };
 }
 

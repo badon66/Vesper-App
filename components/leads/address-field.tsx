@@ -28,6 +28,18 @@ export type AddressDefaults = {
   accuracy?: number | null;
 };
 
+// Everything the field holds, as the booking sheet keeps it in its draft.
+export type AddressFieldValue = {
+  addressLine: string;
+  city: string;
+  postalCode: string;
+  lat: number | null;
+  lng: number | null;
+  placeId: string | null;
+  positionSource: "picked" | "device" | null;
+  accuracy: number | null;
+};
+
 // Picked from the suggestions, or the phone's own position at the door for
 // a brand-new street Google doesn't have yet.
 type Position = {
@@ -51,6 +63,9 @@ export function AddressField({
   error,
   onPicked,
   onEdited,
+  onValue,
+  onWorking,
+  onLocateFailed,
   leadId = null,
   linkLeads = true,
   place = "door",
@@ -63,6 +78,13 @@ export function AddressField({
   // Each change to the typed address or its map position, so the booking
   // sheet knows when its address step is done.
   onEdited?: (value: { addressLine: string; positioned: boolean }) => void;
+  // Round 3, for the booking sheet: every change to what the field holds,
+  // straight away, so a position or nearest address that lands after the
+  // setter moves on still counts; whether it is still finding a position or
+  // looking up an address; and why Use where I'm standing found nothing.
+  onValue?: (value: AddressFieldValue) => void;
+  onWorking?: (working: boolean) => void;
+  onLocateFailed?: (title: string) => void;
   leadId?: string | null;
   // Where the person is standing when it's used: a setter at the door, or
   // Keenan at the house for a meeting nobody booked.
@@ -96,7 +118,12 @@ export function AddressField({
   // knows, filled in for the setter to check, or offered when something is
   // already typed.
   const [nearest, setNearest] = useState<{ state: "looking" | "filled" | "offered" | "none"; address: NearestAddress | null } | null>(null);
+  const [locating, setLocating] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const report = useRef({ onValue, onWorking });
+  useEffect(() => {
+    report.current = { onValue, onWorking };
+  });
   const token = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const request = useRef<AbortController | null>(null);
@@ -109,6 +136,29 @@ export function AddressField({
       pending.current?.abort();
     };
   }, []);
+
+  // What the field holds, reported on every change after the first render.
+  const reported = useRef(false);
+  useEffect(() => {
+    if (!reported.current) {
+      reported.current = true;
+      return;
+    }
+    report.current.onValue?.({
+      addressLine: text,
+      city,
+      postalCode,
+      lat: position?.lat ?? null,
+      lng: position?.lng ?? null,
+      placeId: position?.placeId ?? null,
+      positionSource: position?.source ?? null,
+      accuracy: position?.accuracy ?? null,
+    });
+  }, [text, city, postalCode, position]);
+  const working = locating || picking || nearest?.state === "looking";
+  useEffect(() => {
+    report.current.onWorking?.(working);
+  }, [working]);
 
   function search(value: string) {
     if (timer.current) clearTimeout(timer.current);
@@ -352,6 +402,8 @@ export function AddressField({
           ) : null}
           <UseMyPosition
             onPosition={useDevicePosition}
+            onFinding={setLocating}
+            onFailed={onLocateFailed}
             label={position ? "Take the position again" : "Use where I'm standing"}
             place={place}
           />

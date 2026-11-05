@@ -96,6 +96,11 @@ describe("The nearest address to a position", () => {
     expect(nearestFromReverse({ results: [street] }, 51.17, -114.11, "Evanston")).toMatchObject({ addressLine: "Evanston Way NW", exact: false, neighbourhood: "Evanston" });
   });
 
+  it("calls a numbered answer exact even when Google files it as a place, like a show home", () => {
+    const showHome = { ...house, placeId: "show", types: ["establishment", "point_of_interest"] };
+    expect(nearestFromReverse({ results: [showHome] }, 51.17, -114.11)).toMatchObject({ addressLine: "123 Evanston Way NW", exact: true });
+  });
+
   it("gives nothing when no answer names a street", () => {
     expect(nearestFromReverse({ results: [{ placeId: "x", types: ["locality"], addressComponents: [component(["locality"], "Calgary")] }] }, 51, -114)).toBeNull();
     expect(nearestFromReverse({}, 51, -114)).toBeNull();

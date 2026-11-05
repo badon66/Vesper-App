@@ -1,6 +1,6 @@
 "use client";
 
-import { LoaderCircle, LocateFixed } from "lucide-react";
+import { Check, LoaderCircle, LocateFixed } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { DevicePosition } from "@/lib/geo";
@@ -26,10 +26,17 @@ import {
 // below the fold of a step.
 export function UseMyPosition({
   onPosition,
+  onFinding,
+  onFailed,
   label = "Use where I'm standing",
   place = "door",
 }: {
   onPosition: (position: DevicePosition) => void;
+  // While it listens, so the booking sheet keeps the step alive if the
+  // setter moves on before it ends (round 3).
+  onFinding?: (finding: boolean) => void;
+  // How it ended when it didn't find a position: the first line of the reason.
+  onFailed?: (title: string) => void;
   label?: string;
   // A setter's phone at the door, or Keenan's device at the house.
   place?: "door" | "house";
@@ -39,9 +46,9 @@ export function UseMyPosition({
   const deadline = useRef<number | null>(null);
   const live = useRef<LocateState>(IDLE);
   const statusRef = useRef<HTMLDivElement>(null);
-  const deliver = useRef(onPosition);
+  const deliver = useRef({ onPosition, onFinding, onFailed });
   useEffect(() => {
-    deliver.current = onPosition;
+    deliver.current = { onPosition, onFinding, onFailed };
   });
   const device = place === "house" ? "device" : "phone";
 
@@ -54,14 +61,18 @@ export function UseMyPosition({
 
   function apply(next: LocateState) {
     if (next === live.current) return;
+    const wasFinding = live.current.kind === "finding";
     live.current = next;
     setState(next);
+    if (next.kind === "finding" && !wasFinding) deliver.current.onFinding?.(true);
     if (next.kind === "found") {
       stop();
-      deliver.current(next.position);
+      deliver.current.onPosition(next.position);
     } else if (next.kind === "failed") {
       stop();
+      deliver.current.onFailed?.(failureMessage(next.reason, next.best, device).title);
     }
+    if (next.kind !== "finding" && wasFinding) deliver.current.onFinding?.(false);
   }
 
   // Location stops on an iPhone while the app is in the background: say so
@@ -106,14 +117,32 @@ export function UseMyPosition({
   const finding = state.kind === "finding";
   const failed = state.kind === "failed" ? failureMessage(state.reason, state.best, device) : null;
 
+  // While it listens the button stays at full strength, so it plainly is
+  // working at dusk, and a second tap does nothing rather than start over.
   return (
     <div className="flex flex-col gap-2" data-testid="use-my-position" data-state={state.kind}>
-      <Button type="button" variant="outline" className="min-h-11 w-full sm:w-fit" disabled={finding} onClick={locate}>
+      <Button
+        type="button"
+        variant="outline"
+        className="min-h-11 w-full sm:w-fit"
+        aria-disabled={finding || undefined}
+        onClick={() => {
+          if (!finding) locate();
+        }}
+      >
         {finding ? <LoaderCircle aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <LocateFixed aria-hidden="true" />}
-        {finding ? "Finding where you are" : failed ? "Try again" : label}
+        {finding ? "Listening, up to 15 seconds" : failed ? "Try again" : label}
       </Button>
       <div ref={statusRef} aria-live="polite" className="scroll-mb-24" data-testid="position-status">
         {finding ? <p className="text-sm font-semibold text-pretty">{findingText(state.best)}</p> : null}
+        {/* The result where the setter was looking; the hint by the address
+            says how accurate it is. */}
+        {state.kind === "found" ? (
+          <p className="flex items-center gap-1.5 text-sm font-semibold text-pretty">
+            <Check aria-hidden="true" className="size-4 shrink-0" />
+            Position saved. Check the address above.
+          </p>
+        ) : null}
         {failed ? (
           <div className="flex flex-col gap-1 rounded-md border border-foreground/60 px-3 py-2 text-sm" data-testid="position-problem">
             <p className="font-semibold text-pretty">{failed.title}</p>

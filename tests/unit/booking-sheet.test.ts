@@ -81,12 +81,15 @@ describe("The booking sheet's steps", () => {
     expect(LEARNED_QUESTIONS).toEqual(["christmas_lights_now", "looked_into_before", "areas_wanted", "install_timing"]);
   });
 
-  it("counts the steps that still need something, wherever the setter is (round 3)", () => {
-    expect(stepCount("who", emptyDraft())).toEqual({ number: 1, total: 6, left: 6 });
-    expect(stepCount("learned", emptyDraft())).toEqual({ number: 3, total: 6, left: 6 });
+  it("counts the answers still missing on every step, the same count as Book's button (round 3)", () => {
+    const empty = emptyDraft();
+    expect(stepCount("who", empty)).toEqual({ number: 1, total: 6, left: sheetMissing(empty).length });
+    expect(stepCount("learned", empty)).toEqual({ number: 3, total: 6, left: sheetMissing(empty).length });
+    expect(bookNeed(empty)).toBe(`${sheetMissing(empty).length} left to answer`);
     expect(stepCount("book", ready())).toEqual({ number: 6, total: 6, left: 0 });
-    // A step passed with an answer missing still counts.
+    // An answer missing on a step already passed still counts.
     expect(stepCount("book", { ...ready(), install_timing: null })).toEqual({ number: 6, total: 6, left: 1 });
+    expect(stepCount("book", { ...ready(), install_timing: null, looked_into_before: null })).toEqual({ number: 6, total: 6, left: 2 });
   });
 
   it("walks a new person through every screen, in order", () => {

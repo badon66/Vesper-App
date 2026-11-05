@@ -366,6 +366,16 @@ function BookingSheet({
   // was opened from Book's list, so Next goes back to Book.
   const [visited, setVisited] = useState<SheetScreen[]>(() => (isScreen(start.view) ? [start.view] : []));
   const [fromBook, setFromBook] = useState(false);
+  // The address step stays alive out of sight while Use where I'm standing
+  // is still listening or the nearest address is on its way, so a result
+  // that lands after Next or a swipe still counts (round 3); and after it
+  // failed out of sight, until the setter goes back to see why.
+  const [addressWorking, setAddressWorking] = useState(false);
+  const [addressFailedAway, setAddressFailedAway] = useState(false);
+  const viewNow = useRef(view);
+  useEffect(() => {
+    viewNow.current = view;
+  });
   const mapsKey = getPublicEnv().NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? null;
   const holdMinutes = context?.holdMinutes ?? DEFAULT_HOLD_MINUTES;
 
@@ -458,7 +468,7 @@ function BookingSheet({
           setView("not-bookable");
           if (request.kind === "draft") saveDrafts(userId, removeDraft(loadDrafts(userId), request.draftId));
         }
-      });
+      }, () => {});
     }
     return () => {
       cancelled = true;
@@ -472,6 +482,7 @@ function BookingSheet({
   }, [view]);
 
   if (isScreen(view) && !visited.includes(view)) setVisited([...visited, view]);
+  if (view === "address" && addressFailedAway) setAddressFailedAway(false);
 
   // ------------------------------------------------------------ the hold
   const explainLost = useCallback(
@@ -796,15 +807,19 @@ function BookingSheet({
     setView(next);
   }
 
-  // A tap on one of Book's missing things: that step, with Next back to Book.
+  // A tap on one of Book's missing things: that step, with Next back to
+  // Book, and the first thing it still needs brought into view and outlined
+  // for a moment, once the step has opened at its top.
   function fixFromBook(screen: SheetScreen) {
     keepAddress();
     if (screen === "book") {
       showMissing("book", draft);
       return;
     }
+    const current = draft;
     go(screen);
     setFromBook(true);
+    window.setTimeout(() => showMissing(screen, current, false), 80);
   }
 
   function readAddressForm(current: SheetDraft): SheetDraft {
@@ -848,9 +863,23 @@ function BookingSheet({
     // later try, after a reload or from Unfinished too, sends the same key
     // and gets back the lead the first try made instead of a copy.
     let keyed = current;
-    if (!current.leadId && !current.saveKey) {
+    // A saved lead's draft kept before round 3 never asked the optional
+    // answers: they come from the lead before anything is saved, so a save
+    // can never blank them. If that read can't be made, nothing is saved.
+    if (current.leadId && current.extras === false) {
+      const lead = await sheetLead(current.leadId).catch(() => null);
+      if (!lead?.ok) {
+        saveError.current = { text: SLOW, fix: null };
+        setError(saveError.current);
+        return null;
+      }
+      const extras = { house_type: lead.draft.house_type, setter_read: lead.draft.setter_read, hot_buttons: lead.draft.hot_buttons, confirm_by: lead.draft.confirm_by, extras: true };
+      keyed = { ...current, ...extras };
+      setDraft((latest) => (latest.extras === false ? { ...latest, ...extras } : latest));
+    }
+    if (!keyed.leadId && !keyed.saveKey) {
       const saveKey = crypto.randomUUID();
-      keyed = { ...current, saveKey };
+      keyed = { ...keyed, saveKey };
       setDraft((draft) => (draft.leadId || draft.saveKey ? draft : { ...draft, saveKey }));
     }
     let result: Awaited<ReturnType<typeof saveSheetLead>>;
@@ -1118,11 +1147,9 @@ function BookingSheet({
       go("times");
       return;
     }
+    // Back is always the step before, even on a step opened from Book's
+    // list, where Next is the way back to Book.
     if (isScreen(view)) {
-      if (fromBook) {
-        go("book");
-        return;
-      }
       const previous = previousScreen(view);
       if (previous) go(previous);
     }
@@ -1608,21 +1635,46 @@ function BookingSheet({
                 onChange={change}
               />
             ) : null}
-            {view === "address" ? (
-              <AddressScreen
-                draft={draft}
-                formRef={addressFormRef}
-                apiKey={mapsKey}
-                duplicates={duplicates}
-                onChange={change}
-                onEdited={setAddressLive}
-                onPicked={(picked) => {
-                  pickedRef.current = picked;
-                  setError(null);
-                  if (picked) findLeadsAtPlace(picked.placeId, draft.leadId).then(setDuplicates, () => setDuplicates([]));
-                  else setDuplicates([]);
-                }}
-              />
+            {view === "address" || (!settled && (addressWorking || addressFailedAway)) ? (
+              <div hidden={view !== "address"} data-testid="sheet-address-step">
+                <AddressScreen
+                  draft={draft}
+                  formRef={addressFormRef}
+                  apiKey={mapsKey}
+                  duplicates={duplicates}
+                  onChange={change}
+                  onEdited={setAddressLive}
+                  // Every change goes straight into the draft, so the counter,
+                  // Book's list and a later save always see the address as
+                  // it is, even when it lands after the setter moved on.
+                  onValue={(value) =>
+                    setDraft((current) => ({
+                      ...current,
+                      address_line: value.addressLine,
+                      city: value.city || "Calgary",
+                      postal_code: value.postalCode,
+                      neighbourhood: pickedRef.current?.neighbourhood ?? current.neighbourhood,
+                      lat: value.lat,
+                      lng: value.lng,
+                      place_id: value.placeId,
+                      position_source: value.positionSource,
+                      position_accuracy_m: value.accuracy,
+                    }))
+                  }
+                  onWorking={setAddressWorking}
+                  onLocateFailed={(title) => {
+                    if (viewNow.current === "address") return;
+                    setAddressFailedAway(true);
+                    setError({ text: `Where you're standing wasn't found. ${title}`, fix: "address" });
+                  }}
+                  onPicked={(picked) => {
+                    pickedRef.current = picked;
+                    setError(null);
+                    if (picked) findLeadsAtPlace(picked.placeId, draft.leadId).then(setDuplicates, () => setDuplicates([]));
+                    else setDuplicates([]);
+                  }}
+                />
+              </div>
             ) : null}
             {view === "house" ? (
               <PhotosScreen
@@ -1640,7 +1692,6 @@ function BookingSheet({
               <BookScreen
                 draft={draft}
                 name={personName}
-                heldAt={heldAt}
                 warnings={warnings}
                 onFix={fixFromBook}
                 onKeepAsLead={() => void keepAsLead()}
@@ -1813,7 +1864,7 @@ function MenuItem({ onClick, children }: { onClick: () => void; children: React.
 }
 
 // The steps as one bar of segments, grouped by part of the visit, with
-// "Step 3 of 6, 4 to finish" beside it. Round 3: a step the setter has been
+// "Step 3 of 6, 7 to answer" beside it (the same count as Book's button). Round 3: a step the setter has been
 // on and left with something missing carries a small marker under its
 // segment. It never blocks: Book lists what's missing.
 function Progress({ screen, draft, visited }: { screen: SheetScreen; draft: SheetDraft; visited: SheetScreen[] }) {
@@ -1835,7 +1886,7 @@ function Progress({ screen, draft, visited }: { screen: SheetScreen; draft: Shee
       </ol>
       <p className="shrink-0 text-sm font-semibold tabular-nums min-[420px]:text-base" data-testid="sheet-step-count">
         Step {number} of {total}
-        {left > 0 ? <span className="font-normal text-muted-foreground">, {left} to finish</span> : null}
+        {left > 0 ? <span className="font-normal text-muted-foreground">, {left} to answer</span> : null}
       </p>
       {marked.length > 0 ? (
         <span className="sr-only">

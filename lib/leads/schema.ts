@@ -115,9 +115,11 @@ export const leadFormSchema = z
       .max(5)
       .optional()
       .transform((values) => {
-        const unique = Array.from(new Set(values ?? []));
+        // Always in the list's own order, whatever order they were tapped
+        // in, so a save with the same ones never shows on the timeline.
+        const chosen = Constants.public.Enums.hot_button.filter((value) => (values ?? []).includes(value));
         // Not sure stands alone: it gives way to any real hot button.
-        return unique.length > 1 ? unique.filter((value) => value !== "not_sure") : unique;
+        return chosen.length > 1 ? chosen.filter((value) => value !== "not_sure") : chosen;
       }),
     confirm_by: z.preprocess((value) => value ?? "", optionalEnum(Constants.public.Enums.confirm_by)),
     soffit_colour: optionalEnum(OFFERED_SOFFIT_COLOURS),

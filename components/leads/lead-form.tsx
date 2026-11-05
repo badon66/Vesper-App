@@ -534,7 +534,7 @@ export function LeadForm({
 
       <ChoiceGroup
         name="house_type"
-        legend="House type"
+        legend="House type (optional)"
         options={HOUSE_TYPE_OPTIONS}
         defaultValue={shown?.house_type}
         error={errors.house_type}

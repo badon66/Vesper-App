@@ -80,7 +80,7 @@ try {
     check("the moment it's tapped, it says it's finding where you are", atOnce.startsWith("Finding where you are"), atOnce);
     await page.waitForFunction(() => document.querySelector('[data-testid="position-status"]')?.textContent?.includes("220 m so far"), null, { timeout: 8000 }).catch(() => {});
     const rough = await status(page);
-    check("a rough first reading isn't turned away: it shows how close it is and keeps listening", rough.includes("about 220 m so far, getting closer") && (await button(page).isDisabled()), rough);
+    check("a rough first reading isn't turned away: it shows how close it is and keeps listening", rough.includes("about 220 m so far, getting closer") && (await button(page).getAttribute("aria-disabled")) === "true" && (await button(page).innerText()).includes("up to 15 seconds"), rough);
     await context.setGeolocation({ ...CALGARY, accuracy: 8 });
     await page.getByText(/Position saved from this phone at the door, accurate to about 8 m\./).waitFor({ timeout: 15000 });
     const took = Date.now() - started;

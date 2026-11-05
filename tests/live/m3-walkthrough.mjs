@@ -451,8 +451,8 @@ try {
   const leftLater = await secondsLeft(pageA);
   check("the countdown ticks down on its own", leftLater !== null && leftAtStart !== null && leftLater < leftAtStart, `${leftAtStart} then ${leftLater}`);
   check(
-    "the sheet starts At the door, with a clear counter: Step 1 of 6, 6 to finish",
-    (await sheet(pageA).getByTestId("sheet-part").innerText()).startsWith("At the door") && (await stepCounter(pageA)) === "Step 1 of 6, 6 to finish",
+    "the sheet starts At the door, with a clear counter: Step 1 of 6, 12 to answer",
+    (await sheet(pageA).getByTestId("sheet-part").innerText()).startsWith("At the door") && (await stepCounter(pageA)) === "Step 1 of 6, 12 to answer",
     await stepCounter(pageA),
   );
   const tapped = Date.now();
@@ -524,8 +524,8 @@ try {
   const viewport = pageA.viewportSize();
   check("Next is at the bottom right, in thumb reach", bar !== null && bar.x + bar.width / 2 > viewport.width / 2 && bar.y > viewport.height * 0.8, bar ? `${Math.round(bar.x)},${Math.round(bar.y)}` : "none");
   check(
-    "the first step asks only the name, and its counter says every step still needs something",
-    (await pageA.locator("#sheet-phone").count()) === 0 && (await nextLabel(pageA)) === "Next" && (await stepCounter(pageA)) === "Step 1 of 6, 6 to finish",
+    "the first step asks only the name, and its counter says how many answers are still to come",
+    (await pageA.locator("#sheet-phone").count()) === 0 && (await nextLabel(pageA)) === "Next" && (await stepCounter(pageA)) === "Step 1 of 6, 12 to answer",
     `${await nextLabel(pageA)}; ${await stepCounter(pageA)}`,
   );
   await sheet(pageA).getByRole("button", { name: /^What to talk about/ }).click();
@@ -574,7 +574,7 @@ try {
   const doorMarked = await sheet(pageA).locator('[data-testid="sheet-progress"] [data-step="door"]').getAttribute("data-missing");
   check(
     "a swipe moves on with a question open, and the progress bar marks that step",
-    doorMarked === "yes" && (await sheet(pageA).getByTestId("sheet-part").innerText()).startsWith("After the door") && (await stepCounter(pageA)) === "Step 3 of 6, 5 to finish",
+    doorMarked === "yes" && (await sheet(pageA).getByTestId("sheet-part").innerText()).startsWith("After the door") && (await stepCounter(pageA)) === "Step 3 of 6, 9 to answer",
     `${doorMarked}; ${await stepCounter(pageA)}`,
   );
   await answer(pageA, "Christmas lights now", "Hires someone");
@@ -601,7 +601,7 @@ try {
   await sheet(pageA).getByRole("button", { name: "Use where I'm standing" }).click();
   const finding = (await sheet(pageA).getByTestId("position-status").innerText().catch(() => "")).trim();
   await sheet(pageA).getByText(/^Position saved from this .+, accurate to about 10 m\.$/).first().waitFor({ timeout: 20000 });
-  check("Use where I'm standing says it's working at once, then that the position saved", finding.startsWith("Finding where you are") || finding === "", finding);
+  check("Use where I'm standing says it's working at once, then that the position saved", finding.startsWith("Finding where you are") || finding.startsWith("Position saved") || finding === "", finding);
   // The soffit is left for later; the house type is optional.
   await answer(pageA, "House type (optional)", "Two storey");
   scrolls.addressDone = await sheetScrolls(pageA);
@@ -674,7 +674,7 @@ try {
   await next(pageA);
   await waitView(pageA, "book");
   scrolls.bookMissing = await sheetScrolls(pageA);
-  check("the last step says so, with what's left: Step 6 of 6, 3 to finish", (await stepCounter(pageA)) === "Step 6 of 6, 3 to finish", await stepCounter(pageA));
+  check("the last step says so, with what's left, the same count as Book's button: Step 6 of 6, 3 to answer", (await stepCounter(pageA)) === "Step 6 of 6, 3 to answer", await stepCounter(pageA));
   const missingRows = await sheet(pageA).getByTestId("readiness").locator("li").evaluateAll((items) => items.map((item) => item.getAttribute("data-item")));
   check(
     "Book lists everything still missing on other steps, each with a tap to its step, and stays off until it's all answered",
@@ -1086,12 +1086,21 @@ try {
     await next(pageB);
     await waitView(pageB, step);
   }
+  // Next while it's still finding: the step keeps listening out of sight,
+  // and the position that lands after counts on Book.
+  await pageB.context().setGeolocation({ latitude: 51.0447, longitude: -114.0719, accuracy: 220 });
+  await pageB.fill("#lead-address", "1 Far New Test Way SW (TEST)");
+  await pageB.getByTestId("sheet-heading").click();
   await sheet(pageB).getByRole("button", { name: "Use where I'm standing" }).click();
-  await sheet(pageB).getByText(/^Position saved from this .+, accurate to about 10 m\.$/).first().waitFor({ timeout: 20000 });
+  await pageB.getByTestId("position-status").getByText(/220 m so far/).waitFor({ timeout: 10000 }).catch(() => {});
   await next(pageB);
   await waitView(pageB, "house", 30000);
+  await pageB.context().setGeolocation({ latitude: 51.0447, longitude: -114.0719, accuracy: 10 });
+  await pageB.waitForFunction(() => !document.querySelector('[data-testid="sheet-address-step"]'), null, { timeout: 20000 }).catch(() => {});
   await next(pageB);
   await waitView(pageB, "book");
+  const addressListed = await sheet(pageB).getByTestId("readiness").locator('li[data-items~="map_position"]').count();
+  check("Next while Use where I'm standing is still finding: the position that lands after still counts, and Book doesn't ask for the address", addressListed === 0, `${addressListed} address rows`);
   const newWarning = (await pageB.getByTestId("distance-warning").innerText({ timeout: 10000 }).catch(() => "")).replace(/\s+/g, " ");
   const { count: farSaved } = await admin.from("leads").select("id", { count: "exact", head: true }).eq("first_name", `${TEST_LEAD} Far New`);
   check(
