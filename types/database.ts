@@ -1217,6 +1217,9 @@ export type Database = {
           booking_pay: number
           booking_window_days: number
           box_price: number
+          christmas_banner_on: boolean
+          christmas_banner_text: string
+          christmas_banner_title: string
           commission_rate: number
           company: Json
           distance_warning_km: number
@@ -1240,6 +1243,7 @@ export type Database = {
           presentation: Json
           price_hold_days: number
           price_per_ft: number
+          product_points: Json
           quote_valid_days: number
           referral_credit: number
           rush_colour_fee: number | null
@@ -1258,6 +1262,9 @@ export type Database = {
           booking_pay?: number
           booking_window_days?: number
           box_price?: number
+          christmas_banner_on?: boolean
+          christmas_banner_text?: string
+          christmas_banner_title?: string
           commission_rate?: number
           company: Json
           distance_warning_km?: number
@@ -1281,6 +1288,7 @@ export type Database = {
           presentation: Json
           price_hold_days?: number
           price_per_ft?: number
+          product_points?: Json
           quote_valid_days?: number
           referral_credit?: number
           rush_colour_fee?: number | null
@@ -1299,6 +1307,9 @@ export type Database = {
           booking_pay?: number
           booking_window_days?: number
           box_price?: number
+          christmas_banner_on?: boolean
+          christmas_banner_text?: string
+          christmas_banner_title?: string
           commission_rate?: number
           company?: Json
           distance_warning_km?: number
@@ -1322,6 +1333,7 @@ export type Database = {
           presentation?: Json
           price_hold_days?: number
           price_per_ft?: number
+          product_points?: Json
           quote_valid_days?: number
           referral_credit?: number
           rush_colour_fee?: number | null
@@ -1887,6 +1899,7 @@ export type Database = {
         }[]
       }
       quote_for_customer: { Args: { p_token: string }; Returns: Json }
+      quote_gallery_signable: { Args: { p_name: string }; Returns: boolean }
       quote_link_book: {
         Args: { p_positions: number[]; p_token: string }
         Returns: Json
