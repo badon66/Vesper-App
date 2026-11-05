@@ -13,6 +13,7 @@ import {
   phoneHref,
   priceHoldPassed,
   christmasSeason,
+  otherColoursLine,
   priceSelection,
   quoteFromRow,
   quoteLinkMessage,
@@ -297,6 +298,27 @@ describe("the reworked page's answer", () => {
       false,
       false,
     ]);
+  });
+
+  it("words the other track colours for the time of year, never promising Christmas after November", () => {
+    expect(otherColoursLine({ season: true, rushFee: 350, rush: false })).toBe(
+      "Any other colour is powder coated: nothing extra if it can wait for spring, or the $350 rush colour fee to have it before Christmas.",
+    );
+    expect(otherColoursLine({ season: true, rushFee: null, rush: false })).toBe(
+      "Any other colour is powder coated: nothing extra if it can wait for spring.",
+    );
+    expect(otherColoursLine({ season: false, rushFee: 350, rush: false })).toBe(
+      "Any other colour is powder coated for a spring install, with colour matching included at no extra cost.",
+    );
+    expect(otherColoursLine({ season: false, rushFee: 350, rush: true })).toBe(
+      "Any other colour is powder coated: nothing extra if it can wait for spring, or the $350 rush colour fee to have it sooner.",
+    );
+    expect(otherColoursLine({ season: false, rushFee: null, rush: true })).toBe(
+      "Any other colour is powder coated for a spring install, with colour matching included at no extra cost.",
+    );
+    for (const season of [false]) {
+      for (const rush of [true, false]) expect(otherColoursLine({ season, rushFee: 350, rush })).not.toMatch(/Christmas/);
+    }
   });
 
   it("holds prices until the date, and only says they may have changed after it", () => {

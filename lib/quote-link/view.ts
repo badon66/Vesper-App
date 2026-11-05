@@ -261,6 +261,26 @@ export function christmasSeason(today: string | null): boolean {
   return month >= 9 && month <= 11;
 }
 
+// The track colour section's line about other colours, in Keenan's words.
+// From September 1 to November 30 the rush colour fee is "to have it before
+// Christmas". From December 1 nothing promises Christmas: the spring option
+// only, colour matching included; a quote Keenan priced for this season
+// still names its fee, "to have it sooner", so the line never contradicts
+// that customer's own breakdown (Keenan, 2026-11-05). A fee that isn't set
+// drops its clause.
+export function otherColoursLine({ season, rushFee, rush }: { season: boolean; rushFee: number | null; rush: boolean }): string {
+  const fee = rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
+  if (season) {
+    return `Any other colour is powder coated: nothing extra if it can wait for spring${
+      fee !== null ? `, or the ${formatMoney(fee)} rush colour fee to have it before Christmas` : ""
+    }.`;
+  }
+  if (rush && fee !== null) {
+    return `Any other colour is powder coated: nothing extra if it can wait for spring, or the ${formatMoney(fee)} rush colour fee to have it sooner.`;
+  }
+  return "Any other colour is powder coated for a spring install, with colour matching included at no extra cost.";
+}
+
 // Whether the price hold has passed: after the valid-until date (Calgary),
 // the page still works and says prices may have changed. Today comes from
 // the database; without it, the hold counts as not passed.
