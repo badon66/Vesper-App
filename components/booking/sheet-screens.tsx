@@ -29,7 +29,7 @@ import {
   type HotButton,
   type SetterRead,
 } from "@/lib/leads/extras";
-import { FIND_OUT_QUESTIONS, type PhotoSlot } from "@/lib/leads/door";
+import { FIND_OUT_QUESTIONS, PHOTO_SLOTS, type PhotoSlot } from "@/lib/leads/door";
 import { EVERYONE_OPTIONS, NOT_COLLECTED, NOT_COLLECTED_LABEL, QUESTION_LABELS, type CountedQuestion } from "@/lib/leads/questions";
 import type { DuplicateLead } from "@/app/(app)/app/leads/actions";
 import type { PickedAddress } from "@/lib/places";
@@ -407,15 +407,17 @@ export function PhotosScreen({
       .then(
         ({ data }) => {
           if (cancelled) return;
+          // A photo whose link couldn't be signed (weak signal) still
+          // counts: it shows as saved without the picture, and is never
+          // dropped from the draft.
           const shown: Partial<Record<PhotoSlot, { path: string; preview: string }>> = {};
           for (const [slot, path] of entries) {
-            const url = data?.find((item) => item.path === path)?.signedUrl;
-            if (url) shown[slot] = { path, preview: url };
+            shown[slot] = { path, preview: data?.find((item) => item.path === path)?.signedUrl ?? "" };
           }
           setInitial(shown);
         },
         () => {
-          if (!cancelled) setInitial({});
+          if (!cancelled) setInitial(Object.fromEntries(entries.map(([slot, path]) => [slot, { path, preview: "" }])));
         },
       );
     return () => {
@@ -437,16 +439,24 @@ export function PhotosScreen({
           saved={photos}
           initial={initial}
           onBusyChange={onBusyChange}
-          onTakenChange={(slots) => {
-            const merged = Array.from(new Set([...draft.photo_slots, ...slots]));
-            if (merged.length !== draft.photo_slots.length) onChange({ photo_slots: merged });
-          }}
+          onTakenChange={
+            saved || local
+              ? (slots) => {
+                  const merged = Array.from(new Set([...draft.photo_slots, ...slots]));
+                  if (merged.length !== draft.photo_slots.length) onChange({ photo_slots: merged });
+                }
+              : undefined
+          }
+          // A person not saved yet: the photos that count are exactly the
+          // uploaded paths the save will attach, so Book's check and the
+          // save always agree.
           onPathsChange={
             saved || local
               ? undefined
               : (paths) => {
-                  if (JSON.stringify(paths) !== JSON.stringify(draft.photo_paths)) {
-                    onChange({ photo_paths: paths, photo_slots: Array.from(new Set([...draft.photo_slots, ...(Object.keys(paths) as PhotoSlot[])])) });
+                  const slots = PHOTO_SLOTS.map(({ slot }) => slot).filter((slot) => paths[slot]);
+                  if (JSON.stringify(paths) !== JSON.stringify(draft.photo_paths) || slots.join() !== draft.photo_slots.join()) {
+                    onChange({ photo_paths: paths, photo_slots: slots });
                   }
                 }
           }
@@ -486,9 +496,9 @@ export function PhotosScreen({
 
 
 // Book, round 3 (Keenan, 2026-11-05): the only gate. It lists everything
-// still missing, each with a tap to its step; says when an answer rules
-// booking out, with Keep as a lead; and holds the phone, asked last, with
-// Call or text to confirm beside it, right above the Book button.
+// still missing, each with a tap to its step, and says when an answer rules
+// booking out, with Keep as a lead. The phone, asked last, is BookPhone,
+// fixed right above the Book button so it's always in view.
 export function BookScreen({
   draft,
   name,
@@ -496,8 +506,6 @@ export function BookScreen({
   warnings,
   onFix,
   onKeepAsLead,
-  onChange,
-  onAnswer,
 }: {
   draft: SheetDraft;
   name: string;
@@ -505,14 +513,10 @@ export function BookScreen({
   warnings: string[];
   onFix: (screen: SheetScreen) => void;
   onKeepAsLead: () => void;
-  onChange: Change;
-  onAnswer: Answer;
 }) {
-  const answers = draftAnswers(draft);
   const missing = sheetMissing(draft);
   const elsewhere = missing.filter((item) => item.screen !== "book");
   const ruledOut = ruledOutTitle(draft, true);
-  const phoneNotCollected = draft.not_collected.includes("phone");
   const photosSkipped = guidedPhotoCount(draft) < 3 && draft.skip !== null && missing.every((item) => item.screen !== "house");
   return (
     <div className="flex flex-col gap-4">
@@ -531,7 +535,7 @@ export function BookScreen({
 
       <section aria-labelledby="sheet-ready-heading" className="flex flex-col gap-1" data-testid="book-checklist" data-missing={missing.length}>
         <h3 id="sheet-ready-heading" className="text-sm font-bold min-[420px]:text-base">
-          {elsewhere.length > 0 ? `Still to answer (${elsewhere.length})` : "Before you book"}
+          {elsewhere.length > 0 ? "Still to answer" : "Before you book"}
         </h3>
         {elsewhere.length > 0 ? (
           <ul className="flex flex-col" data-testid="readiness">
@@ -560,55 +564,64 @@ export function BookScreen({
         </div>
       ) : null}
 
-      {/* Last, right above Book: the number, and how to confirm. */}
-      <section className="mt-auto flex flex-col gap-3 border-t pt-4" data-testid="sheet-phone-block" data-question="sheet-phone">
-        <div className="flex items-center justify-between gap-3">
-          <Label htmlFor="sheet-phone" className="text-base font-semibold min-[420px]:text-lg">
-            Phone
-          </Label>
-          <NotCollectedToggle
-            pressed={phoneNotCollected}
-            size="sheet"
-            label="Phone: Not collected"
-            testId="sheet-phone-not-collected"
-            onToggle={() => onAnswer("phone", phoneNotCollected ? null : NOT_COLLECTED)}
+    </div>
+  );
+}
+
+// The number, asked last (round 3), with how to confirm beside it: fixed
+// above the Book button, outside the step's scrolling, so it's always right
+// there. Not collected rules booking out, as before.
+export function BookPhone({ draft, onChange, onAnswer }: { draft: SheetDraft; onChange: Change; onAnswer: Answer }) {
+  const phoneNotCollected = draft.not_collected.includes("phone");
+  return (
+    <section className="flex flex-col gap-2 pt-1" data-testid="sheet-phone-block" data-question="sheet-phone" aria-label="Phone">
+      <div className="flex items-center justify-between gap-3">
+        <Label htmlFor="sheet-phone" className="text-base font-semibold min-[420px]:text-lg">
+          Phone
+        </Label>
+        <NotCollectedToggle
+          pressed={phoneNotCollected}
+          size="sheet"
+          label="Phone: Not collected"
+          testId="sheet-phone-not-collected"
+          onToggle={() => onAnswer("phone", phoneNotCollected ? null : NOT_COLLECTED)}
+        />
+      </div>
+      <Input
+        id="sheet-phone"
+        type="tel"
+        inputMode="tel"
+        enterKeyHint="done"
+        autoComplete="off"
+        className="min-[420px]:h-14 min-[420px]:text-lg"
+        value={draft.phone}
+        maxLength={40}
+        disabled={phoneNotCollected}
+        placeholder={phoneNotCollected ? NOT_COLLECTED_LABEL : "The best number to confirm"}
+        onChange={(event) => onChange({ phone: event.target.value })}
+        onKeyDown={(event) => nextField(event, null)}
+        onBlur={(event) => {
+          const phone = normalizePhone(event.currentTarget.value);
+          if (phone.ok && phone.e164) onChange({ phone: formatPhone(phone.e164) });
+        }}
+      />
+      <div className="flex items-center gap-3">
+        <span aria-hidden="true" className="shrink-0 text-sm font-semibold min-[420px]:text-base">
+          Confirm by
+        </span>
+        <div className="min-w-0 flex-1">
+          <AnswerGroup
+            name="sheet-confirm-by"
+            legend="Call or text to confirm (optional)"
+            hideLegend
+            options={CONFIRM_BY_OPTIONS}
+            columns={2}
+            value={draft.confirm_by}
+            onChange={(next) => onChange({ confirm_by: next as ConfirmBy | null })}
           />
         </div>
-        <Input
-          id="sheet-phone"
-          type="tel"
-          inputMode="tel"
-          enterKeyHint="done"
-          autoComplete="off"
-          className="min-[420px]:h-14 min-[420px]:text-lg"
-          value={draft.phone}
-          maxLength={40}
-          disabled={phoneNotCollected}
-          placeholder={phoneNotCollected ? NOT_COLLECTED_LABEL : undefined}
-          aria-describedby="sheet-phone-hint"
-          onChange={(event) => onChange({ phone: event.target.value })}
-          onKeyDown={(event) => nextField(event, null)}
-          onBlur={(event) => {
-            const phone = normalizePhone(event.currentTarget.value);
-            if (phone.ok && phone.e164) onChange({ phone: formatPhone(phone.e164) });
-          }}
-        />
-        {answers.phone === NOT_COLLECTED ? null : (
-          <p id="sheet-phone-hint" className="-mt-1 text-sm text-muted-foreground min-[420px]:text-base">
-            To confirm the meeting. Needed to book.
-          </p>
-        )}
-        <AnswerGroup
-          name="sheet-confirm-by"
-          legend="Call or text to confirm (optional)"
-          options={CONFIRM_BY_OPTIONS}
-          columns={2}
-          size="sheet"
-          value={draft.confirm_by}
-          onChange={(next) => onChange({ confirm_by: next as ConfirmBy | null })}
-        />
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }
 

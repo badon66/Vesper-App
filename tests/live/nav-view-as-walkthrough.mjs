@@ -787,7 +787,7 @@ try {
   const pickIn = (legend, choice) =>
     op
       .locator('[data-testid="booking-sheet"] fieldset')
-      .filter({ has: op.locator("legend", { hasText: new RegExp(`^${legend}$`) }) })
+      .filter({ has: op.locator("legend", { hasText: new RegExp(`^${legend.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) }) })
       .getByText(choice, { exact: true })
       .click();
   const sheetNext = () => op.getByTestId("sheet-next").click();
@@ -811,7 +811,6 @@ try {
     `${actedLeft} s`,
   );
   await op.fill("#sheet-first-name", "View as (test)");
-  await op.fill("#sheet-phone", "403 555 0101");
   await sheetNext();
   await sheetView("door");
   await pickIn("Owns the home", "Yes");
@@ -840,8 +839,15 @@ try {
   await op.waitForTimeout(500);
   await sheetNext();
   await sheetView("book");
-  const actedTicks = await sheetOf.getByTestId("readiness").locator("li").evaluateAll((items) => items.map((item) => item.getAttribute("data-ok")));
-  check("Before you book reads as it would for the setter, the acted-out photos included", actedTicks.length === 7 && actedTicks.every((tick) => tick === "yes"), actedTicks.join(","));
+  // The phone, last, on Book (round 3).
+  await op.fill("#sheet-phone", "403 555 0101");
+  await pickIn("Call or text to confirm (optional)", "Call");
+  const actedReady = ((await sheetOf.getByTestId("readiness").innerText().catch(() => "")) ?? "").trim();
+  check(
+    "Book reads as it would for the setter, the acted-out photos included: everything is answered",
+    (await sheetOf.getByTestId("readiness").getAttribute("data-ok")) === "yes" && actedReady === "Everything is answered.",
+    actedReady,
+  );
   // The time's menu: Add 5 minutes is acted out too.
   const beforeAdd = await leftOnSheet();
   await op.getByTestId("sheet-held").click();
@@ -869,7 +875,6 @@ try {
   await op.locator('main [data-testid="time-picker"] [data-state="open"]').first().click();
   await sheetView("who");
   await op.fill("#sheet-first-name", "View as keep (test)");
-  await op.fill("#sheet-phone", "403 555 0102");
   await sheetNext();
   await sheetView("door");
   await pickIn("Owns the home", "Yes");

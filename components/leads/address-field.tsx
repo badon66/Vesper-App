@@ -332,7 +332,7 @@ export function AddressField({
               </button>
             </div>
           ) : null}
-          {nearest.state === "none" ? <p className="font-semibold">Type the house number and street.</p> : null}
+          {nearest.state === "none" && text.trim() === "" ? <p className="font-semibold">Type the house number and street.</p> : null}
         </div>
       ) : null}
       <FieldError id="lead-address-error" message={error} />

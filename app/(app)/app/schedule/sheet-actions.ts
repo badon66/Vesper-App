@@ -400,24 +400,42 @@ export async function sheetBookedAt(input: { leadId: string; startsAt: string })
 }
 
 // The straight-line distance warning for a lead at a time, for the Book screen.
-export async function sheetDistanceWarnings(leadId: string, startsAt: string): Promise<string[]> {
+// Round 3: a new person is usually saved only at Book, so the warning works
+// from the position on the sheet when there is one, and from the saved lead
+// otherwise. It only reads; it never blocks a booking.
+const position = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) });
+export async function sheetDistanceWarnings(
+  leadId: string | null,
+  startsAt: string,
+  at?: { lat: number; lng: number } | null,
+): Promise<string[]> {
   const me = await reader();
   if (refused(me)) return [];
-  const leadIdParsed = id.safeParse(leadId);
-  const at = instant.safeParse(startsAt);
-  if (!leadIdParsed.success || !at.success) return [];
+  const leadIdParsed = leadId === null ? null : id.safeParse(leadId);
+  const when = instant.safeParse(startsAt);
+  const given = at ? position.safeParse(at) : null;
+  if ((leadIdParsed && !leadIdParsed.success) || !when.success) return [];
+  if (!leadIdParsed && !given?.success) return [];
   const supabase = await createClient();
-  const [{ data: lead }, settings, evening] = await Promise.all([
-    supabase.from("leads").select("lat, lng").eq("id", leadIdParsed.data).maybeSingle(),
+  const [lead, settings, evening] = await Promise.all([
+    given?.success
+      ? Promise.resolve(given.data)
+      : supabase
+          .from("leads")
+          .select("lat, lng")
+          .eq("id", leadIdParsed!.data!)
+          .maybeSingle()
+          .then(({ data }) => data),
     bookingSettings(supabase),
-    meetingsOnDay(supabase, calgaryDateOf(at.data)),
+    meetingsOnDay(supabase, calgaryDateOf(when.data)),
   ]);
   if (!lead || lead.lat === null || lead.lng === null) return [];
+  const self = leadIdParsed?.success ? leadIdParsed.data : null;
   const others = evening
     .filter((meeting) => isLive(meeting.status) || meeting.status === "qualified" || meeting.status === "not_qualified")
-    .filter((meeting) => meeting.lead_id !== leadIdParsed.data)
+    .filter((meeting) => meeting.lead_id !== self)
     .map((meeting) => ({ startsAt: meeting.starts_at, lat: meeting.lead.lat, lng: meeting.lead.lng, neighbourhood: meeting.lead.neighbourhood }));
-  return distanceWarnings({ lat: lead.lat, lng: lead.lng }, at.data, others, settings.distanceKm).map(
+  return distanceWarnings({ lat: lead.lat, lng: lead.lng }, when.data, others, settings.distanceKm).map(
     (warning) =>
       `This address is ${formatKm(warning.km)} in a straight line from the ${formatTime(warning.meeting.startsAt)} meeting${
         warning.meeting.neighbourhood ? ` in ${warning.meeting.neighbourhood}` : ""

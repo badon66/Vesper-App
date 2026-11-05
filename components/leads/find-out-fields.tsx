@@ -228,8 +228,8 @@ export function LeadQuestions({
             <FieldError id="lead-soffit_note-error" message={errors.soffit_note} />
           </div>
         ) : null}
-        {afterQuestions}
       </section>
+      {afterQuestions ? <section className="flex flex-col gap-5" data-testid="setter-notes-fields">{afterQuestions}</section> : null}
     </>
   );
 }

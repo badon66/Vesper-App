@@ -26,6 +26,7 @@ import {
 import { ActionMessage } from "@/components/action-message";
 import {
   AddressScreen,
+  BookPhone,
   BookScreen,
   ExistingScreen,
   PhotosScreen,
@@ -110,7 +111,11 @@ const SYNC_MS = 30_000;
 // A save, a booking or a hold that hasn't answered within the app's answer
 // limit (lib/answer-within.ts) is treated as lost to the signal, so the
 // sheet never sits on "Saving". This is what it says then.
+type SheetError = { text: string; fix: SheetScreen | null };
 const SLOW = "That's taking too long. Check your signal and try again.";
+// Next never stops on a save that didn't go through (round 3): it moves on
+// and says so calmly. Everything stays on the phone and Book saves it.
+const NOT_SAVED_YET = "Not saved yet, the signal is weak. It's kept on this phone, and Book saves it.";
 // Book with no answer back (2026-11-03): the sheet asks whether the lead
 // booked anyway before it says anything, and says only what it knows.
 const CHECK_WITHIN_MS = 10_000;
@@ -226,7 +231,9 @@ export function BookingSheetHost({ enabled, userId }: { enabled: boolean; userId
     myHoldStatus()
       .then((status) => {
         const same = status.status === "held" && status.startsAt === stored.heldAt;
-        if (!same && !draftHasContent(stored.draft)) {
+        // Drafts kept before round 3 lack its fields: fill them in first, or
+        // an empty sheet would count as having something in it.
+        if (!same && !draftHasContent(withDraftDefaults(stored.draft))) {
           writeOpen(userId, null);
           return;
         }
@@ -337,7 +344,9 @@ function BookingSheet({
   const [photosBusy, setPhotosBusy] = useState(false);
   const [skipOpen, setSkipOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<{ text: string; fix: SheetScreen | null } | null>(null);
+  const [error, setError] = useState<SheetError | null>(null);
+  // Why the last save didn't go through, for Next, which moves on anyway.
+  const saveError = useRef<SheetError | null>(null);
   const [noteOpen, setNoteOpen] = useState(false);
   const [letGoOpen, setLetGoOpen] = useState(false);
   const [existing, setExisting] = useState<BookableLead[] | null>(null);
@@ -723,16 +732,21 @@ function BookingSheet({
   }
 
   // ------------------------------------------------------------ the Book screen's distance warning
+  // Round 3: a new person reaches Book before their first save, so the
+  // warning reads the position on the sheet whenever it has one.
   useEffect(() => {
-    if (view !== "book" || !draft.leadId || !heldAt) return;
+    const at = draft.lat !== null && draft.lng !== null ? { lat: draft.lat, lng: draft.lng } : null;
+    if (view !== "book" || !heldAt || (!draft.leadId && !at)) return;
     let cancelled = false;
-    sheetDistanceWarnings(draft.leadId, heldAt).then((list) => {
-      if (!cancelled) setWarnings(list);
-    });
+    sheetDistanceWarnings(draft.leadId, heldAt, at)
+      .then((list) => {
+        if (!cancelled) setWarnings(list);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [view, draft.leadId, heldAt]);
+  }, [view, draft.leadId, draft.lat, draft.lng, heldAt]);
 
   // ------------------------------------------------------------ the time menu
   useEffect(() => {
@@ -840,21 +854,27 @@ function BookingSheet({
       setDraft((draft) => (draft.leadId || draft.saveKey ? draft : { ...draft, saveKey }));
     }
     let result: Awaited<ReturnType<typeof saveSheetLead>>;
+    saveError.current = null;
     try {
       result = await timed(saveSheetLead(keyed.leadId, draftToLeadInput(keyed)));
     } catch {
-      setError({ text: SLOW, fix: null });
+      saveError.current = { text: SLOW, fix: null };
+      setError(saveError.current);
       return null;
     }
     if (!result.ok) {
       const fix = screenForField(result.errors ? Object.keys(result.errors)[0] : null);
+      saveError.current = { text: result.error, fix };
       setError({ text: result.error, fix: fix === view ? null : fix });
       return null;
     }
-    // The photos taken before this first save are on the lead now.
+    // The photos taken before this first save are on the lead now. Only
+    // what the save adds goes into the draft, so anything changed while it
+    // was on its way stays, and differs from savedPrint, so it saves next.
+    const leadId = result.leadId;
     const attached = Object.keys(keyed.photo_paths).length > 0;
-    const saved = { ...keyed, leadId: result.leadId, photo_paths: {} };
-    setDraft(saved);
+    const saved = { ...keyed, leadId, photo_paths: {} };
+    setDraft((latest) => ({ ...latest, saveKey: keyed.saveKey, leadId, photo_paths: attached ? {} : latest.photo_paths }));
     setSavedPrint(savedFingerprint(saved));
     if (attached) {
       sheetLead(result.leadId).then(
@@ -900,9 +920,15 @@ function BookingSheet({
       // Book that isn't ready: the phone when it's the one thing left on
       // this screen, otherwise the list of what's still missing.
       const elsewhere = sheetMissing(current).filter((item) => item.screen !== "book");
-      if (elsewhere.length === 0 && screenMissing("book", current).length > 0) {
-        target = root.querySelector("#sheet-phone");
-        marked = root.querySelector('[data-testid="sheet-phone-block"]');
+      const whole = dialogRef.current ?? root;
+      if (bookingBlockers(current).length > 0 && elsewhere.length === 0) {
+        // An answer rules booking out: the note that says so, and its Keep
+        // as a lead.
+        marked = root.querySelector('[data-testid="book-ruled-out"]');
+        target = marked?.querySelector<HTMLElement>('[data-testid="keep-as-lead"]') ?? null;
+      } else if (elsewhere.length === 0 && screenMissing("book", current).length > 0) {
+        target = whole.querySelector("#sheet-phone");
+        marked = whole.querySelector('[data-testid="sheet-phone-block"]');
       } else if (elsewhere.length > 0) {
         marked = root.querySelector('[data-testid="book-checklist"]');
         target = marked?.querySelector<HTMLElement>("button") ?? null;
@@ -957,14 +983,18 @@ function BookingSheet({
         phoneOk &&
         ((!current.leadId && canSaveLead(current) && SCREENS.indexOf(destination) > SCREENS.indexOf("address")) ||
           (current.leadId !== null && savedFingerprint(current) !== savedPrint));
+      let notSaved: SheetError | null = null;
       if (needsSave) {
         const saved = await save(current);
-        if (!saved) return;
-        current = saved;
+        if (saved) current = saved;
+        else notSaved = saveError.current;
       }
       if (destination === "book") setSkipDone(true);
       setAddressLive(null);
       go(destination);
+      // Next always moves on (round 3). A save that didn't go through is
+      // said calmly on the next step; Book saves again before it books.
+      if (notSaved) setError(notSaved.text === SLOW ? { text: NOT_SAVED_YET, fix: null } : { ...notSaved, fix: notSaved.fix === destination ? null : notSaved.fix });
     } finally {
       setBusy(false);
     }
@@ -996,7 +1026,7 @@ function BookingSheet({
       const phone = normalizePhone(current.phone);
       if (!phone.ok) {
         setError({ text: phone.error, fix: null });
-        bodyRef.current?.querySelector<HTMLElement>("#sheet-phone")?.focus();
+        dialogRef.current?.querySelector<HTMLElement>("#sheet-phone")?.focus();
         return;
       }
     }
@@ -1061,7 +1091,11 @@ function BookingSheet({
         setClock(null);
         void explainLost(heldAt, false);
       } else {
-        setError({ text: result.message, fix: null });
+        // The database's own Before you book check: point at the step that
+        // fixes the first thing it found, so a refusal is never a dead end.
+        const first = "problems" in result ? result.problems?.[0] : undefined;
+        const fix = first ? (PROBLEM_SCREENS[first] ?? null) : null;
+        setError({ text: result.message, fix: fix === "book" ? null : fix });
       }
       return;
     }
@@ -1462,7 +1496,10 @@ function BookingSheet({
         {/* ------------------------------------------------ the screen */}
         <div
           ref={bodyRef}
-          className="flex-1 overflow-y-auto overscroll-contain"
+          // While Book saves and books, nothing on it can change, so what
+          // is booked is what was on screen at the tap.
+          inert={busy && view === "book"}
+          className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
           data-testid="sheet-body"
@@ -1607,8 +1644,6 @@ function BookingSheet({
                 warnings={warnings}
                 onFix={fixFromBook}
                 onKeepAsLead={() => void keepAsLead()}
-                onChange={change}
-                onAnswer={answer}
               />
             ) : null}
             {view === "done" && done ? (
@@ -1624,6 +1659,11 @@ function BookingSheet({
         {/* ------------------------------------------------ bottom: always there, Next at the bottom right */}
         <footer className="border-t bg-background pb-[env(safe-area-inset-bottom)]">
           <div className="mx-auto flex w-full max-w-2xl flex-col gap-2 px-4 py-2">
+            {view === "book" ? (
+              <div inert={busy} className="contents">
+                <BookPhone draft={draft} onChange={change} onAnswer={answer} />
+              </div>
+            ) : null}
             {error ? (
               error.fix === null ? (
                 <div data-testid="sheet-error">

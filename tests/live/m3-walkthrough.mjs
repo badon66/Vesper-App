@@ -451,8 +451,8 @@ try {
   const leftLater = await secondsLeft(pageA);
   check("the countdown ticks down on its own", leftLater !== null && leftAtStart !== null && leftLater < leftAtStart, `${leftAtStart} then ${leftLater}`);
   check(
-    "the sheet starts At the door, with a clear counter: Step 1 of 6, 5 left",
-    (await sheet(pageA).getByTestId("sheet-part").innerText()).startsWith("At the door") && (await stepCounter(pageA)) === "Step 1 of 6, 5 left",
+    "the sheet starts At the door, with a clear counter: Step 1 of 6, 6 to finish",
+    (await sheet(pageA).getByTestId("sheet-part").innerText()).startsWith("At the door") && (await stepCounter(pageA)) === "Step 1 of 6, 6 to finish",
     await stepCounter(pageA),
   );
   const tapped = Date.now();
@@ -508,6 +508,12 @@ try {
   }
 
   // ---------------------------------------------------------------- the sheet end to end, with a new person, at 430 x 932
+  // Round 3 (Keenan, 2026-11-05): answers come out of order at the door, so
+  // nothing stops a setter moving on; a step left with something missing is
+  // marked on the progress bar, and Book lists it, each with a tap to its
+  // step. The phone is asked last, on Book. This run does it the way a door
+  // goes: a question skipped, the soffit left for later, the photos before
+  // the person is saved, then Book's list, and the number typed last.
   await waitForState(pageA, X, "open");
   await slotButton(pageA, X).click();
   await waitView(pageA, "who");
@@ -517,9 +523,11 @@ try {
   const bar = await sheet(pageA).getByTestId("sheet-next").boundingBox();
   const viewport = pageA.viewportSize();
   check("Next is at the bottom right, in thumb reach", bar !== null && bar.x + bar.width / 2 > viewport.width / 2 && bar.y > viewport.height * 0.8, bar ? `${Math.round(bar.x)},${Math.round(bar.y)}` : "none");
-  check("Next says what the step still needs, and it can't be finished yet", (await nextLabel(pageA)) === "Add their name first" && (await pageA.getByTestId("sheet-next").getAttribute("data-ready")) === "no", await nextLabel(pageA));
-  await next(pageA);
-  check("tapping Next on an unfinished step stays and goes to what's missing", (await viewOf(pageA)) === "who" && (await pageA.evaluate(() => document.activeElement?.id)) === "sheet-first-name");
+  check(
+    "the first step asks only the name, and its counter says every step still needs something",
+    (await pageA.locator("#sheet-phone").count()) === 0 && (await nextLabel(pageA)) === "Next" && (await stepCounter(pageA)) === "Step 1 of 6, 6 to finish",
+    `${await nextLabel(pageA)}; ${await stepCounter(pageA)}`,
+  );
   await sheet(pageA).getByRole("button", { name: /^What to talk about/ }).click();
   // The "?" is there from the first moment; the note fills in once it arrives.
   await pageA
@@ -533,11 +541,6 @@ try {
   await pageA.getByTestId("sheet-note").getByRole("button", { name: "Close", exact: true }).click();
   await pageA.fill("#sheet-first-name", TEST_LEAD);
   await pageA.fill("#sheet-last-name", "Sheet");
-  check("with the name in, Next asks for the phone or Not collected", (await nextLabel(pageA)) === "Add the phone first", await nextLabel(pageA));
-  await sheet(pageA).getByTestId("sheet-phone-not-collected").click();
-  check("the phone takes Not collected, and the step can be finished", (await nextLabel(pageA)) === "Next" && (await pageA.locator("#sheet-phone").isDisabled()));
-  await sheet(pageA).getByTestId("sheet-phone-not-collected").click();
-  await pageA.fill("#sheet-phone", "403 555 0166");
   await pageA.waitForTimeout(300);
   await pageA.reload();
   await settle(pageA);
@@ -548,7 +551,7 @@ try {
   );
   await next(pageA);
   await waitView(pageA, "door");
-  check("step 2 is At the door's three questions to book", (await stepCounter(pageA)) === "Step 2 of 6, 4 left" && (await sheet(pageA).getByTestId("sheet-heading").innerText()) === "Three questions to book", await stepCounter(pageA));
+  check("step 2 is At the door's three questions to book", (await stepCounter(pageA)).startsWith("Step 2 of 6") && (await sheet(pageA).getByTestId("sheet-heading").innerText()) === "Three questions to book", await stepCounter(pageA));
   const doorLegends = await sheet(pageA).locator("fieldset legend").allTextContents();
   check(
     "At the door asks only what booking needs face to face: owns the home, wants a price, everyone who decides",
@@ -557,13 +560,10 @@ try {
   );
   check("each question there offers Not collected", (await sheet(pageA).locator('fieldset input[value="not_collected"]').count()) === 3);
   scrolls.door = await sheetScrolls(pageA);
-  // Out of order, as at a real door.
+  // Out of order, as at a real door: Wants a price is left for later.
   await answer(pageA, "Everyone who decides will be there", "Yes");
   await answer(pageA, "Owns the home", "Yes");
-  check("with a question still open, Next says to answer the rest", (await nextLabel(pageA)) === "Answer the rest first");
-  await swipe(pageA, "left");
-  check("a swipe can't skip an unfinished step either", (await viewOf(pageA)) === "door");
-  await answer(pageA, "Wants a price", "Yes");
+  check("with a question still open, Next still says Next: nothing blocks", (await nextLabel(pageA)) === "Next" && (await pageA.getByTestId("sheet-next").getAttribute("data-ready")) === "yes");
   await checkTapTargets(pageA, "At the door's questions");
   await swipe(pageA, "right");
   check("swiping right goes back a step", (await viewOf(pageA)) === "who");
@@ -571,35 +571,47 @@ try {
   check("swiping left goes on a step", (await viewOf(pageA)) === "door");
   await swipe(pageA, "left");
   await waitView(pageA, "learned");
-  check("After the door starts with what else they learned: Step 3 of 6, 3 left", (await sheet(pageA).getByTestId("sheet-part").innerText()).startsWith("After the door") && (await stepCounter(pageA)) === "Step 3 of 6, 3 left", await stepCounter(pageA));
-  scrolls.learned = await sheetScrolls(pageA);
-  await answer(pageA, "Christmas lights now", "Hires someone");
-  await sheet(pageA).getByTestId("mark-rest").click();
-  const marked = await sheet(pageA).locator("fieldset").evaluateAll((sets) => sets.map((set) => set.querySelector("input:checked")?.value ?? ""));
+  const doorMarked = await sheet(pageA).locator('[data-testid="sheet-progress"] [data-step="door"]').getAttribute("data-missing");
   check(
-    "Mark the rest Not collected finishes the step in one tap, keeping the answer given",
-    JSON.stringify(marked) === JSON.stringify(["hires", "not_collected", "not_collected", "not_collected"]) && (await nextLabel(pageA)) === "Next",
+    "a swipe moves on with a question open, and the progress bar marks that step",
+    doorMarked === "yes" && (await sheet(pageA).getByTestId("sheet-part").innerText()).startsWith("After the door") && (await stepCounter(pageA)) === "Step 3 of 6, 5 to finish",
+    `${doorMarked}; ${await stepCounter(pageA)}`,
+  );
+  await answer(pageA, "Christmas lights now", "Hires someone");
+  await answer(pageA, "Setter's read (optional)", "Hot");
+  await answer(pageA, "What would make them say yes (optional, any that apply)", "No more ladders");
+  await answer(pageA, "What would make them say yes (optional, any that apply)", "Up for Christmas");
+  await sheet(pageA).getByTestId("mark-rest").click();
+  const counted = ["christmas_lights_now", "looked_into_before", "areas_wanted", "install_timing"];
+  const marked = await Promise.all(counted.map((question) => sheet(pageA).locator(`fieldset[data-question="sheet-${question}"] input:checked`).getAttribute("value").catch(() => "")));
+  check(
+    "Mark the rest Not collected answers the four counted questions in one tap, keeping the answer given, and leaves the optional ones as chosen",
+    JSON.stringify(marked) === JSON.stringify(["hires", "not_collected", "not_collected", "not_collected"]) &&
+      (await sheet(pageA).locator('[data-question="sheet-hot-buttons"] input:checked').count()) === 2,
     marked.join(", "),
   );
-  scrolls.learnedMarked = await sheetScrolls(pageA);
+  scrolls.learned = await sheetScrolls(pageA);
   await checkTapTargets(pageA, "What else did you learn");
-  await pageA.screenshot({ path: `${out}/r2-learned-430.png` });
+  await pageA.screenshot({ path: `${out}/r3-learned-430.png` });
   await next(pageA);
   await waitView(pageA, "address");
   scrolls.address = await sheetScrolls(pageA);
-  check("Next waits for the address", (await nextLabel(pageA)) === "Add the address first");
   await pageA.fill("#lead-address", "306 Sheet Test Way NW (TEST)");
   await pageA.getByTestId("sheet-heading").click();
   await sheet(pageA).getByRole("button", { name: "Use where I'm standing" }).click();
-  await sheet(pageA).getByText(/accurate to about 10 m/).first().waitFor({ timeout: 15000 });
-  check("with the address placed, the step asks for the soffit colour with it", (await nextLabel(pageA)) === "Pick the soffit first", await nextLabel(pageA));
-  await answer(pageA, "Soffit colour", "White");
-  check("then the step can be finished", (await nextLabel(pageA)) === "Next");
+  const finding = (await sheet(pageA).getByTestId("position-status").innerText().catch(() => "")).trim();
+  await sheet(pageA).getByText(/^Position saved from this .+, accurate to about 10 m\.$/).first().waitFor({ timeout: 20000 });
+  check("Use where I'm standing says it's working at once, then that the position saved", finding.startsWith("Finding where you are") || finding === "", finding);
+  // The soffit is left for later; the house type is optional.
+  await answer(pageA, "House type (optional)", "Two storey");
   scrolls.addressDone = await sheetScrolls(pageA);
   await next(pageA);
   await waitView(pageA, "house", 30000);
   scrolls.house = await sheetScrolls(pageA);
-  check("the photos have a step of their own: Step 5 of 6, 1 left", (await stepCounter(pageA)) === "Step 5 of 6, 1 left" && (await nextLabel(pageA)) === "Take the photos first", await nextLabel(pageA));
+  check(
+    "Next moves on with the soffit still open, and marks the house step",
+    (await sheet(pageA).locator('[data-testid="sheet-progress"] [data-step="address"]').getAttribute("data-missing")) === "yes" && (await nextLabel(pageA)) === "Next",
+  );
   const tiles = await Promise.all(
     ["Front", "Left corner", "Right corner", "Soffit close-up"].map(async (label) => [
       await sheet(pageA).getByRole("button", { name: `Take photo, ${label}` }).count(),
@@ -607,7 +619,7 @@ try {
     ]),
   );
   check(
-    "each photo slot is a big Take photo button with a line drawing of the angle, and a smaller Upload",
+    "the photos can be taken before the person is saved: each slot is a big Take photo button with a line drawing of the angle, and a smaller Upload",
     tiles.every(([take, upload]) => take === 1 && upload === 1) && (await sheet(pageA).locator("svg[data-guide]").count()) === 4,
     JSON.stringify(tiles),
   );
@@ -657,18 +669,55 @@ try {
   scrolls.houseTaken = await sheetScrolls(pageA);
   await checkTapTargets(pageA, "Soffit and photos");
   await pageA.screenshot({ path: `${out}/r2-house-430.png` });
+  const { count: savedEarly } = await admin.from("leads").select("id", { count: "exact", head: true }).eq("address_line", "306 Sheet Test Way NW (TEST)");
+  check("with the phone still to come, nothing is saved yet: the photos wait in the setter's own folder", savedEarly === 0, `${savedEarly} leads`);
   await next(pageA);
   await waitView(pageA, "book");
+  scrolls.bookMissing = await sheetScrolls(pageA);
+  check("the last step says so, with what's left: Step 6 of 6, 3 to finish", (await stepCounter(pageA)) === "Step 6 of 6, 3 to finish", await stepCounter(pageA));
+  const missingRows = await sheet(pageA).getByTestId("readiness").locator("li").evaluateAll((items) => items.map((item) => item.getAttribute("data-item")));
+  check(
+    "Book lists everything still missing on other steps, each with a tap to its step, and stays off until it's all answered",
+    JSON.stringify(missingRows) === JSON.stringify(["wants_price", "soffit_colour"]) && (await nextLabel(pageA)) === "3 left to answer" && (await pageA.getByTestId("sheet-next").getAttribute("data-ready")) === "no",
+    `${missingRows.join(", ")}; ${await nextLabel(pageA)}`,
+  );
+  await pageA.screenshot({ path: `${out}/r3-book-missing-430.png` });
+  await next(pageA);
+  check("tapping Book that isn't ready books nothing and stays on Book", (await viewOf(pageA)) === "book");
+  await sheet(pageA).getByTestId("readiness").locator('li[data-item="wants_price"] button').click();
+  await waitView(pageA, "door");
+  check("a missing item opens its step, and Next there goes back to Book", (await nextLabel(pageA)) === "Back to Book");
+  await answer(pageA, "Wants a price", "Yes");
+  await next(pageA);
+  await waitView(pageA, "book");
+  await sheet(pageA).getByTestId("readiness").locator('li[data-item="soffit_colour"] button').click();
+  await waitView(pageA, "address");
+  await answer(pageA, "Soffit colour", "White");
+  await next(pageA);
+  await waitView(pageA, "book");
+  check(
+    "with everything else answered, Book says so and waits only for the number",
+    (await sheet(pageA).getByTestId("readiness").innerText()).includes("Everything else is answered") && (await nextLabel(pageA)) === "1 left to answer",
+    await nextLabel(pageA),
+  );
+  // The number, last, right above Book, with Call or text beside it.
+  const phoneBox = await sheet(pageA).getByTestId("sheet-phone-block").boundingBox();
+  const bookBox = await pageA.getByTestId("sheet-next").boundingBox();
+  check("the phone is on Book, right above the Book button and in view", phoneBox !== null && bookBox !== null && phoneBox.y + phoneBox.height <= bookBox.y && phoneBox.y > 0);
+  await pageA.fill("#sheet-phone", "403 555 0166");
+  await answer(pageA, "Call or text to confirm (optional)", "Text");
   scrolls.book = await sheetScrolls(pageA);
-  check("no step of the sheet scrolls on Keenan's phone, 430 x 932", Object.values(scrolls).every((value) => value === false), JSON.stringify(scrolls));
-  check("the last step says so: Step 6 of 6", (await stepCounter(pageA)) === "Step 6 of 6", await stepCounter(pageA));
-  const ticks = await sheet(pageA).getByTestId("readiness").locator("li").evaluateAll((items) => items.map((item) => item.getAttribute("data-ok")));
-  check("Book lists every Before you book item, all ticked", ticks.length === 7 && ticks.every((tick) => tick === "yes"), ticks.join(","));
+  // The learned step holds the four questions and the two optional ones:
+  // it may scroll a little, and so may Book's list while things are missing
+  // (the phone and Book stay pinned below it). Every other step fits
+  // Keenan's phone.
+  const fit = Object.fromEntries(Object.entries(scrolls).filter(([key]) => key !== "learned" && key !== "bookMissing"));
+  check("no step but What else did you learn, and Book's missing list, scrolls on Keenan's phone, 430 x 932", Object.values(fit).every((value) => value === false), JSON.stringify(scrolls));
   const bookLabel = (await pageA.getByTestId("sheet-next").innerText()).trim();
   const weekday = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", weekday: "short" }).format(new Date(`${testDay}T12:00:00Z`));
   const tomorrowDay = new Date(Date.parse(`${today}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
   const expectedBook = testDay === today ? `Book ${timeLabel(X)}` : testDay === tomorrowDay ? `Book tomorrow ${timeLabel(X)}` : `Book ${weekday} ${timeLabel(X)}`;
-  check("the Book button says which time it books, with the day when it isn't tonight", bookLabel === expectedBook, bookLabel);
+  check("with the number in, the Book button says which time it books, with the day when it isn't tonight", bookLabel === expectedBook, bookLabel);
   const heldShown = (await sheet(pageA).getByTestId("sheet-held-time").innerText()).trim();
   check("the held time in the header names its day", heldShown.endsWith(timeLabel(X)) && (testDay === today ? heldShown.startsWith("Tonight") : heldShown.startsWith(testDay === tomorrowDay ? "Tomorrow" : weekday)), heldShown);
   await swipe(pageA, "left");
@@ -690,24 +739,32 @@ try {
   check("a booked time shows who booked it, and can't be tapped", bookedLabel.includes("TEST Setter A") && (await slotButton(pageB, X).isDisabled()), bookedLabel);
   const { data: sheetLead } = await admin
     .from("leads")
-    .select("id, status, looked_into_before, christmas_lights_now, both_decision_makers, not_collected, position_source, position_accuracy_m, phone")
+    .select("id, status, looked_into_before, christmas_lights_now, wants_price, both_decision_makers, soffit_colour, not_collected, position_source, position_accuracy_m, house_type, setter_read, hot_buttons, confirm_by")
     .eq("address_line", "306 Sheet Test Way NW (TEST)")
     .single();
   check(
-    "the sheet saved the person as a lead with every answer, Not collected as such, the phone's position and Booked",
+    "the sheet saved the person as a lead with every answer, out of order, Not collected as such, the phone's position and Booked",
     sheetLead?.status === "meeting_booked" &&
       sheetLead?.christmas_lights_now === "hires" &&
       sheetLead?.looked_into_before === null &&
+      sheetLead?.wants_price === true &&
       sheetLead?.both_decision_makers === true &&
+      sheetLead?.soffit_colour === "white" &&
       JSON.stringify(sheetLead?.not_collected) === JSON.stringify(["areas_wanted", "install_timing", "looked_into_before"]) &&
       sheetLead?.position_source === "device" &&
       Number(sheetLead?.position_accuracy_m) === 10,
     JSON.stringify(sheetLead),
   );
+  check(
+    "and the optional answers: house type, the setter's read, the hot buttons and text to confirm",
+    sheetLead?.house_type === "two_storey" && sheetLead?.setter_read === "hot" && JSON.stringify(sheetLead?.hot_buttons) === JSON.stringify(["no_ladders", "up_for_christmas"]) && sheetLead?.confirm_by === "text",
+  );
+  const { data: sheetContact } = await admin.from("leads").select("phone").eq("id", sheetLead?.id).single();
+  check("the number typed last is saved", sheetContact?.phone === "+14035550166", sheetContact?.phone);
   const { data: sheetMeeting } = await admin.from("meetings").select("id, setter_id, everyone_deciding_present, photos_skipped, starts_at").eq("lead_id", sheetLead?.id).eq("status", "booked").single();
   const { data: sheetPhotos } = await admin.from("lead_photos").select("slot").eq("lead_id", sheetLead?.id);
   check(
-    "the meeting is booked for the setter, with everyone who decides confirmed and the three photos in their slots, the uploaded one included",
+    "the meeting is booked for the setter, with everyone who decides confirmed and the three photos taken before the save in their slots",
     sheetMeeting?.setter_id === people.a.id && sheetMeeting?.everyone_deciding_present === true && sheetMeeting?.photos_skipped === null && new Date(sheetMeeting?.starts_at).toISOString() === X && (sheetPhotos ?? []).map((photo) => photo.slot).sort().join(",") === "front,left_corner,right_corner",
   );
   await sheet(pageA).getByRole("button", { name: "Done", exact: true }).click();
@@ -790,7 +847,6 @@ try {
   scrollsB.who = await sheetScrolls(pageB);
   await pageB.fill("#sheet-first-name", TEST_LEAD);
   await pageB.fill("#sheet-last-name", "Narrow");
-  await pageB.fill("#sheet-phone", "403 555 0133");
   await next(pageB);
   await waitView(pageB, "door");
   scrollsB.door = await sheetScrolls(pageB);
@@ -824,8 +880,19 @@ try {
   scrollsB.houseSkipped = await sheetScrolls(pageB);
   await next(pageB);
   await waitView(pageB, "book");
-  scrollsB.book = await sheetScrolls(pageB);
-  check("no step of the sheet scrolls at 390 x 844 either", Object.entries(scrollsB).every(([key, value]) => value === false || key === "houseSkipped"), JSON.stringify(scrollsB));
+  await pageB.fill("#sheet-phone", "403 555 0133");
+  await checkTapTargets(pageB, "Book at 390 wide");
+  // Book's list of what's missing may scroll above the pinned phone and Book.
+  const missingB = await sheet(pageB).getByTestId("readiness").locator('li[data-ok="no"]').count();
+  scrollsB[missingB > 0 ? "bookMissing" : "book"] = await sheetScrolls(pageB);
+  await pageB.screenshot({ path: `${out}/r3-book-390.png` });
+  // The learned step's two optional groups make it scroll a little at 390,
+  // as can the photos with the skip reason open.
+  check(
+    "no step of the sheet scrolls at 390 x 844 but What else did you learn",
+    Object.entries(scrollsB).every(([key, value]) => value === false || key === "houseSkipped" || key === "bookMissing" || key.startsWith("learned")),
+    JSON.stringify(scrollsB),
+  );
   await letGo(pageB);
   await pageB.goto(`${base}/app/session`);
   await settle(pageB);
@@ -865,13 +932,12 @@ try {
   await waitView(pageA, "times");
   await chooseEvening(sheet(pageA), testDay);
   await sheetSlot(pageA, W).click();
-  await waitView(pageA, "who");
-  check("the lead page's Book a meeting opens the same sheet, prefilled, with the time held", (await heldState(pageA)) === "yes" && (await pageA.inputValue("#sheet-first-name")) === TEST_LEAD);
-  await sheet(pageA).getByTestId("sheet-phone-not-collected").click();
-  const phoneNote = (await sheet(pageA).getByTestId("rule-phone").innerText().catch(() => "")).replace(/\s+/g, " ").trim();
-  check("marking the phone Not collected says at once that the time can't be booked without it", phoneNote.startsWith("Without a number, this time can't be booked."), phoneNote);
-  await next(pageA);
+  // It has a name, so it opens on the first step that still needs something.
   await waitView(pageA, "door");
+  check(
+    "the lead page's Book a meeting opens the same sheet, prefilled, with the time held",
+    (await heldState(pageA)) === "yes" && (await sheet(pageA).getByTestId("sheet-for").innerText()).includes(TEST_LEAD),
+  );
   await sheet(pageA).getByTestId("mark-rest").click();
   const doorNote = (await sheet(pageA).getByTestId("door-note").innerText().catch(() => "")).replace(/\s+/g, " ").trim();
   check(
@@ -894,20 +960,27 @@ try {
   await skipPhotos(pageA);
   await next(pageA);
   await waitView(pageA, "book");
-  const missing = await sheet(pageA).getByTestId("readiness").locator('li[data-ok="no"]').allInnerTexts();
+  // The phone, last, on Book: Not collected.
+  await sheet(pageA).getByTestId("sheet-phone-not-collected").click();
+  const ruled = (await sheet(pageA).getByTestId("book-ruled-out").innerText().catch(() => "")).replace(/\s+/g, " ").trim();
   const blocked = pageA.getByTestId("sheet-next");
   check(
-    "Not collected never counts where booking needs a real answer: phone, owns the home, wants a price, everyone who decides",
-    missing.length === 4 && (await blocked.innerText()).trim() === "Can't book yet" && (await blocked.getAttribute("data-ready")) === "no",
-    `${missing.length} missing`,
+    "Not collected never counts where booking needs a real answer: Book says it needs a number and a Yes for the three",
+    ruled.startsWith("Booking needs a number and a Yes for owns the home, wants a price and everyone who decides.") &&
+      (await blocked.innerText()).trim() === "Can't book yet" &&
+      (await blocked.getAttribute("data-ready")) === "no",
+    ruled,
   );
-  const phoneMissing = missing.find((item) => item.startsWith("Phone number")) ?? "";
-  check("each says Not collected and what booking needs", phoneMissing.replace(/\s+/g, " ").includes("Phone number: Not collected Booking needs a number."), phoneMissing.replace(/\s+/g, " "));
-  check("Book offers Keep as a lead too, once an answer rules booking out", (await sheet(pageA).getByTestId("book-ruled-out").getByTestId("keep-as-lead").count()) === 1);
+  check("Book offers one Keep as a lead, once an answer rules booking out", (await sheet(pageA).getByTestId("keep-as-lead").count()) === 1);
   await next(pageA);
-  await waitView(pageA, "who");
-  check("Can't book yet, like each Fix beside an item, goes to the screen that asks for it, with the time still held", (await heldState(pageA)) === "yes");
+  check(
+    "Can't book yet stays on Book with the time still held and goes to Keep as a lead",
+    (await viewOf(pageA)) === "book" && (await heldState(pageA)) === "yes" && (await pageA.evaluate(() => document.activeElement?.getAttribute("data-testid"))) === "keep-as-lead",
+  );
   await sheet(pageA).getByTestId("keep-as-lead").click();
+  // Keep as a lead saves what was entered first (with the phone asked last,
+  // the sheet hadn't saved yet), then lets the time go and closes.
+  await sheet(pageA).waitFor({ state: "detached", timeout: 30000 });
   await pageA.waitForURL(`**/app/leads/${lead2}`, { timeout: 30000 });
   const reopenedW = await waitForState(pageB, W, "open");
   check("Keep as a lead on a saved lead frees the time on other phones at once and opens their lead, for a follow-up day", reopenedW !== null);
@@ -922,7 +995,6 @@ try {
   await waitView(pageA, "who");
   check("the first step's corner lets the time go, instead of a Back with nowhere to go", ((await pageA.getByTestId("sheet-let-go-first").innerText().catch(() => "")).trim()) === "Let go");
   await pageA.fill("#sheet-first-name", `${TEST_LEAD} Keep`);
-  await pageA.fill("#sheet-phone", "403 555 0142");
   await next(pageA);
   await waitView(pageA, "door");
   await answer(pageA, "Owns the home", "Yes");
@@ -951,6 +1023,8 @@ try {
   await pageA.locator("#lead-first_name").click();
   await pageA.getByRole("button", { name: "Use where I'm standing" }).click();
   await pageA.getByText(/accurate to about 10 m/).first().waitFor({ timeout: 15000 });
+  // The number wasn't asked at the door; New lead takes it.
+  await pageA.fill("#lead-phone", "403 555 0142");
   await pageA.getByTestId("mark-rest").click();
   await pageA.getByRole("button", { name: "Save lead" }).click();
   await pageA.waitForURL((url) => !url.pathname.endsWith("/leads/new"), { timeout: 30000 }).catch(() => {});
@@ -997,6 +1071,35 @@ try {
   check("the warning doesn't block: the setter can still book", true);
   await sheet(pageB).getByRole("button", { name: "Done", exact: true }).click();
   await sheet(pageB).waitFor({ state: "detached", timeout: 15000 });
+  // Round 3: a new person is usually saved only at Book, so the warning
+  // works from the position on the sheet, before anything is saved. Here a
+  // new person placed downtown, held next to the Mahogany meeting just
+  // booked, is warned on Book; the time is let go and nothing is saved.
+  await pageB.goto(`${base}/app/schedule`);
+  await settle(pageB);
+  await chooseEvening(pageB.locator("main"), testDay);
+  await waitForState(pageB, V, "open");
+  await slotButton(pageB, V).click();
+  await waitView(pageB, "who");
+  await pageB.fill("#sheet-first-name", `${TEST_LEAD} Far New`);
+  for (const step of ["door", "learned", "address"]) {
+    await next(pageB);
+    await waitView(pageB, step);
+  }
+  await sheet(pageB).getByRole("button", { name: "Use where I'm standing" }).click();
+  await sheet(pageB).getByText(/^Position saved from this .+, accurate to about 10 m\.$/).first().waitFor({ timeout: 20000 });
+  await next(pageB);
+  await waitView(pageB, "house", 30000);
+  await next(pageB);
+  await waitView(pageB, "book");
+  const newWarning = (await pageB.getByTestId("distance-warning").innerText({ timeout: 10000 }).catch(() => "")).replace(/\s+/g, " ");
+  const { count: farSaved } = await admin.from("leads").select("id", { count: "exact", head: true }).eq("first_name", `${TEST_LEAD} Far New`);
+  check(
+    "a new person not saved yet is warned on Book too, from the position on the sheet",
+    new RegExp(`\\d+ km in a straight line from the ${escape(timeLabel(W))} meeting`).test(newWarning) && farSaved === 0,
+    `${newWarning}; ${farSaved} saved`,
+  );
+  await letGo(pageB);
 
   // ---------------------------------------------------------------- move, then cancel
   await pageB.goto(`${base}/app/schedule`);
@@ -1055,7 +1158,7 @@ try {
   await pageA.fill("#lead-address", "305 Brand New Test Way NW (TEST)");
   await pageA.keyboard.press("Escape");
   await pageA.getByRole("button", { name: "Use where I'm standing" }).click();
-  await pageA.getByText(/Map position from this phone at the door, accurate to about 10 m\./).waitFor({ timeout: 15000 });
+  await pageA.getByText(/Position saved from this phone at the door, accurate to about 10 m\./).waitFor({ timeout: 15000 });
   check("a brand-new street gets its map position from the phone at the door", true);
   await pageA.fill("#lead-first_name", TEST_LEAD);
   await pageA.fill("#lead-phone", "403 555 0188");
@@ -1349,10 +1452,11 @@ try {
   await waitView(pageA, "who");
   await pageA.fill("#sheet-first-name", TEST_LEAD);
   await pageA.fill("#sheet-last-name", "Once");
-  await pageA.fill("#sheet-phone", "403 555 0168");
   await next(pageA);
   await waitView(pageA, "door");
-  await sheet(pageA).getByTestId("mark-rest").click();
+  await answer(pageA, "Owns the home", "Yes");
+  await answer(pageA, "Wants a price", "Yes");
+  await answer(pageA, "Everyone who decides will be there", "Yes");
   await next(pageA);
   await waitView(pageA, "learned");
   await sheet(pageA).getByTestId("mark-rest").click();
@@ -1363,6 +1467,13 @@ try {
   await sheet(pageA).getByRole("button", { name: "Use where I'm standing" }).click();
   await sheet(pageA).getByText(/accurate to about 10 m/).first().waitFor({ timeout: 15000 });
   await answer(pageA, "Soffit colour", "Not sure");
+  await next(pageA);
+  await waitView(pageA, "house", 30000);
+  await skipPhotos(pageA);
+  await next(pageA);
+  await waitView(pageA, "book");
+  // With the phone asked last, a new person's first save is Book's.
+  await pageA.fill("#sheet-phone", "403 555 0168");
   const firstSave = { drop: true, seen: 0 };
   const stopFirstSave = await interceptFetches(pageA, (request, stage) => {
     if (request.method !== "POST" || !request.body.startsWith("[null,") || !request.body.includes(`"address_line":"${ONCE_ADDRESS}"`)) return null;
@@ -1373,28 +1484,22 @@ try {
   const lostSave = await sheetError("That's taking too long");
   const madeOnce = await onceLeads();
   check(
-    "a new person's first save whose answer is lost: the server made the lead once, and the sheet stays to try again",
-    lostSave.startsWith("That's taking too long") && (await viewOf(pageA)) === "address" && madeOnce.length === 1 && Boolean(madeOnce[0]?.save_key) && firstSave.seen === 1,
+    "a new person's first save, at Book, whose answer is lost: the server made the lead once, and the sheet stays to try again",
+    lostSave.startsWith("That's taking too long") && (await viewOf(pageA)) === "book" && madeOnce.length === 1 && Boolean(madeOnce[0]?.save_key) && firstSave.seen === 1,
     `${madeOnce.length} lead(s); ${lostSave}`,
   );
   firstSave.drop = false;
   await next(pageA);
-  await waitView(pageA, "house", 30000);
+  await waitView(pageA, "done", 30000);
   await stopFirstSave();
   const keptOnce = await onceLeads();
-  const sheetLeadId = await pageA.evaluate(() => {
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const name = localStorage.key(index) ?? "";
-      if (name.startsWith("vesper.booking-sheet.")) return JSON.parse(localStorage.getItem(name) ?? "{}")?.draft?.leadId ?? null;
-    }
-    return null;
-  });
   check(
-    "Next again sends the same save key and gets back that lead: one lead, and the sheet goes on with it",
-    firstSave.seen === 2 && keptOnce.length === 1 && keptOnce[0].id === madeOnce[0]?.id && sheetLeadId === keptOnce[0].id && keptOnce[0].status === "new",
+    "Book again sends the same save key and gets back that lead: one lead, and it books",
+    firstSave.seen === 2 && keptOnce.length === 1 && keptOnce[0].id === madeOnce[0]?.id && keptOnce[0].status === "meeting_booked",
     `${keptOnce.length} lead(s), ${firstSave.seen} saves`,
   );
-  await letGo(pageA);
+  await sheet(pageA).getByRole("button", { name: "Done", exact: true }).click();
+  await sheet(pageA).waitFor({ state: "detached", timeout: 15000 }).catch(() => {});
 } catch (error) {
   results.push(`SCRIPT ERROR ${error?.message ?? String(error)} at A ${pageA.url()} / B ${pageB.url()}${ownerPage ? ` / owner ${ownerPage.url()}` : ""}`);
   await pageA.screenshot({ path: `${out}/m3-failure-a.png`, fullPage: true }).catch(() => {});
