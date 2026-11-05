@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PrepFlags } from "@/components/meetings/prep-flags";
 import { BookingActions } from "@/components/schedule/booking-actions";
 import { OutcomeForm } from "@/components/schedule/outcome-form";
 import { formatKm, navigateUrl } from "@/lib/schedule/distance";
@@ -44,6 +45,9 @@ export function MeetingCard({
   showDetails = false,
   showDay = false,
   viewerId = null,
+  prep = null,
+  compact = false,
+  next = false,
 }: {
   meeting: MeetingWithLead;
   names: Map<string, string>;
@@ -60,6 +64,16 @@ export function MeetingCard({
   showDay?: boolean;
   // Who is looking: their own lead or booking says "you".
   viewerId?: string | null;
+  // Keenan's Home (2026-11-05): what the meeting still needs, as on the
+  // Meetings page. Owner only.
+  prep?: { missingMockup: boolean; missingColour: boolean } | null;
+  // Keenan's Home (2026-11-05): a glance, not a workbench. Meeting mode,
+  // Navigate and Call; the prep flags on one line; no map position, notes,
+  // photos, Move or Cancel (those are on Schedule, Meetings and the lead).
+  compact?: boolean;
+  // Keenan's Home: his next meeting that hasn't started. Only it says Next
+  // and only its Meeting mode is gold, so one gold thing leads the evening.
+  next?: boolean;
 }) {
   const lead = meeting.lead;
   const started = new Date(meeting.starts_at).getTime() <= now;
@@ -79,10 +93,18 @@ export function MeetingCard({
       data-status={meeting.status}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-xl font-bold tabular-nums">
+        <p className={cn("font-bold tabular-nums", compact ? "text-lg" : "text-xl")}>
           {showDay ? timePhrase(meeting.starts_at) : showLead ? formatTime(meeting.starts_at) : formatMeetingTime(meeting.starts_at)}
         </p>
-        <p className="text-sm font-semibold">{MEETING_STATUS_LABELS[meeting.status]}</p>
+        {compact && (live || hasOutcome(meeting.status)) ? (
+          next ? (
+            <p className="text-sm font-semibold" data-testid="next-meeting">
+              Next
+            </p>
+          ) : null
+        ) : (
+          <p className="text-sm font-semibold">{MEETING_STATUS_LABELS[meeting.status]}</p>
+        )}
       </div>
 
       {showLead ? (
@@ -116,7 +138,41 @@ export function MeetingCard({
         </p>
       ) : null}
 
-      {showDetails && !changed ? (
+      {prep && !changed && !started ? <PrepFlags leadId={lead.id} missingMockup={prep.missingMockup} missingColour={prep.missingColour} compact={compact} /> : null}
+
+      {showDetails && !changed && compact && !started ? (
+        // Before the slot only: after it starts, the drive and the call are
+        // done. The next meeting's gold goes to Navigate on a phone (the
+        // drive is the next thing) and to Meeting mode on an iPad.
+        <div className="flex flex-wrap gap-2">
+          {isOwner ? (
+            <a
+              href={`/meeting/${lead.id}#start`}
+              className={cn("inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold", next && "md:border-primary")}
+            >
+              Meeting mode
+            </a>
+          ) : null}
+          <a
+            href={navigateUrl(lead)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn("inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold", next && "max-md:border-primary")}
+          >
+            Navigate
+          </a>
+          {lead.phone ? (
+            <a
+              href={`tel:${lead.phone}`}
+              className="inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold"
+              aria-label={`Call ${formatPhone(lead.phone)}`}
+            >
+              Call
+            </a>
+          ) : null}
+        </div>
+      ) : null}
+      {showDetails && !changed && !compact ? (
         <div className="flex flex-wrap gap-2">
           {lead.phone ? (
             <a
@@ -153,10 +209,10 @@ export function MeetingCard({
           {meeting.photos_skip_note ? `, "${meeting.photos_skip_note}"` : ""}
         </p>
       ) : null}
-      {showDetails && position ? <p className="text-sm text-muted-foreground">Map position: {position}</p> : null}
-      {showDetails && lead.notes ? <p className="text-sm whitespace-pre-wrap">{lead.notes}</p> : null}
+      {showDetails && !compact && position ? <p className="text-sm text-muted-foreground">Map position: {position}</p> : null}
+      {showDetails && !compact && lead.notes ? <p className="text-sm whitespace-pre-wrap">{lead.notes}</p> : null}
 
-      {showDetails && photos.length > 0 ? (
+      {showDetails && !compact && photos.length > 0 ? (
         <ul className="grid grid-cols-4 gap-2" aria-label="Photos">
           {photos.map((photo) => (
             <li key={photo.url}>
@@ -184,19 +240,32 @@ export function MeetingCard({
       ) : null}
       {meeting.status === "no_show" && meeting.outcome_note ? <p className="text-sm">Note: {meeting.outcome_note}</p> : null}
 
-      {live && !started && canChange ? (
+      {live && !started && canChange && !compact ? (
         <BookingActions meetingId={meeting.id} leadId={meeting.lead_id} leadName={leadName(lead)} startsAt={meeting.starts_at} />
       ) : null}
       {live && !started && !canChange && !isOwner ? (
         <p className="text-sm text-muted-foreground">Keenan marks how it went after the meeting.</p>
       ) : null}
       {isOwner && meeting.status !== "moved" && (started || hasOutcome(meeting.status)) ? (
-        <OutcomeForm
-          meetingId={meeting.id}
-          current={meeting.status}
-          currentReason={meeting.outcome_reason}
-          reasons={reasons}
-        />
+        compact ? (
+          // Home: one line until he opens it, so an evening of started
+          // meetings stays a list, not a stack of forms. Marked: "Qualified.
+          // Change". Not marked yet: "How did it go? Mark it".
+          <details className="group flex flex-col gap-2" data-testid={hasOutcome(meeting.status) ? "outcome-marked" : "outcome-unmarked"}>
+            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+              <span className="font-semibold">{hasOutcome(meeting.status) ? `${MEETING_STATUS_LABELS[meeting.status]}.` : "How did it go?"}</span>
+              <span className="underline underline-offset-4 group-open:hidden">{hasOutcome(meeting.status) ? "Change" : "Mark it"}</span>
+            </summary>
+            <OutcomeForm meetingId={meeting.id} current={meeting.status} currentReason={meeting.outcome_reason} reasons={reasons} />
+          </details>
+        ) : (
+          <OutcomeForm
+            meetingId={meeting.id}
+            current={meeting.status}
+            currentReason={meeting.outcome_reason}
+            reasons={reasons}
+          />
+        )
       ) : null}
       {live && started && !isOwner ? (
         <p className="text-sm text-muted-foreground">Started. Keenan marks how it went.</p>

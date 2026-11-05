@@ -33,7 +33,7 @@ const person = {
 // The tab bar, whichever version of the app is running.
 const TAB_BAR = 'nav[aria-label="Phone"], nav[aria-label="Tabs"]';
 const screens = {
-  "/app": { tab: "Home", ready: '[data-testid="my-bookings"], #knock-neighbourhood' },
+  "/app": { tab: "Home", ready: '[data-testid="how-mine-went"], [data-testid="my-bookings"], #knock-neighbourhood' },
   "/app/leads": { tab: "Leads", ready: 'input[name="q"]' },
   "/app/session": { tab: "Session", ready: "#knock-neighbourhood" },
 };

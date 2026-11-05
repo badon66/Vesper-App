@@ -266,6 +266,14 @@ try {
     .single();
   if (knockError) throw new Error(`knock session: ${knockError.message}`);
   await a.client.rpc("bump_knock_session", { p_session: knock.id, p_doors: 7, p_conversations: 3 });
+  // B knocked earlier today and finished: Session's Out today lists B as
+  // Finished, Keenan's Out knocking now must not.
+  const finishedB = await admin
+    .from("knock_sessions")
+    .insert({ neighbourhood: TEST_PLACE, user_id: people.b.id, started_at: new Date(Date.now() - 10 * 60_000).toISOString(), ended_at: new Date(Date.now() - 5 * 60_000).toISOString() })
+    .select("id")
+    .single();
+  if (finishedB.error) throw new Error(`B's finished session: ${finishedB.error.message}`);
 
   // The door process on two of the leads: A's lead due today has Find out
   // answers, three guided photos and a custom track colour; B's lead has a
@@ -354,7 +362,13 @@ try {
   // 3. The setter's Home: the follow-ups due. The knock session is on
   // Session (2026-11-05).
   check("Home greets the setter", (await page.getByRole("heading", { name: /^Hello, Nav/ }).count()) === 1);
-  check("Home no longer holds the knock session", (await page.getByRole("button", { name: /^Doors \+1/ }).count()) === 0 && (await page.getByRole("button", { name: "Start knocking" }).count()) === 0);
+  check("Home no longer holds the knock session's counters", (await page.getByRole("button", { name: /^Doors \+1/ }).count()) === 0);
+  const liveBar = page.getByTestId("home-session-bar");
+  check(
+    "Home shows the setter's live session as a bar that opens Session",
+    (await liveBar.getAttribute("href")) === "/app/session" && (await liveBar.innerText()).includes(`Knocking in ${TEST_PLACE}`) && (await liveBar.innerText()).includes("7 doors"),
+    (await liveBar.innerText().catch(() => "")).replace(/\s+/g, " "),
+  );
   const dueLinks = await page.getByRole("list", { name: "Follow-ups due" }).getByRole("link").evaluateAll((links) => links.map((link) => [link.getAttribute("href"), link.innerText]));
   check(
     "Home lists the follow-ups due, overdue first, and leaves later ones out",
@@ -485,18 +499,40 @@ try {
   ownerPage = await ownerContext.newPage();
   const op = ownerPage;
 
-  if (staleOwnerSession) {
-    note("Keenan has a knock session left open from an earlier day; his Home would close it, so the owner Home check was skipped to keep this run read only.");
-  } else {
+  // Keenan's Home only reads (2026-11-05): his stale sessions close on
+  // Session, not here, so it is checked whatever he left open.
+  void staleOwnerSession;
+  {
     await op.goto(`${base}/app`);
     await settle(op);
-    check("the owner's Home is today across the team", (await op.getByRole("heading", { name: "Today", exact: true }).count()) === 1 && (await op.getByText("Calgary time").count()) >= 1);
-    const aRow = op.getByRole("list", { name: "The team today" }).locator("li", { hasText: "Nav Test A" });
-    const aText = (await aRow.innerText()).replace(/\s+/g, " ");
-    check("it shows who is knocking now, where, and their doors, conversations and leads today", aText.includes("Knocking now") && aText.includes(TEST_PLACE) && /Doors 7\b/.test(aText) && /Conversations 3\b/.test(aText) && /Leads 6\b/.test(aText), aText);
-    const bText = (await op.getByRole("list", { name: "The team today" }).locator("li", { hasText: "Nav Test B" }).innerText()).replace(/\s+/g, " ");
-    check("someone who only added a lead today shows too", /Leads 1\b/.test(bText) && bText.includes("No knock session today"), bText);
-    check("today's leads are listed", (await op.getByRole("list", { name: "Today's leads" }).locator(`a[href="/app/leads/${leads.other}"]`).count()) === 1);
+    check(
+      "the owner's Home is today: the date, Start knocking or his live session, Meetings and who's out knocking now",
+      /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), /.test((await op.locator("main h1").first().innerText()).trim()) &&
+        (await op.getByRole("heading", { name: "Meetings today", exact: true }).count()) === 1 &&
+        (await op.locator('[data-testid="home-start-knocking"], [data-testid="home-session-bar"]').count()) === 1 &&
+        (await op.getByTestId("home-meetings").count()) === 1,
+    );
+    const outNow = op.getByTestId("out-now");
+    const aText = (await outNow.getByTestId("out-today-row").filter({ hasText: "Nav Test A" }).innerText().catch(() => "")).replace(/\s+/g, " ");
+    check(
+      "Out knocking now shows who is out, where, since when, and their doors and conversations today in Calgary time",
+      aText.includes(TEST_PLACE) && aText.includes(", since ") && aText.includes("7 doors") && aText.includes("3 conversations") && (await outNow.innerText()).includes("Calgary time"),
+      aText,
+    );
+    check("someone who knocked earlier today and finished doesn't show there", (await outNow.getByTestId("out-today-row").filter({ hasText: "Nav Test B" }).count()) === 0);
+    const meetings = op.getByTestId("home-meetings");
+    await meetings.getByRole("button", { name: /^Tomorrow/ }).click();
+    check(
+      "Meetings switches between Today and Tomorrow in place",
+      (await meetings.getByRole("button", { name: /^Tomorrow/ }).getAttribute("aria-pressed")) === "true" &&
+        (await meetings.locator('[data-day-list="Tomorrow"]').isVisible()) &&
+        (await meetings.getByRole("heading", { name: "Meetings tomorrow", exact: true }).count()) === 1,
+    );
+    check(
+      "Keenan's Home leaves moved and cancelled bookings to Schedule",
+      (await meetings.locator('[data-testid="meeting-card"][data-status="moved"], [data-testid="meeting-card"][data-status="cancelled"]').count()) === 0,
+    );
+    await meetings.getByRole("button", { name: /^Today/ }).click();
     check(
       "the owner's tabs are Home, Schedule, Meetings, Session and Leads, with Admin as a gear in the header",
       JSON.stringify(await visibleTabs(op)) === JSON.stringify(["Home", "Schedule", "Meetings", "Session", "Leads"]) &&

@@ -295,7 +295,11 @@ describe("what a token shows", () => {
   });
 
   it("shows unknown and malformed links as closed, with nothing else", async () => {
-    for (const token of ["AAAAAAAAAAAAAAAAAAAAAAAA", "short", "' or 1=1 --", tokenA.slice(0, 23) + "_"]) {
+    // The last one is a real token with its last character changed. Tokens
+    // are 24 random base64url characters, so a fixed replacement ("_") was
+    // the real token itself once in 64 runs; this always picks another.
+    const changedLast = tokenA.slice(0, -1) + (tokenA.endsWith("_") ? "-" : "_");
+    for (const token of ["AAAAAAAAAAAAAAAAAAAAAAAA", "short", "' or 1=1 --", changedLast]) {
       const { data } = await anon.rpc("quote_for_customer", { p_token: token });
       expectClosed(data);
     }

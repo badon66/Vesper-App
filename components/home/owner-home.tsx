@@ -1,144 +1,146 @@
 import Link from "next/link";
-import { StatusBadge } from "@/components/leads/status-badge";
-import { TonightMeetings } from "@/components/schedule/tonight";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { DaySwitch } from "@/components/home/day-switch";
+import { RefreshOnReturn } from "@/components/home/refresh-on-return";
+import { SessionLink } from "@/components/home/session-link";
+import { MeetingCard } from "@/components/schedule/meeting-card";
+import { OutToday } from "@/components/session/out-today";
 import type { SessionProfile } from "@/lib/auth/profile";
-import { summariseToday } from "@/lib/home/today";
-import { namesById } from "@/lib/leads/queries";
-import { leadName } from "@/lib/leads/status";
+import { outTodayFor } from "@/lib/knock/queries";
+import { namesById, openKnockSession } from "@/lib/leads/queries";
+import { legs } from "@/lib/schedule/distance";
+import { isLive } from "@/lib/schedule/meetings";
+import { meetingsOnDay, type MeetingWithLead } from "@/lib/schedule/queries";
 import { createClient } from "@/lib/supabase/server";
-import { calgaryDayStart, calgaryToday, formatLongDay, formatTime } from "@/lib/time";
+import { addDays, calgaryToday, formatLongDay, requestTime } from "@/lib/time";
 
-const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+const GONE = new Set(["moved", "cancelled"]);
 
-// The owner's Home is the dashboard: tonight's meetings at the top, then
-// today across the team and today's leads. His own knock session is on
-// Session, like everyone's (2026-11-05). M6 adds the sales dashboard below. Every number says what
-// it counts: knock sessions started today and leads added today, in Calgary
-// time.
+// Keenan's Home (Keenan, 2026-11-05), top to bottom: Start knocking or his
+// live session; today's meetings with a switch to tomorrow, each with what
+// it still needs (the Meetings page's flags: no mockup, no track colour),
+// how complete the lead is and, after the slot, how it went; who's out
+// knocking right now. Owner only: View as never shows it. A glance, not a
+// workbench: moved and cancelled bookings stay on Schedule, and the cards
+// are compact (Meeting mode, Navigate, Call), so the evening fits a phone.
 export async function OwnerHome({ profile }: { profile: SessionProfile }) {
   const supabase = await createClient();
   const today = calgaryToday();
-  const dayStart = calgaryDayStart(today);
-  const [sessionsResult, leadsResult] = await Promise.all([
-    supabase
-      .from("knock_sessions")
-      .select("user_id, neighbourhood, started_at, ended_at, doors_knocked, conversations")
-      .gte("started_at", dayStart),
-    supabase
-      .from("leads")
-      .select("id, first_name, last_name, address_line, neighbourhood, status, created_by, created_at")
-      .gte("created_at", dayStart)
-      .order("created_at", { ascending: false })
-      .limit(200),
+  const tomorrow = addDays(today, 1);
+  const [session, todayMeetings, tomorrowMeetings, settingsResult, out] = await Promise.all([
+    openKnockSession(supabase, profile.id),
+    meetingsOnDay(supabase, today, { viewer: profile }),
+    meetingsOnDay(supabase, tomorrow, { viewer: profile }),
+    supabase.from("settings").select("not_qualified_reasons").eq("id", 1).maybeSingle(),
+    outTodayFor(supabase, profile.id),
   ]);
-  if (sessionsResult.error || leadsResult.error) throw new Error("Today's numbers could not be loaded.");
-  const sessions = sessionsResult.data;
-  const leads = leadsResult.data;
-  const names = await namesById(supabase, [
-    ...sessions.map((session) => session.user_id),
-    ...leads.map((lead) => lead.created_by),
+  const all = [...todayMeetings, ...tomorrowMeetings];
+  const leadIds = Array.from(new Set(all.map((meeting) => meeting.lead_id)));
+  const [names, colourRows, mockupRows] = await Promise.all([
+    namesById(
+      supabase,
+      all.flatMap((meeting) => [meeting.setter_id, meeting.booked_by, meeting.outcome_by]),
+    ),
+    leadIds.length > 0
+      ? supabase.from("leads").select("id, track_colour_id, track_ral_code").in("id", leadIds).then(({ data }) => data ?? [])
+      : Promise.resolve([]),
+    leadIds.length > 0
+      ? supabase.from("lead_photos").select("lead_id").eq("slot", "mockup").in("lead_id", leadIds).then(({ data }) => data ?? [])
+      : Promise.resolve([]),
   ]);
-  const team = summariseToday(sessions, leads, names);
-  const { totals } = team;
+  const hasColour = new Set(colourRows.filter((row) => row.track_colour_id || row.track_ral_code).map((row) => row.id));
+  const hasMockup = new Set(mockupRows.map((row) => row.lead_id));
+  const reasons = settingsResult.data?.not_qualified_reasons ?? [];
+  const now = requestTime();
+
+  // One evening's cards, in time order, with the straight-line distance
+  // from the meeting before.
+  // His next meeting that hasn't started, across today and tomorrow.
+  const nextId = [...todayMeetings, ...tomorrowMeetings].find(
+    (meeting) => isLive(meeting.status) && new Date(meeting.starts_at).getTime() > now,
+  )?.id;
+  const needsPrep = (meeting: MeetingWithLead) => !hasMockup.has(meeting.lead_id) || !hasColour.has(meeting.lead_id);
+
+  const cards = (all: MeetingWithLead[], empty: string) => {
+    const held = all.filter((meeting) => !GONE.has(meeting.status));
+    if (held.length === 0) {
+      return (
+        <div className="flex flex-col items-start gap-1">
+          <p className="text-sm text-pretty text-muted-foreground">{empty}</p>
+          <Link href="/app/schedule" className="inline-flex min-h-11 items-center text-sm font-semibold underline underline-offset-4">
+            Open the schedule
+          </Link>
+        </div>
+      );
+    }
+    const distances = legs(
+      held.map((meeting) => ({ startsAt: meeting.starts_at, lat: meeting.lead.lat, lng: meeting.lead.lng, neighbourhood: meeting.lead.neighbourhood })),
+    );
+    // Prep is for meetings still ahead; once a slot starts it's past fixing.
+    const ahead = held.filter((meeting) => isLive(meeting.status) && new Date(meeting.starts_at).getTime() > now);
+    const toPrep = ahead.filter(needsPrep).length;
+    const upcoming = ahead.length;
+    return (
+      <div className="flex flex-col gap-3">
+        {toPrep > 0 ? (
+          // The evening's prep in one line, so he needn't add up the cards.
+          <p className="flex flex-wrap items-center gap-x-2 text-sm text-pretty" data-testid="prep-summary">
+            <span>
+              {toPrep} of {upcoming} still {toPrep === 1 ? "needs" : "need"} a mockup or the track colour.
+            </span>
+            <Link href="/app/meetings" className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4">
+              Open Meetings
+            </Link>
+          </p>
+        ) : null}
+        {held.map((meeting, index) => (
+          <MeetingCard
+            key={meeting.id}
+            meeting={meeting}
+            names={names}
+            now={now}
+            canChange
+            isOwner
+            reasons={reasons}
+            legKm={distances[index] ?? null}
+            previousTime={held[index - 1]?.starts_at ?? null}
+            showDetails
+            compact
+            next={meeting.id === nextId}
+            prep={{ missingMockup: !hasMockup.has(meeting.lead_id), missingColour: !hasColour.has(meeting.lead_id) }}
+          />
+        ))}
+      </div>
+    );
+  };
+  const count = (meetings: MeetingWithLead[]) => meetings.filter((meeting) => !GONE.has(meeting.status)).length;
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold">Today</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {formatLongDay(today)}, Calgary time. Doors and conversations come from knock sessions
-          started today; leads are the ones added today.
-        </p>
-      </div>
+      <h1 className="text-2xl font-bold">{formatLongDay(today)}</h1>
+      <RefreshOnReturn />
 
-      <TonightMeetings viewer={profile} />
+      <SessionLink session={session} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>The team today</CardTitle>
-          <CardDescription>
-            {team.rows.length === 0
-              ? "Nobody has knocked or added a lead yet today."
-              : `${plural(totals.doors, "door", "doors")}, ${plural(totals.conversations, "conversation", "conversations")} and ${plural(totals.leads, "lead", "leads")} across the team. ${plural(totals.knockingNow, "person", "people")} knocking now.`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {team.rows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              When someone starts a knock session or adds a lead, they show up here with their
-              doors, conversations and leads for today.
-            </p>
-          ) : (
-            <ul className="flex flex-col divide-y rounded-md border" aria-label="The team today">
-              {team.rows.map((row) => (
-                <li key={row.userId} className="flex flex-col gap-2 px-4 py-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold">{row.name}</span>
-                    {row.knockingNow ? (
-                      <span className="rounded-full border border-primary px-2.5 py-0.5 text-xs font-semibold">
-                        Knocking now
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {row.neighbourhoods.length > 0 ? row.neighbourhoods.join(", ") : "No knock session today"}
-                  </p>
-                  <dl className="grid grid-cols-3 gap-2">
-                    {[
-                      { label: "Doors", value: row.doors },
-                      { label: "Conversations", value: row.conversations },
-                      { label: "Leads", value: row.leads },
-                    ].map((stat) => (
-                      <div key={stat.label}>
-                        <dt className="text-xs text-muted-foreground">{stat.label}</dt>
-                        <dd className="text-lg font-bold tabular-nums">{stat.value}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      <DaySwitch
+        headingId="meetings-heading"
+        testId="home-meetings"
+        days={[
+          {
+            label: "Today",
+            title: "Meetings today",
+            count: count(todayMeetings),
+            content: cards(todayMeetings, "No meetings today. When a setter books one, it shows here in time order."),
+          },
+          {
+            label: "Tomorrow",
+            title: "Meetings tomorrow",
+            count: count(tomorrowMeetings),
+            content: cards(tomorrowMeetings, "Nothing booked for tomorrow yet."),
+          },
+        ]}
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Today&apos;s leads</CardTitle>
-          <CardDescription>
-            {leads.length === 0 ? "No leads added yet today." : `${plural(leads.length, "lead", "leads")} added today, newest first.`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {leads.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Leads show up here as the team adds them.</p>
-          ) : (
-            <ul className="flex flex-col divide-y rounded-md border" aria-label="Today's leads">
-              {leads.map((lead) => (
-                <li key={lead.id}>
-                  <Link
-                    href={`/app/leads/${lead.id}`}
-                    className="flex min-h-16 flex-col justify-center gap-0.5 px-4 py-3 outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                  >
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="font-semibold">{leadName(lead)}</span>
-                      <StatusBadge status={lead.status} />
-                    </span>
-                    <span className="text-sm text-muted-foreground">
-                      {lead.address_line}
-                      {lead.neighbourhood ? `, ${lead.neighbourhood}` : ""}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      By {names.get(lead.created_by) ?? "someone"} at {formatTime(lead.created_at)}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      <OutToday rows={out} nowOnly />
     </div>
   );
 }
