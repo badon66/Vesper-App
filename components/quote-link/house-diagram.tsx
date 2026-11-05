@@ -72,22 +72,36 @@ const DETAILS = [
   "M236 76 L270 76 L270 98 L236 98 Z M253 76 L253 98",
 ];
 
+// The whole drawing, in its own units; a small drawing can show part of it.
+export const WHOLE_HOUSE: Crop = [0, 8, 350, 196];
+export type Crop = [x: number, y: number, width: number, height: number];
+// The small drawings in "What do these mean?" are this wide on screen.
+const MINI_PX = 128;
+
 export function HouseDiagram({
   states,
   className,
   mini = false,
+  crop = WHOLE_HOUSE,
   label,
 }: {
   states: Record<HouseSegment, SegmentState>;
   className?: string;
-  // The small drawings in "What do these mean?": the house quiet, one part lit.
+  // The small drawings in "What do these mean?": the house quiet, one part
+  // lit, cropped to that part so it reads at the small size.
   mini?: boolean;
+  crop?: Crop;
   // Overrides the description a screen reader hears.
   label?: string;
 }) {
+  // Lines are set in the drawing's units. A small drawing scales them by
+  // its own zoom, so its lines and lights look the same size on screen as
+  // the big drawing's, however it is cropped.
+  const k = mini ? crop[2] / MINI_PX : 1;
+  const line = (mini ? 1.2 : 1.5) * k;
   return (
     <svg
-      viewBox="0 8 350 196"
+      viewBox={crop.join(" ")}
       role="img"
       aria-label={label ?? houseDescription(states)}
       className={cn("house block h-auto w-full text-navy", mini && "house-mini", className)}
@@ -96,17 +110,16 @@ export function HouseDiagram({
       strokeLinejoin="round"
     >
       <g stroke="currentColor" opacity={mini ? 0.35 : 1}>
-        <path d="M0 196 L350 196" strokeWidth={mini ? 2 : 1} opacity={0.4} />
+        <path d="M0 196 L350 196" strokeWidth={k} opacity={0.4} />
         {OUTLINE.map((d) => (
-          <path key={d} d={d} strokeWidth={mini ? 2.6 : 1.5} />
+          <path key={d} d={d} strokeWidth={line} />
         ))}
-        {/* Too fine to read at the small size, so the minis leave them out. */}
-        {mini
-          ? null
-          : DETAILS.map((d) => <path key={d} d={d} strokeWidth={1} opacity={0.4} />)}
+        {DETAILS.map((d) => (
+          <path key={d} d={d} strokeWidth={1 * k} opacity={0.4} />
+        ))}
       </g>
       {HOUSE_SEGMENTS.map((segment) => (
-        <Segment key={segment} segment={segment} state={states[segment]} mini={mini} />
+        <Segment key={segment} segment={segment} state={states[segment]} k={k} mini={mini} />
       ))}
     </svg>
   );
@@ -114,21 +127,24 @@ export function HouseDiagram({
 
 // One part, in all three looks at once; only one shows, and switching
 // cross-fades between them (globals.css, .house-part).
-// The small drawings are about 40% of the size, so their lines are drawn
-// heavier to read the same.
-function Segment({ segment, state, mini }: { segment: HouseSegment; state: SegmentState; mini: boolean }) {
-  const edge = mini ? 2.6 : 1.5;
+function Segment({ segment, state, k, mini }: { segment: HouseSegment; state: SegmentState; k: number; mini: boolean }) {
+  const edge = (mini ? 1.2 : 1.5) * k;
   return (
     <g data-segment={segment} data-state={state} className="house-part">
       {/* Not in the quote: the plain outline. */}
       <path d={EDGES[segment]} stroke="currentColor" strokeWidth={edge} className="house-none" />
-      {/* Switched off: dashed, so it reads as a gap even without colour. */}
-      <path d={EDGES[segment]} stroke="currentColor" strokeWidth={edge} strokeDasharray="4 4" className="house-off" />
+      {/* Switched off: the roof stays drawn; only the light goes, a dashed
+          line where the track would be (navy at 60%, over 3:1 on white), so
+          it reads as a gap even without colour. */}
+      <g className="house-off">
+        <path d={EDGES[segment]} stroke="currentColor" strokeWidth={edge} />
+        <path d={TRACKS[segment]} stroke="currentColor" strokeWidth={1.5 * k} strokeDasharray={`${4 * k} ${3.5 * k}`} opacity={0.6} />
+      </g>
       {/* Lit: the roof edge, the navy track under it and its gold nodes. */}
       <g className="house-on">
         <path d={EDGES[segment]} stroke="currentColor" strokeWidth={edge} />
-        <path d={TRACKS[segment]} stroke="currentColor" strokeWidth={mini ? 9 : 4.5} />
-        <path d={TRACKS[segment]} stroke="var(--gold)" strokeWidth={mini ? 5 : 2.4} strokeDasharray={mini ? "0 11" : "0 6"} />
+        <path d={TRACKS[segment]} stroke="currentColor" strokeWidth={4.5 * k} />
+        <path d={TRACKS[segment]} stroke="var(--gold)" strokeWidth={3.2 * k} strokeDasharray={`0 ${5.5 * k}`} />
       </g>
     </g>
   );

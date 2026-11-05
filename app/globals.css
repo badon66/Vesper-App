@@ -160,7 +160,7 @@ html:has(.quote-light) {
   opacity: 0.35;
 }
 .house-part[data-state="off"] .house-off {
-  opacity: 0.45;
+  opacity: 1;
 }
 .house-part[data-state="on"] .house-on {
   opacity: 1;

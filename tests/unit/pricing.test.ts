@@ -134,7 +134,7 @@ describe("Upper access", () => {
     const quote = priceQuote(base(fees));
     expect(quote.lines.find((line) => line.label === UPPER_ACCESS_LABEL)).toEqual({
       label: UPPER_ACCESS_LABEL,
-      detail: "$200, or $400 with an upper gable",
+      detail: "For work up high: $200, or $400 with an upper gable",
       amount: 200,
     });
     // Only one amount set, or both the same: nothing to explain.

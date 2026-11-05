@@ -51,7 +51,7 @@ export type BookResult =
 
 const CLOSED = "This quote link is closed.";
 
-const FAILED = "That didn't go through. Check your signal and try again, or call or text us.";
+const FAILED = "That didn’t go through. Check your signal and try again, or call or text us.";
 
 // Book my install: saves the option in words, tells Keenan, and returns
 // the total for the thank-you, worked out here from the stored quote and

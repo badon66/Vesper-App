@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { houseDescription, segmentFor, segmentStates } from "@/lib/quote-link/house";
+import { houseDescription, segmentFor, segmentsFor, segmentStates } from "@/lib/quote-link/house";
 import type { QuoteRun } from "@/lib/pricing";
 
 // The quote link's house diagram (2026-11-04): where each run is drawn,
@@ -15,6 +15,12 @@ describe("where a run is drawn", () => {
     expect(segmentFor(run("Two Upper Gables", "upper"))).toBe("upper-gable");
     expect(segmentFor(run("Left side", "lower"))).toBe("lower-sides");
     expect(segmentFor(run("Sides", "upper"))).toBe("upper-sides");
+  });
+
+  it("lights both sides for a sides run named for both floors", () => {
+    expect(segmentsFor(run("Upper & Lower Sides", "lower"))).toEqual(["lower-sides", "upper-sides"]);
+    expect(segmentsFor(run("Lower sides", "lower"))).toEqual(["lower-sides"]);
+    expect(segmentsFor(run("Shed", "lower"))).toEqual([]);
   });
 
   it("draws a garage line and a porch in one place whatever the level, and doesn't draw other", () => {
@@ -46,7 +52,7 @@ describe("how each part looks", () => {
       "upper-eave": "on",
       "upper-gable": "on",
       "lower-sides": "on",
-      "upper-sides": "none",
+      "upper-sides": "on",
     });
   });
 
@@ -67,7 +73,7 @@ describe("how each part looks", () => {
   it("says in words what is lit and what is switched off", () => {
     const states = segmentStates(todd.map((r) => ({ run: r, on: r.level === "lower" })));
     expect(houseDescription(states)).toBe(
-      "A drawing of a two-storey house with lights on the garage gable, the garage line, the porch and the main floor sides. Switched off: the upper eave and the upper gable.",
+      "A drawing of a two-storey house with lights on the garage gable, the garage line, the porch, the main floor sides and the upper sides. Switched off: the upper eave and the upper gable.",
     );
     expect(houseDescription(segmentStates([]))).toBe("A drawing of a two-storey house.");
   });

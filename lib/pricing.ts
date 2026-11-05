@@ -124,13 +124,13 @@ export const RUSH_COLOUR_LABEL = "Rush colour fee";
 const usable = (amount: number | null | undefined): number | null =>
   amount !== null && amount !== undefined && Number.isFinite(amount) && amount > 0 ? amount : null;
 
-// "$200, or $400 with an upper gable": why the amount is what it is, so a
+// "For work up high: $200, or $400 with an upper gable": why the amount is what it is, so a
 // switch that moves it never looks like a trick. Only when both are set.
 export function upperAccessDetail(fees: { upperAccessFee?: number | null; upperGableAccessFee?: number | null }): string | null {
   const upper = usable(fees.upperAccessFee);
   const gable = usable(fees.upperGableAccessFee);
   if (upper === null || gable === null || upper === gable) return null;
-  return `${formatMoney(upper)}, or ${formatMoney(gable)} with an upper gable`;
+  return `For work up high: ${formatMoney(upper)}, or ${formatMoney(gable)} with an upper gable`;
 }
 
 // The runs a customer has switched on: positions into the quote's runs, in

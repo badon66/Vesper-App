@@ -31,20 +31,30 @@ export type SegmentState = "none" | "on" | "off";
 // Where a run is drawn. Gable, eave and sides follow the level; a garage
 // line and a porch are drawn in one place whatever the level.
 export function segmentFor(run: QuoteRun): HouseSegment | null {
+  return segmentsFor(run)[0] ?? null;
+}
+
+// The same, as every place it lights: a sides run named for both floors,
+// like "Upper & Lower Sides", lights the sides on both, whatever level it
+// was saved with (the screenshot review, 2026-11-04).
+export function segmentsFor(run: QuoteRun): HouseSegment[] {
   const upper = run.level === "upper";
   switch (runPart(run)) {
     case "eave":
-      return upper ? "upper-eave" : "lower-eave";
+      return [upper ? "upper-eave" : "lower-eave"];
     case "gable":
-      return upper ? "upper-gable" : "garage-gable";
-    case "sides":
-      return upper ? "upper-sides" : "lower-sides";
+      return [upper ? "upper-gable" : "garage-gable"];
+    case "sides": {
+      const name = run.name.toLowerCase();
+      if (/\bupper\b/.test(name) && /\blower\b/.test(name)) return ["lower-sides", "upper-sides"];
+      return [upper ? "upper-sides" : "lower-sides"];
+    }
     case "garage":
-      return "garage";
+      return ["garage"];
     case "porch":
-      return "porch";
+      return ["porch"];
     default:
-      return null;
+      return [];
   }
 }
 
@@ -55,10 +65,10 @@ export function segmentStates(runs: { run: QuoteRun; on: boolean }[]): Record<Ho
   const states = Object.fromEntries(HOUSE_SEGMENTS.map((segment) => [segment, "none"])) as Record<HouseSegment, SegmentState>;
   for (const { run, on } of runs) {
     if (cleanFeet(run.feet) === 0) continue;
-    const segment = segmentFor(run);
-    if (!segment) continue;
-    if (on) states[segment] = "on";
-    else if (states[segment] === "none") states[segment] = "off";
+    for (const segment of segmentsFor(run)) {
+      if (on) states[segment] = "on";
+      else if (states[segment] === "none") states[segment] = "off";
+    }
   }
   return states;
 }

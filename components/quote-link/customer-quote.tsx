@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { bookInstall, recordVisit, saveSelection } from "@/app/q/[token]/actions";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
 import { Disclosure } from "@/components/quote-link/disclosure";
-import { HouseDiagram } from "@/components/quote-link/house-diagram";
+import { HouseDiagram, WHOLE_HOUSE, type Crop } from "@/components/quote-link/house-diagram";
 import { useCountTo } from "@/components/quote-link/motion";
 import { PointIconMark } from "@/components/quote-link/point-icon";
 import { ClosedQuote, ContactButtons } from "@/components/quote-link/quote-shell";
@@ -38,8 +38,8 @@ import { cn } from "@/lib/utils";
 type View = CustomerQuote & { mockupUrl: string | null; galleryUrls: string[] };
 type Booked = { at: string; option: string };
 
-const FAILED = "That didn't go through. Check your signal and try again, or call or text us.";
-const SLOW = "Still sending. If it doesn't go through, call or text us.";
+const FAILED = "That didn’t go through. Check your signal and try again, or call or text us.";
+const SLOW = "Still sending. If it doesn’t go through, call or text us.";
 
 export function CustomerQuoteView({ token, view }: { token: string; view: View }) {
   const { quote } = view;
@@ -84,8 +84,12 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
   const heading = useRef<HTMLHeadingElement>(null);
   const smallerHeading = useRef<HTMLHeadingElement>(null);
 
-  // A visit, once per opening. Keenan's own visits are left out on the server.
+  // A visit, once per opening, even when React runs the effect twice.
+  // Keenan's own visits are left out on the server.
+  const visited = useRef(false);
   useEffect(() => {
+    if (visited.current) return;
+    visited.current = true;
     void recordVisit(token).catch(() => undefined);
   }, [token]);
 
@@ -181,7 +185,6 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
     setOn(new Set(parts.map((part) => part.at)));
     window.requestAnimationFrame(() => smallerHeading.current?.focus());
   };
-  const address = [view.address, view.city].filter(Boolean).join(", ");
   const textHref = smsWithBody(view.company.phone, `Hi Keenan, a question about the quote for ${view.address}: `);
   const minimumWords = minimum ? <MinimumWords minimum={minimum} /> : null;
 
@@ -192,9 +195,8 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
         <section aria-labelledby="quote-for" className="flex flex-col">
           {view.mockupUrl ? <Mockup url={view.mockupUrl} /> : null}
           <div className="flex flex-col px-5 pt-6">
-            <p className="text-sm text-pretty text-muted-foreground">{address}</p>
-            <h1 id="quote-for" ref={heading} tabIndex={-1} className="mt-1 text-2xl font-bold text-balance outline-none">
-              {view.firstName.trim() ? `${view.firstName.trim()}, here's your quote` : "Here's your quote"}
+            <h1 id="quote-for" ref={heading} tabIndex={-1} className="text-2xl font-bold text-balance outline-none">
+              {view.firstName.trim() ? `${view.firstName.trim()}, here’s your quote` : "Here’s your quote"}
             </h1>
             <p className="mt-3 text-[2.75rem] leading-none font-bold tracking-tight" data-testid="hero-total">
               <CountedTotal subtotal={current.subtotal} gstEnabled={quote.gstEnabled} />
@@ -204,14 +206,9 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
                 Full quote {screenTotal(full.subtotal, quote.gstEnabled)}
               </p>
             ) : null}
-            {atMinimum && minimum ? (
-              <p className="mt-2 text-sm text-pretty" data-testid="hero-minimum">
-                That&apos;s under our {formatMoney(minimum)} minimum, so this option comes to {formatMoney(minimum)}.
-              </p>
-            ) : null}
             <PriceHold validUntil={view.validUntil} passed={holdPassed} className="mt-2" />
-            <ul className="mt-5 flex flex-col gap-1.5 border-t pt-4 text-base" data-testid="quote-promises">
-              <li>No payment until your install is complete.</li>
+            <ul className="mt-4 flex flex-col gap-1 text-base" data-testid="quote-promises">
+              <li className="font-semibold">No payment until your install is complete.</li>
               <li>
                 Financing is available.{" "}
                 <a
@@ -234,9 +231,9 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
 
         {/* 2. A reason to act now, while Keenan has it on (until Dec 24). */}
         {view.christmas ? (
-          <section aria-label="Christmas" className="mt-10 bg-accent px-5 py-5" data-testid="quote-christmas">
+          <section aria-label="Christmas" className="mt-6 bg-accent px-5 py-5" data-testid="quote-christmas">
             <p className="text-base font-semibold text-pretty">{view.christmas.title}</p>
-            {view.christmas.text ? <p className="mt-1 text-[0.9375rem] text-pretty">{view.christmas.text}</p> : null}
+            {view.christmas.text ? <p className="mt-1 text-base text-pretty">{view.christmas.text}</p> : null}
           </section>
         ) : null}
 
@@ -244,7 +241,7 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
         {view.productPoints.length > 0 ? (
           <section aria-labelledby="getting" className="mt-12 px-5">
             <h2 id="getting" className="text-xl font-bold">
-              What you&apos;re getting
+              What you’re getting
             </h2>
             <ul className="mt-5 flex flex-col gap-4" data-testid="quote-points">
               {view.productPoints.map((point, at) => (
@@ -263,12 +260,12 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
             <h2 id="your-lights" className="text-xl font-bold">
               Your lights
             </h2>
-            <ul className="mt-4 flex flex-col divide-y border-y text-[0.9375rem]" data-testid="quote-runs">
+            <ul className="mt-3 flex flex-col text-base" data-testid="quote-runs">
               {parts.map(({ run, at }) => (
                 <li
                   key={at}
                   className={cn(
-                    "flex items-baseline justify-between gap-4 py-2 transition-colors duration-200",
+                    "flex items-baseline justify-between gap-4 py-1 transition-colors duration-200",
                     !on.has(at) && "text-muted-foreground",
                   )}
                 >
@@ -296,8 +293,8 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
           </h2>
           {parts.length > 1 ? (
             <>
-              <p className="mt-1 text-pretty text-muted-foreground">Switch off any part you&apos;d like to leave for later.</p>
-              <ul className="mt-4 flex flex-col divide-y border-y" data-testid="start-smaller">
+              <p className="mt-1 text-pretty text-muted-foreground">Switch off any part you’d like to leave for later.</p>
+              <ul className="mt-4 flex flex-col divide-y border-t border-b-2 border-b-navy" data-testid="start-smaller">
                 {parts.map(({ run, at }) => {
                   const isOn = on.has(at);
                   const locked = isOn && onlyOne;
@@ -315,7 +312,7 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
                       >
                         <span className={cn("min-w-0 flex-1 text-pretty transition-colors duration-200", !isOn && "text-muted-foreground")}>
                           <span className="font-medium">{runName(run, at)}</span>
-                          <span className="ml-2 text-[0.9375rem] text-muted-foreground tabular-nums">{Math.round(run.feet)} ft</span>
+                          <span className="ml-2 text-base text-muted-foreground tabular-nums">{Math.round(run.feet)} ft</span>
                         </span>
                         <span
                           aria-hidden="true"
@@ -341,21 +338,12 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
                   At least one part stays in.
                 </p>
               ) : null}
-              {!allOn ? (
-                <button
-                  type="button"
-                  onClick={switchAllOn}
-                  className="mt-1 inline-flex min-h-11 items-center self-start text-base font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  data-testid="switch-all-on"
-                >
-                  Switch all back on
-                </button>
-              ) : null}
             </>
           ) : null}
 
-          <Breakdown full={full.lines} current={current.lines} />
-          <div className="flex items-baseline justify-between gap-4 border-t-2 border-navy pt-3">
+          {/* The total sits right under the switches, so a flip and its new
+              figure share the screen; the lines that make it up follow. */}
+          <div className={cn("flex items-baseline justify-between gap-4 pt-3", parts.length > 1 ? "mt-1" : "mt-4 border-t-2 border-navy")}>
             <span className="text-lg font-bold">Total</span>
             <span className="text-3xl font-bold tracking-tight" data-testid="smaller-total">
               <CountedTotal subtotal={current.subtotal} gstEnabled={quote.gstEnabled} />
@@ -364,11 +352,22 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
           <div className="quote-row" data-shown={atMinimum} aria-hidden={!atMinimum}>
             <div>
               {/* Keenan's words, at the total; the box keeps it calm, never red. */}
-              <div className="mt-4 rounded-md border px-4 py-3" data-testid="minimum-note">
+              <div className="mt-3 rounded-md border px-4 py-3" data-testid="minimum-note">
                 {minimumWords}
               </div>
             </div>
           </div>
+          {parts.length > 1 && !allOn ? (
+            <button
+              type="button"
+              onClick={switchAllOn}
+              className="mt-2 inline-flex min-h-11 items-center self-start text-base font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              data-testid="switch-all-on"
+            >
+              Switch all back on
+            </button>
+          ) : null}
+          <Breakdown full={full.lines} current={current.lines} />
           <p aria-live="polite" className="sr-only">
             {announced}
           </p>
@@ -385,7 +384,7 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
             </p>
           ) : null}
           <p className="mt-2 text-pretty">
-            White is our stock colour. It costs nothing extra and fits this season&apos;s schedule.
+            White is our stock colour. It costs nothing extra and fits this season’s schedule.
           </p>
           <p className="mt-2 text-pretty" data-testid="quote-colour-rush">
             Any other colour is powder coated: nothing extra if it can wait for spring
@@ -450,16 +449,15 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
         <footer className="mt-10 flex flex-col gap-1 px-5 text-sm text-pretty text-muted-foreground" data-testid="quote-footer">
           <p className="font-semibold text-foreground">{view.company.name}</p>
           <p>{view.company.address}</p>
-          <p>
-            <a href={phoneHref(view.company.phone, "tel")} className="-my-2 inline-block py-2 tabular-nums underline-offset-4 hover:underline">
-              {view.company.phone}
-            </a>
-          </p>
-          <p>
-            <a href={`mailto:${view.company.email}?subject=${encodeURIComponent("My Vesper quote")}`} className="-my-2 inline-block py-2 underline-offset-4 hover:underline">
-              {view.company.email}
-            </a>
-          </p>
+          <a href={phoneHref(view.company.phone, "tel")} className="inline-flex min-h-11 items-center self-start text-foreground tabular-nums underline underline-offset-4">
+            {view.company.phone}
+          </a>
+          <a
+            href={`mailto:${view.company.email}?subject=${encodeURIComponent("My Vesper quote")}`}
+            className="inline-flex min-h-11 items-center self-start text-foreground underline underline-offset-4"
+          >
+            {view.company.email}
+          </a>
         </footer>
       </main>
 
@@ -519,11 +517,11 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
           </dl>
           {holdPassed && view.validUntil ? (
             <p className="font-semibold text-pretty">
-              Prices may have changed since {formatFullDate(view.validUntil)}. We&apos;ll confirm before booking.
+              Prices may have changed since {formatFullDate(view.validUntil)}. We’ll confirm before booking.
             </p>
           ) : null}
           <p className="text-pretty">
-            There&apos;s nothing to sign or pay today. Keenan will be in touch to set your install date and go through the
+            There’s nothing to sign or pay today. Keenan will be in touch to set your install date and go through the
             agreement.
           </p>
         </div>
@@ -537,10 +535,10 @@ function MinimumWords({ minimum }: { minimum: number }) {
   return (
     <>
       <p className="font-semibold text-pretty">
-        That&apos;s under our {formatMoney(minimum)} minimum, so this option comes to {formatMoney(minimum)}.
+        That’s under our {formatMoney(minimum)} minimum, so this option comes to {formatMoney(minimum)}.
       </p>
       <p className="mt-1 text-pretty text-muted-foreground">
-        Need a repair or something smaller? Call or text us and we&apos;ll see what we can do.
+        Need a repair or something smaller? Call or text us and we’ll see what we can do.
       </p>
     </>
   );
@@ -552,7 +550,7 @@ function PriceHold({ validUntil, passed, className }: { validUntil: string | nul
   if (!validUntil) return null;
   return passed ? (
     <p className={cn("text-sm font-semibold text-pretty", className)} data-testid="quote-price-hold">
-      Prices may have changed since {formatFullDate(validUntil)}. We&apos;ll confirm before booking.
+      Prices may have changed since {formatFullDate(validUntil)}. We’ll confirm before booking.
     </p>
   ) : (
     <p className={cn("text-sm text-muted-foreground", className)} data-testid="quote-price-hold">
@@ -593,7 +591,7 @@ function Breakdown({ full, current }: { full: QuoteLine[]; current: QuoteLine[] 
   const rows = [...keyed(full)];
   for (const entry of keyed(current)) if (!rows.some((row) => row.key === entry.key)) rows.push(entry);
   return (
-    <dl className="mt-6 flex flex-col" data-testid="quote-lines">
+    <dl className="mt-5 flex flex-col border-t" data-testid="quote-lines">
       {rows.map(({ key, line: before }) => {
         const line = now.get(key) ?? before;
         const shown = now.has(key);
@@ -615,17 +613,20 @@ function Breakdown({ full, current }: { full: QuoteLine[]; current: QuoteLine[] 
   );
 }
 
-// "What do these mean?": the same house, small, one part lit at a time.
-const EXPLAINED: { title: string; text: string; lit: HouseSegment[] }[] = [
+// "What do these mean?": the same house, small, one part lit at a time,
+// cropped to that part so even the porch and the sides read at the small
+// size (the screenshot review, 2026-11-04).
+const EXPLAINED: { title: string; text: string; lit: HouseSegment[]; crop: Crop }[] = [
   {
     title: "Eave",
-    text: "The level edge of a roof, where the gutter runs. The track sits under it, on the soffit.",
+    text: "The level edge of a roof, where the gutter runs. The track sits on the soffit, the underside of that edge.",
     lit: ["lower-eave", "upper-eave"],
+    crop: WHOLE_HOUSE,
   },
-  { title: "Gable", text: "The two sloped edges of a peak.", lit: ["garage-gable", "upper-gable"] },
-  { title: "Garage line", text: "The roof edge over the garage door.", lit: ["garage"] },
-  { title: "Sides", text: "The roof edges down each side of the house.", lit: ["lower-sides", "upper-sides"] },
-  { title: "Porch", text: "The small roof over your front door.", lit: ["porch"] },
+  { title: "Gable", text: "The two sloped edges of a peak.", lit: ["garage-gable", "upper-gable"], crop: WHOLE_HOUSE },
+  { title: "Garage line", text: "The roof edge over the garage door.", lit: ["garage"], crop: [0, 80, 140, 78] },
+  { title: "Sides", text: "The roof edges down each side of the house.", lit: ["lower-sides", "upper-sides"], crop: [189, 40, 161, 90] },
+  { title: "Porch", text: "The small roof over your front door.", lit: ["porch"], crop: [172, 108, 130, 72.6] },
 ];
 
 function PartsExplained() {
@@ -640,15 +641,15 @@ function PartsExplained() {
           ) as Record<HouseSegment, "on" | "none">;
           return (
             <li key={item.title} className="flex items-center gap-4">
-              <HouseDiagram states={states} mini label={`${item.title}, lit on a small drawing of a house`} className="w-32 shrink-0" />
-              <p className="min-w-0 text-[0.9375rem] text-pretty">
+              <HouseDiagram states={states} mini crop={item.crop} label={`${item.title}, lit on a small drawing of a house`} className="w-32 shrink-0" />
+              <p className="min-w-0 text-base text-pretty">
                 <span className="font-semibold">{item.title}:</span> {item.text}
               </p>
             </li>
           );
         })}
       </ul>
-      <p className="text-[0.9375rem] text-pretty">Upper is the second storey. Lower is the main floor.</p>
+      <p className="text-base text-pretty">Upper is the second storey. Lower is the main floor.</p>
     </div>
   );
 }
@@ -749,7 +750,7 @@ function ThankYou({
     <main className="mx-auto flex max-w-xl flex-col gap-6 px-5 pt-10 pb-16" data-testid="quote-thanks">
       {thanks.preview ? (
         <p role="status" className="rounded-md border border-input px-4 py-3 text-sm font-semibold text-pretty" data-testid="thanks-preview">
-          Preview only. You&apos;re signed in to Vesper on this device, so nothing was saved and no notification was sent.
+          Preview only. You’re signed in to Vesper on this device, so nothing was saved and no notification was sent.
         </p>
       ) : null}
       <span className="flex size-12 items-center justify-center rounded-full bg-navy text-white" aria-hidden="true">
@@ -763,7 +764,7 @@ function ThankYou({
           Keenan will be in touch within a day to set your install date and go through the agreement.
         </p>
         <p className="text-base text-pretty text-muted-foreground">
-          There&apos;s nothing to sign or pay today. No payment until your install is complete.
+          There’s nothing to sign or pay today. No payment until your install is complete.
         </p>
       </div>
       <dl className="flex flex-col divide-y rounded-md border">
@@ -836,9 +837,9 @@ function Mockup({ url }: { url: string }) {
         />
         <span
           aria-hidden="true"
-          className="absolute right-3 bottom-3 flex size-11 items-center justify-center rounded-md bg-white text-navy shadow-sm"
+          className="absolute right-3 bottom-3 flex size-11 items-center justify-center rounded-md border border-white/40 bg-navy text-white"
         >
-          <Maximize2 className="size-5" />
+          <Maximize2 className="size-5" strokeWidth={1.5} />
         </span>
       </button>
       <MockupViewer url={url} open={open} onClose={close} />
