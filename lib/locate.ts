@@ -105,7 +105,7 @@ export function failureMessage(reason: LocateFailure, best: number | null, devic
     case "unsupported":
       return { title: `${The} can't share where it is.`, detail: "Type the address instead." };
     case "denied":
-      return { title: "Location is off for Vesper.", detail: "To turn it on:", steps: LOCATION_ON_STEPS };
+      return { title: "Location is off for Vesper.", detail: "What you've entered stays here. To turn it on:", steps: LOCATION_ON_STEPS };
     case "no_answer":
       return {
         title: `${The} didn't answer with a position.`,
@@ -120,7 +120,7 @@ export function failureMessage(reason: LocateFailure, best: number | null, devic
     case "approximate":
       return {
         title: `${The} is only giving a rough area (about ${formatDistance(best ?? APPROXIMATE_M)}), not where you're standing.`,
-        detail: "Precise Location is off. To turn it on:",
+        detail: "Precise Location is off. What you've entered stays here. To turn it on:",
         steps: PRECISE_STEPS,
       };
     case "outside":

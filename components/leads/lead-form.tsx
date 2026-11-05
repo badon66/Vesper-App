@@ -14,6 +14,7 @@ import { FieldError } from "@/components/field-error";
 import { AddressField, type AddressDefaults } from "@/components/leads/address-field";
 import { CheckGroup } from "@/components/leads/check-group";
 import { ChoiceGroup } from "@/components/leads/choice-group";
+import { OptionalChoice } from "@/components/leads/optional-choice";
 import { bookingRuledOut, LeadQuestions, type QuestionDefaults } from "@/components/leads/find-out-fields";
 import { PhotoPicker } from "@/components/leads/photo-picker";
 import { PhotoSlots } from "@/components/leads/photo-slots";
@@ -486,7 +487,7 @@ export function LeadForm({
         onBookingChange={setBookingBlocked}
         markRestRef={markRestRef}
         afterPhone={
-          <ChoiceGroup
+          <OptionalChoice
             name="confirm_by"
             legend={`${CONFIRM_BY_LABEL} (optional)`}
             options={CONFIRM_BY_OPTIONS}
@@ -496,7 +497,7 @@ export function LeadForm({
         }
         afterQuestions={
           <>
-            <ChoiceGroup
+            <OptionalChoice
               name="setter_read"
               legend={`${SETTER_READ_LABEL} (optional)`}
               options={SETTER_READ_OPTIONS}
@@ -532,7 +533,7 @@ export function LeadForm({
         </section>
       ) : null}
 
-      <ChoiceGroup
+      <OptionalChoice
         name="house_type"
         legend="House type (optional)"
         options={HOUSE_TYPE_OPTIONS}

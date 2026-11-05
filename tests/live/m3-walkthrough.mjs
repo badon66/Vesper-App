@@ -696,7 +696,7 @@ try {
   check("tapping Book that isn't ready books nothing and stays on Book", (await viewOf(pageA)) === "book");
   await sheet(pageA).getByTestId("readiness").locator('li[data-item="wants_price"] button').click();
   await waitView(pageA, "door");
-  check("a missing item opens its step, and Next there goes back to Book", (await nextLabel(pageA)) === "Back to Book");
+  check("a missing item opens its step, and Next there says Return to Book", (await nextLabel(pageA)) === "Return to Book");
   await answer(pageA, "Wants a price", "Yes");
   await next(pageA);
   await waitView(pageA, "book");

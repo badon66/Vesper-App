@@ -111,7 +111,9 @@ const SYNC_MS = 30_000;
 // A save, a booking or a hold that hasn't answered within the app's answer
 // limit (lib/answer-within.ts) is treated as lost to the signal, so the
 // sheet never sits on "Saving". This is what it says then.
-type SheetError = { text: string; fix: SheetScreen | null };
+// calm: said in the neutral note style, not as an error (round 3: a
+// location that failed out of sight isn't the setter's mistake).
+type SheetError = { text: string; fix: SheetScreen | null; calm?: boolean };
 const SLOW = "That's taking too long. Check your signal and try again.";
 // Next never stops on a save that didn't go through (round 3): it moves on
 // and says so calmly. Everything stays on the phone and Book saves it.
@@ -1665,7 +1667,7 @@ function BookingSheet({
                   onLocateFailed={(title) => {
                     if (viewNow.current === "address") return;
                     setAddressFailedAway(true);
-                    setError({ text: `Where you're standing wasn't found. ${title}`, fix: "address" });
+                    setError({ text: `Where you're standing wasn't found. ${title}`, fix: "address", calm: true });
                   }}
                   onPicked={(picked) => {
                     pickedRef.current = picked;
@@ -1721,7 +1723,14 @@ function BookingSheet({
                   <ActionMessage text={error.text} className="font-semibold" />
                 </div>
               ) : (
-                <div role="alert" className="flex flex-wrap items-center gap-3 text-sm font-semibold text-destructive" data-testid="sheet-error">
+                <div
+                  role={error.calm ? "status" : "alert"}
+                  className={cn(
+                    "flex flex-wrap items-center gap-3 text-sm font-semibold",
+                    error.calm ? "rounded-md border border-foreground/60 px-3 py-2" : "text-destructive",
+                  )}
+                  data-testid="sheet-error"
+                >
                   <span className="text-pretty">{error.text}</span>
                   <Button type="button" variant="outline" size="sm" onClick={() => go(error.fix as SheetScreen)}>
                     Go there
@@ -1880,7 +1889,7 @@ function Progress({ screen, draft, visited }: { screen: SheetScreen; draft: Shee
         {SCREENS.map((item, index) => (
           <li key={item} className={cn("flex flex-1 flex-col items-center gap-1", firstOfPart.has(item) && "ml-2")} data-step={item} data-missing={marked.includes(item) ? "yes" : undefined}>
             <span className={cn("h-1.5 w-full rounded-full", index < number ? "bg-foreground" : "bg-input")} />
-            <span className={cn("size-1.5 rounded-full", marked.includes(item) ? "bg-foreground" : "bg-transparent")} />
+            <span className={cn("size-2 rounded-full", marked.includes(item) ? "bg-foreground" : "bg-transparent")} />
           </li>
         ))}
       </ol>
@@ -2015,7 +2024,7 @@ function BottomBar({
         data-ready={need ? "no" : "yes"}
         data-step-back={stepBack ? "yes" : "no"}
       >
-        {saving ? (booking ? "Booking" : "Saving") : uploading ? "Uploading photos" : need ?? (booking ? (canBook ? bookLabel : "Time not held") : backToBook ? "Back to Book" : "Next")}
+        {saving ? (booking ? "Booking" : "Saving") : uploading ? "Uploading photos" : need ?? (booking ? (canBook ? bookLabel : "Time not held") : backToBook ? "Return to Book" : "Next")}
       </Button>
     </div>
   );

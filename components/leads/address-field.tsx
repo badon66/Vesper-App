@@ -383,7 +383,7 @@ export function AddressField({
               </p>
               <button
                 type="button"
-                className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center font-semibold underline underline-offset-4"
                 onClick={() => nearest.address && applyNearest(nearest.address)}
               >
                 Use it
