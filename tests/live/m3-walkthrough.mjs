@@ -579,8 +579,8 @@ try {
   );
   await answer(pageA, "Christmas lights now", "Hires someone");
   await answer(pageA, "Setter's read (optional)", "Hot");
-  await answer(pageA, "What would make them say yes (optional, any that apply)", "No more ladders");
-  await answer(pageA, "What would make them say yes (optional, any that apply)", "Up for Christmas");
+  await answer(pageA, "What would make them say yes (optional, pick any)", "No more ladders");
+  await answer(pageA, "What would make them say yes (optional, pick any)", "Up for Christmas");
   await sheet(pageA).getByTestId("mark-rest").click();
   const counted = ["christmas_lights_now", "looked_into_before", "areas_wanted", "install_timing"];
   const marked = await Promise.all(counted.map((question) => sheet(pageA).locator(`fieldset[data-question="sheet-${question}"] input:checked`).getAttribute("value").catch(() => "")));
@@ -598,10 +598,20 @@ try {
   scrolls.address = await sheetScrolls(pageA);
   await pageA.fill("#lead-address", "306 Sheet Test Way NW (TEST)");
   await pageA.getByTestId("sheet-heading").click();
+  // A rough first reading, as an iPhone gives before GPS settles: it says
+  // it's working at once and keeps listening, then takes the good one.
+  await pageA.context().setGeolocation({ latitude: 51.0447, longitude: -114.0719, accuracy: 220 });
   await sheet(pageA).getByRole("button", { name: "Use where I'm standing" }).click();
+  await sheet(pageA).getByTestId("position-status").getByText(/^Finding where you are/).waitFor({ timeout: 5000 }).catch(() => {});
   const finding = (await sheet(pageA).getByTestId("position-status").innerText().catch(() => "")).trim();
-  await sheet(pageA).getByText(/^Position saved from this .+, accurate to about 10 m\.$/).first().waitFor({ timeout: 20000 });
-  check("Use where I'm standing says it's working at once, then that the position saved", finding.startsWith("Finding where you are") || finding.startsWith("Position saved") || finding === "", finding);
+  const listening = (await sheet(pageA).getByTestId("use-my-position").getByRole("button").innerText().catch(() => "")).trim();
+  await pageA.context().setGeolocation({ latitude: 51.0447, longitude: -114.0719, accuracy: 10 });
+  await sheet(pageA).getByText(/^Position saved from this phone at the door, accurate to about 10 m\.$/).first().waitFor({ timeout: 20000 });
+  check(
+    "Use where I'm standing says it's working at once and keeps listening past a rough reading, then says the position saved from this phone at the door",
+    finding.startsWith("Finding where you are") && listening === "Listening, up to 15 seconds",
+    `${finding}; ${listening}`,
+  );
   // The soffit is left for later; the house type is optional.
   await answer(pageA, "House type (optional)", "Two storey");
   scrolls.addressDone = await sheetScrolls(pageA);

@@ -507,7 +507,7 @@ export function LeadForm({
             <CheckGroup
               name="hot_buttons"
               legend={HOT_BUTTONS_LABEL}
-              hint="(optional, any that apply)"
+              hint="(optional, pick any)"
               options={HOT_BUTTON_OPTIONS}
               exclusive="not_sure"
               defaultValue={shown?.hot_buttons ?? []}

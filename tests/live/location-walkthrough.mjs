@@ -25,18 +25,11 @@ const stamp = Date.now().toString(36);
 const person = { email: `location-live-${stamp}@example.com`, password: `birch-lantern-cove-${String(Date.now() % 10000).padStart(4, "0")}` };
 const CALGARY = { latitude: 51.0447, longitude: -114.0719 };
 
-const { data: made, error } = await admin.auth.admin.createUser({
-  email: person.email,
-  password: person.password,
-  email_confirm: true,
-  user_metadata: { full_name: "TEST Location" },
-  app_metadata: { role: "sales" },
-});
-if (error) throw error;
-const userId = made.user.id;
-await admin.from("profiles").update({ welcome_done_at: new Date().toISOString() }).eq("id", userId);
-
+// The browser first, then the throwaway setter, inside the try whose
+// finally deletes it, so a browser that fails to start never leaves an
+// account behind on production.
 const browser = await chromium.launch();
+let userId = null;
 const text = (locator) => locator.innerText().then((value) => value.replace(/\s+/g, " ").trim()).catch(() => "");
 async function newLead(context) {
   const page = await context.newPage();
@@ -54,6 +47,17 @@ const status = (page) => text(page.getByTestId("position-status"));
 const button = (page) => page.getByTestId("use-my-position").getByRole("button");
 
 try {
+  const { data: made, error } = await admin.auth.admin.createUser({
+    email: person.email,
+    password: person.password,
+    email_confirm: true,
+    user_metadata: { full_name: "TEST Location" },
+    app_metadata: { role: "sales" },
+  });
+  if (error) throw error;
+  userId = made.user.id;
+  await admin.from("profiles").update({ welcome_done_at: new Date().toISOString() }).eq("id", userId);
+
   // 1. Location off: the reason at once, with the iPhone steps.
   {
     const context = await browser.newContext({ ...devices["iPhone 13"], permissions: [] });
@@ -125,7 +129,7 @@ try {
   results.push(`SCRIPT ERROR ${failure?.message ?? String(failure)}`);
 } finally {
   await browser.close();
-  const { error: gone } = await admin.auth.admin.deleteUser(userId);
+  const { error: gone } = userId ? await admin.auth.admin.deleteUser(userId) : { error: null };
   check("the throwaway setter is gone", !gone, gone?.message ?? "");
   const { data: users } = await admin.auth.admin.listUsers({ perPage: 1000 });
   console.log(`accounts remaining: ${JSON.stringify(users.users.map((user) => user.email))}`);
