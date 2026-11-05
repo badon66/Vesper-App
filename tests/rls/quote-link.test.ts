@@ -309,9 +309,9 @@ describe("what a token shows", () => {
       .eq("id", 1)
       .single();
     expect(view.today).toBe(calgaryDay(0));
-    // The banner shows from September 1 to December 24 (Calgary), while on.
-    const [, month, day] = calgaryDay(0).split("-").map(Number);
-    const inSeason = month >= 9 && !(month === 12 && day > 24);
+    // The banner shows from September 1 to November 30 (Calgary), while on.
+    const [, month] = calgaryDay(0).split("-").map(Number);
+    const inSeason = month >= 9 && month <= 11;
     expect(view.christmas).toEqual(
       settings!.christmas_banner_on && inSeason ? { title: settings!.christmas_banner_title, text: settings!.christmas_banner_text } : null,
     );

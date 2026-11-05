@@ -267,9 +267,9 @@ try {
     promises.includes("No payment until your install is complete.") && promises.includes("Financing is available. Just ask.") && (justAsk ?? "").startsWith("sms:+14038959915?&body=Hi%20Keenan"),
     `${promises} ${justAsk}`,
   );
-  // 2. Christmas, while Keenan has it on, September 1 to December 24.
-  const [, month, day] = calgaryToday().split("-").map(Number);
-  const bannerDue = settingsRow?.christmas_banner_on && month >= 9 && !(month === 12 && day > 24);
+  // 2. Christmas, while Keenan has it on, September 1 to November 30.
+  const [, month] = calgaryToday().split("-").map(Number);
+  const bannerDue = settingsRow?.christmas_banner_on && month >= 9 && month <= 11;
   const banner = await page.getByTestId("quote-christmas").innerText().catch(() => "");
   check(
     bannerDue ? "the Christmas banner, in Keenan's words from Settings" : "no Christmas banner out of season or while it's off",
@@ -488,8 +488,8 @@ try {
   await page.getByTestId("quote-thanks").waitFor({ timeout: 20000 }).catch(() => {});
   const thanks = flat(await page.getByTestId("quote-thanks").innerText().catch(() => ""));
   check(
-    "Book my install shows the thank-you: Keenan in touch within a day, nothing to sign or pay",
-    thanks.includes("Keenan will be in touch within a day to set your install date and go through the agreement.") &&
+    "Book my install shows the thank-you: Keenan in touch within one business day, nothing to sign or pay",
+    thanks.includes("Keenan will be in touch within one business day to set your install date and go through the agreement.") &&
       thanks.includes("There's nothing to sign or pay today.") &&
       (await page.getByTestId("thanks-option").innerText()).trim() === "Garage only" &&
       (await page.getByTestId("thanks-total").innerText()).trim() === "$2,500",

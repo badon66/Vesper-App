@@ -77,7 +77,7 @@ export type CustomerQuote = {
   warranty: string;
   // Warranty years 6 to 10 (Settings); null hides its line.
   serviceCallFee: number | null;
-  // Shown only while Keenan has it on and before December 25 (the
+  // Shown only while Keenan has it on, September 1 to November 30 (the
   // database decides, by Calgary's date).
   christmas: { title: string; text: string } | null;
   productPoints: ProductPoint[];

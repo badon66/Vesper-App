@@ -212,7 +212,7 @@ export function SettingsForm({
               <Label htmlFor="settings-christmas_banner_on">Show the Christmas banner</Label>
             </div>
             <p className="-mt-2 text-sm text-muted-foreground">
-              It shows from September 1 to December 24 while this is on, and hides itself after that.
+              It shows from September 1 to November 30 while this is on, and hides itself after that.
             </p>
             <Field name="christmas_banner_title" label="Banner heading" errors={errors}>
               {(p) => <Input {...p} maxLength={80} defaultValue={defaults.christmas_banner_title} />}

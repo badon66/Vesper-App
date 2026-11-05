@@ -236,7 +236,7 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
           </p>
         ) : null}
 
-        {/* 2. A reason to act now, while Keenan has it on (until Dec 24). */}
+        {/* 2. A reason to act now, while Keenan has it on (September 1 to November 30). */}
         {view.christmas ? (
           <section aria-label="Christmas" className="mt-6 bg-accent px-5 py-5" data-testid="quote-christmas">
             <p className="text-base font-semibold text-pretty">{view.christmas.title}</p>
@@ -837,7 +837,7 @@ function ThankYou({
           Thank you{firstName.trim() ? `, ${firstName.trim()}` : ""}
         </h1>
         <p className="text-lg text-pretty">
-          Keenan will be in touch within a day to set your install date and go through the agreement.
+          Keenan will be in touch within one business day to set your install date and go through the agreement.
         </p>
         <p className="text-base text-pretty text-muted-foreground">
           There’s nothing to sign or pay today. No payment until your install is complete.
