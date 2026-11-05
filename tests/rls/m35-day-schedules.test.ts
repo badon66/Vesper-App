@@ -216,8 +216,11 @@ describe("an evening with its own schedule", () => {
   });
 
   it("can open an evening that isn't one of the usual meeting days", async () => {
+    // Not an evening the other tests here give their own schedule: on a
+    // Thursday the first closed day, Sunday, is today + 3.
+    const taken = new Set([3, 4, 5, 6, 8].map((days) => addDays(today, days)));
     let closed = addDays(today, 1);
-    while (settings.meeting_days.includes(weekday(closed))) closed = addDays(closed, 1);
+    while (settings.meeting_days.includes(weekday(closed)) || taken.has(closed)) closed = addDays(closed, 1);
     if (closed > addDays(today, settings.booking_window_days)) return; // every day in the window is a meeting day
     expect(await eveningRows(users.a, closed)).toEqual([]);
     expect((await setDay(admin, closed, "18:00", 60, 2, "day")).error).toBeNull();
