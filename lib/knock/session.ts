@@ -111,7 +111,9 @@ export function fixedStart(
   const startsAt = calgaryInstant(day, hhmm);
   if (new Date(startsAt).getTime() > nowMs) return { ok: false, error: "That time hasn't happened yet. Pick a time earlier today." };
   if (startsAt < calgaryDayStart(day)) return { ok: false, error: "Pick a time earlier today." };
-  if (notBefore && new Date(startsAt).getTime() < new Date(notBefore).getTime()) {
+  // By the minute, as times are shown: the minute the last session ended is
+  // allowed, as its message says.
+  if (notBefore && Math.floor(new Date(startsAt).getTime() / 60_000) < Math.floor(new Date(notBefore).getTime() / 60_000)) {
     return { ok: false, error: `Your last session today ended at ${formatTime(notBefore)}. Pick that time or later.` };
   }
   return { ok: true, startsAt };

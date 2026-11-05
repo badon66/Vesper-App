@@ -60,7 +60,7 @@ export default async function SessionPage({
       addedId
         ? supabase
             .from("leads")
-            .select("id, first_name, last_name")
+            .select("id, first_name, last_name, save_key")
             .eq("id", addedId)
             .eq("created_by", profile.id)
             .maybeSingle()
@@ -94,7 +94,7 @@ export default async function SessionPage({
 
   return (
     <>
-      {addedLead && !viewingAs ? <ClearLeadDraft userId={profile.id} /> : null}
+      {addedLead && !viewingAs ? <ClearLeadDraft userId={profile.id} saveKey={addedLead.save_key ?? null} /> : null}
       <SessionScreen
         session={session}
         lastEnded={lastEnded}
@@ -129,7 +129,10 @@ export default async function SessionPage({
                 </p>
               ) : null}
             </div>
+            {/* Keyed on the evening the heading names: when a refresh moves
+                the heading to another evening, the grid follows it. */}
             <ScheduleView
+              key={opening.day}
               board={board}
               today={today}
               windowDays={settings.windowDays}

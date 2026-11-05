@@ -720,7 +720,7 @@ try {
     summaryText.includes(`Done in ${TEST_PLACE}`) && /Out (under a minute|\d)/.test(summaryText) &&
       summaryText.includes(`${ended?.doors_knocked} ${ended?.doors_knocked === 1 ? "door" : "doors"}`) &&
       summaryText.includes(`${ended?.conversations} ${ended?.conversations === 1 ? "conversation" : "conversations"}`) &&
-      summaryText.includes(`${linked} ${linked === 1 ? "lead" : "leads"}, none booked`),
+      summaryText.includes(linked === 1 ? "1 lead, not booked" : `${linked} leads, none booked`),
     summaryText,
   );
   const summaryBox = await page.getByTestId("session-summary").boundingBox();

@@ -125,17 +125,18 @@ export async function fixKnockStart(sessionId: string, hhmm: string): Promise<Kn
   if (!id.success) return { ok: false, error: "That session was not found." };
 
   const supabase = await createClient();
-  const { data: session } = await supabase
+  const { data: session, error: readError } = await supabase
     .from("knock_sessions")
     .select("id, started_at")
     .eq("id", id.data)
     .eq("user_id", me.id)
     .is("ended_at", null)
     .maybeSingle();
+  if (readError) return { ok: false, error: "The start time could not be saved. Check your signal and try again." };
   if (!session) return { ok: false, error: ENDED };
   const day = calgaryDateOf(session.started_at);
   // Never back into an earlier session today.
-  const { data: earlier } = await supabase
+  const { data: earlier, error: earlierError } = await supabase
     .from("knock_sessions")
     .select("ended_at")
     .eq("user_id", me.id)
@@ -146,6 +147,7 @@ export async function fixKnockStart(sessionId: string, hhmm: string): Promise<Kn
     .order("ended_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (earlierError) return { ok: false, error: "The start time could not be saved. Check your signal and try again." };
   const fixed = fixedStart(day, String(hhmm ?? ""), Date.now(), earlier?.ended_at ?? null);
   if (!fixed.ok) return fixed;
   const { data, error } = await supabase
