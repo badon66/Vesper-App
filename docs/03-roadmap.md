@@ -8,15 +8,15 @@ One milestone per build session. A milestone is done when every criterion passes
 
 ## The Session tab (Keenan, 2026-11-05; merge on green, approved)
 Setters are out the afternoon of 2026-11-05, so it aims to be live before 3:00 pm Calgary. Nothing customer facing.
-- [ ] The gold button is Session instead of New lead. Setters: Home, Schedule, Session, Leads, My pay. Keenan: Home, Schedule, Meetings, Session, Leads
-- [ ] Not knocking: the neighbourhood (the last one filled in, with recent ones to tap) and Start knocking; below it, who else is out today: name, neighbourhood, since when, doors and conversations
-- [ ] Knocking: the neighbourhood and start time at the top with the time out so far, and a way to fix the start time for a late start; the doors and conversations counters, smaller than before but easy to hit with a thumb; tonight's open times, the same as Schedule (tap a time, it holds, the booking sheet opens); a smaller New lead button; Unfinished bookings, moved from Home; End knocking with a short summary: time out, doors, conversations, leads and bookings
-- [ ] Saving a lead or a booking during a session comes back to Session with "Lead saved. On to the next door."
-- [ ] The knocking view fits one screen at 430 wide; tested at 390 and 430
-- [ ] The knock card leaves Home (Keenan's included); Leads gets a New lead button at the top; Schedule stays as it is
-- [ ] View as shows Session exactly as each person sees it, and acts out every write
-- [ ] Design: impeccable shape, then critique and polish at both phone sizes; plain copy, no em dashes
-- [ ] The full suite passes, the branch merges on green, and production is verified
+- [x] The gold button is Session instead of New lead. Setters: Home, Schedule, Session, Leads, My pay. Keenan: Home, Schedule, Meetings, Session, Leads
+- [x] Not knocking: the neighbourhood (the last one filled in, with recent ones to tap) and Start knocking; below it, who else is out today: name, neighbourhood, since when, doors and conversations
+- [x] Knocking: the neighbourhood and start time at the top with the time out so far, and a way to fix the start time for a late start; the doors and conversations counters, smaller than before but easy to hit with a thumb; tonight's open times, the same as Schedule (tap a time, it holds, the booking sheet opens); a smaller New lead button; Unfinished bookings, moved from Home; End knocking with a short summary: time out, doors, conversations, leads and bookings
+- [x] Saving a lead or a booking during a session comes back to Session with "Lead saved. On to the next door."
+- [x] The knocking view fits one screen at 430 wide; tested at 390 and 430
+- [x] The knock card leaves Home (Keenan's included); Leads gets a New lead button at the top; Schedule stays as it is
+- [x] View as shows Session exactly as each person sees it, and acts out every write
+- [x] Design: impeccable shape, then critique and polish at both phone sizes; plain copy, no em dashes
+- [x] The full suite passes, the branch merges on green, and production is verified
 
 ## The new Homes (Keenan, 2026-11-05; merge on green, approved)
 Replaces the setter Home with open times on top that is live now. Nothing customer facing.
