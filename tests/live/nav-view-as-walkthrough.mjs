@@ -897,7 +897,7 @@ try {
   const actedSummary = (await op.getByTestId("session-summary").innerText().catch(() => "")).replace(/\s+/g, " ");
   check(
     "End knocking is acted out too: the summary shows, says nothing was saved, and Start knocking is back",
-    actedSummary.includes(`Done in ${TEST_PLACE}`) && actedSummary.includes(`Doors ${doorsAfter}`) && actedSummary.includes("View as: nothing was saved.") &&
+    actedSummary.includes(`Done in ${TEST_PLACE}`) && actedSummary.includes(`${doorsAfter} doors`) && actedSummary.includes("View as: nothing was saved.") &&
       (await op.getByRole("button", { name: "Start knocking" }).count()) === 1,
     actedSummary,
   );

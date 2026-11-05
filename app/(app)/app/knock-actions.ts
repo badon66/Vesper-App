@@ -11,7 +11,7 @@ import {
 import { sessionTally } from "@/lib/knock/queries";
 import { fixedStart } from "@/lib/knock/session";
 import { createClient } from "@/lib/supabase/server";
-import { calgaryDateOf } from "@/lib/time";
+import { calgaryDateOf, calgaryDayStart } from "@/lib/time";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 
 export type KnockState = { ok?: boolean; error?: string };
@@ -133,7 +133,20 @@ export async function fixKnockStart(sessionId: string, hhmm: string): Promise<Kn
     .is("ended_at", null)
     .maybeSingle();
   if (!session) return { ok: false, error: ENDED };
-  const fixed = fixedStart(calgaryDateOf(session.started_at), String(hhmm ?? ""), Date.now());
+  const day = calgaryDateOf(session.started_at);
+  // Never back into an earlier session today.
+  const { data: earlier } = await supabase
+    .from("knock_sessions")
+    .select("ended_at")
+    .eq("user_id", me.id)
+    .neq("id", session.id)
+    .not("ended_at", "is", null)
+    .gte("started_at", calgaryDayStart(day))
+    .lte("started_at", session.started_at)
+    .order("ended_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const fixed = fixedStart(day, String(hhmm ?? ""), Date.now(), earlier?.ended_at ?? null);
   if (!fixed.ok) return fixed;
   const { data, error } = await supabase
     .from("knock_sessions")

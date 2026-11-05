@@ -92,6 +92,13 @@ describe("fixedStart", () => {
   it("allows any time from midnight", () => {
     expect(fixedStart("2026-11-05", "00:00", now).ok).toBe(true);
   });
+  it("never goes back into a session that already ended today", () => {
+    const ended = "2026-11-05T21:30:00Z"; // 3:30 p.m.
+    const before = fixedStart("2026-11-05", "15:00", now, ended);
+    expect(before.ok).toBe(false);
+    if (!before.ok) expect(before.error).toContain("3:30");
+    expect(fixedStart("2026-11-05", "15:30", now, ended).ok).toBe(true);
+  });
 });
 
 describe("calgaryClock", () => {

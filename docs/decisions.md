@@ -853,6 +853,14 @@ Keenan approved the scope up front, merge on green, aiming to be live before 3:0
   - the links beside the heading and the start time keep their 44 px tap area without adding line height;
   - Out today says where each person is now ("Bridgeland, since 4:32 p.m. Earlier: Renfrew.") and lists a finished person's places in the order they knocked them.
   With six times tonight the End and New lead row now clears the raised Session button by 42 px on a 390-wide iPhone in the installed app (status bar and home indicator emulated) and by 118 px on Keenan's 430.
+- **Final re-score and a third polish.** Two fresh reviewers scored it 29/40 again; the detector, the overlay and the CLI's own page engine over CDP found nothing, and the counters never moved through start, taps, Undo, an offline retry and its recovery. Their remaining points, fixed:
+  - 12 px between the counters and the status row, so a low tap can't reach Undo, and Undo says what it took back until the next tap;
+  - the save line claims only what's true: "Taps save as you go.", "Saving." when slow, "All taps saved." once taps that had to wait have landed (before, "All taps saved." could show for up to 0.8 s while a tap was on its way);
+  - the neighbourhood field selects its text on a tap and has a clear button, so moving to the next neighbourhood isn't a manual delete;
+  - the summary is two short lines ("4:32 to 6:05 p.m. Out 1 h 33 min." and "48 doors, 12 conversations, 3 leads, 1 of them booked."), so Start knocking stays clear of the tab bar at 390 after ending;
+  - End's question scrolls into view again when a message appears under it, and Keep going gives focus back to End knocking;
+  - a fixed start time can't go back into an earlier session today (checked on the server), so time out never counts twice.
+  Not re-scored after this third polish. Noted, not changed: the raised gold Session button stays gold on its own page (a nav-wide choice), Keenan's booked tiles open the booking on Schedule but not on Session, and Fix start time opens above the counters.
 - **Not changed, for Keenan to decide.** The design review suggested docking the counters just above the tab bar, where the thumb rests, instead of second from the top as Keenan listed them; and asked whether every conversation should also count a door, so a talk is one tap. Both change what Keenan specified, so neither was built.
 - **Tests that were already failing on main.** The full database suite had five failures unrelated to Session:
   - one day-schedule test picked "the first closed evening" which, on a Thursday, is Sunday, today + 3, an evening two earlier tests in the same file give their own schedule (on the throwaway test host; it stopped at its first check, so nothing was changed);
