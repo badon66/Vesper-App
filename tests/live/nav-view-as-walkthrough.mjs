@@ -384,10 +384,13 @@ try {
   await page.locator('nav[aria-label="Tabs"]:visible').getByRole("link", { name: "Session", exact: true }).click();
   await page.waitForURL("**/app/session", { timeout: 20000 });
   await settle(page);
+  const sessionHeading = page.getByRole("heading", { name: `Knocking in ${TEST_PLACE}` });
+  await sessionHeading.waitFor({ timeout: 15000 }).catch(() => {});
+  const doorsLabel = (await page.getByRole("button", { name: /^Doors \+1/ }).getAttribute("aria-label", { timeout: 15000 }).catch(() => null)) ?? "";
   check(
     "Session shows the knock session that is running, with its counts",
-    (await page.getByRole("heading", { name: `Knocking in ${TEST_PLACE}` }).count()) === 1 &&
-      ((await page.getByRole("button", { name: /^Doors \+1/ }).getAttribute("aria-label")) ?? "").endsWith("now 7"),
+    (await sessionHeading.count()) === 1 && doorsLabel.endsWith("now 7"),
+    `${page.url()} | h1: ${(await page.locator("main h1").first().innerText().catch(() => "none")).trim()} | doors: ${doorsLabel || "none"}`,
   );
   check(
     "the Session tab is the current tab",
