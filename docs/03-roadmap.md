@@ -6,13 +6,13 @@ One milestone per build session. A milestone is done when every criterion passes
 
 **Current milestone: booking sheet round 3** (Keenan, 2026-11-05, approved, merges on green after 9:30 pm Calgary). Before it: **the Session tab and the new Homes, both live on 2026-11-05** (Keenan; approved, each merged on green straight to live, nothing customer facing). Built from main, so nothing from the unreviewed quote page goes live. The quote link rework (take 1's second pass) waits on a preview for Keenan's "push the changes". Setter side round 2 was released on 2026-11-03; the setter side and the customer quote link's take 1 the same day (merges `372ee85`, `947a3fd`); M5 take 1 on 2026-11-02 (merge `b075554`), and the Meetings page the same day (merge `13b737d`).
 
-## Booking sheet round 3 (Keenan, 2026-11-05, after using it; merge on green after 9:30 pm, approved)
-Live for the shift of 2026-11-06. Nothing customer facing.
-- [ ] Move freely: Next and swiping always move on with answers missing; a step left with something missing is marked on the progress bar and the counter says what's left; Book lists everything missing, each with a tap to its step, and stays off until it's all answered, with the same Before you book rules
-- [ ] The phone comes last: on Book, right above the Book button, still required to book; the first step keeps the name; a line in the Book step note asks for the best number to confirm the meeting
-- [ ] Use where I'm standing works in the field: "Finding where you are..." at once, up to 15 seconds for a reading within 50 m, a clear result or a clear reason with the iPhone steps, and the nearest street address filled in to confirm
-- [ ] Optional answers, one tap each, never required or counted: house type (house step), setter's read and hot buttons (learned step), call or text (beside the phone on Book); on New lead, the lead page and View as; the read and hot buttons on Keenan's Meetings and Home cards
-- [ ] The full suite passes, including a walk-through that books with the steps done out of order and the phone entered last; merged after 9:30 pm Calgary and checked on the live site
+## Booking sheet round 3 (Keenan, 2026-11-05, after using it; merge on green, approved)
+Live for the shift of 2026-11-06. Nothing customer facing. Merged at 6:35 pm Calgary on 2026-11-05 because Keenan said to push it.
+- [x] Move freely: Next and swiping always move on with answers missing; a step left with something missing is marked on the progress bar and the counter says what's left; Book lists everything missing, each with a tap to its step, and stays off until it's all answered, with the same Before you book rules
+- [x] The phone comes last: on Book, right above the Book button, still required to book; the first step keeps the name; a line in the Book step note asks for the best number to confirm the meeting
+- [x] Use where I'm standing works in the field: "Finding where you are..." at once, up to 15 seconds for a reading within 50 m, a clear result or a clear reason with the iPhone steps, and the nearest street address filled in to confirm
+- [x] Optional answers, one tap each, never required or counted: house type (house step), setter's read and hot buttons (learned step), call or text (beside the phone on Book); on New lead, the lead page and View as; the read and hot buttons on Keenan's Meetings and Home cards
+- [ ] The full suite passes, including a walk-through that books with the steps done out of order and the phone entered last; merged (at Keenan's say-so, before 9:30 pm) and checked on the live site
 
 ## The Session tab (Keenan, 2026-11-05; merge on green, approved)
 Setters are out the afternoon of 2026-11-05, so it aims to be live before 3:00 pm Calgary. Nothing customer facing.
