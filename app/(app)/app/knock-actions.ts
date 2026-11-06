@@ -28,6 +28,8 @@ export type KnockSummary = {
   conversations: number;
   leads: number;
   bookings: number;
+  // Round 4: it was still open at midnight and ended itself.
+  automatic: boolean;
 };
 export type KnockEndResult = { ok: true; summary: KnockSummary } | { ok: false; error: string };
 export type KnockFixResult = { ok: true; startedAt: string } | { ok: false; error: string };
@@ -173,7 +175,7 @@ export async function endKnockSession(sessionId: string): Promise<KnockEndResult
   if (!id.success) return { ok: false, error: "That session was not found." };
 
   const supabase = await createClient();
-  const columns = "neighbourhood, started_at, ended_at, doors_knocked, conversations";
+  const columns = "neighbourhood, started_at, ended_at, doors_knocked, conversations, ended_automatically";
   const { data, error } = await supabase
     .from("knock_sessions")
     .update({ ended_at: new Date().toISOString() })
@@ -205,6 +207,8 @@ export async function endKnockSession(sessionId: string): Promise<KnockEndResult
       conversations: row.conversations,
       leads: tally.leads,
       bookings: tally.bookings,
+      // Ended here by the person, or already ended itself at midnight.
+      automatic: row.ended_automatically,
     },
   };
 }

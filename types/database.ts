@@ -244,7 +244,9 @@ export type Database = {
           created_at: string
           doors_knocked: number
           ended_at: string | null
+          ended_automatically: boolean
           id: string
+          last_tap_at: string | null
           neighbourhood: string
           notes: string | null
           started_at: string
@@ -256,7 +258,9 @@ export type Database = {
           created_at?: string
           doors_knocked?: number
           ended_at?: string | null
+          ended_automatically?: boolean
           id?: string
+          last_tap_at?: string | null
           neighbourhood: string
           notes?: string | null
           started_at?: string
@@ -268,7 +272,9 @@ export type Database = {
           created_at?: string
           doors_knocked?: number
           ended_at?: string | null
+          ended_automatically?: boolean
           id?: string
+          last_tap_at?: string | null
           neighbourhood?: string
           notes?: string | null
           started_at?: string
@@ -1780,7 +1786,9 @@ export type Database = {
           created_at: string
           doors_knocked: number
           ended_at: string | null
+          ended_automatically: boolean
           id: string
+          last_tap_at: string | null
           neighbourhood: string
           notes: string | null
           started_at: string
@@ -1809,6 +1817,7 @@ export type Database = {
         Returns: undefined
       }
       close_my_stale_knock_sessions: { Args: never; Returns: number }
+      end_open_knock_sessions: { Args: never; Returns: number }
       current_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]

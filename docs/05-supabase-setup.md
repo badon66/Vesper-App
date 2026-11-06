@@ -22,6 +22,7 @@ The app finds its project only through environment variables (see below). Nothin
 | Views (`settings_public`, `profiles_public`, `profile_names`) | `supabase/migrations/` | Running the migrations |
 | The settings row (`settings.id = 1`) and its defaults | `supabase/migrations/` | Running the migrations |
 | The `lead-photos` storage bucket and its policies | `supabase/migrations/` | Running the migrations |
+| The `pg_cron` extension and its job `end-open-knock-sessions` (every five minutes, ends sessions left open past midnight Calgary time) | `supabase/migrations/` (`20261106061058_sessions_end_themselves.sql`) | Running the migrations; Supabase offers `pg_cron` on every project, and the migration turns it on |
 | Auth and project settings listed below | Supabase dashboard only | Set by hand, from this file |
 | The owner account | Supabase Auth | Created by hand, step 4 below |
 | Every other account | Supabase Auth | Created by the owner in People |

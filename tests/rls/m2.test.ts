@@ -133,7 +133,9 @@ describe("knock sessions", () => {
       .select("id")
       .single();
     const closed = await users.a.client.rpc("close_my_stale_knock_sessions");
-    expect(closed.data).toBe(1);
+    // 1, or 0 when the five-minute job (round 4) closed it first; the row's
+    // own state is what's checked below.
+    expect([0, 1]).toContain(closed.data);
     const { data: staleRow } = await admin.from("knock_sessions").select("ended_at").eq("id", stale!.id).single();
     expect(staleRow?.ended_at).not.toBeNull();
 

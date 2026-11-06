@@ -811,6 +811,12 @@ try {
     `${actedLeft} s`,
   );
   await op.fill("#sheet-first-name", "View as (test)");
+  // Round 4: the progress bar's steps jump while viewing too, writing nothing.
+  await op.getByTestId("sheet-step-book").click();
+  await sheetView("book");
+  await op.getByTestId("sheet-step-who").click();
+  await sheetView("who");
+  check("the progress bar's steps jump straight to a step while viewing, as they do for the setter", (await op.inputValue("#sheet-first-name")) === "View as (test)");
   await sheetNext();
   await sheetView("door");
   await pickIn("Owns the home", "Yes");

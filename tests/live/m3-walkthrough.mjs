@@ -565,6 +565,27 @@ try {
   await answer(pageA, "Owns the home", "Yes");
   check("with a question still open, Next still says Next: nothing blocks", (await nextLabel(pageA)) === "Next" && (await pageA.getByTestId("sheet-next").getAttribute("data-ready")) === "yes");
   await checkTapTargets(pageA, "At the door's questions");
+  // Round 4 (Keenan, 2026-11-05): each step on the progress bar jumps
+  // straight to it, so Book is one tap from the door. A step jumped over
+  // isn't marked; Book lists what's missing.
+  const bookStep = await sheet(pageA).getByTestId("sheet-step-book").boundingBox();
+  const stepBoxes = await sheet(pageA).locator('[data-testid="sheet-progress"] button').evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect()).map((box) => [Math.round(box.width), Math.round(box.height)]));
+  check(
+    "each step on the progress bar is a thumb-sized button, 44 px tall and wider than that",
+    stepBoxes.length === 6 && stepBoxes.every(([width, height]) => width >= 44 && height >= 44) && bookStep !== null,
+    JSON.stringify(stepBoxes),
+  );
+  await sheet(pageA).getByTestId("sheet-step-book").click();
+  await waitView(pageA, "book");
+  const jumpedMarks = await sheet(pageA).locator('[data-testid="sheet-progress"] [data-missing="yes"]').evaluateAll((items) => items.map((item) => item.getAttribute("data-step")));
+  check(
+    "from the door, tapping Book on the bar goes straight to Book with the phone right there, and the steps jumped over aren't marked",
+    (await viewOf(pageA)) === "book" && (await pageA.locator("#sheet-phone").count()) === 1 && JSON.stringify(jumpedMarks) === JSON.stringify(["door"]),
+    jumpedMarks.join(", "),
+  );
+  await sheet(pageA).getByTestId("sheet-step-door").click();
+  await waitView(pageA, "door");
+  check("tapping At the door on the bar goes straight back, and Next there is the plain next step", (await nextLabel(pageA)) === "Next");
   await swipe(pageA, "right");
   check("swiping right goes back a step", (await viewOf(pageA)) === "who");
   await swipe(pageA, "left");

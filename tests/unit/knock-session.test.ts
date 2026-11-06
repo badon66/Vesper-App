@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { fixedStart, outToday, recentNeighbourhoods, timeOutLabel, type OutSession } from "@/lib/knock/session";
+import {
+  fixedStart,
+  knownSpelling,
+  neighbourhoodKey,
+  neighbourhoodSuggestions,
+  outToday,
+  recentNeighbourhoods,
+  TAP_REMINDER,
+  tapReminderDue,
+  teamNeighbourhoods,
+  timeOutLabel,
+  type OutSession,
+} from "@/lib/knock/session";
 import { calgaryClock } from "@/lib/time";
 
 const at = (iso: string) => new Date(iso).getTime();
@@ -110,5 +122,61 @@ describe("calgaryClock", () => {
     expect(calgaryClock("2026-11-05T22:05:00Z")).toBe("16:05");
     expect(calgaryClock("2026-11-06T06:00:00Z")).toBe("00:00");
     expect(calgaryClock("2026-10-15T22:05:00Z")).toBe("16:05");
+  });
+});
+
+// Round 4 (Keenan, 2026-11-05): one spelling per neighbourhood, the team's
+// suggested as they type, and the reminder to tap.
+describe("neighbourhood names", () => {
+  it("are the same place whatever the capitals or spaces", () => {
+    expect(neighbourhoodKey("  Cortina ")).toBe("cortina");
+    expect(neighbourhoodKey("Crescent   Heights")).toBe("crescent heights");
+  });
+
+  it("list the team's once each, newest first, spelled as stored", () => {
+    const rows = ["Cortina", "cortina", "Springbank", " Crescent  Heights", "springbank"].map((neighbourhood) => ({ neighbourhood }));
+    expect(teamNeighbourhoods(rows)).toEqual(["Cortina", "Springbank", "Crescent Heights"]);
+  });
+
+  it("take the team's spelling of what was typed, or what was typed, tidied", () => {
+    const team = ["Cortina", "Crescent Heights"];
+    expect(knownSpelling("cortina", team)).toBe("Cortina");
+    expect(knownSpelling(" crescent  heights ", team)).toBe("Crescent Heights");
+    expect(knownSpelling("Evanston ", team)).toBe("Evanston");
+  });
+
+  it("suggest the team's that start with what's typed, then a word that does, up to four", () => {
+    const team = ["Cortina", "Crescent Heights", "Springbank", "Mount Royal", "Royal Oak", "Cougar Ridge"];
+    expect(neighbourhoodSuggestions("co", team)).toEqual(["Cortina", "Cougar Ridge"]);
+    expect(neighbourhoodSuggestions("roy", team)).toEqual(["Royal Oak", "Mount Royal"]);
+    expect(neighbourhoodSuggestions("C", team)).toEqual(["Cortina", "Crescent Heights", "Cougar Ridge"]);
+    expect(neighbourhoodSuggestions("", team)).toEqual([]);
+    // Exactly a known spelling: nothing to suggest. Other capitals: the
+    // team's spelling, to tap.
+    expect(neighbourhoodSuggestions("Cortina", team)).toEqual([]);
+    expect(neighbourhoodSuggestions("cortina", team)).toEqual(["Cortina"]);
+    expect(neighbourhoodSuggestions("c", ["A1", "C1", "C2", "C3", "C4", "C5"])).toHaveLength(4);
+  });
+
+  it("put what was typed first, and leave out the setter's own recent places", () => {
+    const team = ["Cortina North", "Cortina", "Coventry Hills"];
+    expect(neighbourhoodSuggestions("cortina", team)).toEqual(["Cortina", "Cortina North"]);
+    expect(neighbourhoodSuggestions("co", team, 4, ["cortina"])).toEqual(["Cortina North", "Coventry Hills"]);
+  });
+});
+
+describe("the tap reminder", () => {
+  const start = "2026-11-05T23:07:00Z";
+  it("shows 15 minutes into a session with no tap", () => {
+    expect(tapReminderDue(start, at("2026-11-05T23:21:59Z"), false)).toBe(false);
+    expect(tapReminderDue(start, at("2026-11-05T23:22:00Z"), false)).toBe(true);
+    expect(tapReminderDue(start, at("2026-11-06T01:00:00Z"), false)).toBe(true);
+  });
+  it("never shows once there has been a tap", () => {
+    expect(tapReminderDue(start, at("2026-11-06T01:00:00Z"), true)).toBe(false);
+  });
+  it("names the counters as they read", () => {
+    expect(TAP_REMINDER).toContain("Doors +1");
+    expect(TAP_REMINDER).toContain("Conversations +1");
   });
 });

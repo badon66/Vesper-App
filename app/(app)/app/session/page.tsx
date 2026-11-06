@@ -9,10 +9,11 @@ import { OutToday } from "@/components/session/out-today";
 import { SessionScreen } from "@/components/session/session-screen";
 import { getViewer } from "@/lib/auth/profile";
 import {
-  lastEndedToday,
+  lastSessionSummary,
   outTodayFor,
   recentNeighbourhoodsOf,
   sessionTally,
+  teamNeighbourhoodsAll,
 } from "@/lib/knock/queries";
 import {
   closeMyStaleKnockSessions,
@@ -49,12 +50,13 @@ export default async function SessionPage({
       ? added
       : null;
   if (!viewingAs) await closeMyStaleKnockSessions(supabase);
-  const [settings, session, last, recent, board, out, addedResult] =
+  const [settings, session, last, recent, team, board, out, addedResult] =
     await Promise.all([
       bookingSettings(supabase),
       openKnockSession(supabase, profile.id),
       lastNeighbourhood(supabase, profile.id),
       recentNeighbourhoodsOf(supabase, profile.id),
+      teamNeighbourhoodsAll(supabase),
       fetchBoard(supabase, profile, real.role),
       outTodayFor(supabase, profile.id),
       addedId
@@ -70,7 +72,7 @@ export default async function SessionPage({
     session
       ? sessionTally(supabase, session.id)
       : Promise.resolve({ leads: 0, bookings: 0 }),
-    session ? Promise.resolve(null) : lastEndedToday(supabase, profile.id),
+    session ? Promise.resolve(null) : lastSessionSummary(supabase, profile.id),
   ]);
   const addedLead = addedResult.data;
   // Tonight's open times; when tonight has nothing left, the heading names
@@ -100,6 +102,7 @@ export default async function SessionPage({
         lastEnded={lastEnded}
         lastNeighbourhood={last}
         recent={recent}
+        team={team}
         soFar={soFar}
         renderedAt={requestTime()}
         savedLead={

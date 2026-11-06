@@ -1,8 +1,8 @@
 import "server-only";
-import { outToday, recentNeighbourhoods, type OutTodayRow } from "@/lib/knock/session";
+import { outToday, recentNeighbourhoods, teamNeighbourhoods, type OutTodayRow } from "@/lib/knock/session";
 import { namesById } from "@/lib/leads/queries";
 import { createClient } from "@/lib/supabase/server";
-import { calgaryDayStart, calgaryToday } from "@/lib/time";
+import { addDays, calgaryDayStart, calgaryToday } from "@/lib/time";
 
 type Client = Awaited<ReturnType<typeof createClient>>;
 
@@ -28,9 +28,11 @@ export async function sessionTally(supabase: Client, sessionId: string): Promise
 }
 
 // The person's last session that ended today, with how it went, for the
-// summary Session shows until the next start. Scoped to the person, so View
-// as shows theirs.
-export async function lastEndedToday(supabase: Client, userId: string): Promise<{
+// summary Session shows until the next start. Round 4: or, when none ended
+// today, the one left open yesterday that ended itself at midnight, so its
+// summary can say so the next time they open Session. Scoped to the person,
+// so View as shows theirs.
+export async function lastSessionSummary(supabase: Client, userId: string): Promise<{
   neighbourhood: string;
   startedAt: string;
   endedAt: string;
@@ -38,27 +40,45 @@ export async function lastEndedToday(supabase: Client, userId: string): Promise<
   conversations: number;
   leads: number;
   bookings: number;
+  automatic: boolean;
 } | null> {
+  const today = calgaryToday();
+  const todayStart = calgaryDayStart(today);
   const { data } = await supabase
     .from("knock_sessions")
-    .select("id, neighbourhood, started_at, ended_at, doors_knocked, conversations")
+    .select("id, neighbourhood, started_at, ended_at, doors_knocked, conversations, ended_automatically")
     .eq("user_id", userId)
     .not("ended_at", "is", null)
-    .gte("started_at", calgaryDayStart(calgaryToday()))
+    .gte("started_at", calgaryDayStart(addDays(today, -1)))
     .order("ended_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (!data?.ended_at) return null;
-  const tally = await sessionTally(supabase, data.id);
+    .limit(10);
+  const from = new Date(todayStart).getTime();
+  const row = (data ?? []).find((session) => new Date(session.started_at).getTime() >= from || session.ended_automatically);
+  if (!row?.ended_at) return null;
+  const tally = await sessionTally(supabase, row.id);
   return {
-    neighbourhood: data.neighbourhood,
-    startedAt: data.started_at,
-    endedAt: data.ended_at,
-    doors: data.doors_knocked,
-    conversations: data.conversations,
+    neighbourhood: row.neighbourhood,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    doors: row.doors_knocked,
+    conversations: row.conversations,
     leads: tally.leads,
     bookings: tally.bookings,
+    automatic: row.ended_automatically,
   };
+}
+
+// The whole team's neighbourhoods, newest first, each once, for the
+// suggestions as a setter types (round 4). Setters read every knock session
+// (they work as a team), so this is the same for a setter, for Keenan and
+// under View as.
+export async function teamNeighbourhoodsAll(supabase: Client): Promise<string[]> {
+  const { data } = await supabase
+    .from("knock_sessions")
+    .select("neighbourhood")
+    .order("started_at", { ascending: false })
+    .limit(300);
+  return teamNeighbourhoods(data ?? []);
 }
 
 // The person's own recent neighbourhoods, newest first, for one-tap chips.

@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -18,8 +18,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useViewAs } from "@/components/view-as-context";
 import { submitKeepingValues } from "@/lib/forms/submit";
-import { fixedStart, timeOutLabel } from "@/lib/knock/session";
-import { calgaryClock, calgaryDateOf, formatTime } from "@/lib/time";
+import {
+  fixedStart,
+  knownSpelling,
+  neighbourhoodSuggestions,
+  TAP_REMINDER,
+  tapReminderDue,
+  timeOutLabel,
+} from "@/lib/knock/session";
+import { calgaryClock, calgaryDateOf, calgaryToday, formatDay, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { VIEW_AS_NOTHING_SAVED } from "@/lib/view-as";
 
@@ -29,6 +36,8 @@ export type KnockSessionView = {
   started_at: string;
   doors_knocked: number;
   conversations: number;
+  // Round 4: the last counter tap, for the reminder.
+  last_tap_at: string | null;
 };
 
 // Leads and bookings of the running session so far, for the summary that
@@ -59,6 +68,7 @@ export function SessionScreen({
   lastEnded,
   lastNeighbourhood,
   recent,
+  team,
   soFar,
   renderedAt,
   savedLead,
@@ -67,10 +77,13 @@ export function SessionScreen({
   outToday,
 }: {
   session: KnockSessionView | null;
-  // The person's last session that ended today, shown until the next start.
+  // The person's last session that ended today, shown until the next start
+  // (or yesterday's, when it ended itself at midnight).
   lastEnded: KnockSummary | null;
   lastNeighbourhood: string | null;
   recent: string[];
+  // The team's neighbourhoods, for suggestions as they type (round 4).
+  team: string[];
   soFar: SessionSoFar;
   // The server's clock when the page was drawn, so the first paint matches.
   renderedAt: number;
@@ -134,6 +147,7 @@ export function SessionScreen({
       <StartKnocking
         lastNeighbourhood={shownSummary?.value.neighbourhood ?? lastNeighbourhood}
         recent={recent}
+        team={team}
         onActedOutStart={
           viewingAs
             ? (neighbourhood) => {
@@ -146,6 +160,7 @@ export function SessionScreen({
                     started_at: new Date().toISOString(),
                     doors_knocked: 0,
                     conversations: 0,
+                    last_tap_at: null,
                   },
                 });
               }
@@ -163,16 +178,25 @@ export function SessionScreen({
 function StartKnocking({
   lastNeighbourhood,
   recent,
+  team,
   onActedOutStart,
 }: {
   lastNeighbourhood: string | null;
   recent: string[];
+  team: string[];
   onActedOutStart: ((neighbourhood: string) => void) | null;
 }) {
   const [state, formAction, pending] = useActionState(startKnockSession, initialState);
   const [value, setValue] = useState(lastNeighbourhood ?? "");
   const [actedError, setActedError] = useState<string | null>(null);
   const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  // Round 4: the team's neighbourhoods that match what's typed, ignoring
+  // capitals, so a place is spelled one way (the database keeps the first
+  // spelling whatever is typed).
+  // After a tap the list stays as it was, the picked one marked, until the
+  // next keystroke, so nothing jumps under the thumb.
+  const [frozen, setFrozen] = useState<string[] | null>(null);
+  const suggestions = frozen ?? neighbourhoodSuggestions(value, team, 4, recent);
   return (
     <section aria-labelledby="start-heading" className="flex flex-col gap-3">
       <div>
@@ -194,7 +218,7 @@ function StartKnocking({
             if (name.length === 0) return setActedError("Enter the neighbourhood.");
             if (name.length > 80) return setActedError("That neighbourhood name is too long.");
             setActedError(null);
-            onActedOutStart(name);
+            onActedOutStart(knownSpelling(name, team));
             return;
           }
           submitKeepingValues(formAction)(event);
@@ -206,14 +230,24 @@ function StartKnocking({
             id="knock-neighbourhood"
             name="neighbourhood"
             value={value}
-            onChange={(event) => setValue(event.target.value)}
-            // A tap into a filled field selects it, so typing replaces it.
-            onFocus={(event) => event.currentTarget.select()}
+            onChange={(event) => {
+              setFrozen(null);
+              setValue(event.target.value);
+            }}
+            // A tap into a filled field selects it, so typing replaces it,
+            // and the box moves up, so the suggestions under it clear the
+            // keyboard.
+            onFocus={(event) => {
+              event.currentTarget.select();
+              const box = event.currentTarget;
+              window.setTimeout(() => box.scrollIntoView({ block: "start", behavior: "smooth" }), 250);
+            }}
             placeholder="The neighbourhood, like Bridgeland"
             autoComplete="off"
             autoCapitalize="words"
             enterKeyHint="go"
-            className="h-12 pr-12 text-base"
+            // Clear of the sticky app header when it scrolls up on focus.
+            className="h-12 scroll-mt-[calc(4.5rem+env(safe-area-inset-top))] pr-12 text-base"
           />
           {value ? (
             <button
@@ -229,6 +263,35 @@ function StartKnocking({
             </button>
           ) : null}
         </div>
+        {suggestions.length > 0 ? (
+          <div role="group" aria-labelledby="team-hoods-label" className="flex flex-col gap-2" data-testid="neighbourhood-suggestions">
+            <p id="team-hoods-label" className="text-sm text-muted-foreground">
+              The team has knocked
+            </p>
+            {suggestions.map((name) => {
+              const picked = same(name, value);
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  aria-pressed={picked}
+                  onClick={() => {
+                    setFrozen(suggestions);
+                    setValue(name);
+                  }}
+                  // Bordered like the recent chips, so they read as taps.
+                  className={cn(
+                    "flex min-h-11 items-center gap-2 rounded-md border px-4 text-left text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    picked ? "border-2 border-foreground bg-secondary" : "bg-background",
+                  )}
+                >
+                  {picked ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
+                  <span className="truncate">{name}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
         {recent.length > 0 ? (
           <div role="group" aria-label="Recent neighbourhoods" className="flex flex-wrap gap-2">
             {recent.map((name) => (
@@ -265,6 +328,10 @@ function Summary({ summary, focus, actedOut }: { summary: KnockSummary; focus: b
     if (focus) heading.current?.focus({ preventScroll: true });
   }, [focus]);
   const out = timeOutLabel(summary.startedAt, new Date(summary.endedAt).getTime());
+  // A session from yesterday (one that ended itself at midnight) names its day.
+  const day = calgaryDateOf(summary.startedAt);
+  const dayLabel = day === calgaryToday() ? "" : `${formatDay(day)}, `;
+  const untapped = summary.automatic && new Date(summary.endedAt).getTime() <= new Date(summary.startedAt).getTime();
   const booked =
     summary.leads === 0
       ? ""
@@ -286,8 +353,21 @@ function Summary({ summary, focus, actedOut }: { summary: KnockSummary; focus: b
         Done in {summary.neighbourhood}
       </h2>
       <p className="text-sm text-muted-foreground">
-        {formatTime(summary.startedAt)} to {sentenceEnd(formatTime(summary.endedAt))} Out {out === "Under a minute" ? "under a minute" : out}.
+        {/* A session that ended itself with nothing tapped has no time out
+            to claim: just its day and when it started (round 4). */}
+        {untapped
+          ? `${dayLabel.replace(/, $/, ". ")}Started ${sentenceEnd(formatTime(summary.startedAt))}`
+          : `${dayLabel}${formatTime(summary.startedAt)} to ${sentenceEnd(formatTime(summary.endedAt))} Out ${out === "Under a minute" ? "under a minute" : out}.`}
       </p>
+      {summary.automatic ? (
+        // What the database did, read from the times: it ends at the last
+        // tap, or at the start when nothing was tapped (round 4).
+        <p className="text-sm text-pretty" data-testid="session-ended-automatically">
+          {untapped
+            ? "Ended on its own at midnight. Nothing was tapped, so no time out is counted."
+            : "Ended on its own at midnight, so it counts up to the last tap."}
+        </p>
+      ) : null}
       <p className="text-base text-pretty tabular-nums">
         {plural(summary.doors, "door", "doors")}, {plural(summary.conversations, "conversation", "conversations")},{" "}
         {plural(summary.leads, "lead", "leads")}
@@ -332,6 +412,13 @@ function Knocking({
   const now = useMinuteClock(renderedAt);
   const heading = useRef<HTMLHeadingElement>(null);
   const saved = savedLead && savedLead.id !== savedHiddenFor ? savedLead : null;
+  // Round 4: any tap at all, here or before, ends the reminder for good.
+  const everTapped =
+    session.last_tap_at !== null ||
+    counts.tapped ||
+    counts.pending > 0 ||
+    session.doors_knocked + session.conversations > 0 ||
+    counts.shown.doors + counts.shown.conversations > 0;
 
   useEffect(() => {
     // Just started (the form is gone) or just arrived: the heading takes
@@ -404,7 +491,15 @@ function Knocking({
           <Counter label="Doors" count={counts.shown.doors} disabled={counts.ended} onAdd={() => tap("doors")} />
           <Counter label="Conversations" count={counts.shown.conversations} disabled={counts.ended} onAdd={() => tap("conversations")} />
         </div>
-        <StatusRow counts={counts} saved={saved} fixNote={fixNote} undoNote={undoNote} onUndo={undo} onStartAgain={() => router.refresh()} />
+        <StatusRow
+          counts={counts}
+          saved={saved}
+          fixNote={fixNote}
+          undoNote={undoNote}
+          reminder={tapReminderDue(startedAt, now, everTapped)}
+          onUndo={undo}
+          onStartAgain={() => router.refresh()}
+        />
       </div>
 
       {unfinished}
@@ -435,6 +530,7 @@ function StatusRow({
   saved,
   fixNote,
   undoNote,
+  reminder,
   onUndo,
   onStartAgain,
 }: {
@@ -442,6 +538,8 @@ function StatusRow({
   saved: SavedLead | null;
   fixNote: { text: string; calm: boolean } | null;
   undoNote: string | null;
+  // Round 4: 15 minutes in with no tap yet, in the counters' own words.
+  reminder: boolean;
   onUndo: () => void;
   onStartAgain: () => void;
 }) {
@@ -499,6 +597,12 @@ function StatusRow({
     message = (
       <p role="status" className="text-sm text-pretty" data-testid="undo-note">
         {undoNote}
+      </p>
+    );
+  } else if (reminder) {
+    message = (
+      <p role="status" className="text-sm text-pretty" data-testid="tap-reminder">
+        {TAP_REMINDER}
       </p>
     );
   } else {
@@ -942,6 +1046,7 @@ function EndKnocking({
         conversations: counts.conversations,
         leads: soFar.leads,
         bookings: soFar.bookings,
+        automatic: false,
       });
       return;
     }

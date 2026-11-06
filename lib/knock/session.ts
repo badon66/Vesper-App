@@ -34,6 +34,61 @@ export function recentNeighbourhoods(rows: { neighbourhood: string }[], max = 4)
   return out;
 }
 
+// Neighbourhoods are the same place whatever the capital letters or spaces
+// (round 4, Keenan, 2026-11-05: "Cortina" and "cortina" came in as two).
+export const neighbourhoodKey = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
+
+// The team's neighbourhoods, newest first, each once, spelled as the team
+// first entered it (the database keeps that spelling on every new session,
+// so the rows already carry it).
+export function teamNeighbourhoods(rows: { neighbourhood: string }[], max = 40): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const row of rows) {
+    const name = row.neighbourhood.trim().replace(/\s+/g, " ");
+    const key = neighbourhoodKey(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+    if (out.length === max) break;
+  }
+  return out;
+}
+
+// The team's spelling of what was typed, when it's a place the team has
+// already knocked; otherwise what was typed, tidied.
+export function knownSpelling(typed: string, names: string[]): string {
+  const key = neighbourhoodKey(typed);
+  return names.find((name) => neighbourhoodKey(name) === key) ?? typed.trim().replace(/\s+/g, " ");
+}
+
+// Suggestions as the setter types: the team's neighbourhoods that match
+// what's typed exactly (other capitals), then those that start with it,
+// then those with a word that does, ignoring capitals. Nothing for an empty
+// box, nothing once it's exactly a known spelling, and never one of the
+// setter's own recent places, which are already there to tap.
+export function neighbourhoodSuggestions(typed: string, names: string[], max = 4, own: string[] = []): string[] {
+  const key = neighbourhoodKey(typed);
+  if (!key) return [];
+  if (names.some((name) => name.trim() === typed.trim() && neighbourhoodKey(name) === key)) return [];
+  const mine = new Set(own.map(neighbourhoodKey));
+  const offered = names.filter((name) => !mine.has(neighbourhoodKey(name)));
+  const exact = offered.filter((name) => neighbourhoodKey(name) === key);
+  const starts = offered.filter((name) => !exact.includes(name) && neighbourhoodKey(name).startsWith(key));
+  const words = offered.filter(
+    (name) => !exact.includes(name) && !starts.includes(name) && neighbourhoodKey(name).split(" ").some((word) => word.startsWith(key)),
+  );
+  return [...exact, ...starts, ...words].slice(0, max);
+}
+
+// The quiet reminder on Session (round 4): a session 15 minutes old with
+// no tap at all yet. It goes for good at the first tap.
+export const TAP_REMINDER_AFTER_MS = 15 * MINUTE;
+export const TAP_REMINDER = "Tap Doors +1 at every door, and Conversations +1 when someone answers.";
+export function tapReminderDue(startedAt: string, now: number, everTapped: boolean): boolean {
+  return !everTapped && now - new Date(startedAt).getTime() >= TAP_REMINDER_AFTER_MS;
+}
+
 export type OutSession = {
   user_id: string;
   neighbourhood: string;
