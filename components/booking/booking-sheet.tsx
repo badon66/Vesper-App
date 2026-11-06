@@ -26,7 +26,7 @@ import {
 import { ActionMessage } from "@/components/action-message";
 import {
   AddressScreen,
-  BookPhone,
+  PhoneFooter,
   BookScreen,
   ExistingScreen,
   PhotosScreen,
@@ -184,6 +184,35 @@ function clockOf(timer: { expiresAt?: string; now?: string } | null | undefined)
   return clockFrom({ expires_at: timer.expiresAt, now: timer.now }, Date.now());
 }
 
+// While the phone's keyboard is up, the sheet fits the part of the screen
+// still showing (round 5), so the footer, the phone field with Back and Next,
+// sits right above the keyboard instead of behind it. iPhones don't shrink
+// the page for the keyboard, only what's visible of it.
+function useKeyboardRoom(): { height: number; top: number } | null {
+  const [room, setRoom] = useState<{ height: number; top: number } | null>(null);
+  useEffect(() => {
+    const visible = window.visualViewport;
+    if (!visible) return;
+    const update = () => {
+      // A pinch-zoom shrinks what's visible too; only the keyboard counts.
+      const up = Math.abs(visible.scale - 1) < 0.01 && window.innerHeight - visible.height > 120;
+      setRoom((current) => {
+        if (!up) return null;
+        const next = { height: Math.round(visible.height), top: Math.round(visible.offsetTop) };
+        return current && current.height === next.height && current.top === next.top ? current : next;
+      });
+    };
+    update();
+    visible.addEventListener("resize", update);
+    visible.addEventListener("scroll", update);
+    return () => {
+      visible.removeEventListener("resize", update);
+      visible.removeEventListener("scroll", update);
+    };
+  }, []);
+  return room;
+}
+
 // Leaving the sheet keeps what was entered on this phone, for Home's
 // Unfinished list: a new person once anything is entered, a saved lead once
 // a time was picked for it or something changed since its last save.
@@ -203,6 +232,32 @@ function storeDraft(args: {
   if (draft.leadId) list = removeDraft(list, `new:${sheetId}`);
   const record: SheetDraftRecord = { id: draftIdFor(draft, sheetId), savedAt: Date.now(), screen, draft };
   saveDrafts(userId, upsertDraft(list, record));
+}
+
+// Delete on an unfinished booking (round 5, Keenan, 2026-11-06): the draft
+// goes from this phone. If this phone still has that sheet open with a time
+// held (the app was closed mid-booking), the time is let go too, and only
+// when it's still this person's hold on that same time. A lead it already
+// saved stays in Leads.
+export async function deleteUnfinished(userId: string, draftId: string): Promise<void> {
+  const list = loadDrafts(userId);
+  const record = list.find((item) => item.id === draftId) ?? null;
+  saveDrafts(userId, removeDraft(list, draftId));
+  const open = readOpen(userId);
+  if (!open) return;
+  const same =
+    (open.request.kind === "draft" && open.request.draftId === draftId) ||
+    draftIdFor(withDraftDefaults(open.draft), open.sheetId) === draftId ||
+    (record?.draft.leadId != null && open.draft.leadId === record.draft.leadId);
+  if (!same) return;
+  writeOpen(userId, null);
+  if (!open.heldAt) return;
+  try {
+    const status = await myHoldStatus();
+    if (status.status === "held" && status.startsAt === open.heldAt) await releaseMyHold();
+  } catch {
+    // No signal: the hold runs out on its own within minutes.
+  }
 }
 
 // While Keenan views the app as someone, a hold is acted out on this screen.
@@ -1429,6 +1484,8 @@ function BookingSheet({
                   ? "Opening"
                   : SCREEN_TITLES[view];
 
+  const keyboard = useKeyboardRoom();
+
   return (
     <dialog
       ref={dialogRef}
@@ -1438,7 +1495,7 @@ function BookingSheet({
       data-view={view}
       className="fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none border-0 bg-background p-0 text-foreground backdrop:bg-background"
     >
-      <div className="flex h-dvh flex-col">
+      <div className="flex h-dvh flex-col" style={keyboard ? { height: keyboard.height, transform: `translateY(${keyboard.top}px)` } : undefined}>
         {/* ------------------------------------------------ top: the wordmark, the held time, the steps */}
         <header className="border-b pt-[env(safe-area-inset-top)]">
           {/* The sheet covers the app's gold bar, so it carries a slim one of its own. */}
@@ -1560,8 +1617,9 @@ function BookingSheet({
           data-testid="sheet-body"
         >
           {/* 12 px above the step's label, not 16, for the step bar's tap
-              areas (round 4), so the house step still fits at 390. */}
-          <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 pt-3 pb-4 min-[420px]:gap-5">
+              areas (round 4), and 12 below, for the phone in the footer
+              (round 5), so the house step still fits at 390. */}
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 pt-3 pb-3 min-[420px]:gap-5">
             <div className="flex flex-col gap-1">
               {partLabel || isScreen(view) ? (
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3">
@@ -1730,6 +1788,8 @@ function BookingSheet({
                 warnings={warnings}
                 onFix={fixFromBook}
                 onKeepAsLead={() => void keepAsLead()}
+                onChange={change}
+                onAnswer={answer}
               />
             ) : null}
             {view === "done" && done ? (
@@ -1744,12 +1804,9 @@ function BookingSheet({
 
         {/* ------------------------------------------------ bottom: always there, Next at the bottom right */}
         <footer className="border-t bg-background pb-[env(safe-area-inset-bottom)]">
-          <div className="mx-auto flex w-full max-w-2xl flex-col gap-2 px-4 py-2">
-            {view === "book" ? (
-              <div inert={busy} className="contents">
-                <BookPhone draft={draft} onChange={change} onAnswer={answer} />
-              </div>
-            ) : null}
+          {/* A little tighter since the phone joined it (round 5), so the
+              house step still fits at 390. */}
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-1.5 px-4 pt-2 pb-1">
             {error ? (
               error.fix === null ? (
                 <div data-testid="sheet-error">
@@ -1794,6 +1851,13 @@ function BookingSheet({
                 <Button type="button" size="sm" variant="outline" disabled={extending} onClick={() => void addMinutes()}>
                   Add {holdMinutes} minutes
                 </Button>
+              </div>
+            ) : null}
+            {/* The phone on every step (round 5), right above Back and Next,
+                staying put as the steps change. */}
+            {isScreen(view) ? (
+              <div inert={busy} className="contents">
+                <PhoneFooter draft={draft} onChange={change} />
               </div>
             ) : null}
             <BottomBar

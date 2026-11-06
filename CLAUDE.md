@@ -51,7 +51,7 @@ Design each screen for the device it will actually be used on, then make it tole
 - Navigation: a bottom tab bar on phone and iPad; on screens 1024 px and wider, a slim left side rail with the same items. No top tabs anywhere. Owner tabs: Home, Schedule, Meetings, Session (the prominent gold button), Leads; Admin (People, Settings and Pay) is a gear in the header, because six items crowd a phone's tab bar (Keenan, 2026-11-02). Sales tabs: Home, Schedule, Session, Leads, My pay. Session is the knock session: start knocking, count doors and conversations, book from tonight's open times; New lead is a button at the top of Leads and a smaller one on Session (Keenan, 2026-11-05). A session still open at midnight Calgary time ends itself, at its last tap or else its start, and its summary says it ended automatically; 15 minutes in with no tap, a quiet line reminds the setter to tap the counters; a neighbourhood keeps the spelling of the first one entered whatever the capital letters, and the team's are suggested as they type (round 4). The owner's Home is the dashboard; there is no separate Dashboard tab. The tab bar lives in the shared app layout so it never reloads, tab links are prefetched, and every tab has a loading screen so a tap responds at once.
 - Forms: after an error, a form keeps everything the person typed except passwords.
 - Theme: dark by default, with a light theme the user can switch to, remembered per device. Anything printed or exported as a PDF is always white, and so is the customer quote page, which reads like the documents (navy and gold on white, whatever the device's theme). Keep both themes readable. Brand colours: navy `#132E3F`, gold `#B99257`, white, minimal black. Clean and premium, not flashy. No emoji in the UI. No gradients or glassy effects.
-- Design skill: the impeccable skill lives in `.claude/skills/impeccable` (Apache 2.0, no hooks), with its product and design context in `PRODUCT.md` and `DESIGN.md`. Every milestone with new or changed screens uses it (Keenan, 2026-11-02): shape before building, critique and polish before the preview, and the before and after scores in the report. These design rules win over anything it suggests: navy and gold, dark by default, no gradients, glassy effects or emoji, calm and premium, phone first for setters. Skip its overdrive, delight and heavy animation.
+- Design skill: the impeccable skill lives in `.claude/skills/impeccable` (Apache 2.0, no hooks), with its product and design context in `PRODUCT.md` and `DESIGN.md`. New screens and bigger redesigns use it (Keenan, 2026-11-02; narrowed 2026-11-06): shape before building, critique and polish before the preview, and the before and after scores in the report. Small changes to existing screens just follow `DESIGN.md`, with no scoring. These design rules win over anything it suggests: navy and gold, dark by default, no gradients, glassy effects or emoji, calm and premium, phone first for setters. Skip its overdrive, delight and heavy animation.
 
 ## Business rules the code must respect
 
@@ -148,7 +148,17 @@ Design each screen for the device it will actually be used on, then make it tole
     - it ends that session afterwards.
 
     Anything the walk-through cannot reach is named in the report.
-11. After building, run the full automated suite: unit, RLS, smoke, build, and the live walk-through with test-prefixed accounts, deleted after, plus the owner's one-time session for View as. Keenan does not run checklists; he looks at a preview only for what customers see (rule 13).
+11. Test what changed, keep the safety, cut the repeats (Keenan, 2026-11-06; a round this size takes about an hour, not four or five):
+    - every round: unit tests, lint, types and the build;
+    - walk-throughs (test-prefixed accounts, deleted after, plus the owner's one-time session for View as): only the ones that cover what changed;
+    - database tests: only when a migration or a permission changes, or holds and bookings do; anything touching holds or bookings still runs the race tests;
+    - the full suite (unit, RLS, smoke, build and every walk-through) runs once a day, on the first round of the day, and before any preview goes to Keenan;
+    - after a deploy, one quick live check of what changed, not the full walk-throughs again;
+    - a check that fails once and passes on a re-run is a flake: note it in the report and move on, without re-running whole suites for it;
+    - no review panels on small rounds (no multi-agent reviews, skeptics or assessor pairs): one careful self-review is enough; big reviews and impeccable scoring are for new screens and bigger redesigns;
+    - nothing to re-check after a docs-only commit, and one docs commit at the end of a round, not one per step.
+
+    Keenan does not run checklists; he looks at a preview only for what customers see (rule 13).
 12. If anything fails, do not merge. Stop and report what failed.
 13. If everything is green, how it ships depends on whether customers see it (Keenan, 2026-11-04, replacing the 2026-11-02 rule):
     - anything customers never see (setter and owner screens, fixes, tests) merges on green, straight to live: merge the branch into main, verify production after the deploy, and put the production link first in the report;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { eveningLabel, eveningsOf, initials, isBookable, pickEvening, toBoardSlots, type BoardSlot } from "@/lib/schedule/board";
+import { eveningLabel, eveningNote, eveningsOf, initials, isBookable, pickEvening, toBoardSlots, type BoardSlot } from "@/lib/schedule/board";
 import { distanceWarnings, formatKm, kmBetween, legs, navigateUrl } from "@/lib/schedule/distance";
 import { bookingMessage } from "@/lib/schedule/messages";
 import { formatMeetingTime, hasOutcome, isLive, positionSourceText, sentence } from "@/lib/schedule/meetings";
@@ -77,6 +77,23 @@ describe("the schedule board", () => {
 
   it("stays on tonight when nothing is open in the whole window", () => {
     expect(pickEvening(eveningsOf([], "2026-11-02", 14), "2026-11-02")).toEqual({ day: "2026-11-02", tonightFull: true, tonightHasTimes: false });
+  });
+
+  // Round 5 (Keenan, 2026-11-06): Session's row of days, with one quiet line.
+  it("says quietly when the chosen evening has nothing open, and why the row opened on a later one", () => {
+    const today = "2026-11-02";
+    const open = { day: today, tonightFull: false, tonightHasTimes: true };
+    expect(eveningNote(today, today, [slot(today, "23:00", "open")], open)).toBeNull();
+    expect(eveningNote(today, today, [slot(today, "23:00", "held", { heldByViewer: true })], open)).toBeNull();
+    expect(eveningNote(today, today, [slot(today, "23:00", "booked"), slot(today, "23:35", "held")], open)).toBe("Nothing open tonight.");
+    expect(eveningNote("2026-11-03", today, [slot("2026-11-03", "23:00", "closed")], open)).toBe("Nothing open tomorrow.");
+    expect(eveningNote("2026-11-08", today, [], open)).toBe("No meetings on Sun, Nov 8.");
+    const later = { day: "2026-11-05", tonightFull: true, tonightHasTimes: true };
+    expect(eveningNote("2026-11-05", today, [slot("2026-11-05", "23:00", "open")], later)).toBe("Nothing left tonight. This is the next evening with an opening.");
+    expect(eveningNote("2026-11-05", today, [slot("2026-11-05", "23:00", "open")], { ...later, tonightHasTimes: false })).toBe(
+      "No meetings tonight. This is the next evening with an opening.",
+    );
+    expect(eveningNote("2026-11-06", today, [slot("2026-11-06", "23:00", "open")], later)).toBeNull();
   });
 
   it("names evenings the way people say them", () => {

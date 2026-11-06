@@ -7,6 +7,7 @@ import { useViewAs } from "@/components/view-as-context";
 import { bookingSheet, type SheetTimer } from "@/lib/booking/sheet-store";
 import {
   eveningLabel,
+  eveningNote,
   eveningsOf,
   initials,
   isBookable,
@@ -172,6 +173,10 @@ export function TimePicker({
   const daySlots = evening?.slots ?? [];
   const tonightFullNote = !tonightOnly && opening.tonightFull && day === opening.day && day !== today;
   const ownerTaps = Boolean(onUnavailableTap);
+  // Session (round 5, Keenan, 2026-11-06) names no evening in a heading: the
+  // row of days does, and one quiet line says when the chosen evening has
+  // nothing open, or why it opened on a later one.
+  const dayNote = hideDayHeading && !tonightOnly ? eveningNote(day, today, daySlots, opening) : null;
 
   return (
     <div className="@container flex flex-col gap-4" data-testid="time-picker">
@@ -216,10 +221,17 @@ export function TimePicker({
           {message}
         </p>
       ) : null}
-      {daySlots.length === 0 ? (
-        <p className="text-sm text-pretty text-muted-foreground">
-          No meeting times this evening.{ownerTaps ? " Use the pencil to give this evening its own times." : ""}
+      {dayNote ? (
+        <p className="-mt-1 text-sm text-pretty text-muted-foreground" data-testid="picker-day-note">
+          {dayNote}
         </p>
+      ) : null}
+      {daySlots.length === 0 ? (
+        dayNote ? null : (
+          <p className="text-sm text-pretty text-muted-foreground">
+            No meeting times this evening.{ownerTaps ? " Use the pencil to give this evening its own times." : ""}
+          </p>
+        )
       ) : (
         <ul className="grid grid-cols-2 gap-3 @lg:grid-cols-3" aria-label={`Times, ${eveningLabel(day, today)}`}>
           {daySlots.map((slot) => (

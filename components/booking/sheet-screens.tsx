@@ -39,6 +39,7 @@ import { PHOTO_BUCKET } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/client";
 import { formatPhone, normalizePhone } from "@/lib/phone";
 import { PHOTO_SKIP_OPTIONS, type PhotoSkip } from "@/lib/schedule/readiness";
+import { cn } from "@/lib/utils";
 
 type Change = (patch: Partial<SheetDraft>) => void;
 type Answer = (question: CountedQuestion, value: string | null) => void;
@@ -287,7 +288,7 @@ export function AddressScreen({
 }) {
   const { viewingAs } = useViewAs();
   return (
-    <form ref={formRef} onSubmit={(event) => event.preventDefault()} className="flex flex-col gap-5">
+    <form ref={formRef} onSubmit={(event) => event.preventDefault()} className="flex flex-col gap-3 min-[420px]:gap-4">
       <div className="flex flex-col gap-3">
         <AddressField
           apiKey={apiKey}
@@ -509,20 +510,24 @@ export function PhotosScreen({
 
 // Book, round 3 (Keenan, 2026-11-05): the only gate. It lists everything
 // still missing, each with a tap to its step, and says when an answer rules
-// booking out, with Keep as a lead. The phone, asked last, is BookPhone,
-// fixed right above the Book button so it's always in view.
+// booking out, with Keep as a lead. The phone is the footer's (round 5),
+// right above the Book button; how to confirm and its Not collected are here.
 export function BookScreen({
   draft,
   name,
   warnings,
   onFix,
   onKeepAsLead,
+  onChange,
+  onAnswer,
 }: {
   draft: SheetDraft;
   name: string;
   warnings: string[];
   onFix: (screen: SheetScreen) => void;
   onKeepAsLead: () => void;
+  onChange: Change;
+  onAnswer: Answer;
 }) {
   const missing = sheetMissing(draft);
   const elsewhere = missing.filter((item) => item.screen !== "book");
@@ -575,47 +580,61 @@ export function BookScreen({
         </div>
       ) : null}
 
+      <BookConfirm draft={draft} onChange={onChange} onAnswer={onAnswer} />
     </div>
   );
 }
 
-// The number, asked last (round 3), with how to confirm beside it: fixed
-// above the Book button, outside the step's scrolling, so it's always right
-// there. Not collected rules booking out, as before.
-export function BookPhone({ draft, onChange, onAnswer }: { draft: SheetDraft; onChange: Change; onAnswer: Answer }) {
+// The phone as a slim footer on every step (round 5, Keenan, 2026-11-06):
+// the number can come up at any point at the door, so it sits at the bottom
+// of every step, above Back and Next, and stays put as the steps change. It
+// opens the number pad. Typing a number takes back a Not collected (that
+// toggle, and Call or text, are on Book). Still required to book.
+export function PhoneFooter({ draft, onChange }: { draft: SheetDraft; onChange: Change }) {
+  const notCollected = draft.not_collected.includes("phone");
+  const valid = !notCollected && draft.phone.trim() !== "" && normalizePhone(draft.phone).ok;
+  return (
+    <div className="flex items-center gap-3" data-testid="sheet-phone-block" data-question="sheet-phone">
+      <Label htmlFor="sheet-phone" className="shrink-0 text-base font-semibold">
+        Phone
+      </Label>
+      <div className="relative min-w-0 flex-1">
+        <Input
+          id="sheet-phone"
+          type="tel"
+          inputMode="tel"
+          enterKeyHint="done"
+          autoComplete="off"
+          className={cn("h-11 text-base min-[420px]:text-lg", valid && "pr-10")}
+          value={draft.phone}
+          maxLength={40}
+          placeholder={notCollected ? NOT_COLLECTED_LABEL : "The best number to confirm"}
+          onChange={(event) =>
+            onChange({
+              phone: event.target.value,
+              ...(notCollected ? { not_collected: draft.not_collected.filter((item) => item !== "phone") } : {}),
+            })
+          }
+          onKeyDown={(event) => nextField(event, null)}
+          onBlur={(event) => {
+            const phone = normalizePhone(event.currentTarget.value);
+            if (phone.ok && phone.e164) onChange({ phone: formatPhone(phone.e164) });
+          }}
+        />
+        {valid ? (
+          <Check aria-hidden="true" className="pointer-events-none absolute top-1/2 right-3 size-5 -translate-y-1/2" data-testid="sheet-phone-ok" />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// On Book (round 5): how to confirm, and the phone's Not collected, which
+// rules booking out as before. The number itself is in the footer below.
+function BookConfirm({ draft, onChange, onAnswer }: { draft: SheetDraft; onChange: Change; onAnswer: Answer }) {
   const phoneNotCollected = draft.not_collected.includes("phone");
   return (
-    <section className="flex flex-col gap-2 pt-1" data-testid="sheet-phone-block" data-question="sheet-phone" aria-label="Phone">
-      <div className="flex items-center justify-between gap-3">
-        <Label htmlFor="sheet-phone" className="text-base font-semibold min-[420px]:text-lg">
-          Phone
-        </Label>
-        <NotCollectedToggle
-          pressed={phoneNotCollected}
-          size="sheet"
-          label="Phone: Not collected"
-          testId="sheet-phone-not-collected"
-          onToggle={() => onAnswer("phone", phoneNotCollected ? null : NOT_COLLECTED)}
-        />
-      </div>
-      <Input
-        id="sheet-phone"
-        type="tel"
-        inputMode="tel"
-        enterKeyHint="done"
-        autoComplete="off"
-        className="min-[420px]:h-14 min-[420px]:text-lg"
-        value={draft.phone}
-        maxLength={40}
-        disabled={phoneNotCollected}
-        placeholder={phoneNotCollected ? NOT_COLLECTED_LABEL : "The best number to confirm"}
-        onChange={(event) => onChange({ phone: event.target.value })}
-        onKeyDown={(event) => nextField(event, null)}
-        onBlur={(event) => {
-          const phone = normalizePhone(event.currentTarget.value);
-          if (phone.ok && phone.e164) onChange({ phone: formatPhone(phone.e164) });
-        }}
-      />
+    <section className="flex flex-col gap-2 border-t pt-3" data-testid="book-confirm" aria-label="Confirming the meeting">
       <div className="flex items-center gap-3">
         <span aria-hidden="true" className="shrink-0 text-sm font-semibold min-[420px]:text-base">
           Confirm by
@@ -631,6 +650,18 @@ export function BookPhone({ draft, onChange, onAnswer }: { draft: SheetDraft; on
             onChange={(next) => onChange({ confirm_by: next as ConfirmBy | null })}
           />
         </div>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm text-pretty text-muted-foreground min-[420px]:text-base">
+          Didn&apos;t get a number?
+        </span>
+        <NotCollectedToggle
+          pressed={phoneNotCollected}
+          size="sheet"
+          label="Phone: Not collected"
+          testId="sheet-phone-not-collected"
+          onToggle={() => onAnswer("phone", phoneNotCollected ? null : NOT_COLLECTED)}
+        />
       </div>
     </section>
   );

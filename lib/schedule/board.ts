@@ -80,6 +80,25 @@ export function pickEvening(evenings: Evening[], today: string): { day: string; 
   return { day: next?.day ?? today, tonightFull: true, tonightHasTimes };
 }
 
+// Session's quiet line under its row of days (round 5, Keenan, 2026-11-06):
+// whether the chosen evening has nothing open, or why the row opened on a
+// later evening. Nothing when there's a time to tap.
+export function eveningNote(
+  day: string,
+  today: string,
+  slots: BoardSlot[],
+  opening: { day: string; tonightFull: boolean; tonightHasTimes: boolean },
+): string | null {
+  const when = day === today ? "tonight" : day === addDays(today, 1) ? "tomorrow" : `on ${formatDay(day)}`;
+  if (slots.length === 0) return `No meetings ${when}.`;
+  const free = slots.some((slot) => slot.state === "open" || (slot.state === "held" && slot.heldByViewer));
+  if (!free) return `Nothing open ${when}.`;
+  if (opening.tonightFull && day === opening.day && day !== today) {
+    return `${opening.tonightHasTimes ? "Nothing left tonight." : "No meetings tonight."} This is the next evening with an opening.`;
+  }
+  return null;
+}
+
 export function eveningLabel(day: string, today: string): string {
   if (day === today) return "Tonight";
   if (day === addDays(today, 1)) return "Tomorrow";

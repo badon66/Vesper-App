@@ -2,8 +2,10 @@
 
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMemo, useState, useSyncExternalStore } from "react";
+import { deleteUnfinished } from "@/components/booking/booking-sheet";
+import { Button } from "@/components/ui/button";
 import { useViewAs } from "@/components/view-as-context";
-import { draftAge, draftName, readDrafts } from "@/lib/booking/drafts";
+import { draftAge, draftName, readDrafts, type SheetDraftRecord } from "@/lib/booking/drafts";
 import { rawDrafts, subscribeDrafts } from "@/lib/booking/drafts-browser";
 import type { SheetScreen } from "@/lib/booking/sheet";
 import { bookingSheet } from "@/lib/booking/sheet-store";
@@ -11,7 +13,7 @@ import { cn } from "@/lib/utils";
 
 // Where each draft was left, as the steps are named.
 const STOPPED_AT: Record<SheetScreen, string> = {
-  who: "the name and phone",
+  who: "the name",
   door: "the three questions",
   learned: "what they learned",
   address: "the house",
@@ -38,6 +40,8 @@ const thisMinute = () => Math.floor(Date.now() / 60_000);
 export function UnfinishedBookings({ userId, compact = false }: { userId: string; compact?: boolean }) {
   const { viewingAs, name } = useViewAs();
   const [open, setOpen] = useState(false);
+  // The draft tapped, showing its two choices.
+  const [chosen, setChosen] = useState<string | null>(null);
   const raw = useSyncExternalStore(subscribeDrafts, () => rawDrafts(userId), () => null);
   const minute = useSyncExternalStore(subscribeMinute, thisMinute, () => 0);
   const drafts = useMemo(() => (minute === 0 ? [] : readDrafts(raw, minute * 60_000 + 59_999)), [raw, minute]);
@@ -54,32 +58,21 @@ export function UnfinishedBookings({ userId, compact = false }: { userId: string
   if (drafts.length === 0) return null;
 
   const list = (
-  <ul className="flex flex-col divide-y rounded-md border" aria-label="Unfinished bookings">
-    {drafts.map((record) => {
-      const address = [record.draft.address_line, record.draft.neighbourhood].filter((part) => part.trim()).join(", ");
-      const where = STOPPED_AT[record.screen];
-      return (
-        <li key={record.id}>
-          <button
-            type="button"
-            onClick={() => bookingSheet.open({ kind: "draft", draftId: record.id })}
-            className="flex min-h-16 w-full items-center justify-between gap-3 px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            data-testid="unfinished-item"
-            data-draft={record.id}
-          >
-            <span className="flex min-w-0 flex-col">
-              <span className="font-semibold">{draftName(record.draft)}</span>
-              <span className="truncate text-sm text-muted-foreground">{address || "No address yet"}</span>
-              <span className="text-sm text-muted-foreground">
-                Stopped at {where}, {draftAge(record.savedAt, minute * 60_000 + 30_000)}
-              </span>
-            </span>
-            <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
-          </button>
-        </li>
-      );
-    })}
-  </ul>
+    <ul className="flex flex-col divide-y rounded-md border" aria-label="Unfinished bookings">
+      {drafts.map((record) => (
+        <UnfinishedRow
+          key={record.id}
+          record={record}
+          now={minute * 60_000 + 30_000}
+          open={chosen === record.id}
+          onToggle={() => setChosen(chosen === record.id ? null : record.id)}
+          onDelete={() => {
+            setChosen(null);
+            void deleteUnfinished(userId, record.id);
+          }}
+        />
+      ))}
+    </ul>
   );
 
   if (compact) {
@@ -103,7 +96,7 @@ export function UnfinishedBookings({ userId, compact = false }: { userId: string
         </button>
         {open ? (
           <>
-            <p className="text-sm text-pretty text-muted-foreground">Tap one, pick a time, carry on. Each is kept for 24 hours.</p>
+            <p className="text-sm text-pretty text-muted-foreground">Tap one to carry on or delete it. Each is kept for 24 hours.</p>
             {list}
           </>
         ) : null}
@@ -118,10 +111,95 @@ export function UnfinishedBookings({ userId, compact = false }: { userId: string
           Unfinished
         </h2>
         <p className="text-sm text-pretty text-muted-foreground">
-          Bookings you started on this phone. Tap one, pick a time, and carry on where you left off. Each is kept for 24 hours.
+          Bookings you started on this phone. Tap one to pick up where you left off, or to delete it. Each is kept for 24 hours.
         </p>
       </div>
       {list}
     </section>
+  );
+}
+
+// One unfinished booking (round 5, Keenan, 2026-11-06). A tap shows two
+// choices: pick up where you left off, or Delete. Delete asks for a second,
+// deliberate tap ("Tap again to delete"), so it's three taps in all and
+// can't happen by accident. A person already saved as a lead stays in
+// Leads, and the confirm says so.
+function UnfinishedRow({
+  record,
+  now,
+  open,
+  onToggle,
+  onDelete,
+}: {
+  record: SheetDraftRecord;
+  now: number;
+  open: boolean;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const address = [record.draft.address_line, record.draft.neighbourhood].filter((part) => part.trim()).join(", ");
+  const name = draftName(record.draft);
+  const saved = Boolean(record.draft.leadId);
+  return (
+    <li data-testid="unfinished-row" data-draft={record.id}>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => {
+          setConfirming(false);
+          onToggle();
+        }}
+        className="flex min-h-16 w-full items-center justify-between gap-3 px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        data-testid="unfinished-item"
+        data-draft={record.id}
+      >
+        <span className="flex min-w-0 flex-col">
+          <span className="font-semibold">{name}</span>
+          <span className="truncate text-sm text-muted-foreground">{address || "No address yet"}</span>
+          <span className="text-sm text-muted-foreground">
+            Stopped at {STOPPED_AT[record.screen]}, {draftAge(record.savedAt, now)}
+          </span>
+        </span>
+        <ChevronDown aria-hidden="true" className={cn("size-5 shrink-0 text-muted-foreground", open && "rotate-180")} />
+      </button>
+      {open ? (
+        <div className="flex flex-col gap-2 px-4 pb-3" data-testid="unfinished-choices">
+          {/* One above the other: side by side they don't fit a 390-wide
+              phone, and apart they're harder to mis-tap. */}
+          <div className="flex flex-col gap-2">
+            <Button
+              type="button"
+              size="lg"
+              className="h-12 w-full"
+              onClick={() => bookingSheet.open({ kind: "draft", draftId: record.id })}
+              data-testid="unfinished-pick-up"
+            >
+              Pick up where you left off
+              <ChevronRight aria-hidden="true" className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              className={cn("h-12 w-full", confirming && "border-2 border-foreground font-bold")}
+              aria-describedby={confirming ? `unfinished-confirm-${record.id}` : undefined}
+              onClick={() => (confirming ? onDelete() : setConfirming(true))}
+              data-testid="unfinished-delete"
+              data-confirming={confirming ? "yes" : "no"}
+            >
+              {confirming ? "Tap again to delete" : "Delete"}
+            </Button>
+          </div>
+          {confirming ? (
+            <p id={`unfinished-confirm-${record.id}`} role="status" className="text-sm text-pretty" data-testid="unfinished-confirm">
+              {saved
+                ? `This deletes what's on this phone. ${name} is saved, so they stay in Leads.`
+                : "This deletes what's on this phone, and any time it holds is let go."}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </li>
   );
 }
