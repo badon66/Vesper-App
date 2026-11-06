@@ -1462,12 +1462,12 @@ function BookingSheet({
           <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3 px-4 py-2">
             <Wordmark className="text-sm min-[420px]:text-base" />
             {done || view === "moved" ? (
-              <p className="inline-flex min-h-12 items-center gap-2 text-sm font-semibold min-[420px]:text-base" data-testid="sheet-held" data-held="booked">
+              <p className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold min-[420px]:text-base" data-testid="sheet-held" data-held="booked">
                 <Check aria-hidden="true" className="size-4" />
                 {heldAt ? heldTimeLabel(heldAt) : ""}, {view === "moved" ? "moved" : "booked"}
               </p>
             ) : !heldAt ? (
-              <p className="inline-flex min-h-12 items-center text-sm font-semibold text-muted-foreground" data-testid="sheet-held" data-held="none">
+              <p className="inline-flex min-h-11 items-center text-sm font-semibold text-muted-foreground" data-testid="sheet-held" data-held="none">
                 {isMove ? "Moving a booking" : "No time held yet"}
               </p>
             ) : (
@@ -1484,7 +1484,7 @@ function BookingSheet({
                   data-held={held ? "yes" : "no"}
                   data-phase={held ? phase : "run_out"}
                   className={cn(
-                    "flex min-h-12 items-center gap-2 rounded-md px-3 py-1 text-right outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    "flex min-h-11 items-center gap-2 rounded-md px-3 py-1 text-right outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     held && phase === "plenty" && "border-2 border-primary",
                     held && phase === "under_a_minute" && "border-2 border-foreground bg-secondary",
                     !held && "border border-dashed border-input text-muted-foreground",
@@ -1961,8 +1961,15 @@ function Progress({
                 data-testid={`sheet-step-${item}`}
                 data-through={through ? "yes" : undefined}
               >
-                <span aria-hidden="true" className={cn("w-full rounded-full", here ? "h-2" : "h-1.5", through ? "bg-foreground" : "bg-input")} />
-                <span aria-hidden="true" className={cn("size-2 rounded-full", missing ? "bg-foreground" : "bg-transparent")} />
+                {/* The current step full strength and taller; steps gone
+                    through a step softer; steps ahead faint. A step left
+                    with something missing has a hollow ring under it, like
+                    the open circles on Book's list (round 4). */}
+                <span
+                  aria-hidden="true"
+                  className={cn("w-full rounded-full", here ? "h-2 bg-foreground" : through ? "h-1.5 bg-muted-foreground" : "h-1.5 bg-input")}
+                />
+                <span aria-hidden="true" className={cn("size-2 rounded-full", missing ? "border-[1.5px] border-foreground" : "bg-transparent")} />
               </button>
             </li>
           );

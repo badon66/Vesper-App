@@ -246,7 +246,8 @@ function StartKnocking({
             autoComplete="off"
             autoCapitalize="words"
             enterKeyHint="go"
-            className="h-12 pr-12 text-base"
+            // Clear of the sticky app header when it scrolls up on focus.
+            className="h-12 scroll-mt-[calc(4.5rem+env(safe-area-inset-top))] pr-12 text-base"
           />
           {value ? (
             <button
@@ -263,7 +264,7 @@ function StartKnocking({
           ) : null}
         </div>
         {suggestions.length > 0 ? (
-          <div role="group" aria-labelledby="team-hoods-label" className="flex flex-col" data-testid="neighbourhood-suggestions">
+          <div role="group" aria-labelledby="team-hoods-label" className="flex flex-col gap-2" data-testid="neighbourhood-suggestions">
             <p id="team-hoods-label" className="text-sm text-muted-foreground">
               The team has knocked
             </p>
@@ -278,9 +279,10 @@ function StartKnocking({
                     setFrozen(suggestions);
                     setValue(name);
                   }}
+                  // Bordered like the recent chips, so they read as taps.
                   className={cn(
-                    "flex min-h-11 items-center gap-2 border-b px-3 text-left text-base font-semibold outline-none last:border-b-0 focus-visible:ring-2 focus-visible:ring-ring",
-                    picked && "bg-secondary",
+                    "flex min-h-11 items-center gap-2 rounded-md border px-4 text-left text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    picked ? "border-2 border-foreground bg-secondary" : "bg-background",
                   )}
                 >
                   {picked ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
@@ -329,6 +331,7 @@ function Summary({ summary, focus, actedOut }: { summary: KnockSummary; focus: b
   // A session from yesterday (one that ended itself at midnight) names its day.
   const day = calgaryDateOf(summary.startedAt);
   const dayLabel = day === calgaryToday() ? "" : `${formatDay(day)}, `;
+  const untapped = summary.automatic && new Date(summary.endedAt).getTime() <= new Date(summary.startedAt).getTime();
   const booked =
     summary.leads === 0
       ? ""
@@ -350,16 +353,19 @@ function Summary({ summary, focus, actedOut }: { summary: KnockSummary; focus: b
         Done in {summary.neighbourhood}
       </h2>
       <p className="text-sm text-muted-foreground">
-        {dayLabel}
-        {formatTime(summary.startedAt)} to {sentenceEnd(formatTime(summary.endedAt))} Out {out === "Under a minute" ? "under a minute" : out}.
+        {/* A session that ended itself with nothing tapped has no time out
+            to claim: just its day and when it started (round 4). */}
+        {untapped
+          ? `${dayLabel.replace(/, $/, ". ")}Started ${sentenceEnd(formatTime(summary.startedAt))}`
+          : `${dayLabel}${formatTime(summary.startedAt)} to ${sentenceEnd(formatTime(summary.endedAt))} Out ${out === "Under a minute" ? "under a minute" : out}.`}
       </p>
       {summary.automatic ? (
         // What the database did, read from the times: it ends at the last
         // tap, or at the start when nothing was tapped (round 4).
         <p className="text-sm text-pretty" data-testid="session-ended-automatically">
-          {new Date(summary.endedAt).getTime() > new Date(summary.startedAt).getTime()
-            ? `Ended on its own at midnight. It counts up to the last tap, at ${formatTime(summary.endedAt)}.`
-            : "Ended on its own at midnight. Nothing was tapped, so it ends when it started."}
+          {untapped
+            ? "Ended on its own at midnight. Nothing was tapped, so no time out is counted."
+            : "Ended on its own at midnight, so it counts up to the last tap."}
         </p>
       ) : null}
       <p className="text-base text-pretty tabular-nums">
