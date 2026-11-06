@@ -1786,7 +1786,9 @@ export type Database = {
           created_at: string
           doors_knocked: number
           ended_at: string | null
+          ended_automatically: boolean
           id: string
+          last_tap_at: string | null
           neighbourhood: string
           notes: string | null
           started_at: string
