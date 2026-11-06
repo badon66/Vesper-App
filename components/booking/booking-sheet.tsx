@@ -1919,7 +1919,9 @@ function Progress({
   // from the door. A whole thumb's height (44 px) and about 54 px wide on a
   // 390-wide phone, the bar itself drawn thin inside it.
   return (
-    <nav aria-label="Steps" className="mx-auto w-full max-w-2xl px-4">
+    // The buttons reach up into the empty bottom padding of the row above,
+    // so the header grows only a little and every step still fits.
+    <nav aria-label="Steps" className="mx-auto -mt-2 w-full max-w-2xl px-4">
       <ol className="flex items-stretch gap-1" data-testid="sheet-progress">
         {SCREENS.map((item, index) => {
           const missing = marked.includes(item);
