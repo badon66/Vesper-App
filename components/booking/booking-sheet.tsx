@@ -26,6 +26,7 @@ import {
 import { ActionMessage } from "@/components/action-message";
 import {
   AddressScreen,
+  STEP_NAMES,
   BookPhone,
   BookScreen,
   ExistingScreen,
@@ -809,6 +810,15 @@ function BookingSheet({
     setView(next);
   }
 
+  // A tap on a step in the progress bar (round 4): straight there, keeping
+  // what was typed on the address step. Nothing is saved on the way; Book
+  // saves before it books, and the draft stays on the phone.
+  function jumpTo(screen: SheetScreen) {
+    if (!isScreen(view) || busy || photosBusy || screen === view) return;
+    keepAddress();
+    go(screen);
+  }
+
   // A tap on one of Book's missing things: that step, with Next back to
   // Book, and the first thing it still needs brought into view and outlined
   // for a moment, once the step has opened at its top.
@@ -1516,7 +1526,11 @@ function BookingSheet({
               </div>
             )}
           </div>
-          {isScreen(view) ? <Progress screen={view} draft={draft} visited={visited} /> : <div className="h-2" aria-hidden="true" />}
+          {isScreen(view) ? (
+            <Progress screen={view} draft={draft} visited={visited} disabled={busy || photosBusy} onJump={jumpTo} />
+          ) : (
+            <div className="h-2" aria-hidden="true" />
+          )}
           <p className="sr-only" aria-live="polite">
             {held && phase === "under_a_minute" ? phaseAnnouncement(phase) : ""}
           </p>
@@ -1535,11 +1549,16 @@ function BookingSheet({
         >
           <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-4 min-[420px]:gap-5">
             <div className="flex flex-col gap-1">
-              {partLabel ? (
-                <p className="text-sm font-semibold text-muted-foreground min-[420px]:text-base" data-testid="sheet-part">
-                  {partLabel}
-                  {skipDone && name && view !== "book" ? <span data-testid="sheet-for">, booking {name}</span> : null}
-                </p>
+              {partLabel || isScreen(view) ? (
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                  {partLabel ? (
+                    <p className="text-sm font-semibold text-muted-foreground min-[420px]:text-base" data-testid="sheet-part">
+                      {partLabel}
+                      {skipDone && name && view !== "book" ? <span data-testid="sheet-for">, booking {name}</span> : null}
+                    </p>
+                  ) : null}
+                  {isScreen(view) ? <StepCount screen={view} draft={draft} /> : null}
+                </div>
               ) : null}
               <div className="flex items-start justify-between gap-2">
                 <h2
@@ -1876,33 +1895,66 @@ function MenuItem({ onClick, children }: { onClick: () => void; children: React.
 // "Step 3 of 6, 7 to answer" beside it (the same count as Book's button). Round 3: a step the setter has been
 // on and left with something missing carries a small marker under its
 // segment. It never blocks: Book lists what's missing.
-function Progress({ screen, draft, visited }: { screen: SheetScreen; draft: SheetDraft; visited: SheetScreen[] }) {
-  const { number, total, left } = stepCount(screen, draft);
+function Progress({
+  screen,
+  draft,
+  visited,
+  disabled,
+  onJump,
+}: {
+  screen: SheetScreen;
+  draft: SheetDraft;
+  visited: SheetScreen[];
+  disabled: boolean;
+  onJump: (screen: SheetScreen) => void;
+}) {
   const firstOfPart = new Set(STEPS.slice(1).map((part) => part.screens[0]));
   const current = SCREENS.indexOf(screen);
+  // A marker under a step the setter has been on and left with something
+  // missing. A step jumped over isn't marked (round 4): Book lists it.
   const marked = SCREENS.filter(
-    (item, index) => item !== screen && item !== "book" && (visited.includes(item) || index < current) && screenMissing(item, draft).length > 0,
+    (item) => item !== screen && item !== "book" && visited.includes(item) && screenMissing(item, draft).length > 0,
   );
+  // Round 4 (Keenan, 2026-11-05): each step is a button, so Book is one tap
+  // from the door. A whole thumb's height (44 px) and about 54 px wide on a
+  // 390-wide phone, the bar itself drawn thin inside it.
   return (
-    <div className="mx-auto flex w-full max-w-2xl items-center gap-3 px-4 pb-2">
-      <ol className="flex flex-1 items-start gap-1" aria-hidden="true" data-testid="sheet-progress">
-        {SCREENS.map((item, index) => (
-          <li key={item} className={cn("flex flex-1 flex-col items-center gap-1", firstOfPart.has(item) && "ml-2")} data-step={item} data-missing={marked.includes(item) ? "yes" : undefined}>
-            <span className={cn("h-1.5 w-full rounded-full", index < number ? "bg-foreground" : "bg-input")} />
-            <span className={cn("size-2 rounded-full", marked.includes(item) ? "bg-foreground" : "bg-transparent")} />
-          </li>
-        ))}
+    <nav aria-label="Steps" className="mx-auto w-full max-w-2xl px-4">
+      <ol className="flex items-stretch gap-1" data-testid="sheet-progress">
+        {SCREENS.map((item, index) => {
+          const missing = marked.includes(item);
+          return (
+            <li key={item} className={cn("flex flex-1", firstOfPart.has(item) && "ml-2")} data-step={item} data-missing={missing ? "yes" : undefined}>
+              <button
+                type="button"
+                disabled={disabled}
+                aria-current={item === screen ? "step" : undefined}
+                aria-label={`Step ${index + 1} of ${SCREENS.length}, ${STEP_NAMES[item]}${missing ? ", something still missing" : ""}`}
+                onClick={() => onJump(item)}
+                className="flex h-11 w-full flex-col items-center justify-center gap-1 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
+                data-testid={`sheet-step-${item}`}
+              >
+                <span aria-hidden="true" className={cn("h-1.5 w-full rounded-full", index <= current ? "bg-foreground" : "bg-input")} />
+                <span aria-hidden="true" className={cn("size-2 rounded-full", missing ? "bg-foreground" : "bg-transparent")} />
+              </button>
+            </li>
+          );
+        })}
       </ol>
-      <p className="shrink-0 text-sm font-semibold tabular-nums min-[420px]:text-base" data-testid="sheet-step-count">
-        Step {number} of {total}
-        {left > 0 ? <span className="font-normal text-muted-foreground">, {left} to answer</span> : null}
-      </p>
-      {marked.length > 0 ? (
-        <span className="sr-only">
-          {marked.length === 1 ? "One step you've passed still needs something." : `${marked.length} steps you've passed still need something.`} Book lists it.
-        </span>
-      ) : null}
-    </div>
+    </nav>
+  );
+}
+
+// "Step 3 of 6, 7 to answer" (the same count as Book's button), beside the
+// step's part of the visit. Round 4 moved it off the bar so the steps could
+// be thumb-sized.
+function StepCount({ screen, draft }: { screen: SheetScreen; draft: SheetDraft }) {
+  const { number, total, left } = stepCount(screen, draft);
+  return (
+    <p className="shrink-0 text-sm font-semibold tabular-nums min-[420px]:text-base" data-testid="sheet-step-count">
+      Step {number} of {total}
+      {left > 0 ? <span className="font-normal text-muted-foreground">, {left} to answer</span> : null}
+    </p>
   );
 }
 

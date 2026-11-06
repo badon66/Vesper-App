@@ -45,6 +45,9 @@ export type OpenKnockSession = {
   started_at: string;
   doors_knocked: number;
   conversations: number;
+  // Round 4: the last counter tap, so Session's reminder never comes back
+  // once someone has tapped.
+  last_tap_at: string | null;
 };
 
 // The person's knock session that is open now. Only a session started today
@@ -57,7 +60,7 @@ export async function openKnockSession(
 ): Promise<OpenKnockSession | null> {
   const { data } = await supabase
     .from("knock_sessions")
-    .select("id, neighbourhood, started_at, doors_knocked, conversations")
+    .select("id, neighbourhood, started_at, doors_knocked, conversations, last_tap_at")
     .eq("user_id", userId)
     .is("ended_at", null)
     .gte("started_at", calgaryDayStart(calgaryToday()))

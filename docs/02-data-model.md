@@ -216,9 +216,11 @@ ended_at timestamptz
 doors_knocked int not null default 0
 conversations int not null default 0
 notes text
+last_tap_at timestamptz                         -- round 4: the last counter tap
+ended_automatically boolean not null default false   -- round 4: still open at midnight, ended itself
 created_at, updated_at
 ```
-One open session per person, enforced by a partial unique index. Counters change only through `bump_knock_session(session, doors, conversations)`, one atomic update that never goes below zero, so fast taps never lose counts. A session still open from an earlier Calgary day is closed the next time its owner opens the app, with `ended_at` set to its last update. Leads saved while a session is open link to it.
+One open session per person, enforced by a partial unique index. Counters change only through `bump_knock_session(session, doors, conversations)`, one atomic update that never goes below zero and records `last_tap_at`, so fast taps never lose counts. A session still open at midnight Calgary time ends itself (round 4, 2026-11-06): `ended_at` is its last tap, or its start with no taps, and `ended_automatically` is true. `end_open_knock_sessions()` (security definer; only the service role and the scheduled job can run it) does this for everyone, run by the `pg_cron` job `end-open-knock-sessions` every five minutes; `close_my_stale_knock_sessions()`, which Session and Start knocking run for the person, uses the same rule. Sessions open when this came in got `last_tap_at` from their last update. The neighbourhood keeps the spelling of the first session that used it: a trigger (`knock_sessions_neighbourhood_spelling`, security definer) tidies spaces and takes the earliest spelling that matches ignoring capitals, with an index on `lower(neighbourhood)`. Leads saved while a session is open link to it.
 
 ### day_schedules
 One evening's own meeting times (M3.5), set by the owner from Schedule's pencil with "Just this day". An evening without one uses the template in `settings`. Changing or dropping one stamps the old row; rows are never erased.

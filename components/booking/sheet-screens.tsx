@@ -671,7 +671,7 @@ function MissingRow({ group, onFix }: { group: MissingGroup; onFix: (screen: She
 }
 
 // Where each step's things are, as the setter thinks of them.
-const STEP_NAMES: Record<SheetScreen, string> = {
+export const STEP_NAMES: Record<SheetScreen, string> = {
   who: "Name",
   door: "At the door",
   learned: "What they learned",

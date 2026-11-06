@@ -18,8 +18,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useViewAs } from "@/components/view-as-context";
 import { submitKeepingValues } from "@/lib/forms/submit";
-import { fixedStart, timeOutLabel } from "@/lib/knock/session";
-import { calgaryClock, calgaryDateOf, formatTime } from "@/lib/time";
+import {
+  fixedStart,
+  knownSpelling,
+  neighbourhoodSuggestions,
+  TAP_REMINDER,
+  tapReminderDue,
+  timeOutLabel,
+} from "@/lib/knock/session";
+import { calgaryClock, calgaryDateOf, calgaryToday, formatDay, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { VIEW_AS_NOTHING_SAVED } from "@/lib/view-as";
 
@@ -29,6 +36,8 @@ export type KnockSessionView = {
   started_at: string;
   doors_knocked: number;
   conversations: number;
+  // Round 4: the last counter tap, for the reminder.
+  last_tap_at: string | null;
 };
 
 // Leads and bookings of the running session so far, for the summary that
@@ -59,6 +68,7 @@ export function SessionScreen({
   lastEnded,
   lastNeighbourhood,
   recent,
+  team,
   soFar,
   renderedAt,
   savedLead,
@@ -67,10 +77,13 @@ export function SessionScreen({
   outToday,
 }: {
   session: KnockSessionView | null;
-  // The person's last session that ended today, shown until the next start.
+  // The person's last session that ended today, shown until the next start
+  // (or yesterday's, when it ended itself at midnight).
   lastEnded: KnockSummary | null;
   lastNeighbourhood: string | null;
   recent: string[];
+  // The team's neighbourhoods, for suggestions as they type (round 4).
+  team: string[];
   soFar: SessionSoFar;
   // The server's clock when the page was drawn, so the first paint matches.
   renderedAt: number;
@@ -134,6 +147,7 @@ export function SessionScreen({
       <StartKnocking
         lastNeighbourhood={shownSummary?.value.neighbourhood ?? lastNeighbourhood}
         recent={recent}
+        team={team}
         onActedOutStart={
           viewingAs
             ? (neighbourhood) => {
@@ -146,6 +160,7 @@ export function SessionScreen({
                     started_at: new Date().toISOString(),
                     doors_knocked: 0,
                     conversations: 0,
+                    last_tap_at: null,
                   },
                 });
               }
@@ -163,16 +178,22 @@ export function SessionScreen({
 function StartKnocking({
   lastNeighbourhood,
   recent,
+  team,
   onActedOutStart,
 }: {
   lastNeighbourhood: string | null;
   recent: string[];
+  team: string[];
   onActedOutStart: ((neighbourhood: string) => void) | null;
 }) {
   const [state, formAction, pending] = useActionState(startKnockSession, initialState);
   const [value, setValue] = useState(lastNeighbourhood ?? "");
   const [actedError, setActedError] = useState<string | null>(null);
   const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  // Round 4: the team's neighbourhoods that match what's typed, ignoring
+  // capitals, so a place is spelled one way (the database keeps the first
+  // spelling whatever is typed).
+  const suggestions = neighbourhoodSuggestions(value, team);
   return (
     <section aria-labelledby="start-heading" className="flex flex-col gap-3">
       <div>
@@ -194,7 +215,7 @@ function StartKnocking({
             if (name.length === 0) return setActedError("Enter the neighbourhood.");
             if (name.length > 80) return setActedError("That neighbourhood name is too long.");
             setActedError(null);
-            onActedOutStart(name);
+            onActedOutStart(knownSpelling(name, team));
             return;
           }
           submitKeepingValues(formAction)(event);
@@ -229,6 +250,21 @@ function StartKnocking({
             </button>
           ) : null}
         </div>
+        {suggestions.length > 0 ? (
+          <div role="group" aria-label="Neighbourhoods the team has knocked" className="flex flex-col" data-testid="neighbourhood-suggestions">
+            {suggestions.map((name) => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => setValue(name)}
+                className="flex min-h-11 items-center justify-between gap-3 border-b px-1 text-left text-base font-semibold outline-none last:border-b-0 focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span className="truncate">{name}</span>
+                <span className="shrink-0 text-sm font-normal text-muted-foreground">The team&apos;s</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         {recent.length > 0 ? (
           <div role="group" aria-label="Recent neighbourhoods" className="flex flex-wrap gap-2">
             {recent.map((name) => (
@@ -265,6 +301,9 @@ function Summary({ summary, focus, actedOut }: { summary: KnockSummary; focus: b
     if (focus) heading.current?.focus({ preventScroll: true });
   }, [focus]);
   const out = timeOutLabel(summary.startedAt, new Date(summary.endedAt).getTime());
+  // A session from yesterday (one that ended itself at midnight) names its day.
+  const day = calgaryDateOf(summary.startedAt);
+  const dayLabel = day === calgaryToday() ? "" : `${formatDay(day)}, `;
   const booked =
     summary.leads === 0
       ? ""
@@ -286,8 +325,14 @@ function Summary({ summary, focus, actedOut }: { summary: KnockSummary; focus: b
         Done in {summary.neighbourhood}
       </h2>
       <p className="text-sm text-muted-foreground">
+        {dayLabel}
         {formatTime(summary.startedAt)} to {sentenceEnd(formatTime(summary.endedAt))} Out {out === "Under a minute" ? "under a minute" : out}.
       </p>
+      {summary.automatic ? (
+        <p className="text-sm text-pretty" data-testid="session-ended-automatically">
+          Ended automatically: it was still open at midnight, so it ends at {summary.doors + summary.conversations > 0 ? "the last tap" : "its start, with no taps"}.
+        </p>
+      ) : null}
       <p className="text-base text-pretty tabular-nums">
         {plural(summary.doors, "door", "doors")}, {plural(summary.conversations, "conversation", "conversations")},{" "}
         {plural(summary.leads, "lead", "leads")}
@@ -332,6 +377,9 @@ function Knocking({
   const now = useMinuteClock(renderedAt);
   const heading = useRef<HTMLHeadingElement>(null);
   const saved = savedLead && savedLead.id !== savedHiddenFor ? savedLead : null;
+  // Round 4: any tap at all, here or before, ends the reminder for good.
+  const everTapped =
+    session.last_tap_at !== null || counts.tapped || session.doors_knocked + session.conversations > 0;
 
   useEffect(() => {
     // Just started (the form is gone) or just arrived: the heading takes
@@ -404,7 +452,15 @@ function Knocking({
           <Counter label="Doors" count={counts.shown.doors} disabled={counts.ended} onAdd={() => tap("doors")} />
           <Counter label="Conversations" count={counts.shown.conversations} disabled={counts.ended} onAdd={() => tap("conversations")} />
         </div>
-        <StatusRow counts={counts} saved={saved} fixNote={fixNote} undoNote={undoNote} onUndo={undo} onStartAgain={() => router.refresh()} />
+        <StatusRow
+          counts={counts}
+          saved={saved}
+          fixNote={fixNote}
+          undoNote={undoNote}
+          reminder={tapReminderDue(startedAt, now, everTapped)}
+          onUndo={undo}
+          onStartAgain={() => router.refresh()}
+        />
       </div>
 
       {unfinished}
@@ -435,6 +491,7 @@ function StatusRow({
   saved,
   fixNote,
   undoNote,
+  reminder,
   onUndo,
   onStartAgain,
 }: {
@@ -442,6 +499,8 @@ function StatusRow({
   saved: SavedLead | null;
   fixNote: { text: string; calm: boolean } | null;
   undoNote: string | null;
+  // Round 4: 15 minutes in with no tap yet, in the counters' own words.
+  reminder: boolean;
   onUndo: () => void;
   onStartAgain: () => void;
 }) {
@@ -499,6 +558,12 @@ function StatusRow({
     message = (
       <p role="status" className="text-sm text-pretty" data-testid="undo-note">
         {undoNote}
+      </p>
+    );
+  } else if (reminder) {
+    message = (
+      <p role="status" className="text-sm text-pretty" data-testid="tap-reminder">
+        {TAP_REMINDER}
       </p>
     );
   } else {
@@ -942,6 +1007,7 @@ function EndKnocking({
         conversations: counts.conversations,
         leads: soFar.leads,
         bookings: soFar.bookings,
+        automatic: false,
       });
       return;
     }
