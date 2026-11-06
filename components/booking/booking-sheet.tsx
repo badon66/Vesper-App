@@ -1559,7 +1559,9 @@ function BookingSheet({
           onTouchEnd={onTouchEnd}
           data-testid="sheet-body"
         >
-          <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-4 min-[420px]:gap-5">
+          {/* 12 px above the step's label, not 16, for the step bar's tap
+              areas (round 4), so the house step still fits at 390. */}
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 pt-3 pb-4 min-[420px]:gap-5">
             <div className="flex flex-col gap-1">
               {partLabel || isScreen(view) ? (
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3">
