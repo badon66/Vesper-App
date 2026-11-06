@@ -157,6 +157,12 @@ describe("neighbourhood names", () => {
     expect(neighbourhoodSuggestions("cortina", team)).toEqual(["Cortina"]);
     expect(neighbourhoodSuggestions("c", ["A1", "C1", "C2", "C3", "C4", "C5"])).toHaveLength(4);
   });
+
+  it("put what was typed first, and leave out the setter's own recent places", () => {
+    const team = ["Cortina North", "Cortina", "Coventry Hills"];
+    expect(neighbourhoodSuggestions("cortina", team)).toEqual(["Cortina", "Cortina North"]);
+    expect(neighbourhoodSuggestions("co", team, 4, ["cortina"])).toEqual(["Cortina North", "Coventry Hills"]);
+  });
 });
 
 describe("the tap reminder", () => {

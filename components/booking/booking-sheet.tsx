@@ -26,7 +26,6 @@ import {
 import { ActionMessage } from "@/components/action-message";
 import {
   AddressScreen,
-  STEP_NAMES,
   BookPhone,
   BookScreen,
   ExistingScreen,
@@ -367,8 +366,12 @@ function BookingSheet({
   // Round 3: the steps the setter has been on, for the progress bar's
   // markers (a step passed with something missing), and whether this step
   // was opened from Book's list, so Next goes back to Book.
-  const [visited, setVisited] = useState<SheetScreen[]>(() => (isScreen(start.view) ? [start.view] : []));
+  // A sheet that opens part way (a reload, an Unfinished draft) counts the
+  // steps before it as gone through, so their markers and fill come back.
+  const [visited, setVisited] = useState<SheetScreen[]>(() => (isScreen(start.view) ? throughStep(start.view) : []));
   const [fromBook, setFromBook] = useState(false);
+  // When a tap outside last closed the time menu (round 4).
+  const menuClosedAt = useRef(0);
   // The address step stays alive out of sight while Use where I'm standing
   // is still listening or the nearest address is on its way, so a result
   // that lands after Next or a swipe still counts (round 3); and after it
@@ -767,7 +770,11 @@ function BookingSheet({
     if (!menuOpen) return;
     menuWrapRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     const outside = (event: PointerEvent) => {
-      if (!menuWrapRef.current?.contains(event.target as Node)) setMenuOpen(false);
+      if (!menuWrapRef.current?.contains(event.target as Node)) {
+        // A tap that closes the menu doesn't also jump steps (round 4).
+        menuClosedAt.current = Date.now();
+        setMenuOpen(false);
+      }
     };
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
@@ -815,6 +822,7 @@ function BookingSheet({
   // saves before it books, and the draft stays on the phone.
   function jumpTo(screen: SheetScreen) {
     if (!isScreen(view) || busy || photosBusy || screen === view) return;
+    if (Date.now() - menuClosedAt.current < 500) return;
     keepAddress();
     go(screen);
   }
@@ -1217,7 +1225,11 @@ function BookingSheet({
       go("move-confirm");
       return;
     }
-    go(returnTo ?? (skipDone ? firstScreenToVisit(draft) : "who"));
+    const destination = returnTo ?? (skipDone ? firstScreenToVisit(draft) : "who");
+    // Picking the time first, then the steps (an Unfinished draft, a lead
+    // with answers): the steps before where it lands count as gone through.
+    setVisited((current) => (current.length > 0 ? current : throughStep(destination)));
+    go(destination);
     setReturnTo(null);
   }
 
@@ -1874,6 +1886,11 @@ function BookingSheet({
   );
 }
 
+// The steps up to and including one, in order.
+function throughStep(screen: SheetScreen): SheetScreen[] {
+  return SCREENS.slice(0, SCREENS.indexOf(screen) + 1);
+}
+
 function isScreen(view: View): view is SheetScreen {
   return (SCREENS as View[]).includes(view);
 }
@@ -1891,10 +1908,11 @@ function MenuItem({ onClick, children }: { onClick: () => void; children: React.
   );
 }
 
-// The steps as one bar of segments, grouped by part of the visit, with
-// "Step 3 of 6, 7 to answer" beside it (the same count as Book's button). Round 3: a step the setter has been
-// on and left with something missing carries a small marker under its
-// segment. It never blocks: Book lists what's missing.
+// The steps as one bar of six buttons, grouped by part of the visit (round
+// 4: each jumps straight to its step). A step the setter has been on and
+// left with something missing carries a small marker under its segment.
+// The counter, "Step 3 of 6, 7 to answer", is StepCount, on the line with
+// the step's part of the visit. It never blocks: Book lists what's missing.
 function Progress({
   screen,
   draft,
@@ -1909,9 +1927,10 @@ function Progress({
   onJump: (screen: SheetScreen) => void;
 }) {
   const firstOfPart = new Set(STEPS.slice(1).map((part) => part.screens[0]));
-  const current = SCREENS.indexOf(screen);
   // A marker under a step the setter has been on and left with something
-  // missing. A step jumped over isn't marked (round 4): Book lists it.
+  // missing. A step jumped over isn't marked (round 4): Book lists it. The
+  // fill shows the steps gone through, not the position, so a jump to Book
+  // doesn't look like a finished sheet; the current step is a little taller.
   const marked = SCREENS.filter(
     (item) => item !== screen && item !== "book" && visited.includes(item) && screenMissing(item, draft).length > 0,
   );
@@ -1919,24 +1938,28 @@ function Progress({
   // from the door. A whole thumb's height (44 px) and about 54 px wide on a
   // 390-wide phone, the bar itself drawn thin inside it.
   return (
-    // The buttons reach up into the empty bottom padding of the row above,
-    // so the header grows only a little and every step still fits.
-    <nav aria-label="Steps" className="mx-auto -mt-2 w-full max-w-2xl px-4">
+    // The buttons reach part way into the empty bottom padding of the row
+    // above, so the header grows only a little and every step still fits,
+    // with a small gap below the held time.
+    <nav aria-label="Steps" className="mx-auto -mt-1 w-full max-w-2xl px-4">
       <ol className="flex items-stretch gap-1" data-testid="sheet-progress">
         {SCREENS.map((item, index) => {
           const missing = marked.includes(item);
+          const here = item === screen;
+          const through = here || visited.includes(item);
           return (
             <li key={item} className={cn("flex flex-1", firstOfPart.has(item) && "ml-2")} data-step={item} data-missing={missing ? "yes" : undefined}>
               <button
                 type="button"
                 disabled={disabled}
-                aria-current={item === screen ? "step" : undefined}
-                aria-label={`Step ${index + 1} of ${SCREENS.length}, ${STEP_NAMES[item]}${missing ? ", something still missing" : ""}`}
+                aria-current={here ? "step" : undefined}
+                aria-label={`Step ${index + 1} of ${SCREENS.length}, ${SCREEN_TITLES[item]}${missing ? ", something still missing" : ""}`}
                 onClick={() => onJump(item)}
-                className="flex h-11 w-full flex-col items-center justify-center gap-1 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
+                className="flex h-11 w-full flex-col items-center justify-center gap-1 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring active:bg-secondary disabled:cursor-not-allowed"
                 data-testid={`sheet-step-${item}`}
+                data-through={through ? "yes" : undefined}
               >
-                <span aria-hidden="true" className={cn("h-1.5 w-full rounded-full", index <= current ? "bg-foreground" : "bg-input")} />
+                <span aria-hidden="true" className={cn("w-full rounded-full", here ? "h-2" : "h-1.5", through ? "bg-foreground" : "bg-input")} />
                 <span aria-hidden="true" className={cn("size-2 rounded-full", missing ? "bg-foreground" : "bg-transparent")} />
               </button>
             </li>

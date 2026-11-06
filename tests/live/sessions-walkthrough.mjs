@@ -111,7 +111,9 @@ try {
   const { data: ended } = await admin.from("knock_sessions").select("ended_at, last_tap_at, ended_automatically").eq("user_id", people.overnight.id).single();
   check(
     "the job ends a session left open from yesterday at its last tap, marked automatic",
-    !runError && ran >= 1 && ended?.ended_automatically === true && new Date(ended.ended_at).getTime() === new Date(ended.last_tap_at).getTime(),
+    // The row's state, not the count: the five-minute job on this database
+    // may have ended it a moment before this call did.
+    !runError && typeof ran === "number" && ended?.ended_automatically === true && new Date(ended.ended_at).getTime() === new Date(ended.last_tap_at).getTime(),
     `${runError?.message ?? ""} ${JSON.stringify(ended)}`,
   );
   const overnight = await signIn(context, people.overnight);
@@ -121,7 +123,7 @@ try {
   check(
     "the next day, its summary says it ended automatically, with its day, the doors and conversations",
     summary.startsWith(`Done in ${HOOD}`) &&
-      summary.includes("Ended automatically: it was still open at midnight, so it ends at the last tap.") &&
+      summary.includes("Ended on its own at midnight. It counts up to the last tap, at ") &&
       summary.includes("12 doors, 4 conversations") &&
       summary.replace(/\./g, "").toLowerCase().includes(yesterdayDay.replace(/\./g, "").toLowerCase()),
     summary,

@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -193,7 +193,10 @@ function StartKnocking({
   // Round 4: the team's neighbourhoods that match what's typed, ignoring
   // capitals, so a place is spelled one way (the database keeps the first
   // spelling whatever is typed).
-  const suggestions = neighbourhoodSuggestions(value, team);
+  // After a tap the list stays as it was, the picked one marked, until the
+  // next keystroke, so nothing jumps under the thumb.
+  const [frozen, setFrozen] = useState<string[] | null>(null);
+  const suggestions = frozen ?? neighbourhoodSuggestions(value, team, 4, recent);
   return (
     <section aria-labelledby="start-heading" className="flex flex-col gap-3">
       <div>
@@ -227,9 +230,18 @@ function StartKnocking({
             id="knock-neighbourhood"
             name="neighbourhood"
             value={value}
-            onChange={(event) => setValue(event.target.value)}
-            // A tap into a filled field selects it, so typing replaces it.
-            onFocus={(event) => event.currentTarget.select()}
+            onChange={(event) => {
+              setFrozen(null);
+              setValue(event.target.value);
+            }}
+            // A tap into a filled field selects it, so typing replaces it,
+            // and the box moves up, so the suggestions under it clear the
+            // keyboard.
+            onFocus={(event) => {
+              event.currentTarget.select();
+              const box = event.currentTarget;
+              window.setTimeout(() => box.scrollIntoView({ block: "start", behavior: "smooth" }), 250);
+            }}
             placeholder="The neighbourhood, like Bridgeland"
             autoComplete="off"
             autoCapitalize="words"
@@ -251,18 +263,31 @@ function StartKnocking({
           ) : null}
         </div>
         {suggestions.length > 0 ? (
-          <div role="group" aria-label="Neighbourhoods the team has knocked" className="flex flex-col" data-testid="neighbourhood-suggestions">
-            {suggestions.map((name) => (
-              <button
-                key={name}
-                type="button"
-                onClick={() => setValue(name)}
-                className="flex min-h-11 items-center justify-between gap-3 border-b px-1 text-left text-base font-semibold outline-none last:border-b-0 focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span className="truncate">{name}</span>
-                <span className="shrink-0 text-sm font-normal text-muted-foreground">The team&apos;s</span>
-              </button>
-            ))}
+          <div role="group" aria-labelledby="team-hoods-label" className="flex flex-col" data-testid="neighbourhood-suggestions">
+            <p id="team-hoods-label" className="text-sm text-muted-foreground">
+              The team has knocked
+            </p>
+            {suggestions.map((name) => {
+              const picked = same(name, value);
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  aria-pressed={picked}
+                  onClick={() => {
+                    setFrozen(suggestions);
+                    setValue(name);
+                  }}
+                  className={cn(
+                    "flex min-h-11 items-center gap-2 border-b px-3 text-left text-base font-semibold outline-none last:border-b-0 focus-visible:ring-2 focus-visible:ring-ring",
+                    picked && "bg-secondary",
+                  )}
+                >
+                  {picked ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
+                  <span className="truncate">{name}</span>
+                </button>
+              );
+            })}
           </div>
         ) : null}
         {recent.length > 0 ? (
@@ -329,8 +354,12 @@ function Summary({ summary, focus, actedOut }: { summary: KnockSummary; focus: b
         {formatTime(summary.startedAt)} to {sentenceEnd(formatTime(summary.endedAt))} Out {out === "Under a minute" ? "under a minute" : out}.
       </p>
       {summary.automatic ? (
+        // What the database did, read from the times: it ends at the last
+        // tap, or at the start when nothing was tapped (round 4).
         <p className="text-sm text-pretty" data-testid="session-ended-automatically">
-          Ended automatically: it was still open at midnight, so it ends at {summary.doors + summary.conversations > 0 ? "the last tap" : "its start, with no taps"}.
+          {new Date(summary.endedAt).getTime() > new Date(summary.startedAt).getTime()
+            ? `Ended on its own at midnight. It counts up to the last tap, at ${formatTime(summary.endedAt)}.`
+            : "Ended on its own at midnight. Nothing was tapped, so it ends when it started."}
         </p>
       ) : null}
       <p className="text-base text-pretty tabular-nums">
@@ -379,7 +408,11 @@ function Knocking({
   const saved = savedLead && savedLead.id !== savedHiddenFor ? savedLead : null;
   // Round 4: any tap at all, here or before, ends the reminder for good.
   const everTapped =
-    session.last_tap_at !== null || counts.tapped || session.doors_knocked + session.conversations > 0;
+    session.last_tap_at !== null ||
+    counts.tapped ||
+    counts.pending > 0 ||
+    session.doors_knocked + session.conversations > 0 ||
+    counts.shown.doors + counts.shown.conversations > 0;
 
   useEffect(() => {
     // Just started (the form is gone) or just arrived: the heading takes

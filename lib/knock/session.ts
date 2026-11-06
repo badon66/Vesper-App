@@ -62,18 +62,23 @@ export function knownSpelling(typed: string, names: string[]): string {
   return names.find((name) => neighbourhoodKey(name) === key) ?? typed.trim().replace(/\s+/g, " ");
 }
 
-// Suggestions as the setter types: the team's neighbourhoods that start
-// with what's typed, then those with a word that does, ignoring capitals.
-// Nothing for an empty box, and nothing once it's exactly a known spelling.
-export function neighbourhoodSuggestions(typed: string, names: string[], max = 4): string[] {
+// Suggestions as the setter types: the team's neighbourhoods that match
+// what's typed exactly (other capitals), then those that start with it,
+// then those with a word that does, ignoring capitals. Nothing for an empty
+// box, nothing once it's exactly a known spelling, and never one of the
+// setter's own recent places, which are already there to tap.
+export function neighbourhoodSuggestions(typed: string, names: string[], max = 4, own: string[] = []): string[] {
   const key = neighbourhoodKey(typed);
   if (!key) return [];
   if (names.some((name) => name.trim() === typed.trim() && neighbourhoodKey(name) === key)) return [];
-  const starts = names.filter((name) => neighbourhoodKey(name).startsWith(key));
-  const words = names.filter(
-    (name) => !starts.includes(name) && neighbourhoodKey(name).split(" ").some((word) => word.startsWith(key)),
+  const mine = new Set(own.map(neighbourhoodKey));
+  const offered = names.filter((name) => !mine.has(neighbourhoodKey(name)));
+  const exact = offered.filter((name) => neighbourhoodKey(name) === key);
+  const starts = offered.filter((name) => !exact.includes(name) && neighbourhoodKey(name).startsWith(key));
+  const words = offered.filter(
+    (name) => !exact.includes(name) && !starts.includes(name) && neighbourhoodKey(name).split(" ").some((word) => word.startsWith(key)),
   );
-  return [...starts, ...words].slice(0, max);
+  return [...exact, ...starts, ...words].slice(0, max);
 }
 
 // The quiet reminder on Session (round 4): a session 15 minutes old with

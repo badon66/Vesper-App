@@ -506,8 +506,8 @@ function TourStep() {
             initials on it until you book it or let it go.
           </>,
           <>
-            <strong>Book it in the sheet.</strong> At the door, After the door, then Book. The ? on each step has
-            Keenan&apos;s notes for it.
+            <strong>Book it in the sheet.</strong> At the door, After the door, then Book. Tap a step on the bar at the
+            top to go straight there. The ? on each step has Keenan&apos;s notes for it.
           </>,
         ]}
       />

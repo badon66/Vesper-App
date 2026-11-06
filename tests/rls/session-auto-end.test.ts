@@ -128,7 +128,9 @@ describe("A session left open past midnight", () => {
       .single();
     const { data: closed, error } = await people.b.client.rpc("close_my_stale_knock_sessions");
     expect(error).toBeNull();
-    expect(closed).toBe(1);
+    // 1, or 0 when the five-minute job (live on this database) got there
+    // first: either way the row must have ended the same way.
+    expect([0, 1]).toContain(closed);
     const { data: row } = await admin.from("knock_sessions").select("ended_at, last_tap_at, ended_automatically").eq("id", stale!.id).single();
     expect(new Date(row!.ended_at!).getTime()).toBe(new Date(row!.last_tap_at!).getTime());
     expect(row!.ended_automatically).toBe(true);
