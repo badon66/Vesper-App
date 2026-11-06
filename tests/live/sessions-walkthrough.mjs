@@ -123,7 +123,7 @@ try {
   check(
     "the next day, its summary says it ended automatically, with its day, the doors and conversations",
     summary.startsWith(`Done in ${HOOD}`) &&
-      summary.includes("Ended on its own at midnight. It counts up to the last tap, at ") &&
+      summary.includes("Ended on its own at midnight, so it counts up to the last tap.") &&
       summary.includes("12 doors, 4 conversations") &&
       summary.replace(/\./g, "").toLowerCase().includes(yesterdayDay.replace(/\./g, "").toLowerCase()),
     summary,
