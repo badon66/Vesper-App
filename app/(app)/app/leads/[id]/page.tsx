@@ -27,6 +27,14 @@ import { formatMeetingTime, isLive, positionSourceText, sentence, timePhrase } f
 import { leadReadiness, READINESS_NAMES, readinessNow } from "@/lib/schedule/readiness";
 import { meetingsForLead } from "@/lib/schedule/queries";
 import {
+  CONFIRM_BY_LABEL,
+  confirmByLabel,
+  HOT_BUTTONS_LABEL,
+  hotButtonsLabel,
+  SETTER_READ_LABEL,
+  setterReadLabel,
+} from "@/lib/leads/extras";
+import {
   HOUSE_TYPE_OPTIONS,
   labelFor,
   leadName,
@@ -441,6 +449,25 @@ export default async function LeadPage({
           {canEdit ? (
             <PhotoPicker userId={me.id} mode="attach" leadId={lead.id} buttonLabel="More photos" />
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card data-testid="setter-notes">
+        <CardHeader>
+          <CardTitle>From the door</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* Round 3 (2026-11-05): the setter's optional notes. Internal: never in meeting mode.
+              On a phone each label sits above its answer, since "What would
+              make them say yes" would leave the answers a narrow column. */}
+          <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr] sm:gap-y-2">
+            <dt className="text-muted-foreground">{SETTER_READ_LABEL}</dt>
+            <dd className="mb-2 sm:mb-0" data-testid="setter-read">{setterReadLabel(lead.setter_read) ?? "Not noted"}</dd>
+            <dt className="text-muted-foreground">{HOT_BUTTONS_LABEL}</dt>
+            <dd className="mb-2 text-pretty sm:mb-0" data-testid="hot-buttons">{hotButtonsLabel(lead.hot_buttons) ?? "Not noted"}</dd>
+            <dt className="text-muted-foreground">{CONFIRM_BY_LABEL}</dt>
+            <dd data-testid="confirm-by">{confirmByLabel(lead.confirm_by) ?? "Not noted"}</dd>
+          </dl>
         </CardContent>
       </Card>
 

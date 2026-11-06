@@ -18,6 +18,9 @@ type Taken = {
   preview: string;
   source: Blob;
   path?: string;
+  // The slot's last uploaded photo, kept while a retake uploads and after a
+  // retake fails, so a failed retake never loses a good photo (round 3).
+  kept?: string;
   // View as: shown on this screen only, never uploaded.
   actedOut?: boolean;
 };
@@ -33,6 +36,13 @@ type Taken = {
 // the Take photo button, so all four fit on a phone screen. While Keenan
 // views the app as someone, a photo shows on screen only and nothing is
 // uploaded.
+// The uploaded photo a slot holds for its form: the latest when it's up,
+// otherwise the one before it.
+function readyPath(photo: Taken | undefined): string | undefined {
+  if (!photo) return undefined;
+  return photo.status === "done" && photo.path ? photo.path : photo.kept;
+}
+
 export function PhotoSlots({
   userId,
   mode,
@@ -42,6 +52,7 @@ export function PhotoSlots({
   layout = "list",
   onBusyChange,
   onTakenChange,
+  onPathsChange,
   initial,
 }: {
   userId: string;
@@ -54,6 +65,9 @@ export function PhotoSlots({
   onBusyChange?: (busy: boolean) => void;
   // Which slots have a photo ready to save, for Before you book on New lead.
   onTakenChange?: (slots: PhotoSlot[]) => void;
+  // A form's uploaded paths by slot, for the booking sheet (round 3), which
+  // keeps them with a person not saved yet and attaches them at the save.
+  onPathsChange?: (paths: Partial<Record<PhotoSlot, string>>) => void;
   // A form's photos already uploaded, brought back from a draft after a
   // reload: the path and a signed link to show it.
   initial?: Partial<Record<PhotoSlot, { path: string; preview: string }>>;
@@ -79,12 +93,25 @@ export function PhotoSlots({
     return () => urls.forEach((url) => URL.revokeObjectURL(url));
   }, []);
 
-  const doneKey = PHOTO_SLOTS.filter(({ slot }) => taken[slot]?.status === "done" && (taken[slot]?.path || taken[slot]?.actedOut))
+  const doneKey = PHOTO_SLOTS.filter(({ slot }) => readyPath(taken[slot]) || (taken[slot]?.status === "done" && taken[slot]?.actedOut))
     .map(({ slot }) => slot)
     .join(",");
   useEffect(() => {
     onTakenChange?.(doneKey ? (doneKey.split(",") as PhotoSlot[]) : []);
   }, [doneKey, onTakenChange]);
+
+  const pathsKey = PHOTO_SLOTS.map(({ slot }) => (readyPath(taken[slot]) ? `${slot}=${readyPath(taken[slot])}` : ""))
+    .filter(Boolean)
+    .join("|");
+  useEffect(() => {
+    if (!onPathsChange) return;
+    const paths: Partial<Record<PhotoSlot, string>> = {};
+    for (const pair of pathsKey ? pathsKey.split("|") : []) {
+      const [slot, path] = pair.split("=");
+      paths[slot as PhotoSlot] = path;
+    }
+    onPathsChange(paths);
+  }, [pathsKey, onPathsChange]);
 
   function preview(blob: Blob): string {
     const url = URL.createObjectURL(blob);
@@ -147,7 +174,7 @@ export function PhotoSlots({
     }
     setTaken((all) => ({
       ...all,
-      [slot]: { attempt, status: "working", preview: preview(file), source: file },
+      [slot]: { attempt, status: "working", preview: preview(file), source: file, kept: readyPath(all[slot]) },
     }));
     void upload(slot, attempt, file);
   }
@@ -199,7 +226,10 @@ export function PhotoSlots({
             const src = local?.preview ?? saved[slot];
             const failed = local?.status === "failed";
             const working = local?.status === "working";
-            const action = failed ? "Try the upload again" : src ? "Retake" : "Take photo";
+            // An uploaded photo whose preview couldn't be signed (weak
+            // signal) still counts, and shows as saved without the picture.
+            const ready = Boolean(readyPath(local));
+            const action = failed ? "Try the upload again" : src || ready ? "Retake" : "Take photo";
             // Front and both corners are needed to book; the soffit close-up helps.
             const optional = slot === "soffit";
             const status = working ? `${label}: uploading` : failed ? `${label}: didn't upload. Tap to try again.` : "";
@@ -218,10 +248,12 @@ export function PhotoSlots({
                   onClick={() => (failed && local ? void upload(slot, local.attempt, local.source) : inputs.current[slot]?.click())}
                   className="relative flex aspect-[4/3] w-full overflow-hidden rounded-md border bg-muted text-left outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed min-[420px]:aspect-[6/5]"
                 >
-                  {src ? (
+                  {src || ready ? (
                     <>
-                      {/* eslint-disable-next-line @next/next/no-img-element -- a local preview, or a private photo behind a short-lived signed link */}
-                      <img src={src} alt={`${label} photo of the house`} className="absolute inset-0 size-full object-cover" />
+                      {src ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- a local preview, or a private photo behind a short-lived signed link
+                        <img src={src} alt={`${label} photo of the house`} className="absolute inset-0 size-full object-cover" />
+                      ) : null}
                       <span className="absolute inset-x-0 bottom-0 flex min-h-11 items-center gap-1.5 bg-background px-2 text-sm font-semibold">
                         {working ? null : failed ? null : <Check aria-hidden="true" className="size-4 shrink-0" />}
                         <span className="flex min-w-0 flex-col leading-tight">
@@ -263,7 +295,7 @@ export function PhotoSlots({
                     </span>
                   ) : null}
                 </button>
-                {canTake && !src && !failed ? (
+                {canTake && !src && !ready && !failed ? (
                   <button
                     type="button"
                     aria-label={`Upload a photo from the phone, ${label}`}
@@ -358,8 +390,8 @@ export function PhotoSlots({
               ) : !src ? (
                 <p className="text-xs text-muted-foreground">No photo yet.</p>
               ) : null}
-              {mode === "form" && local?.status === "done" && local.path ? (
-                <input type="hidden" name={slotFieldName(slot)} value={local.path} />
+              {mode === "form" && readyPath(local) ? (
+                <input type="hidden" name={slotFieldName(slot)} value={readyPath(local)} />
               ) : null}
             </li>
           );

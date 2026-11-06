@@ -22,6 +22,9 @@ event_type:      created | note | status_change | call | text | meeting_booked |
 run_level:       lower | upper
 earning_type:    booking | commission
 earning_status:  pending | paid | void
+setter_read:     hot | warm | just_curious                              -- round 3 (2026-11-05): the setter's read, optional
+hot_button:      no_ladders | up_for_christmas | curb_appeal | safety_security | not_sure   -- round 3: what would make them say yes, optional
+confirm_by:      call | text                                            -- round 3: how to confirm the meeting, optional
 ```
 
 ## Tables
@@ -148,6 +151,9 @@ est_feet int
 notes text
 both_decision_makers boolean                    -- round 2: the question "Everyone who decides will be there": Yes true, No false; booking copies it to meetings.everyone_deciding_present
 not_collected text[] not null default '{}'      -- round 2: the questions marked Not collected (phone, owns_home, wants_price, both_decision_makers, christmas_lights_now, looked_into_before, areas_wanted, install_timing); an answered question is never in it (a trigger keeps them apart)
+setter_read setter_read                         -- round 3 (2026-11-05): Hot, Warm or Just curious; optional, never counted; Keenan sees it on Meetings and Home; never in meeting mode or anything a customer sees
+hot_buttons hot_button[] not null default '{}'  -- round 3: any that apply, or Not sure alone (checked: Not sure never beside another; at most four); optional, never counted; shown with the read
+confirm_by confirm_by                           -- round 3: call or text to confirm the meeting; optional
 save_key uuid                                   -- 2026-11-04: made on the phone once per new lead (booking sheet, New lead) and sent with every try of its first save, so a retry finds this lead instead of making a copy; unique; empty on leads saved before it or by other paths
 consent_text boolean not null default false     -- CASL: agreed to texts and emails
 lost_reason text
@@ -166,6 +172,7 @@ Rules enforced in the database:
 - `follow_up` requires `follow_up_on`. Leaving `follow_up` clears it. A signed-in person cannot set a follow-up date earlier than today in Calgary; moving the date on a lead that stays in `follow_up` is an edit. The status change into `follow_up` records the date in its event payload, and a date change alone logs an `edited` event naming the field.
 - `lat` and `lng` are both set or both empty, and `position_source` is set exactly when they are. A typed address with no map position is allowed to save; booking requires one. For a brand-new street Google doesn't have yet, the phone's own position at the door counts, stored as `device` with its accuracy, which must be 50 m or better and inside the Calgary area. A position saved without a source is taken as picked.
 - `phone` is stored in E.164 or not at all.
+- Round 3 (2026-11-05): `setter_read`, `hot_buttons` and `confirm_by` have their own read grants, like every column but the phone and email, and edits to them are logged as `edited` events by field name. Writes follow the row policies, as for the other answers.
 - Contact privacy (Keenan, 2026-11-04): signed-in people read `leads` column by column, every column except `phone` and `email`, so a query that names either one, or asks for `*`, is refused. Setters still write the phone and email of their own leads. The phone and email come from the view `lead_contacts` (`lead_id`, `phone`, `email`, `created_by`, `assigned_to`), which returns every lead's for Keenan and only their own leads' for a setter. It runs with the view owner's rights and a security barrier, so its own filter applies before anything a caller adds. A column added to `leads` later needs a read grant in its migration, or nobody but the service role can read it.
 - At most one lead has a given `save_key` (the unique index), so two tries of the same first save can never both make a lead, even at the same instant. The app looks the key up before it inserts, and again when the insert hits the index; it hands a lead back only to the person who created it.
 - The track colour is set by the owner only: a signed-in non-owner cannot set or change `track_colour_id` or `track_ral_code`. At most one of the two is set. A newly chosen `track_colour_id` must be an active colour; a lead keeps a colour that is later retired.

@@ -14,6 +14,7 @@ import {
   timePhrase,
 } from "@/lib/schedule/meetings";
 import type { MeetingWithLead } from "@/lib/schedule/queries";
+import { readLine } from "@/lib/leads/extras";
 import { completenessLabel } from "@/lib/leads/questions";
 import { leadName } from "@/lib/leads/status";
 import { formatPhone } from "@/lib/phone";
@@ -128,6 +129,13 @@ export function MeetingCard({
               {completenessLabel(lead)}
             </span>
           </p>
+          {prep && readLine(lead) ? (
+            // Keenan's Home (round 3): the setter's read and hot buttons, so
+            // he knows before he walks in.
+            <p className="text-sm font-semibold text-pretty" data-testid="setter-read-line">
+              {readLine(lead)}
+            </p>
+          ) : null}
         </div>
       ) : null}
 

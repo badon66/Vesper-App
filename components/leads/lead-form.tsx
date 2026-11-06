@@ -12,7 +12,9 @@ import {
 import { ActionMessage } from "@/components/action-message";
 import { FieldError } from "@/components/field-error";
 import { AddressField, type AddressDefaults } from "@/components/leads/address-field";
+import { CheckGroup } from "@/components/leads/check-group";
 import { ChoiceGroup } from "@/components/leads/choice-group";
+import { OptionalChoice } from "@/components/leads/optional-choice";
 import { bookingRuledOut, LeadQuestions, type QuestionDefaults } from "@/components/leads/find-out-fields";
 import { PhotoPicker } from "@/components/leads/photo-picker";
 import { PhotoSlots } from "@/components/leads/photo-slots";
@@ -23,6 +25,17 @@ import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Textarea } from "@/components/ui/textarea";
 import { useViewAs } from "@/components/view-as-context";
 import type { PhotoSlot } from "@/lib/leads/door";
+import {
+  CONFIRM_BY_LABEL,
+  CONFIRM_BY_OPTIONS,
+  HOT_BUTTON_OPTIONS,
+  HOT_BUTTONS_LABEL,
+  SETTER_READ_LABEL,
+  SETTER_READ_OPTIONS,
+  type ConfirmBy,
+  type HotButton,
+  type SetterRead,
+} from "@/lib/leads/extras";
 import { defaultsFromDraft, draftFromFormData, draftHasContent, draftKey, draftPhotoPaths, readDraft, type LeadDraft } from "@/lib/leads/draft";
 import { timed } from "@/lib/answer-within";
 import { takeHandOff } from "@/lib/leads/hand-off";
@@ -45,6 +58,10 @@ export type LeadFormDefaults = {
   email: string;
   neighbourhood: string;
   house_type: HouseType | null;
+  // Round 3: optional, never counted.
+  setter_read?: SetterRead | null;
+  hot_buttons?: HotButton[];
+  confirm_by?: ConfirmBy | null;
   // The answers as the form holds them: a choice, Not collected, or nothing.
   questions: QuestionDefaults;
   phone_not_collected: boolean;
@@ -356,6 +373,9 @@ export function LeadForm({
       ref={formRef}
       onSubmit={onSubmit}
       onChange={drafting ? scheduleSave : undefined}
+      // Tapping a chosen answer again clears it without a change event, so
+      // a tap saves the draft too, once the screen has caught up.
+      onClick={drafting ? () => window.requestAnimationFrame(saveNow) : undefined}
       noValidate
       className="flex flex-col gap-6 pb-36"
     >
@@ -389,6 +409,7 @@ export function LeadForm({
         error={errors.address_line}
         onPicked={onPicked}
         leadId={leadId ?? null}
+        keepsEntries={drafting}
       />
 
       {duplicates.length > 0 ? (
@@ -469,6 +490,35 @@ export function LeadForm({
         onOpenChange={(open) => setOpenNow((current) => (current === null ? null : open.length > 0 ? open : null))}
         onBookingChange={setBookingBlocked}
         markRestRef={markRestRef}
+        afterPhone={
+          <OptionalChoice
+            name="confirm_by"
+            legend={`${CONFIRM_BY_LABEL} (optional)`}
+            options={CONFIRM_BY_OPTIONS}
+            defaultValue={shown?.confirm_by}
+            error={errors.confirm_by}
+          />
+        }
+        afterQuestions={
+          <>
+            <OptionalChoice
+              name="setter_read"
+              legend={`${SETTER_READ_LABEL} (optional)`}
+              options={SETTER_READ_OPTIONS}
+              columns={3}
+              defaultValue={shown?.setter_read}
+              error={errors.setter_read}
+            />
+            <CheckGroup
+              name="hot_buttons"
+              legend={HOT_BUTTONS_LABEL}
+              hint="(optional, pick any)"
+              options={HOT_BUTTON_OPTIONS}
+              exclusive="not_sure"
+              defaultValue={shown?.hot_buttons ?? []}
+            />
+          </>
+        }
       />
 
       {mode === "create" ? (
@@ -487,9 +537,9 @@ export function LeadForm({
         </section>
       ) : null}
 
-      <ChoiceGroup
+      <OptionalChoice
         name="house_type"
-        legend="House type"
+        legend="House type (optional)"
         options={HOUSE_TYPE_OPTIONS}
         defaultValue={shown?.house_type}
         error={errors.house_type}

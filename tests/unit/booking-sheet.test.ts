@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bookingBlockers,
   bookNeed,
+  canBookDraft,
   canSaveLead,
   DOOR_QUESTIONS,
   draftAnswers,
@@ -15,18 +16,21 @@ import {
   LEARNED_QUESTIONS,
   markScreenNotCollected,
   nextScreen,
-  photosNeed,
   previousScreen,
   PROBLEM_SCREENS,
   savedFingerprint,
   SCREEN_QUESTIONS,
   SCREEN_TITLES,
   SCREENS,
+  screenMissing,
   screenOpenQuestions,
+  sheetMissing,
   stepCount,
   stepOf,
   STEPS,
+  toggleHotButton,
   withAnswer,
+  withDraftDefaults,
   type SheetDraft,
 } from "@/lib/booking/sheet";
 import { defaultsFromDraft, readDraft } from "@/lib/leads/draft";
@@ -70,16 +74,22 @@ describe("The booking sheet's steps", () => {
     expect(SCREENS.every((screen) => SCREEN_TITLES[screen].length > 0)).toBe(true);
   });
 
-  it("asks only what booking needs at the door, and the rest after it", () => {
-    expect(SCREEN_QUESTIONS.who).toEqual(["phone"]);
+  it("asks only what booking needs at the door, the rest after it, and the phone last, on Book", () => {
+    expect(SCREEN_QUESTIONS.who).toBeUndefined();
+    expect(SCREEN_QUESTIONS.book).toEqual(["phone"]);
     expect(DOOR_QUESTIONS).toEqual(["owns_home", "wants_price", "both_decision_makers"]);
     expect(LEARNED_QUESTIONS).toEqual(["christmas_lights_now", "looked_into_before", "areas_wanted", "install_timing"]);
   });
 
-  it("counts the steps with how many are left", () => {
-    expect(stepCount("who")).toEqual({ number: 1, total: 6, left: 5 });
-    expect(stepCount("learned")).toEqual({ number: 3, total: 6, left: 3 });
-    expect(stepCount("book")).toEqual({ number: 6, total: 6, left: 0 });
+  it("counts the answers still missing on every step, the same count as Book's button (round 3)", () => {
+    const empty = emptyDraft();
+    expect(stepCount("who", empty)).toEqual({ number: 1, total: 6, left: sheetMissing(empty).length });
+    expect(stepCount("learned", empty)).toEqual({ number: 3, total: 6, left: sheetMissing(empty).length });
+    expect(bookNeed(empty)).toBe(`${sheetMissing(empty).length} left to answer`);
+    expect(stepCount("book", ready())).toEqual({ number: 6, total: 6, left: 0 });
+    // An answer missing on a step already passed still counts.
+    expect(stepCount("book", { ...ready(), install_timing: null })).toEqual({ number: 6, total: 6, left: 1 });
+    expect(stepCount("book", { ...ready(), install_timing: null, looked_into_before: null })).toEqual({ number: 6, total: 6, left: 2 });
   });
 
   it("walks a new person through every screen, in order", () => {
@@ -113,12 +123,13 @@ describe("The booking sheet's steps", () => {
 });
 
 describe("When a screen is done", () => {
-  it("needs a first name and a phone or Not collected on who", () => {
+  it("needs only a first name on who; the phone or Not collected is Book's", () => {
     const draft = emptyDraft();
-    expect(isScreenComplete("who", { ...draft, first_name: "Sarah" })).toBe(false);
-    expect(isScreenComplete("who", { ...draft, first_name: "Sarah", phone: "4035550177" })).toBe(true);
-    expect(isScreenComplete("who", withAnswer({ ...draft, first_name: "Sarah" }, "phone", NOT_COLLECTED))).toBe(true);
-    expect(isScreenComplete("who", withAnswer(draft, "phone", NOT_COLLECTED))).toBe(false);
+    expect(isScreenComplete("who", { ...draft, first_name: "Sarah" })).toBe(true);
+    expect(isScreenComplete("who", draft)).toBe(false);
+    expect(isScreenComplete("book", { ...draft, first_name: "Sarah" })).toBe(false);
+    expect(isScreenComplete("book", { ...draft, phone: "4035550177" })).toBe(true);
+    expect(isScreenComplete("book", withAnswer(draft, "phone", NOT_COLLECTED))).toBe(true);
   });
 
   it("needs every question at the door answered, Not collected included", () => {
@@ -306,31 +317,121 @@ describe("Saying the time", () => {
   });
 });
 
-describe("What Next and Book say (round 2 polish)", () => {
-  it("counts the guided photos still to take, with a verb when none are in", () => {
+describe("Move freely, check at Book (round 3, Keenan, 2026-11-05)", () => {
+  it("names what each step still needs, the photos with how many are left", () => {
     const none = { ...ready(), photo_slots: [] as SheetDraft["photo_slots"] };
-    expect(photosNeed(none)).toBe("Take the photos first");
-    expect(photosNeed({ ...none, photo_slots: ["front"] })).toBe("2 more photos first");
-    expect(photosNeed({ ...none, photo_slots: ["front", "left_corner"] })).toBe("1 more photo first");
-    expect(photosNeed(ready())).toBeNull();
-    expect(photosNeed({ ...none, skip: "other" })).toBe("Add the reason first");
-    expect(photosNeed({ ...none, skip: "other", skip_note: "Dog in the yard" })).toBeNull();
-    expect(photosNeed({ ...none, skip: "homeowner_said_no" })).toBeNull();
+    expect(screenMissing("house", none).map((item) => item.label)).toEqual(["Photos"]);
+    expect(screenMissing("house", { ...none, photo_slots: ["front"] }).map((item) => item.label)).toEqual(["2 more photos"]);
+    expect(screenMissing("house", { ...none, photo_slots: ["front", "left_corner"] }).map((item) => item.label)).toEqual(["1 more photo"]);
+    expect(screenMissing("house", { ...none, skip: "other" }).map((item) => item.key)).toEqual(["photos_skip_note"]);
+    expect(screenMissing("house", { ...none, skip: "other", skip_note: "Dog in the yard" })).toEqual([]);
+    expect(screenMissing("house", { ...none, skip: "homeowner_said_no" })).toEqual([]);
+    expect(screenMissing("address", { ...ready(), lat: null, lng: null }).map((item) => item.label)).toEqual(["Map position for the address"]);
+    expect(screenMissing("address", { ...ready(), address_line: "", lat: null, lng: null }).map((item) => item.label)).toEqual(["Address"]);
   });
 
-  it("keeps every label short enough for the bottom bar at 390", () => {
-    for (const label of ["Take the photos first", "2 more photos first", "1 more photo first", "Add the reason first", "Can't book yet", "Fix 7 first"]) {
-      expect(label.length).toBeLessThanOrEqual(21);
+  it("lists everything missing in the order of the steps, each with its step", () => {
+    const draft = { ...ready(), first_name: "", install_timing: null, phone: "", soffit_colour: null };
+    expect(sheetMissing(draft).map((item) => [item.screen, item.key])).toEqual([
+      ["who", "first_name"],
+      ["learned", "install_timing"],
+      ["address", "soffit_colour"],
+      ["book", "phone"],
+    ]);
+    expect(sheetMissing(ready())).toEqual([]);
+  });
+
+  it("never counts the optional answers", () => {
+    const bare = { ...ready(), house_type: null, setter_read: null, hot_buttons: [], confirm_by: null };
+    expect(sheetMissing(bare)).toEqual([]);
+    expect(canBookDraft(bare)).toBe(true);
+  });
+
+  it("books only once everything is answered, nothing rules it out and Before you book is met", () => {
+    expect(canBookDraft(ready())).toBe(true);
+    expect(canBookDraft({ ...ready(), install_timing: null })).toBe(false);
+    expect(canBookDraft(withAnswer(ready(), "install_timing", NOT_COLLECTED))).toBe(true);
+    expect(canBookDraft({ ...ready(), wants_price: false })).toBe(false);
+    expect(canBookDraft(withAnswer(ready(), "phone", NOT_COLLECTED))).toBe(false);
+    expect(canBookDraft({ ...ready(), photo_slots: ["front"] })).toBe(false);
+  });
+
+  it("walks the steps in order whatever is missing: Next never stops", () => {
+    let screen = SCREENS[0];
+    const visited = [screen];
+    while (screen !== "book") {
+      screen = nextScreen(screen, emptyDraft(), false);
+      visited.push(screen);
     }
+    expect(visited).toEqual(SCREENS);
   });
 
-  it("says Book can't book yet while an answer rules it out, and counts what's missing otherwise", () => {
+  it("says Book can't book yet while an answer rules it out, and how much is left otherwise", () => {
     expect(bookNeed(ready())).toBeNull();
     expect(bookNeed({ ...ready(), wants_price: false })).toBe("Can't book yet");
     expect(bookNeed(withAnswer(ready(), "phone", NOT_COLLECTED))).toBe("Can't book yet");
-    expect(bookNeed({ ...ready(), soffit_colour: null })).toBe("Fix 1 first");
-    expect(bookNeed({ ...ready(), soffit_colour: null, photo_slots: [] })).toBe("Fix 2 first");
+    expect(bookNeed({ ...ready(), soffit_colour: null })).toBe("1 left to answer");
+    expect(bookNeed({ ...ready(), soffit_colour: null, photo_slots: [] })).toBe("2 left to answer");
     expect(bookNeed({ ...ready(), soffit_colour: null, owns_home: false })).toBe("Can't book yet");
+    for (const label of ["Can't book yet", "9 left to answer", "Fix 7 first"]) expect(label.length).toBeLessThanOrEqual(21);
+  });
+
+  it("sends the phone to Book when the database refuses it", () => {
+    expect(PROBLEM_SCREENS.phone).toBe("book");
+  });
+});
+
+describe("The optional answers (round 3)", () => {
+  it("takes any hot buttons that apply, with Not sure on its own", () => {
+    expect(toggleHotButton([], "no_ladders")).toEqual(["no_ladders"]);
+    expect(toggleHotButton(["no_ladders"], "curb_appeal")).toEqual(["no_ladders", "curb_appeal"]);
+    expect(toggleHotButton(["no_ladders", "curb_appeal"], "not_sure")).toEqual(["not_sure"]);
+    expect(toggleHotButton(["not_sure"], "safety_security")).toEqual(["safety_security"]);
+    expect(toggleHotButton(["no_ladders"], "no_ladders")).toEqual([]);
+  });
+
+  it("saves them with the lead, and Not sure gives way to a real hot button", () => {
+    const draft = { ...ready(), house_type: "two_storey" as const, setter_read: "hot" as const, hot_buttons: ["no_ladders" as const, "up_for_christmas" as const], confirm_by: "text" as const };
+    const parsed = parseLeadForm(draftToLeadInput(draft));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.values.house_type).toBe("two_storey");
+    expect(parsed.values.setter_read).toBe("hot");
+    expect(parsed.values.hot_buttons).toEqual(["no_ladders", "up_for_christmas"]);
+    expect(parsed.values.confirm_by).toBe("text");
+    const mixed = parseLeadForm(draftToLeadInput({ ...draft, hot_buttons: ["not_sure", "curb_appeal"] }));
+    expect(mixed.ok && mixed.values.hot_buttons).toEqual(["curb_appeal"]);
+    const bare = parseLeadForm(draftToLeadInput(ready()));
+    expect(bare.ok && [bare.values.setter_read, bare.values.hot_buttons, bare.values.confirm_by]).toEqual([null, [], null]);
+  });
+
+  it("changes the saved fingerprint, so a change to them is saved", () => {
+    const print = savedFingerprint(ready());
+    expect(savedFingerprint({ ...ready(), setter_read: "warm" })).not.toBe(print);
+    expect(savedFingerprint({ ...ready(), hot_buttons: ["curb_appeal"] })).not.toBe(print);
+    expect(savedFingerprint({ ...ready(), confirm_by: "call" })).not.toBe(print);
+    expect(savedFingerprint({ ...ready(), house_type: "bungalow" })).not.toBe(print);
+  });
+
+  it("brings a draft kept before round 3 back with them empty and marked as not asked", () => {
+    const { house_type: _h, setter_read: _r, hot_buttons: _b, confirm_by: _c, photo_paths: _p, extras: _e, ...older } = ready();
+    void [_h, _r, _b, _c, _p, _e];
+    const back = withDraftDefaults(older);
+    expect([back.house_type, back.setter_read, back.hot_buttons, back.confirm_by, back.photo_paths, back.extras]).toEqual([null, null, [], null, {}, false]);
+    expect(withDraftDefaults(ready()).extras).toBe(true);
+  });
+});
+
+describe("Photos before the first save (round 3)", () => {
+  it("attaches a new person's uploaded photos to their slots at the first save, never a saved lead's", () => {
+    const paths = { front: "u/1.jpg", left_corner: "u/2.jpg" };
+    const person = { ...ready(), leadId: null, photo_paths: paths };
+    expect(draftToLeadInput(person)).toMatchObject({ photo_slot_front: "u/1.jpg", photo_slot_left_corner: "u/2.jpg", photo_slot_right_corner: "" });
+    expect(draftToLeadInput({ ...ready(), photo_paths: paths })).toMatchObject({ photo_slot_front: "", photo_slot_left_corner: "" });
+  });
+
+  it("leaves uploads out of the saved fingerprint", () => {
+    expect(savedFingerprint({ ...ready(), photo_paths: { front: "u/1.jpg" } })).toBe(savedFingerprint(ready()));
   });
 });
 

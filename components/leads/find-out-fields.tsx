@@ -72,6 +72,8 @@ export function LeadQuestions({
   onOpenChange,
   onBookingChange,
   markRestRef,
+  afterPhone,
+  afterQuestions,
 }: {
   defaults: QuestionDefaults;
   phone: string;
@@ -84,6 +86,10 @@ export function LeadQuestions({
   onBookingChange?: (ruledOut: boolean) => void;
   // Lets the form's own "Mark the rest Not collected" (by Save) do the same.
   markRestRef?: React.RefObject<(() => void) | null>;
+  // Round 3: Call or text to confirm, beside the phone; the setter's read
+  // and hot buttons after the questions. Optional, never counted.
+  afterPhone?: React.ReactNode;
+  afterQuestions?: React.ReactNode;
 }) {
   const [answers, setAnswers] = useState<QuestionDefaults>(defaults);
   const [phoneMarked, setPhoneMarked] = useState(phoneNotCollected && phone.trim() === "");
@@ -170,6 +176,7 @@ export function LeadQuestions({
           </p>
         ) : null}
         <FieldError id="lead-phone-error" message={phoneMessage} />
+        {afterPhone}
       </div>
 
       <section aria-labelledby="find-out-heading" className="flex flex-col gap-5" data-testid="find-out">
@@ -222,6 +229,7 @@ export function LeadQuestions({
           </div>
         ) : null}
       </section>
+      {afterQuestions ? <section className="flex flex-col gap-5" data-testid="setter-notes-fields">{afterQuestions}</section> : null}
     </>
   );
 }

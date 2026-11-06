@@ -444,6 +444,7 @@ export type Database = {
             | Database["public"]["Enums"]["christmas_lights_now"]
             | null
           city: string
+          confirm_by: Database["public"]["Enums"]["confirm_by"] | null
           consent_text: boolean
           created_at: string
           created_by: string
@@ -451,6 +452,7 @@ export type Database = {
           est_feet: number | null
           first_name: string
           follow_up_on: string | null
+          hot_buttons: Database["public"]["Enums"]["hot_button"][]
           house_type: Database["public"]["Enums"]["house_type"] | null
           id: string
           install_timing: Database["public"]["Enums"]["install_timing"] | null
@@ -477,6 +479,7 @@ export type Database = {
             | null
           postal_code: string | null
           save_key: string | null
+          setter_read: Database["public"]["Enums"]["setter_read"] | null
           soffit_colour: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_note: string | null
           sold_at: string | null
@@ -498,6 +501,7 @@ export type Database = {
             | Database["public"]["Enums"]["christmas_lights_now"]
             | null
           city?: string
+          confirm_by?: Database["public"]["Enums"]["confirm_by"] | null
           consent_text?: boolean
           created_at?: string
           created_by: string
@@ -505,6 +509,7 @@ export type Database = {
           est_feet?: number | null
           first_name: string
           follow_up_on?: string | null
+          hot_buttons?: Database["public"]["Enums"]["hot_button"][]
           house_type?: Database["public"]["Enums"]["house_type"] | null
           id?: string
           install_timing?: Database["public"]["Enums"]["install_timing"] | null
@@ -531,6 +536,7 @@ export type Database = {
             | null
           postal_code?: string | null
           save_key?: string | null
+          setter_read?: Database["public"]["Enums"]["setter_read"] | null
           soffit_colour?: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_note?: string | null
           sold_at?: string | null
@@ -552,6 +558,7 @@ export type Database = {
             | Database["public"]["Enums"]["christmas_lights_now"]
             | null
           city?: string
+          confirm_by?: Database["public"]["Enums"]["confirm_by"] | null
           consent_text?: boolean
           created_at?: string
           created_by?: string
@@ -559,6 +566,7 @@ export type Database = {
           est_feet?: number | null
           first_name?: string
           follow_up_on?: string | null
+          hot_buttons?: Database["public"]["Enums"]["hot_button"][]
           house_type?: Database["public"]["Enums"]["house_type"] | null
           id?: string
           install_timing?: Database["public"]["Enums"]["install_timing"] | null
@@ -585,6 +593,7 @@ export type Database = {
             | null
           postal_code?: string | null
           save_key?: string | null
+          setter_read?: Database["public"]["Enums"]["setter_read"] | null
           soffit_colour?: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_note?: string | null
           sold_at?: string | null
@@ -2036,6 +2045,7 @@ export type Database = {
     }
     Enums: {
       christmas_lights_now: "hires" | "diy" | "none"
+      confirm_by: "call" | "text"
       earning_status: "pending" | "paid" | "void"
       earning_type: "booking" | "commission"
       event_type:
@@ -2059,6 +2069,12 @@ export type Database = {
         | "quote_link_opened"
         | "quote_link_revoked"
         | "install_requested"
+      hot_button:
+        | "no_ladders"
+        | "up_for_christmas"
+        | "curb_appeal"
+        | "safety_security"
+        | "not_sure"
       house_type: "bungalow" | "bi_level" | "two_storey" | "other"
       install_timing: "before_christmas" | "new_year" | "no_rush"
       lead_source: "door" | "referral" | "neighbour_card" | "website" | "other"
@@ -2084,6 +2100,7 @@ export type Database = {
       photo_slot: "front" | "left_corner" | "right_corner" | "soffit" | "mockup"
       quote_status: "draft" | "presented" | "accepted" | "declined" | "expired"
       roofline_areas: "front" | "front_and_sides" | "full_wrap" | "not_sure"
+      setter_read: "hot" | "warm" | "just_curious"
       soffit_colour:
         | "white"
         | "off_white"
@@ -2220,6 +2237,7 @@ export const Constants = {
   public: {
     Enums: {
       christmas_lights_now: ["hires", "diy", "none"],
+      confirm_by: ["call", "text"],
       earning_status: ["pending", "paid", "void"],
       earning_type: ["booking", "commission"],
       event_type: [
@@ -2243,6 +2261,13 @@ export const Constants = {
         "quote_link_opened",
         "quote_link_revoked",
         "install_requested",
+      ],
+      hot_button: [
+        "no_ladders",
+        "up_for_christmas",
+        "curb_appeal",
+        "safety_security",
+        "not_sure",
       ],
       house_type: ["bungalow", "bi_level", "two_storey", "other"],
       install_timing: ["before_christmas", "new_year", "no_rush"],
@@ -2271,6 +2296,7 @@ export const Constants = {
       photo_slot: ["front", "left_corner", "right_corner", "soffit", "mockup"],
       quote_status: ["draft", "presented", "accepted", "declined", "expired"],
       roofline_areas: ["front", "front_and_sides", "full_wrap", "not_sure"],
+      setter_read: ["hot", "warm", "just_curious"],
       soffit_colour: [
         "white",
         "off_white",

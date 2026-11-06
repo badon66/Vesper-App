@@ -139,7 +139,7 @@ export function AnswerGroup<T extends string>({
             key={option.value}
             data-answer={option.value}
             className={cn(
-              "group flex min-h-12 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-2 py-1 text-center text-base font-semibold leading-tight transition-colors has-[:checked]:border-foreground has-[:checked]:bg-foreground has-[:checked]:text-background has-[:disabled]:cursor-not-allowed has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
+              "group relative flex min-h-12 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-2 py-1 text-center text-base font-semibold leading-tight transition-colors has-[:checked]:border-foreground has-[:checked]:bg-foreground has-[:checked]:text-background has-[:disabled]:cursor-not-allowed has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
               columns === 4 && "max-[419px]:text-sm",
               size === "sheet" && "min-[420px]:min-h-14",
               size === "sheet" && (columns === 4 ? "min-[420px]:text-base" : "min-[420px]:text-lg"),
@@ -147,11 +147,20 @@ export function AnswerGroup<T extends string>({
           >
             {radio(option.value)}
             {/* The tick runs in the words' own line, so choosing an answer
-                never pushes its words onto another line (round 2 polish). */}
-            <span>
-              <Check aria-hidden="true" className="mr-1 hidden size-4 align-[-0.15em] group-has-[:checked]:inline-block" />
-              {option.label}
-            </span>
+                never pushes its words onto another line (round 2 polish).
+                Four across there's no room beside the words, so the tick
+                sits in the chip's corner instead (round 3). */}
+            {columns === 4 ? (
+              <>
+                <Check aria-hidden="true" className="absolute top-1 left-1 hidden size-3.5 group-has-[:checked]:block" />
+                <span>{option.label}</span>
+              </>
+            ) : (
+              <span>
+                <Check aria-hidden="true" className="mr-1 hidden size-4 align-[-0.15em] group-has-[:checked]:inline-block" />
+                {option.label}
+              </span>
+            )}
           </label>
         ))}
       </div>

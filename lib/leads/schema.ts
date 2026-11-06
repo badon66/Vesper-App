@@ -108,6 +108,20 @@ export const leadFormSchema = z
         return number;
       }),
     house_type: optionalEnum(Constants.public.Enums.house_type),
+    // Round 3 (2026-11-05): optional, never part of the 8 count.
+    setter_read: z.preprocess((value) => value ?? "", optionalEnum(Constants.public.Enums.setter_read)),
+    hot_buttons: z
+      .array(z.enum(Constants.public.Enums.hot_button, { error: "Pick one of the choices." }))
+      .max(5)
+      .optional()
+      .transform((values) => {
+        // Always in the list's own order, whatever order they were tapped
+        // in, so a save with the same ones never shows on the timeline.
+        const chosen = Constants.public.Enums.hot_button.filter((value) => (values ?? []).includes(value));
+        // Not sure stands alone: it gives way to any real hot button.
+        return chosen.length > 1 ? chosen.filter((value) => value !== "not_sure") : chosen;
+      }),
+    confirm_by: z.preprocess((value) => value ?? "", optionalEnum(Constants.public.Enums.confirm_by)),
     soffit_colour: optionalEnum(OFFERED_SOFFIT_COLOURS),
     soffit_note: optionalText(200, "Soffit note"),
     owns_home: optionalYesNo("no"),
@@ -251,6 +265,9 @@ export function leadFormDataToInput(formData: FormData): Record<string, unknown>
     position_source: text("position_source"),
     position_accuracy_m: text("position_accuracy_m"),
     house_type: text("house_type"),
+    setter_read: text("setter_read"),
+    hot_buttons: formData.getAll("hot_buttons").map(String),
+    confirm_by: text("confirm_by"),
     soffit_colour: text("soffit_colour"),
     soffit_note: text("soffit_note"),
     owns_home: text("owns_home"),
@@ -288,6 +305,9 @@ export function leadColumnsFromValues(values: LeadFormValues): LeadUpdate {
     position_source: values.position_source,
     position_accuracy_m: values.position_accuracy_m,
     house_type: values.house_type,
+    setter_read: values.setter_read,
+    hot_buttons: values.hot_buttons,
+    confirm_by: values.confirm_by,
     soffit_colour: values.soffit_colour,
     soffit_note: values.soffit_note,
     owns_home: values.owns_home,

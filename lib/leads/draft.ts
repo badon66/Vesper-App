@@ -8,6 +8,7 @@
 import type { LeadFormDefaults } from "@/components/leads/lead-form";
 import { FIND_OUT_QUESTIONS, PHOTO_SLOTS, slotFieldName, type FindOutField, type PhotoSlot } from "@/lib/leads/door";
 import { HOUSE_TYPE_OPTIONS, SOURCE_OPTIONS, type HouseType, type LeadSource } from "@/lib/leads/status";
+import { CONFIRM_BY_OPTIONS, HOT_BUTTON_OPTIONS, SETTER_READ_OPTIONS, type ConfirmBy, type HotButton, type SetterRead } from "@/lib/leads/extras";
 
 export const DRAFT_HOURS = 12;
 
@@ -36,6 +37,9 @@ const COUNTED = [
   "notes",
   "address_line",
   "house_type",
+  "setter_read",
+  "hot_buttons",
+  "confirm_by",
   "soffit_note",
   "both_decision_makers",
   "phone_not_collected",
@@ -51,6 +55,10 @@ export function draftFromFormData(formData: FormData, now: number): LeadDraft {
     if (SKIPPED.has(name) || typeof value !== "string") continue;
     values[name] = value;
   }
+  // Hot buttons can be several: kept as one comma-separated value.
+  const hot = formData.getAll("hot_buttons").filter((value): value is string => typeof value === "string" && value !== "");
+  if (hot.length > 0) values.hot_buttons = hot.join(",");
+  else delete values.hot_buttons;
   const extraPhotos = formData.getAll("photo_paths").filter((value) => typeof value === "string" && value !== "").length;
   return { savedAt: now, values, extraPhotos };
 }
@@ -98,6 +106,12 @@ export function defaultsFromDraft(draft: LeadDraft): LeadFormDefaults {
     email: v.email ?? "",
     neighbourhood: v.neighbourhood ?? "",
     house_type: oneOf<HouseType>(HOUSE_TYPE_OPTIONS, v.house_type),
+    setter_read: oneOf<SetterRead>(SETTER_READ_OPTIONS, v.setter_read),
+    hot_buttons: (v.hot_buttons ?? "")
+      .split(",")
+      .map((value) => oneOf<HotButton>(HOT_BUTTON_OPTIONS, value))
+      .filter((value): value is HotButton => value !== null),
+    confirm_by: oneOf<ConfirmBy>(CONFIRM_BY_OPTIONS, v.confirm_by),
     questions: {
       ...(Object.fromEntries(FIND_OUT_FIELDS.map((field) => [field, v[field] ? v[field] : null])) as Record<FindOutField, string | null>),
       both_decision_makers: v.both_decision_makers ? v.both_decision_makers : null,
