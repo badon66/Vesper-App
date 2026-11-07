@@ -525,8 +525,18 @@ try {
   check("Next is at the bottom right, in thumb reach", bar !== null && bar.x + bar.width / 2 > viewport.width / 2 && bar.y > viewport.height * 0.8, bar ? `${Math.round(bar.x)},${Math.round(bar.y)}` : "none");
   check(
     "the first step asks only the name, and its counter says how many answers are still to come",
-    (await pageA.locator("#sheet-phone").count()) === 0 && (await nextLabel(pageA)) === "Next" && (await stepCounter(pageA)) === "Step 1 of 6, 12 to answer",
+    (await sheet(pageA).getByTestId("sheet-body").locator("#sheet-phone").count()) === 0 && (await nextLabel(pageA)) === "Next" && (await stepCounter(pageA)) === "Step 1 of 6, 12 to answer",
     `${await nextLabel(pageA)}; ${await stepCounter(pageA)}`,
+  );
+  // Round 5 (Keenan, 2026-11-06): the phone is a slim one-line field at the
+  // bottom of every step, right above Back and Next, opening the number pad.
+  const footPhone = await sheet(pageA).getByTestId("sheet-phone-block").boundingBox();
+  const footNext = await sheet(pageA).getByTestId("sheet-next").boundingBox();
+  check(
+    "the phone is a slim line at the bottom of the first step, right above Back and Next, and opens the number pad",
+    footPhone !== null && footNext !== null && footPhone.height <= 52 && footPhone.y + footPhone.height <= footNext.y && footNext.y - (footPhone.y + footPhone.height) <= 24 &&
+      (await pageA.locator("#sheet-phone").getAttribute("inputmode")) === "tel" && (await pageA.locator("#sheet-phone").getAttribute("type")) === "tel",
+    footPhone ? `${Math.round(footPhone.height)} px tall, ${Math.round(footNext.y - footPhone.y - footPhone.height)} px above Next` : "missing",
   );
   await sheet(pageA).getByRole("button", { name: /^What to talk about/ }).click();
   // The "?" is there from the first moment; the note fills in once it arrives.
@@ -731,10 +741,17 @@ try {
     (await sheet(pageA).getByTestId("readiness").innerText()).includes("Everything else is answered") && (await nextLabel(pageA)) === "1 left to answer",
     await nextLabel(pageA),
   );
-  // The number, last, right above Book, with Call or text beside it.
+  // The number, right above Book in the footer, as on every step; Call or
+  // text and the phone's Not collected are on the Book page itself.
   const phoneBox = await sheet(pageA).getByTestId("sheet-phone-block").boundingBox();
   const bookBox = await pageA.getByTestId("sheet-next").boundingBox();
-  check("the phone is on Book, right above the Book button and in view", phoneBox !== null && bookBox !== null && phoneBox.y + phoneBox.height <= bookBox.y && phoneBox.y > 0);
+  check("on Book the phone is right above the Book button and in view", phoneBox !== null && bookBox !== null && phoneBox.y + phoneBox.height <= bookBox.y && phoneBox.y > 0);
+  check(
+    "Call or text and the phone's Not collected are on the Book page, not in the footer",
+    (await sheet(pageA).getByTestId("sheet-body").getByTestId("book-confirm").count()) === 1 &&
+      (await sheet(pageA).getByTestId("sheet-body").getByTestId("sheet-phone-not-collected").count()) === 1 &&
+      (await sheet(pageA).getByTestId("sheet-phone-block").locator("button").count()) === 0,
+  );
   await pageA.fill("#sheet-phone", "403 555 0166");
   await answer(pageA, "Call or text to confirm (optional)", "Text");
   scrolls.book = await sheetScrolls(pageA);
@@ -909,9 +926,17 @@ try {
   await pageB.screenshot({ path: `${out}/r2-house-390.png` });
   await skipPhotos(pageB);
   scrollsB.houseSkipped = await sheetScrolls(pageB);
+  // The number can come up at any point: typed here, on the photos step,
+  // it is still in the footer on Book.
+  await pageB.fill("#sheet-phone", "403 555 0133");
+  await pageB.getByTestId("sheet-heading").click();
   await next(pageB);
   await waitView(pageB, "book");
-  await pageB.fill("#sheet-phone", "403 555 0133");
+  check(
+    "a number typed on an earlier step stays put in the footer when the step changes, ticked once it's a real number",
+    (await pageB.inputValue("#sheet-phone")) === "(403) 555-0133" && (await sheet(pageB).getByTestId("sheet-phone-ok").count()) === 1,
+    await pageB.inputValue("#sheet-phone"),
+  );
   await checkTapTargets(pageB, "Book at 390 wide");
   // Book's list of what's missing may scroll above the pinned phone and Book.
   const missingB = await sheet(pageB).getByTestId("readiness").locator('li[data-ok="no"]').count();
@@ -939,7 +964,14 @@ try {
   );
   const keptKeys = await pageB.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("vesper:sheet-drafts:")));
   check("the draft lives on this phone, under the setter's own key", JSON.stringify(keptKeys) === JSON.stringify([`vesper:sheet-drafts:${people.b.id}`]), keptKeys.join(", "));
+  // Round 5 (Keenan, 2026-11-06): a tap gives two choices, pick up where
+  // you left off, or Delete.
   await pageB.getByTestId("unfinished-item").first().click();
+  check(
+    "tapping an unfinished booking gives two choices: pick up where you left off, or Delete",
+    (await pageB.getByTestId("unfinished-pick-up").innerText()).trim() === "Pick up where you left off" && (await pageB.getByTestId("unfinished-delete").innerText()).trim() === "Delete",
+  );
+  await pageB.getByTestId("unfinished-pick-up").click();
   await waitView(pageB, "times");
   const pickupHeading = (await pageB.getByTestId("sheet-heading").innerText()).trim();
   check("tapping it reopens the sheet and asks for a time first", pickupHeading === `Pick a time for ${TEST_LEAD} Narrow`, pickupHeading);
@@ -951,6 +983,36 @@ try {
     (await sheet(pageB).getByTestId("sheet-summary").innerText()).includes(`${TEST_LEAD} Narrow`) && (await heldState(pageB)) === "yes",
   );
   await letGo(pageB);
+  // Delete takes a second, deliberate tap; the draft goes from this phone
+  // and a lead it already saved stays in Leads, as the confirm says.
+  await pageB.goto(`${base}/app/session`);
+  await settle(pageB);
+  await pageB.getByTestId("unfinished-toggle").click();
+  const draftKey = await pageB.getByTestId("unfinished-item").first().getAttribute("data-draft");
+  await pageB.getByTestId("unfinished-item").first().click();
+  await pageB.getByTestId("unfinished-delete").click();
+  const confirmText = (await pageB.getByTestId("unfinished-confirm").innerText().catch(() => "")).trim();
+  const savedLeadId = draftKey?.startsWith("lead:") ? draftKey.slice(5) : null;
+  check(
+    "the first Delete only asks: it says Tap again to delete, and the draft is still on the phone",
+    (await pageB.getByTestId("unfinished-delete").innerText()).trim() === "Tap again to delete" &&
+      (await pageB.evaluate((key) => (localStorage.getItem(key) ?? "").length > 0, `vesper:sheet-drafts:${people.b.id}`)),
+  );
+  check(
+    "the confirm says what happens to the person: a saved lead stays in Leads",
+    savedLeadId ? confirmText.includes("stay in Leads") : confirmText.includes("deletes what's on this phone"),
+    confirmText,
+  );
+  await pageB.getByTestId("unfinished-delete").click();
+  await pageB.getByTestId("unfinished").waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  const draftsLeft = await pageB.evaluate((key) => localStorage.getItem(key), `vesper:sheet-drafts:${people.b.id}`);
+  const { data: stillALead } = savedLeadId ? await admin.from("leads").select("id").eq("id", savedLeadId).maybeSingle() : { data: null };
+  const { data: bHolds } = await admin.from("slot_holds").select("id").eq("holder_id", people.b.id).is("released_at", null);
+  check(
+    "the second tap deletes it: gone from the phone and from Session, no time held, and the lead it saved is still in Leads",
+    draftsLeft === null && (await pageB.getByTestId("unfinished").count()) === 0 && (bHolds ?? []).length === 0 && (savedLeadId ? stillALead?.id === savedLeadId : true),
+    `${draftKey}; holds ${(bHolds ?? []).length}`,
+  );
   // Back to watching the test evening from Schedule.
   await pageB.goto(`${base}/app/schedule`);
   await settle(pageB);

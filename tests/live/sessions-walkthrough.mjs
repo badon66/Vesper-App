@@ -8,7 +8,9 @@
 //   - the team's neighbourhoods are suggested as a setter types, and a session
 //     keeps the first spelling whatever the capital letters;
 //   - View as shows the reminder and the summary as the setter sees them, and
-//     writes nothing (the owner's one-time session, rule 10).
+//     writes nothing (the owner's one-time session, rule 10);
+//   - round 5: Session's row of days books other evenings without leaving
+//     Session (one hold on the window's last evening, let go at once).
 // Three throwaway TEST setters, deleted after with everything they made.
 import { createClient } from "@supabase/supabase-js";
 import { chromium, devices } from "playwright";
@@ -147,6 +149,52 @@ try {
     typedRow?.neighbourhood === HOOD && (await typer.getByRole("heading", { name: `Knocking in ${HOOD}` }).count()) === 1,
     typedRow?.neighbourhood ?? "none",
   );
+
+  // 5. Other evenings from Session (round 5, Keenan, 2026-11-06): a row of
+  // days in the open times, Tonight first, in place of All evenings. A day
+  // with nothing open says so quietly; a time on another day is held and
+  // booked over Session. Only the last evening of the window is held, as in
+  // every walk-through, and it's let go at once.
+  const times = typer.getByTestId("session-times");
+  const chips = times.getByRole("group", { name: "Evenings" }).getByRole("button");
+  const chipTexts = (await chips.allInnerTexts()).map((value) => value.replace(/\s+/g, " ").trim());
+  check(
+    "Session's open times have a row of days, Tonight first, and no All evenings link to Schedule",
+    chipTexts.length >= 8 && chipTexts[0].startsWith("Tonight") && (await typer.getByRole("link", { name: "All evenings" }).count()) === 0,
+    chipTexts.slice(0, 3).join(" | "),
+  );
+  const closedIndex = chipTexts.findIndex((value) => value.endsWith("No times"));
+  if (closedIndex > 0) {
+    await chips.nth(closedIndex).click();
+    const quietNote = await text(times.getByTestId("picker-day-note"));
+    check("a day with nothing open says so, quietly, in the same spot", /^No meetings (tomorrow|on .+)\.$/.test(quietNote) && (await times.locator("button[data-time]").count()) === 0, quietNote);
+  } else {
+    check("a day with nothing open says so, quietly, in the same spot", true, "no closed evening in the window today: not reached");
+  }
+  const lastOpen = chipTexts.map((value, index) => (value.endsWith("open") ? index : -1)).filter((index) => index > 0).pop();
+  await chips.nth(lastOpen).click();
+  const pickedLabel = chipTexts[lastOpen].replace(/ \d+ open$/, "");
+  check(
+    "tapping a later day shows its open times in the same spot",
+    (await chips.nth(lastOpen).getAttribute("aria-pressed")) === "true" && (await times.getByRole("list", { name: `Times, ${pickedLabel}` }).count()) === 1,
+    pickedLabel,
+  );
+  const otherTime = times.locator('button[data-state="open"]').last();
+  const otherAt = await otherTime.getAttribute("data-time");
+  await otherTime.click();
+  await typer.locator('[data-testid="booking-sheet"][data-view="who"]').waitFor({ timeout: 20000 }).catch(() => {});
+  const { data: otherHold } = await admin.from("slot_holds").select("starts_at").eq("holder_id", people.typer.id).is("released_at", null).maybeSingle();
+  check(
+    "tapping a time on that day holds it and opens the booking sheet over Session, as tonight's times do",
+    new URL(typer.url()).pathname === "/app/session" && (await typer.getByTestId("sheet-held").getAttribute("data-held")) === "yes" && otherHold && new Date(otherHold.starts_at).toISOString() === otherAt,
+    `${new URL(typer.url()).pathname}; ${otherHold?.starts_at ?? "no hold"}`,
+  );
+  await typer.getByTestId("sheet-held").click();
+  await typer.getByTestId("hold-menu").getByRole("menuitem", { name: "Let go" }).click();
+  await typer.getByTestId("sheet-let-go").getByRole("button", { name: "Let go", exact: true }).click();
+  await typer.getByTestId("booking-sheet").waitFor({ state: "detached", timeout: 15000 }).catch(() => {});
+  const { data: stillHeld } = await admin.from("slot_holds").select("id").eq("holder_id", people.typer.id).is("released_at", null);
+  check("letting it go there leaves the setter on Session, with nothing held", new URL(typer.url()).pathname === "/app/session" && (stillHeld ?? []).length === 0);
   await context.close();
 
   // 4. View as: the summary and the reminder as the setter sees them, and
@@ -188,6 +236,7 @@ try {
   await browser.close();
   for (const person of Object.values(people)) {
     if (!person.id) continue;
+    await admin.from("slot_holds").delete().eq("holder_id", person.id);
     await admin.from("leads").delete().eq("created_by", person.id);
     await admin.from("knock_sessions").delete().eq("user_id", person.id);
     await admin.auth.admin.deleteUser(person.id);

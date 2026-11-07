@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { z } from "zod";
 import { UnfinishedBookings } from "@/components/home/unfinished-bookings";
 import { ClearLeadDraft } from "@/components/leads/clear-lead-draft";
@@ -24,7 +23,7 @@ import { leadName } from "@/lib/leads/status";
 import { eveningsOf, pickEvening } from "@/lib/schedule/board";
 import { bookingSettings, fetchBoard } from "@/lib/schedule/queries";
 import { createClient } from "@/lib/supabase/server";
-import { addDays, calgaryToday, formatDay, requestTime } from "@/lib/time";
+import { calgaryToday, requestTime } from "@/lib/time";
 
 export const metadata: Metadata = {
   title: "Session",
@@ -75,25 +74,14 @@ export default async function SessionPage({
     session ? Promise.resolve(null) : lastSessionSummary(supabase, profile.id),
   ]);
   const addedLead = addedResult.data;
-  // Tonight's open times; when tonight has nothing left, the heading names
-  // the evening the times are for.
+  // The open times, tonight first (round 5, Keenan, 2026-11-06): a row of
+  // days, Tonight then the rest of the booking window, so a setter books any
+  // evening without leaving Session. It opens on tonight, or on the next
+  // evening with an opening when tonight has nothing left.
   const opening = pickEvening(
     eveningsOf(board, today, settings.windowDays),
     today,
   );
-  const timesHeading = !opening.tonightFull
-    ? "Tonight's open times"
-    : opening.day === today
-      ? "No open times"
-      : opening.day === addDays(today, 1)
-        ? "Open times tomorrow"
-        : `Open times on ${formatDay(opening.day)}`;
-  const timesNote = !opening.tonightFull
-    ? null
-    : opening.day === today
-      ? "Nothing open in the next two weeks right now."
-      : `${opening.tonightHasTimes ? "Nothing left tonight." : "No meetings tonight."} Tap a time to hold it while you book.`;
-
   return (
     <>
       {addedLead && !viewingAs ? <ClearLeadDraft userId={profile.id} saveKey={addedLead.save_key ?? null} /> : null}
@@ -114,28 +102,11 @@ export default async function SessionPage({
             className="flex flex-col gap-2"
             data-testid="session-times"
           >
-            <div>
-              <div className="flex items-center justify-between gap-3">
-                <h2 id="session-times-heading" className="text-base font-bold">
-                  {timesHeading}
-                </h2>
-                <Link
-                  href="/app/schedule"
-                  className="-my-2.5 inline-flex min-h-11 shrink-0 items-center text-sm font-semibold underline underline-offset-4"
-                >
-                  All evenings
-                </Link>
-              </div>
-              {timesNote ? (
-                <p className="-mt-1 text-sm text-pretty text-muted-foreground">
-                  {timesNote}
-                </p>
-              ) : null}
-            </div>
-            {/* Keyed on the evening the heading names: when a refresh moves
-                the heading to another evening, the grid follows it. */}
+            <h2 id="session-times-heading" className="text-base font-bold">
+              Open times
+            </h2>
+            {/* The day picked stays picked when the times refresh. */}
             <ScheduleView
-              key={opening.day}
               board={board}
               today={today}
               windowDays={settings.windowDays}
@@ -143,7 +114,6 @@ export default async function SessionPage({
               viewerId={viewingAs ? profile.id : null}
               initialDay={opening.day}
               followDay={false}
-              tonightOnly
               hideDayHeading
             />
           </section>

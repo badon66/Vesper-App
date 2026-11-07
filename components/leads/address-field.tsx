@@ -376,7 +376,7 @@ export function AddressField({
           {nearest.state === "filled" && nearest.address ? (
             <p className="font-semibold">
               {nearest.address.exact
-                ? "Filled in the nearest address Google knows. Check the house number is this house."
+                ? "Nearest address filled in. Check the house number."
                 : "Google only knows the street here. Add the house number."}
             </p>
           ) : null}
