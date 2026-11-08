@@ -62,7 +62,9 @@ gst_rate numeric(5,4) not null default 0.0500
 gst_enabled boolean not null default false
 gst_number text                      -- printed on formal documents when GST is on
 warranty_text text not null
-presentation jsonb not null          -- M5: six pages in order, [{kind, title, body, image_paths[]}]
+presentation jsonb not null          -- M5: six pages in order, [{kind, title, body, image_paths[]}]; take 1 only, not read from round 7
+deck jsonb not null                  -- round 7: the deck's words, {version, pages: {page: {headline, words, more_label, more_text}}, warranty_lines_up_front}
+light_looks jsonb not null           -- round 7: the light picker's looks in order, [{key, name, words, colours: [{hex, name}], block, active}], at most 6 active
                                      -- kinds: what_vesper_is | hidden_by_day | whites_first | install_day | warranty | gallery
                                      -- hidden_by_day image_paths = [day, night]; gallery holds many; other pages are text
                                      -- paths point into the 'presentation' bucket; a page with no content is skipped on the iPad
@@ -467,4 +469,45 @@ Write the policies in SQL in the migration that creates each table. Add a test s
 - `lead-photos`: private, signed URLs valid one hour, max 10 MB per file, JPEG, PNG or WebP. Resized in the browser to 1600 px on the long edge and re-encoded as JPEG, which also drops location data, then uploaded straight from the phone to `<uploader id>/<random id>.jpg` while the form is still open. Active owner and sales profiles can read every file; people can upload only into their own folder; only the owner can delete. Files from abandoned forms stay unlinked; cleanup is in the backlog.
 - `lead-photos`, the quote link (2026-11-02): an anonymous request can sign (and so show for ten minutes) exactly one object, the mockup of the lead whose live token it carries in the `x-quote-token` header. Listing or signing anything else is refused.
 - `quotes`: private, PDFs, owner only.
-- `presentation`: private, owner writes, app reads through signed URLs.
+- `presentation`: private, owner writes, app reads through signed URLs. From round 7 it also holds Keenan's deck photos (`deck/<uuid>.jpg`, 3200 px, and `deck/<uuid>-640.jpg` thumbnails).
+
+### deck_photos (round 7)
+Keenan's own photos for the deck's named slots (`lib/deck.ts`). Owner only (RLS `is_owner()` for everything).
+```
+id uuid pk
+slot text not null              -- 'page.role', e.g. 'what_vesper_is.hero', 'gallery.snow'
+path text not null              -- presentation bucket, 3200 px
+thumb_path text                 -- 640 px, for the gallery grid and Settings
+focus_x, focus_y real           -- 0 to 1, the point every crop keeps
+caption text                    -- gallery: the look only, 4 words at most; never an address or name
+sort integer                    -- Keenan's order within the slot
+created_at, created_by
+```
+
+### presentation_references (round 7)
+Researched example shots per slot, stored only as links: never downloaded, proxied or re-hosted, loaded in the browser from where they live with no referrer. Shown only in Settings and the rehearsal view; never in meeting mode, its payload or the offline cache. Owner only.
+```
+id uuid pk
+slot text not null, rank integer   -- unique together; rank 1 is shown, the rest are other examples
+image_url text                     -- where the site allows it
+page_url text not null, site text not null
+why text not null                  -- why it works
+shot text not null                 -- the exact shot Keenan takes to copy it
+created_at
+```
+
+### roofline_traces (round 7)
+The roofline Keenan traces in prep for the light picker. One per lead. Owner only.
+```
+lead_id uuid pk references leads
+photo_id uuid not null           -- the lead_photos row it was traced on (no foreign key, so a photo can still be removed)
+photo_slot photo_slot            -- that photo's slot when traced; a trace counts only while the photo exists and is still in that slot
+lines jsonb not null             -- [[[x, y], ...], ...], points from 0 to 1 on the photo
+line_feet jsonb not null         -- feet per line when measured, else null
+scale jsonb not null             -- {a: [x, y], b: [x, y], feet, kind: double | single | door | other}, from the garage door
+dusk_brightness real not null    -- the flat grade that lands the house at about 20%, measured in prep
+luminance real                   -- the photo's measured luminance inside the trace's bounds
+light_count integer not null     -- 1 to 1,500
+updated_at, updated_by
+```
+

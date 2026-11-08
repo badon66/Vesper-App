@@ -6,6 +6,15 @@ One milestone per build session. A milestone is done when every criterion passes
 
 **Current milestone: round 7** (Keenan, 2026-11-08, approved): Branch A, the Meetings page's prep list (owner only, merges on green), and Branch B, meeting mode deeper (customer facing, waits for the preview). Before it: **round 6, Part 1: Leads, the questions and private notes** (live on 2026-11-08, merge `5aba252`). Before it: **round 5, Session and the booking sheet from the field** (live on 2026-11-07, merge `42fb9c5`). Before it: **round 4, tap to jump and sessions** (Keenan, 2026-11-06, live, merge `ad701b8`). Before it: **booking sheet round 3** (Keenan, 2026-11-05, approved, merges on green after 9:30 pm Calgary). Before it: **the Session tab and the new Homes, both live on 2026-11-05** (Keenan; approved, each merged on green straight to live, nothing customer facing). Built from main, so nothing from the unreviewed quote page goes live. The quote link rework (take 1's second pass) waits on a preview for Keenan's "push the changes". Setter side round 2 was released on 2026-11-03; the setter side and the customer quote link's take 1 the same day (merges `372ee85`, `947a3fd`); M5 take 1 on 2026-11-02 (merge `b075554`), and the Meetings page the same day (merge `13b737d`).
 
+## Round 7, Branch B: meeting mode, deeper (Keenan, 2026-11-08; customer facing, waits for the preview, approved)
+Additive schema changes approved up front. Merges only when Keenan says "push the changes".
+- [ ] A five-seat debate (homeowner, Keenan closing, brand designer, iPad specialist, plain-language editor) settles the page order, content, depth, the light picker's looks and the motion; recorded in decisions.md
+- [ ] Every page deeper: one idea, a strong picture, a few words, more one tap away; Run it from your phone added
+- [ ] The light picker: the roofline traced in prep (item 6), dusk, five lights a metre, looks and effects in Settings, offline, skipped until traced
+- [ ] Photo slots with scenarios and researched references (links only), a shot list in Settings with Upload my photo, and the rehearsal view with "Example to copy"; customers never see references
+- [ ] Your colours shows both soffit colours for a split soffit
+- [ ] Impeccable critique and polish with scores, the five seats review iPad screenshots, the full suite passes, and the preview goes to Keenan
+
 ## Round 7, Branch A: the Meetings page's prep list (Keenan, 2026-11-08; owner only, merges on green, approved)
 An additive schema change and the ready-made confirmation text approved up front.
 - [x] Quick pick under tonight: the next few days' meetings and the newest leads, each one tap to its prep list or Start; search stays in Start a meeting
