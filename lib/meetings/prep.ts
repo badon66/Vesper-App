@@ -1,3 +1,4 @@
+import { traceStillValid } from "@/lib/deck";
 import { COUNTED_QUESTIONS, QUESTION_LABELS, questionState, type CountedQuestion, type QuestionLead } from "@/lib/leads/questions";
 
 // The prep list (Keenan, 2026-11-08): what each meeting still needs before
@@ -20,9 +21,12 @@ export type PrepFacts = {
   hasMeeting: boolean;
   // The lead's six questions, for any left Not collected or unanswered.
   lead: QuestionLead;
-  // Round 7, Branch B: the roofline traced on the front photo for the light
-  // picker. undefined until that branch adds it, and the item doesn't show.
+  // Round 7, Branch B: the roofline traced for the light picker, on a photo
+  // still on the lead and still in its slot (rooflineState below). Left out,
+  // the item doesn't show.
   rooflineTraced?: boolean;
+  // A trace was saved, but its photo was replaced or removed since.
+  rooflinePhotoChanged?: boolean;
 };
 
 export type PrepItem = { key: PrepKey; label: string; done: boolean; detail?: string };
@@ -56,8 +60,37 @@ export function prepItems(facts: PrepFacts): PrepItem[] {
     done: missing.length === 0,
     detail: missing.length > 0 ? missing.map((question) => QUESTION_LABELS[question]).join(", ") : undefined,
   });
-  if (facts.rooflineTraced !== undefined) items.push({ key: "roofline", label: PREP_LABELS.roofline, done: facts.rooflineTraced });
+  if (facts.rooflineTraced !== undefined) {
+    items.push({
+      key: "roofline",
+      label: PREP_LABELS.roofline,
+      done: facts.rooflineTraced,
+      detail: facts.rooflineTraced ? undefined : facts.rooflinePhotoChanged ? ROOFLINE_PHOTO_CHANGED : ROOFLINE_NOT_TRACED,
+    });
+  }
   return items;
+}
+
+// Prep item 6 (light_picker.tracing), word for word.
+export const ROOFLINE_NOT_TRACED = "Roofline not traced. The light picker page is skipped.";
+export const ROOFLINE_PHOTO_CHANGED = "The front photo changed. Trace it again.";
+
+export type RooflineState = "traced" | "none" | "photo_changed";
+
+// Whether a lead's roofline counts as traced: a trace exists and its photo
+// is still the lead's, in the slot it had when traced (a replaced Front
+// photo leaves the slot, so it's traced again).
+export function rooflineState(
+  trace: { photo_id: string; photo_slot: string | null } | null | undefined,
+  photos: { id: string; slot: string | null }[],
+): RooflineState {
+  if (!trace) return "none";
+  return traceStillValid(trace, photos) ? "traced" : "photo_changed";
+}
+
+// The prep facts for a roofline state.
+export function rooflineFacts(state: RooflineState): Pick<PrepFacts, "rooflineTraced" | "rooflinePhotoChanged"> {
+  return { rooflineTraced: state === "traced", rooflinePhotoChanged: state === "photo_changed" };
 }
 
 export type PrepSummary = { ready: boolean; left: number; items: PrepItem[]; line: string };
@@ -113,3 +146,17 @@ export function smsLink(phone: string, body: string): string {
 }
 
 export const DEFAULT_CONFIRM_TEXT = "Hi {first_name}, it's Keenan with Vesper Lighting. Just confirming {day} at {time}. See you then!";
+
+// What a traced roofline's item says: "Traced on the Front photo, about
+// 155 lights."
+const TRACE_PHOTO_NAMES: Record<string, string> = {
+  front: "the Front photo",
+  left_corner: "the Left corner photo",
+  right_corner: "the Right corner photo",
+};
+
+export function rooflineDoneLine(slot: string | null, lightCount: number | null): string {
+  const photo = (slot && TRACE_PHOTO_NAMES[slot]) || "your own photo";
+  if (lightCount == null || !(lightCount > 0)) return `Traced on ${photo}.`;
+  return `Traced on ${photo}, about ${lightCount} ${lightCount === 1 ? "light" : "lights"}.`;
+}

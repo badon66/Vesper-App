@@ -13,9 +13,14 @@
 // left to answer it. A deployed site can't be stopped, so run against one,
 // this part still uses the local build of the same code.
 //
-// The presentation photos are Keenan's own and are never staged here. The
-// day and night page and the gallery are checked when he has uploaded
-// them, and named as not reached when he has not.
+// The deck (round 7) reads its words from settings.deck and Keenan's own
+// photos from deck_photos, which are never staged here: the deck shows his
+// photos where he has uploaded them and the drawings where he has not, and
+// the gallery is checked when he has install photos, and named as not
+// reached when he has not. The test lead is never traced, so the light
+// picker is skipped (prep's tracer and the picker have their own checks).
+// The test lead carries a split soffit with a setter's note, to prove the
+// note never reaches the deck.
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -37,6 +42,8 @@ if (!url || !anonKey || !serviceKey) {
 }
 
 const TEST_LEAD = "TEST LEAD (automated)";
+// The setter's which-is-where note on a split soffit: never in the deck.
+const SOFFIT_NOTE = "TEST NOTE white on the garage only";
 const BUCKET = "lead-photos";
 const noSession = { auth: { persistSession: false, autoRefreshToken: false } };
 const admin = createClient(url, serviceKey, noSession);
@@ -51,36 +58,32 @@ const setter = { email: `m5-live-a-${stamp}@example.com`, password: `cedar-lante
 const ipad = { viewport: { width: 1194, height: 834 }, deviceScaleFactor: 1, hasTouch: true };
 const phone = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true };
 
-// The page names Settings starts from, and the order the deck shows them in.
-const PAGE_ORDER = ["what_vesper_is", "hidden_by_day", "whites_first", "install_day", "warranty", "gallery"];
-const PAGE_LABELS = {
+// The deck's pages as lib/meeting/deck-pages.ts builds them: in the spec's
+// order, each labelled by its headline from settings.deck (or its built
+// name), skipping a page with nothing to show. The light picker needs a
+// traced roofline, which the test lead never has.
+const PAGE_NAMES = {
   what_vesper_is: "What Vesper is",
   hidden_by_day: "Hidden by day",
-  whites_first: "The whites first",
+  whites_first: "Warm white",
+  phone_control: "Run it from your phone",
+  gallery: "Homes we've lit",
   install_day: "How install day works",
   warranty: "The warranty",
-  gallery: "Gallery",
+  mockup: "Where your lights would go",
 };
-
-// The same rule as lib/presentation.ts: a page with nothing in it is
-// skipped, never shown empty.
-function presentationPages(settings) {
-  const raw = Array.isArray(settings.presentation) ? settings.presentation : [];
-  const byKind = new Map(raw.filter((p) => p && typeof p.kind === "string").map((p) => [p.kind, p]));
-  return PAGE_ORDER.map((kind) => {
-    const entry = byKind.get(kind) ?? {};
-    const images = Array.isArray(entry.image_paths) ? entry.image_paths.filter((path) => typeof path === "string") : [];
-    const body = typeof entry.body === "string" ? entry.body : "";
-    const shows =
-      kind === "hidden_by_day"
-        ? Boolean(images[0]) && Boolean(images[1])
-        : kind === "gallery"
-          ? images.some(Boolean)
-          : kind === "warranty"
-            ? settings.warranty_text.trim() !== ""
-            : body.trim() !== "";
-    return { kind, title: typeof entry.title === "string" ? entry.title : PAGE_LABELS[kind], images: images.filter(Boolean), shows };
-  });
+function deckLabels(settings, galleryCount) {
+  const pages = settings.deck && typeof settings.deck === "object" && settings.deck.pages ? settings.deck.pages : {};
+  const text = (key, field) => (typeof pages[key]?.[field] === "string" ? pages[key][field].trim() : "");
+  const label = (key) => text(key, "headline") || PAGE_NAMES[key];
+  const hasWords = (key) => text(key, "headline") !== "" || text(key, "words") !== "";
+  const labels = ["Vesper"];
+  for (const key of ["what_vesper_is", "hidden_by_day", "whites_first", "phone_control"]) if (hasWords(key)) labels.push(label(key));
+  if (galleryCount > 0) labels.push(label("gallery"));
+  if (hasWords("install_day")) labels.push(label("install_day"));
+  if (settings.warranty_text.trim() !== "") labels.push(label("warranty"));
+  labels.push(label("mockup"), "Your colours", "Your price");
+  return { labels, label };
 }
 
 // The same as lib/pricing.ts formatMoney.
@@ -183,14 +186,21 @@ try {
   const ownerId = ownerRow.id;
   const { data: settings } = await admin
     .from("settings")
-    .select("presentation, warranty_text, price_per_ft, box_price, gst_enabled")
+    .select("deck, warranty_text, price_per_ft, box_price, gst_enabled")
     .eq("id", 1)
     .single();
   const { data: colour } = await admin.from("track_colours").select("id, name").eq("active", true).order("sort_order").limit(1).single();
 
   const { data: lead, error: leadError } = await admin
     .from("leads")
-    .insert({ first_name: TEST_LEAD, address_line: "1 Test Crescent SW", created_by: setter.id, soffit_colour: "off_white" })
+    .insert({
+      first_name: TEST_LEAD,
+      address_line: "1 Test Crescent SW",
+      created_by: setter.id,
+      soffit_colour: "off_white",
+      soffit_colour_2: "white",
+      soffit_note: SOFFIT_NOTE,
+    })
     .select("id")
     .single();
   if (leadError) throw new Error(`lead: ${leadError.message}`);
@@ -204,8 +214,11 @@ try {
   const mockupRow = await admin.from("lead_photos").insert({ lead_id: leadId, storage_path: mockupPath, slot: "mockup" });
   if (mockupRow.error) throw new Error(`mockup row: ${mockupRow.error.message}`);
 
-  const pages = presentationPages(settings);
-  const expected = ["Vesper", ...pages.filter((p) => p.shows).map((p) => p.title), "This house", "The colour", "The price"];
+  // Keenan's gallery photos, if he has uploaded any (never staged here).
+  const { data: galleryRows } = await admin.from("deck_photos").select("slot").like("slot", "gallery.%");
+  const galleryCount = (galleryRows ?? []).length;
+  const { labels: expected, label: pageLabel } = deckLabels(settings, galleryCount);
+  const MOCKUP = pageLabel("mockup");
   const before = await ownerFootprint(ownerId);
 
   // ---------------------------------------------------------------- Keenan opens it from the lead
@@ -228,7 +241,7 @@ try {
 
   const labels = await dots(page).getByRole("button").evaluateAll((buttons) => buttons.map((b) => b.getAttribute("aria-label")));
   check(
-    "the deck shows the pages that have something in them, then This house, The colour and The price",
+    "the deck shows its pages in the spec's order, skipping the picker (not traced) and any page with nothing to show",
     JSON.stringify(labels) === JSON.stringify(expected),
     labels.join(" | "),
   );
@@ -239,64 +252,112 @@ try {
     "nothing internal anywhere in the deck: no setter, no status, no pipeline",
     !deckText.includes(setter.name) && !deckText.includes(setter.email) && !/meeting_booked|Follow up|Qualified|Pipeline/i.test(deckText),
   );
-  const sectionsEmpty = await page.locator('section[aria-label]').evaluateAll((sections) =>
-    sections.filter((s) => s.innerText.trim() === "" && s.querySelectorAll("img").length === 0).map((s) => s.getAttribute("aria-label")),
-  );
+  const sectionsEmpty = [];
+  for (const label of expected) {
+    await goToScreen(page, label);
+    const empty = await page
+      .getByRole("region", { name: label })
+      .evaluate((s) => s.innerText.trim() === "" && s.querySelectorAll("img, canvas, svg").length === 0);
+    if (empty) sectionsEmpty.push(label);
+  }
   check("no screen is empty", sectionsEmpty.length === 0, sectionsEmpty.join(", "));
+  const allText = await page.locator("body").innerText();
+  check("the setter's soffit note never reaches the deck", !allText.includes(SOFFIT_NOTE) && !(await page.content()).includes(SOFFIT_NOTE));
+  await goToScreen(page, "Vesper");
   await page.screenshot({ path: `${out}/m5-cover.png` });
   const cdp = await ownerContext.newCDPSession(page);
   await touchSwipe(page, cdp, 900, 500, -700);
   check("a swipe on the cover turns to the next page", (await currentScreen(page)) === expected[1], await currentScreen(page));
 
-  // ---------------------------------------------------------------- the day and night page and the gallery, when Keenan has photos
-  const dayNight = pages.find((p) => p.kind === "hidden_by_day");
-  if (dayNight?.shows) {
-    await goToScreen(page, dayNight.title);
-    const region = page.getByRole("region", { name: dayNight.title });
-    const night = region.locator('img[alt="The same house at night, lights on"]');
-    const before50 = await night.evaluate((img) => img.style.clipPath);
+  // ---------------------------------------------------------------- Hidden by day: Keenan's pair, or the drawn pair
+  const dayNightLabel = pageLabel("hidden_by_day");
+  if (expected.includes(dayNightLabel)) {
+    await goToScreen(page, dayNightLabel);
+    const region = page.getByRole("region", { name: dayNightLabel });
+    const line = region.locator('input[type="range"]');
+    const before50 = await line.inputValue();
     const box = await region.boundingBox();
-    await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.7);
-    await page.waitForTimeout(200);
-    const after20 = await night.evaluate((img) => img.style.clipPath);
-    check("a tap on the day and night photo moves the line there", before50 !== after20 && after20.includes("80%"), `${before50} to ${after20}`);
+    await page.mouse.click(box.x + box.width * 0.2, box.y + box.height * 0.4);
+    await page.waitForTimeout(400);
+    const after20 = await line.inputValue();
+    check("a tap on the day and night picture moves the line there", before50 === "50" && after20 === "20", `${before50} to ${after20}`);
     const handle = await region.locator("div.cursor-ew-resize").boundingBox();
-    await touchSwipe(page, cdp, Math.round(handle.x + handle.width / 2), Math.round(box.y + box.height * 0.5), 400);
-    const dragged = await night.evaluate((img) => img.style.clipPath);
-    check(
-      "dragging the handle moves the line and keeps the page",
-      dragged !== after20 && (await currentScreen(page)) === dayNight.title,
-      `${after20} to ${dragged}`,
-    );
-    await touchSwipe(page, cdp, Math.round(box.x + box.width * 0.9), Math.round(box.y + box.height * 0.65), -700);
-    check("a swipe away from the handle turns the page", (await currentScreen(page)) !== dayNight.title, await currentScreen(page));
+    await touchSwipe(page, cdp, Math.round(handle.x + handle.width / 2), Math.round(handle.y + handle.height * 0.5), 400);
+    const dragged = await line.inputValue();
+    check("dragging the grip moves the line and keeps the page", dragged !== after20 && (await currentScreen(page)) === dayNightLabel, `${after20} to ${dragged}`);
+    await touchSwipe(page, cdp, Math.round(box.x + box.width * 0.9), Math.round(box.y + box.height * 0.3), -700);
+    check("a swipe away from the grip turns the page", (await currentScreen(page)) !== dayNightLabel, await currentScreen(page));
   } else {
-    note("the day and night page was not reached: its two photos are not uploaded yet, so the deck skips it");
+    note("Hidden by day was not reached: Settings has no words for it, so the deck skips it");
   }
-  const gallery = pages.find((p) => p.kind === "gallery");
-  if (gallery?.shows) {
-    await goToScreen(page, gallery.title);
-    const shown = await page.getByRole("region", { name: gallery.title }).locator("img").count();
-    check("the gallery shows every uploaded install photo", shown === gallery.images.length, `${shown} of ${gallery.images.length}`);
+
+  // ---------------------------------------------------------------- a More: one layer, Back, the pager locked
+  const whatLabel = pageLabel("what_vesper_is");
+  const moreLabel = typeof settings.deck?.pages?.what_vesper_is?.more_label === "string" ? settings.deck.pages.what_vesper_is.more_label.trim() : "";
+  if (expected.includes(whatLabel) && moreLabel) {
+    await goToScreen(page, whatLabel);
+    await page.getByRole("region", { name: whatLabel }).getByRole("button", { name: moreLabel }).click();
+    const layer = page.getByRole("dialog", { name: moreLabel });
+    await layer.waitFor({ timeout: 5000 }).catch(() => {});
+    const opened = (await layer.count()) === 1;
+    const lb = opened ? await layer.boundingBox() : null;
+    if (lb) await touchSwipe(page, cdp, Math.round(lb.x + lb.width * 0.8), Math.round(lb.y + lb.height * 0.5), -500);
+    check(
+      `${moreLabel} opens a full-screen layer, and a sideways swipe closes it without turning the page`,
+      opened && (await layer.count()) === 0 && (await currentScreen(page)) === whatLabel,
+      await currentScreen(page),
+    );
+  } else {
+    note("What Vesper is's More was not reached: Settings has no words for it");
+  }
+
+  // ---------------------------------------------------------------- the gallery, when Keenan has install photos
+  const galleryLabel = pageLabel("gallery");
+  if (galleryCount > 0) {
+    await goToScreen(page, galleryLabel);
+    const region = page.getByRole("region", { name: galleryLabel });
+    const heroes = Math.min(galleryCount, 6);
+    const counter = heroes > 1 ? await region.getByTestId("gallery-counter").innerText() : "";
+    check("the gallery shows one photo at a time, counted", (await region.locator("img").count()) >= 1 && (heroes < 2 || counter === `1 of ${heroes}`), counter);
+    if (heroes > 1) {
+      await page.keyboard.press("ArrowRight");
+      await page.waitForTimeout(500);
+      check(
+        "the arrow key steps to the next photo before turning the page",
+        (await currentScreen(page)) === galleryLabel && (await region.getByTestId("gallery-counter").innerText()) === `2 of ${heroes}`,
+      );
+    }
   } else {
     note("the gallery was not reached: no install photos are uploaded yet, so the deck skips it");
   }
 
-  // ---------------------------------------------------------------- This house
-  await goToScreen(page, "This house");
-  const house = page.getByRole("region", { name: "This house" });
-  const mockupLoaded = await house.locator("img").evaluate((img) => img.complete && img.naturalWidth > 0);
-  check("This house shows the customer's mockup", mockupLoaded);
+  // ---------------------------------------------------------------- Where your lights would go
+  await goToScreen(page, MOCKUP);
+  const house = page.getByRole("region", { name: MOCKUP });
+  const mockupLoaded = await house
+    .locator("img")
+    .evaluate((img) => (img.complete ? img.naturalWidth > 0 : new Promise((done) => img.addEventListener("load", () => done(img.naturalWidth > 0)))));
+  check("Where your lights would go shows the customer's mockup", mockupLoaded);
   const hb = await house.boundingBox();
   await touchSwipe(page, cdp, Math.round(hb.x + hb.width * 0.8), Math.round(hb.y + hb.height * 0.6), -700);
-  check("a one-finger swipe on the mockup turns the page, like everywhere else", (await currentScreen(page)) === "The colour", await currentScreen(page));
+  check("a one-finger swipe on the mockup turns the page, like everywhere else", (await currentScreen(page)) === "Your colours", await currentScreen(page));
   await cdp.detach();
 
-  // ---------------------------------------------------------------- The colour
-  await goToScreen(page, "The colour");
-  const colourScreen = page.getByRole("region", { name: "The colour" });
+  // ---------------------------------------------------------------- Your colours
+  await goToScreen(page, "Your colours");
+  const colourScreen = page.getByRole("region", { name: "Your colours" });
   const colourText = await colourScreen.innerText();
-  check("The colour shows their soffit answer and the track colour by name", colourText.includes("Off-white or cream") && colourText.includes(colour.name), colour.name);
+  check(
+    "Your colours names the split soffit's two colours on their own lines, and the track colour by name",
+    colourText.includes("Your soffit, two colours") &&
+      JSON.stringify(await colourScreen.getByTestId("deck-soffit-colour").allInnerTexts()) === JSON.stringify(["Off-white or cream", "White"]) &&
+      colourText.includes("One track colour for the whole house.") &&
+      colourText.includes(colour.name),
+    colour.name,
+  );
+  check("never the setter's which-is-where note", !colourText.includes(SOFFIT_NOTE));
+  const initialsBox = await colourScreen.locator("#colour-initials").boundingBox();
+  check("the initials sit no lower than 400 px from the top, clear of the keyboard", initialsBox && initialsBox.y + initialsBox.height <= 400 + 834 - 820, `${Math.round(initialsBox?.y ?? 0)}`);
   const confirm = colourScreen.getByRole("button", { name: "Confirm" });
   const waitsForInitials = await confirm.isDisabled();
   await colourScreen.locator("#colour-initials").fill("ab");
@@ -328,9 +389,9 @@ try {
   await chooser.getByRole("button", { name: "Back" }).click();
   check("Back closes the chooser and keeps the colour", (await chooser.count()) === 0 && (await colourScreen.getByTestId("deck-track-colour").innerText()).includes(colour.name));
 
-  // ---------------------------------------------------------------- The price
-  await goToScreen(page, "The price");
-  const priceScreen = page.getByRole("region", { name: "The price" });
+  // ---------------------------------------------------------------- Your price
+  await goToScreen(page, "Your price");
+  const priceScreen = page.getByRole("region", { name: "Your price" });
   const save = priceScreen.getByRole("button", { name: /^Save/ });
   check("Save waits until there are feet to price", await save.isDisabled());
   check(
@@ -354,7 +415,7 @@ try {
   check("no note to Keenan on the customer's screen", !(await priceScreen.innerText()).includes("apply to this quote only"));
   await priceScreen.getByLabel("Run 1 feet").press("ArrowLeft");
   await page.waitForTimeout(500);
-  check("arrow keys stay with the field being typed in", (await currentScreen(page)) === "The price");
+  check("arrow keys stay with the field being typed in", (await currentScreen(page)) === "Your price");
   await page.screenshot({ path: `${out}/m5-price.png` });
 
   // ---------------------------------------------------------------- a reload mid-meeting
@@ -363,21 +424,51 @@ try {
   await page.waitForTimeout(1000);
   check(
     "a reload picks up on the same screen, with the quote as typed",
-    (await currentScreen(page)) === "The price" &&
-      (await page.getByRole("region", { name: "The price" }).getByLabel("Run 1 feet").inputValue()) === "120",
+    (await currentScreen(page)) === "Your price" &&
+      (await page.getByRole("region", { name: "Your price" }).getByLabel("Run 1 feet").inputValue()) === "120",
     await currentScreen(page),
   );
 
-  // ---------------------------------------------------------------- the way out takes two taps
-  await page.getByRole("button", { name: "Leave meeting mode" }).click();
-  await page.waitForTimeout(400);
+  // ---------------------------------------------------------------- an edge swipe back stays in the deck
+  await page.goBack().catch(() => {});
+  await page.waitForTimeout(800);
+  check(
+    "going back (an edge swipe) stays in the deck, on the same page",
+    page.url().split("#")[0] === `${base}/meeting/${leadId}` && (await currentScreen(page)) === "Your price",
+    page.url(),
+  );
+
+  // ---------------------------------------------------------------- #quote opens on the price page (prep's Draft the quote)
+  // From another page each time, so each is a full load that reads its hash.
+  await page.goto(`${base}/app/leads/${leadId}`);
+  await settle(page);
+  await page.goto(`${base}/meeting/${leadId}#start`);
+  await dots(page).waitFor({ timeout: 30000 });
+  await page.waitForTimeout(600);
+  const fromStart = await currentScreen(page);
+  await page.goto(`${base}/app/leads/${leadId}`);
+  await settle(page);
+  await page.goto(`${base}/meeting/${leadId}#quote`);
+  await dots(page).waitFor({ timeout: 30000 });
+  await page.waitForTimeout(800);
+  check("#start opens at the cover, #quote on the price page", fromStart === "Vesper" && (await currentScreen(page)) === "Your price", `${fromStart}, ${await currentScreen(page)}`);
+
+  // ---------------------------------------------------------------- the way out: hold the X for 600 ms
+  const exit = page.getByRole("button", { name: "Hold to leave meeting mode" });
+  const xb = await exit.boundingBox();
+  await page.mouse.move(xb.x + xb.width / 2, xb.y + xb.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(250);
+  await page.mouse.up();
+  await page.waitForTimeout(600);
   const stillIn = page.url().split("#")[0] === `${base}/meeting/${leadId}` && (await dots(page).count()) === 1;
-  const armed = await page.getByRole("button", { name: "Tap again to leave meeting mode" }).count();
-  await page.getByRole("button", { name: "Tap again to leave meeting mode" }).click();
+  await page.mouse.down();
+  await page.waitForTimeout(900);
+  await page.mouse.up();
   await page.waitForURL(`**/app/leads/${leadId}`, { timeout: 30000 }).catch(() => {});
   check(
-    "one tap on the X stays in the deck and asks again; the second tap leaves for the lead page",
-    stillIn && armed === 1 && page.url().endsWith(`/app/leads/${leadId}`),
+    "a short press on the X stays in the deck; holding it leaves for the lead page",
+    stillIn && page.url().endsWith(`/app/leads/${leadId}`),
     page.url(),
   );
 
@@ -402,9 +493,12 @@ try {
     signal.getByTestId("mockup-card").getByRole("link", { name: "Open meeting mode" }).click(),
   ]);
   await dots(signal).waitFor({ timeout: 30000 });
+  // Only the page on screen and its neighbours mount their pictures, so the
+  // mockup loads (and is kept) once its page is reached.
+  await goToScreen(signal, MOCKUP);
   await signal
     .waitForFunction(() => {
-      const img = document.querySelector('section[aria-label="This house"] img');
+      const img = document.querySelector('section[data-page="mockup"] img');
       return Boolean(img && img.complete && img.naturalWidth > 0);
     }, null, { timeout: 30000 })
     .catch(() => {});
@@ -428,13 +522,13 @@ try {
   await dots(signal).waitFor({ timeout: 30000 }).catch(() => {});
   const offlineMockup = await signal
     .waitForFunction(() => {
-      const img = document.querySelector('section[aria-label="This house"] img');
+      const img = document.querySelector('section[data-page="mockup"] img');
       return Boolean(img && img.complete && img.naturalWidth > 0);
     }, null, { timeout: 20000 })
     .then(() => true)
     .catch(() => false);
   check(
-    "with the server gone, a reload still opens meeting mode, mockup and all",
+    "with the server gone, a reload still opens meeting mode on the page it was on, mockup and all",
     gone && (await dots(signal).count()) === 1 && offlineMockup,
     gone ? "" : "the second server did not stop",
   );

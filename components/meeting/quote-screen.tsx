@@ -29,6 +29,7 @@ export function QuoteScreen({
   dirty,
   onSaved,
   today,
+  readOnly = false,
 }: {
   leadId: string;
   pricing: MeetingPayload["pricing"];
@@ -41,6 +42,9 @@ export function QuoteScreen({
   dirty: boolean;
   onSaved: (quoteId: string, savedAt: string, fingerprint: string) => void;
   today: string;
+  // The rehearsal view (round 7): Save is acted out on screen and nothing
+  // is written.
+  readOnly?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -52,6 +56,10 @@ export function QuoteScreen({
     // What is being saved, as it stands at the tap; edits made while the
     // save is in flight still count as unsaved afterwards.
     const snapshot = quoteFingerprint(state);
+    if (readOnly) {
+      onSaved(quoteId ?? "rehearsal", new Date().toISOString(), snapshot);
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {

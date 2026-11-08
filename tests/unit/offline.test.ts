@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { MEETINGS_PAGE, OFFLINE_CACHES, imageCacheKey, meetingFiles, meetingPageUrl } from "@/lib/offline";
+import { MEETINGS_PAGE, OFFLINE_CACHES, REHEARSAL_PAGE, imageCacheKey, meetingFiles, meetingPageUrl } from "@/lib/offline";
 
 const ORIGIN = "https://vesper.example";
 const SIGNED = "https://abcd.supabase.co/storage/v1/object/sign/lead-photos/u1/p1.jpg?token=eyJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ4In0.sig-_x";
@@ -60,5 +60,52 @@ describe("the caches the service worker reads", () => {
     expect(sw).toContain("const IMAGES = `vesper-images-${VERSION}`;");
     expect(sw).toContain("const PAGES = `vesper-pages-${VERSION}`;");
     expect(sw).toContain(`const MEETINGS_PAGE = "${MEETINGS_PAGE}";`);
+    expect(sw).toContain(`const REHEARSAL_PAGE = "${REHEARSAL_PAGE}";`);
+  });
+});
+
+// The service worker's rules, run as they stand in public/sw.js.
+type Rule = "asset" | "image" | "meeting" | "app" | null;
+type Request = { url: string; method?: string; mode?: string };
+function swRules(): (request: Request) => Rule {
+  const sw = readFileSync("public/sw.js", "utf8");
+  const block = sw.slice(sw.indexOf("// RULES START"), sw.indexOf("// RULES END"));
+  expect(block).toContain("function cacheRule(");
+  const cacheRule = new Function(`${block}\nreturn cacheRule;`)() as (request: Required<Request>, origin: string) => Rule;
+  return (request) => cacheRule({ method: "GET", mode: "no-cors", ...request }, ORIGIN);
+}
+
+describe("what the service worker keeps", () => {
+  const rule = swRules();
+
+  it("never the rehearsal view, nor anything under it", () => {
+    expect(rule({ url: `${ORIGIN}${REHEARSAL_PAGE}`, mode: "navigate" })).toBeNull();
+    expect(rule({ url: `${ORIGIN}${REHEARSAL_PAGE}?lead=lead-1`, mode: "navigate" })).toBeNull();
+    expect(rule({ url: `${ORIGIN}${REHEARSAL_PAGE}/anything`, mode: "navigate" })).toBeNull();
+    // Settings itself is an ordinary app page.
+    expect(rule({ url: `${ORIGIN}/app/admin/settings`, mode: "navigate" })).toBe("app");
+  });
+
+  it("never another site's image: an example hotlinked from where it lives, in either mode", () => {
+    expect(rule({ url: "https://images.example-site.com/house-at-dusk.jpg" })).toBeNull();
+    expect(rule({ url: "https://images.example-site.com/house-at-dusk.jpg", mode: "cors" })).toBeNull();
+    expect(rule({ url: "https://abcd.supabase.co/storage/v1/object/public/presentation/deck/a.jpg", mode: "cors" })).toBeNull();
+    expect(rule({ url: `https://abcd.supabase.co/storage/v1/object/sign/presentation/deck/a.jpg`, mode: "cors" })).toBeNull();
+  });
+
+  it("the meeting's own photos: signed storage links asked for in CORS mode", () => {
+    expect(rule({ url: SIGNED, mode: "cors" })).toBe("image");
+    expect(rule({ url: SIGNED, mode: "no-cors" })).toBeNull();
+    expect(rule({ url: SIGNED, mode: "cors", method: "POST" })).toBeNull();
+  });
+
+  it("the build's files, the meeting pages and the Meetings page", () => {
+    expect(rule({ url: `${ORIGIN}/_next/static/chunks/a.js` })).toBe("asset");
+    expect(rule({ url: "https://elsewhere.example/_next/static/chunks/a.js" })).toBeNull();
+    expect(rule({ url: `${ORIGIN}/meeting/lead-1`, mode: "navigate" })).toBe("meeting");
+    expect(rule({ url: `${ORIGIN}${MEETINGS_PAGE}`, mode: "navigate" })).toBe("meeting");
+    expect(rule({ url: `${ORIGIN}/app/leads/lead-1`, mode: "navigate" })).toBe("app");
+    expect(rule({ url: `${ORIGIN}/q/token`, mode: "navigate" })).toBeNull();
+    expect(rule({ url: `${ORIGIN}/meeting/lead-1`, mode: "cors" })).toBeNull();
   });
 });

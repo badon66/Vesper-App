@@ -10,7 +10,9 @@
 //     any other app page that can't load without signal sends the iPad to
 //     that saved Meetings page, so the app opened from the home screen, or
 //     the way out of a meeting, still leads back to tonight's meetings.
-// Everything else goes straight to the network, untouched.
+// Everything else goes straight to the network, untouched: above all the
+// rehearsal view (Settings, round 7), whose example shots live on other
+// sites and must never reach a meeting, and any other site's image.
 
 const VERSION = "v1";
 const ASSETS = `vesper-assets-${VERSION}`;
@@ -59,8 +61,6 @@ async function cacheFirstImage(request, url) {
   return response;
 }
 
-const MEETINGS_PAGE = "/app/meetings";
-
 async function meetingDocument(request) {
   const cache = await caches.open(PAGES);
   try {
@@ -92,32 +92,40 @@ async function appDocument(request, url) {
   }
 }
 
+// RULES START: which requests the worker answers, and how. Pure, so a unit
+// test (tests/unit/offline.test.ts) runs this block as it stands.
+const MEETINGS_PAGE = "/app/meetings";
+const REHEARSAL_PAGE = "/app/admin/settings/rehearsal";
+
+// "asset", "image", "meeting", "app", or null for the network untouched.
+function cacheRule(request, origin) {
+  if (request.method !== "GET") return null;
+  const url = new URL(request.url);
+  const own = url.origin === origin;
+  // The rehearsal view is never kept, nor answered from a copy.
+  if (own && (url.pathname === REHEARSAL_PAGE || url.pathname.startsWith(REHEARSAL_PAGE + "/"))) return null;
+  if (own && url.pathname.startsWith("/_next/static/")) return "asset";
+  // Another site's image is only ever kept when it is a signed storage
+  // object asked for in CORS mode (meeting mode's photos): never a picture
+  // hotlinked from elsewhere, like the rehearsal's examples.
+  if (url.pathname.includes("/storage/v1/object/sign/") && url.searchParams.has("token") && request.mode === "cors") {
+    return "image";
+  }
+  if (own && request.mode === "navigate") {
+    if (url.pathname.startsWith("/meeting/") || url.pathname === MEETINGS_PAGE) return "meeting";
+    if (url.pathname === "/app" || url.pathname.startsWith("/app/")) return "app";
+  }
+  return null;
+}
+// RULES END
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
-  if (request.method !== "GET") return;
-  const url = new URL(request.url);
-
-  if (url.origin === self.location.origin && url.pathname.startsWith("/_next/static/")) {
-    event.respondWith(cacheFirstAsset(request));
-    return;
-  }
-
-  // Supabase storage: signed object reads only.
-  if (url.pathname.includes("/storage/v1/object/sign/")) {
-    event.respondWith(cacheFirstImage(request, url));
-    return;
-  }
-
-  if (url.origin === self.location.origin && request.mode === "navigate") {
-    if (url.pathname.startsWith("/meeting/") || url.pathname === MEETINGS_PAGE) {
-      event.respondWith(meetingDocument(request));
-      return;
-    }
-    if (url.pathname === "/app" || url.pathname.startsWith("/app/")) {
-      event.respondWith(appDocument(request, url));
-      return;
-    }
-  }
+  const rule = cacheRule(request, self.location.origin);
+  if (rule === "asset") event.respondWith(cacheFirstAsset(request));
+  else if (rule === "image") event.respondWith(cacheFirstImage(request, new URL(request.url)));
+  else if (rule === "meeting") event.respondWith(meetingDocument(request));
+  else if (rule === "app") event.respondWith(appDocument(request, new URL(request.url)));
 });
 
 // Push (2026-11-02): Book my install now, other alerts later. The server

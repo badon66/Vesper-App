@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { parseDeckWords } from "@/lib/deck";
+import { COOL_WHITE, WARM_WHITE } from "@/lib/lights/looks";
 import {
   RESUME_MS,
   defaultQuoteState,
+  pickerFromStored,
   quoteFingerprint,
   quoteInputs,
   quoteStateFromDraft,
@@ -20,16 +23,22 @@ const payload = (draft: MeetingPayload["draft"] = null): MeetingPayload => ({
     addressLine: "1 Test Street NW",
     neighbourhood: null,
     soffitColour: null,
-    soffitNote: null,
+    soffitColour2: null,
     colourKind: "list",
     colourText: "White",
     initials: null,
     initialledAt: null,
   },
-  pages: [],
+  deck: {
+    words: parseDeckWords({}),
+    photos: {},
+    gallery: [],
+    looks: [WARM_WHITE, COOL_WHITE],
+    picker: null,
+    company: { name: "", place: null, phone: "" },
+    warranty: { text: "", serviceCallFee: null },
+  },
   colours: { list: [], ralNames: {}, choice: null, ralCode: null },
-  warrantyText: "",
-  serviceCallFee: null,
   mockupUrl: null,
   pricing: {
     pricePerFt: 23,
@@ -238,5 +247,39 @@ describe("where a meeting starts", () => {
   it("keeps initials typed but not yet confirmed", () => {
     const local = defaultQuoteState(payload());
     expect(startingPoint(payload(), stored(local, { initialsDraft: "MB" }), now).initialsDraft).toBe("MB");
+  });
+});
+
+describe("the page and the light picker, picked up again", () => {
+  const now = Date.parse("2026-11-03T02:00:00Z");
+  const local = defaultQuoteState(payload());
+  const lit = { look: "cool_white", effect: "chase" as const, played: true };
+
+  it("finds the page by its key, so pages added before it don't move it", () => {
+    const start = startingPoint(payload(), stored(local, { screen: { index: 7, at: now - 60_000, key: "colour" } }), now);
+    expect(start.screenKey).toBe("colour");
+    expect(startingPoint(payload(), stored(local, { screen: { index: 7, at: now - 60_000 } }), now).screenKey).toBeNull();
+    expect(startingPoint(payload(), stored(local, { screen: { index: 7, at: now - 60_000, key: "colour" } }), now, true).screenKey).toBeNull();
+  });
+
+  it("keeps the look, effect and played light-up for the same meeting, a fresh start included", () => {
+    const within = stored(local, { screen: { index: 4, at: now - 60_000 }, picker: lit });
+    expect(startingPoint(payload(), within, now).picker).toEqual(lit);
+    expect(startingPoint(payload(), within, now, true).picker).toEqual(lit);
+  });
+
+  it("starts a later meeting on the first look, Steady, with the light-up to play", () => {
+    const later = stored(local, { screen: { index: 4, at: now - RESUME_MS - 1 }, picker: lit });
+    expect(startingPoint(payload(), later, now).picker).toBeNull();
+    expect(startingPoint(payload(), stored(local, { picker: lit }), now).picker).toBeNull();
+  });
+
+  it("drops a stored look no longer on offer, or an effect the control doesn't have", () => {
+    const looks = [WARM_WHITE];
+    expect(pickerFromStored(lit, looks)).toBeNull();
+    expect(pickerFromStored({ look: "warm_white", effect: "strobe", played: true }, looks)).toBeNull();
+    expect(pickerFromStored({ look: "warm_white", effect: "off" }, looks)).toEqual({ look: "warm_white", effect: "off", played: false });
+    expect(pickerFromStored("warm_white", looks)).toBeNull();
+    expect(pickerFromStored(null, looks)).toBeNull();
   });
 });

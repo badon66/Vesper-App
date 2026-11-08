@@ -7,6 +7,11 @@ import {
   missingAnswers,
   prepItems,
   prepSummary,
+  ROOFLINE_NOT_TRACED,
+  ROOFLINE_PHOTO_CHANGED,
+  rooflineDoneLine,
+  rooflineFacts,
+  rooflineState,
   smsLink,
   type PrepFacts,
 } from "@/lib/meetings/prep";
@@ -28,12 +33,13 @@ const ready: PrepFacts = {
   confirmedAt: "2026-11-08T00:12:00Z",
   hasMeeting: true,
   lead: answered,
+  rooflineTraced: true,
 };
 
 describe("The prep list", () => {
   it("is Ready when every item is done", () => {
     expect(prepSummary(ready)).toMatchObject({ ready: true, left: 0, line: "Ready" });
-    expect(prepItems(ready).map((item) => item.key)).toEqual(["mockup", "track_colour", "quote", "confirmed", "answers"]);
+    expect(prepItems(ready).map((item) => item.key)).toEqual(["mockup", "track_colour", "quote", "confirmed", "answers", "roofline"]);
   });
 
   it("says how many are left, and which", () => {
@@ -52,9 +58,50 @@ describe("The prep list", () => {
     expect(missingAnswers({ ...answered, phone: null, phone_saved: true })).toEqual([]);
   });
 
-  it("has no confirm item without a booked meeting, and a roofline item once Branch B adds it", () => {
+  it("has no confirm item without a booked meeting, and no roofline item when it isn't known", () => {
     expect(prepItems({ ...ready, hasMeeting: false, confirmedAt: null }).map((item) => item.key)).not.toContain("confirmed");
-    expect(prepItems({ ...ready, rooflineTraced: false }).at(-1)).toMatchObject({ key: "roofline", done: false });
+    expect(prepItems({ ...ready, rooflineTraced: undefined }).map((item) => item.key)).not.toContain("roofline");
+  });
+});
+
+// Round 7, Branch B (light_picker.tracing): prep item 6, Roofline traced.
+describe("The roofline item", () => {
+  const photos = [
+    { id: "front-1", slot: "front" },
+    { id: "extra-1", slot: null },
+  ];
+
+  it("says the light picker page is skipped until the roofline is traced", () => {
+    const item = prepItems({ ...ready, ...rooflineFacts(rooflineState(null, photos)) }).at(-1);
+    expect(item).toMatchObject({ key: "roofline", label: "Roofline traced", done: false, detail: ROOFLINE_NOT_TRACED });
+    expect(ROOFLINE_NOT_TRACED).toBe("Roofline not traced. The light picker page is skipped.");
+    expect(prepSummary({ ...ready, rooflineTraced: false })).toMatchObject({ ready: false, line: "1 left: roofline" });
+  });
+
+  it("is done while the photo it was traced on is still the lead's, in its slot", () => {
+    expect(rooflineState({ photo_id: "front-1", photo_slot: "front" }, photos)).toBe("traced");
+    expect(rooflineState({ photo_id: "extra-1", photo_slot: null }, photos)).toBe("traced");
+    const item = prepItems({ ...ready, ...rooflineFacts("traced") }).at(-1);
+    expect(item).toMatchObject({ done: true, detail: undefined });
+  });
+
+  it("asks for it again once the front photo is replaced or removed", () => {
+    // A new Front photo takes the slot: the old one becomes an extra.
+    const replaced = [
+      { id: "front-2", slot: "front" },
+      { id: "front-1", slot: null },
+    ];
+    expect(rooflineState({ photo_id: "front-1", photo_slot: "front" }, replaced)).toBe("photo_changed");
+    expect(rooflineState({ photo_id: "front-1", photo_slot: "front" }, [])).toBe("photo_changed");
+    const item = prepItems({ ...ready, ...rooflineFacts("photo_changed") }).at(-1);
+    expect(item).toMatchObject({ done: false, detail: ROOFLINE_PHOTO_CHANGED });
+    expect(ROOFLINE_PHOTO_CHANGED).toBe("The front photo changed. Trace it again.");
+  });
+
+  it("names the photo and the lights once traced", () => {
+    expect(rooflineDoneLine("front", 155)).toBe("Traced on the Front photo, about 155 lights.");
+    expect(rooflineDoneLine("left_corner", 1)).toBe("Traced on the Left corner photo, about 1 light.");
+    expect(rooflineDoneLine(null, null)).toBe("Traced on your own photo.");
   });
 });
 

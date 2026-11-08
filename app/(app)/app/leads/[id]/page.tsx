@@ -511,6 +511,17 @@ export default async function LeadPage({
           {canEdit ? (
             <PhotoPicker userId={me.id} mode="attach" leadId={lead.id} buttonLabel="More photos" />
           ) : null}
+          {/* Round 7: the roofline for meeting mode's light picker, traced
+              on these photos. Keenan's only, never in View as. */}
+          {isOwner ? (
+            <Link
+              href={`/app/meetings/prep/${lead.id}/roofline?from=lead`}
+              className="inline-flex min-h-11 w-fit items-center text-sm font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              data-testid="lead-roofline-link"
+            >
+              Trace the roofline for the light picker
+            </Link>
+          ) : null}
         </CardContent>
       </Card>
 

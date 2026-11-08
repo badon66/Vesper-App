@@ -23,9 +23,12 @@ import {
   DEFAULT_CONFIRM_TEXT,
   missingAnswers,
   prepSummary,
+  rooflineDoneLine,
+  rooflineFacts,
   smsLink,
   type PrepItem,
 } from "@/lib/meetings/prep";
+import { rooflineFor } from "@/lib/meetings/prep-queries";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { isLive, timePhrase } from "@/lib/schedule/meetings";
 import { meetingsForLead } from "@/lib/schedule/queries";
@@ -54,7 +57,7 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
   const now = requestTime();
   const today = calgaryToday();
 
-  const [contact, notes, meetingRows, { data: photoRows }, { data: colourRows }, { data: ralRows }, { data: quoteRows }, { data: settingsRow }, { data: noteEvents }] =
+  const [contact, notes, meetingRows, { data: photoRows }, { data: colourRows }, { data: ralRows }, { data: quoteRows }, { data: settingsRow }, { data: noteEvents }, roofline] =
     await Promise.all([
       contactFor(supabase, me, leadId),
       notesFor(supabase, me, leadId),
@@ -65,6 +68,7 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
       supabase.from("quotes").select("id, runs, updated_at").eq("lead_id", leadId).order("updated_at", { ascending: false }),
       supabase.from("settings").select("confirm_text").eq("id", 1).maybeSingle(),
       supabase.from("lead_events").select("id, payload, created_at").eq("lead_id", leadId).eq("type", "note").order("created_at", { ascending: false }).limit(20),
+      rooflineFor(supabase, leadId),
     ]);
   const lead = { ...row, phone: contact.phone };
 
@@ -97,6 +101,7 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
     hasMeeting: meeting !== null,
     confirmedAt: meeting?.confirmed_at ?? null,
     lead,
+    ...rooflineFacts(roofline.state),
   });
   const missing = missingAnswers(lead);
 
@@ -174,6 +179,21 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
             <ConfirmMeeting meetingId={meeting.id} phone={lead.phone} smsHref={smsHref} confirmedAt={meeting.confirmed_at} primary={primary} />
           </div>
         ) : null;
+      case "roofline":
+        return (
+          <div className="flex flex-col items-start gap-3">
+            {item.done ? (
+              <p className="text-sm text-muted-foreground" data-testid="prep-roofline">
+                {rooflineDoneLine(roofline.photoSlot, roofline.lightCount)}
+              </p>
+            ) : null}
+            <Button asChild size="lg" variant={primary ? "default" : "outline"} className="h-12 px-5">
+              <Link href={`/app/meetings/prep/${leadId}/roofline`} data-testid="prep-roofline-trace">
+                {item.done ? "Change the trace" : "Trace the roofline"}
+              </Link>
+            </Button>
+          </div>
+        );
       case "answers":
         return item.done ? (
           <p className="text-sm text-muted-foreground">All six answered.</p>
