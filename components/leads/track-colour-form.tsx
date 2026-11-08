@@ -18,6 +18,7 @@ export function TrackColourForm({
   ralNames,
   onSaved,
   requireColour = false,
+  quiet = false,
 }: {
   leadId: string;
   // The active colours, plus the lead's own colour if it has been retired.
@@ -29,6 +30,8 @@ export function TrackColourForm({
   // Meeting mode never saves "no colour": a customer tapping the chosen
   // colour to agree with it would otherwise clear it.
   requireColour?: boolean;
+  // The prep list (round 7): an outlined Save when another item has the gold.
+  quiet?: boolean;
 }) {
   const [choice, setChoice] = useState<string | null>(current.choice);
   const [state, setState] = useState<TrackColourState>({});
@@ -85,7 +88,7 @@ export function TrackColourForm({
       {requireColour && !choice ? (
         <p className="text-sm text-muted-foreground">Pick a colour to save it.</p>
       ) : null}
-      <Button type="submit" size="lg" className="w-full sm:w-fit" disabled={pending || (requireColour && !choice)}>
+      <Button type="submit" size="lg" variant={quiet ? "outline" : "default"} className="w-full sm:w-fit" disabled={pending || (requireColour && !choice)}>
         {pending ? "Saving" : "Save track colour"}
       </Button>
     </form>

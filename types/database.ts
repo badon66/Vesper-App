@@ -707,6 +707,7 @@ export type Database = {
       }
       meetings: {
         Row: {
+          confirmed_at: string | null
           booked_by: string
           created_at: string
           ends_at: string
@@ -727,6 +728,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          confirmed_at?: string | null
           booked_by: string
           created_at?: string
           ends_at: string
@@ -747,6 +749,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          confirmed_at?: string | null
           booked_by?: string
           created_at?: string
           ends_at?: string
@@ -1260,6 +1263,7 @@ export type Database = {
       }
       settings: {
         Row: {
+          confirm_text: string
           booking_cutoff_minutes: number
           booking_pay: number
           booking_window_days: number
@@ -1297,6 +1301,7 @@ export type Database = {
           warranty_text: string
         }
         Insert: {
+          confirm_text?: string
           booking_cutoff_minutes?: number
           booking_pay?: number
           booking_window_days?: number
@@ -1334,6 +1339,7 @@ export type Database = {
           warranty_text: string
         }
         Update: {
+          confirm_text?: string
           booking_cutoff_minutes?: number
           booking_pay?: number
           booking_window_days?: number
@@ -1864,6 +1870,10 @@ export type Database = {
       }
     }
     Functions: {
+      confirm_meeting: {
+        Args: { p_confirmed?: boolean; p_meeting: string }
+        Returns: string
+      }
       acts_as_owner: { Args: never; Returns: boolean }
       add_time_block: {
         Args: {

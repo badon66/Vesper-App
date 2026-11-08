@@ -109,6 +109,9 @@ export const formatDay = (day: string) => weekdayDate.format(new Date(`${day}T12
 export const formatLongDay = (day: string) => longDay.format(new Date(`${day}T12:00:00Z`));
 // "November 16, 2026": dates a customer reads, so never raw YYYY-MM-DD.
 export const formatFullDate = (day: string) => fullDate.format(new Date(`${day}T12:00:00Z`));
+// "Thursday": the weekday alone, for the confirmation text (round 7).
+const weekdayOnly = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", weekday: "long" });
+export const formatWeekday = (day: string) => weekdayOnly.format(new Date(`${day}T12:00:00Z`));
 
 // The moment of the request. Server Components render once per request, so
 // "has this meeting started" is asked once, against this.

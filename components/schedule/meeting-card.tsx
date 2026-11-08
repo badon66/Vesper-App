@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { PrepFlags } from "@/components/meetings/prep-flags";
+import { ConfirmedTick } from "@/components/meetings/confirmed-tick";
+import { PrepLine, type PrepGlance } from "@/components/meetings/prep-line";
 import { BookingActions } from "@/components/schedule/booking-actions";
 import { OutcomeForm } from "@/components/schedule/outcome-form";
 import { formatKm, navigateUrl } from "@/lib/schedule/distance";
@@ -65,9 +66,9 @@ export function MeetingCard({
   showDay?: boolean;
   // Who is looking: their own lead or booking says "you".
   viewerId?: string | null;
-  // Keenan's Home (2026-11-05): what the meeting still needs, as on the
-  // Meetings page. Owner only.
-  prep?: { missingMockup: boolean; missingColour: boolean } | null;
+  // Keenan's Home (2026-11-05; round 7): Ready, or what the meeting still
+  // needs, as on the Meetings page. Owner only.
+  prep?: PrepGlance | null;
   // Keenan's Home (2026-11-05): a glance, not a workbench. Meeting mode,
   // Navigate and Call; the prep flags on one line; no map position, notes,
   // photos, Move or Cancel (those are on Schedule, Meetings and the lead).
@@ -94,8 +95,12 @@ export function MeetingCard({
       data-status={meeting.status}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className={cn("font-bold tabular-nums", compact ? "text-lg" : "text-xl")}>
-          {showDay ? timePhrase(meeting.starts_at) : showLead ? formatTime(meeting.starts_at) : formatMeetingTime(meeting.starts_at)}
+        <p className="flex flex-wrap items-baseline gap-x-3">
+          <span className={cn("font-bold tabular-nums", compact ? "text-lg" : "text-xl")}>
+            {showDay ? timePhrase(meeting.starts_at) : showLead ? formatTime(meeting.starts_at) : formatMeetingTime(meeting.starts_at)}
+          </span>
+          {/* Round 7: Keenan's own tick for a time he confirmed with them. */}
+          {isOwner && live && meeting.confirmed_at ? <ConfirmedTick /> : null}
         </p>
         {compact && (live || hasOutcome(meeting.status)) ? (
           next ? (
@@ -146,7 +151,7 @@ export function MeetingCard({
         </p>
       ) : null}
 
-      {prep && !changed && !started ? <PrepFlags leadId={lead.id} missingMockup={prep.missingMockup} missingColour={prep.missingColour} compact={compact} /> : null}
+      {prep && !changed && !started ? <PrepLine leadId={lead.id} prep={prep} compact={compact} /> : null}
 
       {showDetails && !changed && compact && !started ? (
         // Before the slot only: after it starts, the drive and the call are
