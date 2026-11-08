@@ -1,14 +1,12 @@
 import type {
   ChristmasLightsNow,
-  InstallTiming,
   LookedIntoBefore,
   PhotoSlot,
-  RooflineAreas,
 } from "@/lib/leads/door";
 import type { LeadDraft } from "@/lib/leads/draft";
-import { isQuestionDone, NOT_COLLECTED, type AnswerMap, type CountedQuestion } from "@/lib/leads/questions";
+import { isQuestionDone, NOT_COLLECTED, type AnswerMap, type AnswerNotes, type CountedQuestion } from "@/lib/leads/questions";
 import type { HouseType, SoffitColour } from "@/lib/leads/status";
-import type { ConfirmBy, HotButton, SetterRead } from "@/lib/leads/extras";
+import type { HotButton, SetterRead } from "@/lib/leads/extras";
 import { bookingProblems, type PhotoSkip, type ReadinessLead } from "@/lib/schedule/readiness";
 
 // The booking sheet (Keenan, 2026-11-02; round 2, 2026-11-03; round 3,
@@ -46,7 +44,8 @@ export const SCREEN_TITLES: Record<SheetScreen, string> = {
 
 // The counted questions each screen asks.
 export const DOOR_QUESTIONS: CountedQuestion[] = ["owns_home", "wants_price", "both_decision_makers"];
-export const LEARNED_QUESTIONS: CountedQuestion[] = ["christmas_lights_now", "looked_into_before", "areas_wanted", "install_timing"];
+// Round 6 (Keenan, 2026-11-07): Which areas and Timing are no longer asked.
+export const LEARNED_QUESTIONS: CountedQuestion[] = ["christmas_lights_now", "looked_into_before"];
 export const SCREEN_QUESTIONS: Partial<Record<SheetScreen, CountedQuestion[]>> = {
   door: DOOR_QUESTIONS,
   learned: LEARNED_QUESTIONS,
@@ -82,8 +81,6 @@ export type SheetDraft = {
   wants_price: boolean | null;
   christmas_lights_now: ChristmasLightsNow | null;
   looked_into_before: LookedIntoBefore | null;
-  areas_wanted: RooflineAreas | null;
-  install_timing: InstallTiming | null;
   // "Everyone who decides will be there": Yes true, No false.
   everyone: boolean | null;
   not_collected: CountedQuestion[];
@@ -97,7 +94,12 @@ export type SheetDraft = {
   position_source: "picked" | "device" | null;
   position_accuracy_m: number | null;
   soffit_colour: SoffitColour | null;
+  // Round 6: a split soffit's second colour; it needs the note.
+  soffit_colour_2: SoffitColour | null;
   soffit_note: string;
+  // Round 6: a short note on each required question, private to the lead's
+  // setter and Keenan.
+  answer_notes: AnswerNotes;
   // Guided slots that already hold a photo: saved on the lead, or uploaded
   // and waiting in photo_paths.
   photo_slots: PhotoSlot[];
@@ -112,7 +114,6 @@ export type SheetDraft = {
   house_type: HouseType | null;
   setter_read: SetterRead | null;
   hot_buttons: HotButton[];
-  confirm_by: ConfirmBy | null;
   // False for a draft kept before round 3: its optional answers weren't
   // asked, so a saved lead's own come back from the database before any
   // save, never blanked.
@@ -130,8 +131,6 @@ export function emptyDraft(): SheetDraft {
     wants_price: null,
     christmas_lights_now: null,
     looked_into_before: null,
-    areas_wanted: null,
-    install_timing: null,
     everyone: null,
     not_collected: [],
     address_line: "",
@@ -144,7 +143,9 @@ export function emptyDraft(): SheetDraft {
     position_source: null,
     position_accuracy_m: null,
     soffit_colour: null,
+    soffit_colour_2: null,
     soffit_note: "",
+    answer_notes: {},
     photo_slots: [],
     photo_paths: {},
     skip: null,
@@ -152,7 +153,6 @@ export function emptyDraft(): SheetDraft {
     house_type: null,
     setter_read: null,
     hot_buttons: [],
-    confirm_by: null,
     extras: true,
   };
 }
@@ -182,8 +182,6 @@ export function draftAnswers(draft: SheetDraft): AnswerMap {
     both_decision_makers: yesNo(draft.everyone, "no"),
     christmas_lights_now: draft.christmas_lights_now,
     looked_into_before: draft.looked_into_before,
-    areas_wanted: draft.areas_wanted,
-    install_timing: draft.install_timing,
   };
   const out: AnswerMap = {};
   for (const [question, value] of Object.entries(raw) as [CountedQuestion, string | null][]) {
@@ -214,10 +212,6 @@ export function withAnswer(draft: SheetDraft, question: CountedQuestion, value: 
       return { ...next, christmas_lights_now: answer as ChristmasLightsNow | null };
     case "looked_into_before":
       return { ...next, looked_into_before: answer as LookedIntoBefore | null };
-    case "areas_wanted":
-      return { ...next, areas_wanted: answer as RooflineAreas | null };
-    case "install_timing":
-      return { ...next, install_timing: answer as InstallTiming | null };
   }
 }
 
@@ -288,8 +282,6 @@ const MISSING_NAMES: Record<CountedQuestion, string> = {
   both_decision_makers: "Everyone who decides",
   christmas_lights_now: "Christmas lights now",
   looked_into_before: "Looked into it before",
-  areas_wanted: "Which areas",
-  install_timing: "Timing",
 };
 
 export function screenMissing(screen: SheetScreen, draft: SheetDraft): MissingItem[] {
@@ -305,6 +297,7 @@ export function screenMissing(screen: SheetScreen, draft: SheetDraft): MissingIt
       const out: MissingItem[] = [];
       if (!addressPlaced(draft)) out.push({ key: "map_position", label: draft.address_line.trim() ? "Map position for the address" : "Address", screen });
       if (draft.soffit_colour === null) out.push({ key: "soffit_colour", label: "Soffit colour", screen });
+      else if (draft.soffit_colour_2 !== null && draft.soffit_note.trim() === "") out.push({ key: "soffit_note", label: "Which soffit colour is where", screen });
       return out;
     }
     case "house": {
@@ -399,16 +392,15 @@ export function draftToLeadInput(draft: SheetDraft): Record<string, unknown> {
     house_type: draft.house_type ?? "",
     setter_read: draft.setter_read ?? "",
     hot_buttons: draft.hot_buttons,
-    confirm_by: draft.confirm_by ?? "",
     soffit_colour: draft.soffit_colour ?? "",
+    soffit_colour_2: draft.soffit_colour_2 ?? "",
     soffit_note: draft.soffit_note,
+    answer_notes: draft.answer_notes ?? {},
     owns_home: answer("owns_home"),
     wants_price: answer("wants_price"),
     both_decision_makers: answer("both_decision_makers"),
     christmas_lights_now: answer("christmas_lights_now"),
     looked_into_before: answer("looked_into_before"),
-    areas_wanted: answer("areas_wanted"),
-    install_timing: answer("install_timing"),
     notes: "",
     source: "door",
     photo_paths: [],
@@ -463,5 +455,7 @@ export function leadDraftFromSheet(draft: SheetDraft, now: number): LeadDraft {
   }
   // Hot buttons travel as one comma-separated value in New lead's draft.
   if (draft.hot_buttons.length > 0) values.hot_buttons = draft.hot_buttons.join(",");
+  // Round 6: each question's note, as New lead's note fields.
+  for (const [key, note] of Object.entries(draft.answer_notes ?? {})) if (note) values[`note_${key}`] = note;
   return { savedAt: now, values, extraPhotos: 0, from: "sheet" };
 }

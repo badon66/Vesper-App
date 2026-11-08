@@ -1,5 +1,6 @@
 import "server-only";
 import type { ContactViewer } from "@/lib/leads/contact-rules";
+import { notesForLeads } from "@/lib/leads/notes";
 import { contactsFor } from "@/lib/leads/contacts";
 import { toBoardSlots, type BoardSlot } from "@/lib/schedule/board";
 import { PHOTO_BUCKET } from "@/lib/photos";
@@ -69,10 +70,11 @@ export async function activeHoldOf(supabase: Client, personId: string, holdMinut
 const MEETING_COLUMNS =
   "id, lead_id, host_id, setter_id, booked_by, starts_at, ends_at, status, photos_skipped, photos_skip_note, outcome_reason, outcome_note, outcome_at, outcome_by, rebooked_as, created_at";
 // The counted questions come along so each card can say how complete the
-// lead is ("6 of 8 collected", round 2). Never the phone or email: those come
-// from lead_contacts, for the leads the viewer may contact (2026-11-04).
+// lead is ("5 of 6 collected", round 2 and round 6). Never the phone, email
+// or notes: those come from lead_contacts (2026-11-04) and lead_notes
+// (round 6), for the leads the viewer may see them on.
 const LEAD_COLUMNS =
-  "id, first_name, last_name, address_line, city, neighbourhood, phone_saved, lat, lng, notes, position_source, position_accuracy_m, status, created_by, assigned_to, owns_home, wants_price, both_decision_makers, christmas_lights_now, looked_into_before, areas_wanted, install_timing, not_collected, setter_read, hot_buttons";
+  "id, first_name, last_name, address_line, city, neighbourhood, phone_saved, lat, lng, position_source, position_accuracy_m, status, created_by, assigned_to, owns_home, wants_price, both_decision_makers, christmas_lights_now, looked_into_before, not_collected, setter_read, hot_buttons";
 
 export type MeetingRow = Pick<
   Database["public"]["Tables"]["meetings"]["Row"],
@@ -104,7 +106,6 @@ export type MeetingLead = Pick<
   | "phone_saved"
   | "lat"
   | "lng"
-  | "notes"
   | "position_source"
   | "position_accuracy_m"
   | "status"
@@ -115,15 +116,15 @@ export type MeetingLead = Pick<
   | "both_decision_makers"
   | "christmas_lights_now"
   | "looked_into_before"
-  | "areas_wanted"
-  | "install_timing"
   | "not_collected"
   // Round 3: Keenan sees these on his Meetings page and Home.
   | "setter_read"
   | "hot_buttons"
 > & {
-  // The phone, only on a lead the viewer may contact (contact privacy).
+  // The phone, only on a lead the viewer may contact (contact privacy), and
+  // the setter's notes on the same leads (round 6).
   phone: string | null;
+  notes: string | null;
 };
 export type MeetingWithLead = MeetingRow & { lead: MeetingLead };
 
@@ -147,11 +148,17 @@ export async function meetingsBetween(
   if (opts.setterId) query = query.eq("setter_id", opts.setterId);
   if (opts.leadId) query = query.eq("lead_id", opts.leadId);
   const { data } = await query;
-  const meetings = ((data ?? []) as unknown as (MeetingRow & { lead: Omit<MeetingLead, "phone"> | null })[]).filter(
-    (meeting): meeting is MeetingRow & { lead: Omit<MeetingLead, "phone"> } => meeting.lead !== null,
+  const meetings = ((data ?? []) as unknown as (MeetingRow & { lead: Omit<MeetingLead, "phone" | "notes"> | null })[]).filter(
+    (meeting): meeting is MeetingRow & { lead: Omit<MeetingLead, "phone" | "notes"> } => meeting.lead !== null,
   );
-  const contacts = opts.viewer ? await contactsFor(supabase, opts.viewer, meetings.map((meeting) => meeting.lead.id)) : new Map();
-  return meetings.map((meeting) => ({ ...meeting, lead: { ...meeting.lead, phone: contacts.get(meeting.lead.id)?.phone ?? null } }));
+  const ids = meetings.map((meeting) => meeting.lead.id);
+  const [contacts, notes] = opts.viewer
+    ? await Promise.all([contactsFor(supabase, opts.viewer, ids), notesForLeads(supabase, opts.viewer, ids)])
+    : [new Map(), new Map()];
+  return meetings.map((meeting) => ({
+    ...meeting,
+    lead: { ...meeting.lead, phone: contacts.get(meeting.lead.id)?.phone ?? null, notes: notes.get(meeting.lead.id)?.notes ?? null },
+  }));
 }
 
 // One Calgary evening's meetings.

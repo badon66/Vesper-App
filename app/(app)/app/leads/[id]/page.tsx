@@ -21,14 +21,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth/profile";
 import { leadAnswerList, type PhotoSlot } from "@/lib/leads/door";
-import { completenessLabel } from "@/lib/leads/questions";
+import { completenessLabel, NOTE_KEYS, NOTE_LABELS } from "@/lib/leads/questions";
 import { lostReasons, namesById } from "@/lib/leads/queries";
 import { formatMeetingTime, isLive, positionSourceText, sentence, timePhrase } from "@/lib/schedule/meetings";
 import { leadReadiness, READINESS_NAMES, readinessNow } from "@/lib/schedule/readiness";
 import { meetingsForLead } from "@/lib/schedule/queries";
 import {
-  CONFIRM_BY_LABEL,
-  confirmByLabel,
   HOT_BUTTONS_LABEL,
   hotButtonsLabel,
   SETTER_READ_LABEL,
@@ -56,6 +54,7 @@ import { createClient } from "@/lib/supabase/server";
 import { followUpSentence } from "@/lib/leads/attention";
 import { maySeeContact, NO_CONTACT } from "@/lib/leads/contact-rules";
 import { contactFor } from "@/lib/leads/contacts";
+import { NO_NOTES, notesFor } from "@/lib/leads/notes";
 import { LEAD_FIELDS } from "@/lib/leads/fields";
 import { calgaryToday, formatDate, formatDateTime, requestTime } from "@/lib/time";
 import { screenTotal, totalFeet } from "@/lib/pricing";
@@ -91,11 +90,15 @@ export default async function LeadPage({
   // Contact privacy (2026-11-04): the phone and email only on the viewer's
   // own leads, or every lead for Keenan; View as shows the viewed setter's.
   const contactShown = maySeeContact(me, row);
-  const lead = { ...row, ...(contactShown ? await contactFor(supabase, me, row.id) : NO_CONTACT) };
+  // Round 6 (2026-11-07): the notes follow the same rule, from lead_notes.
+  const [contact, leadNotes] = contactShown
+    ? await Promise.all([contactFor(supabase, me, row.id), notesFor(supabase, me, row.id)])
+    : [NO_CONTACT, NO_NOTES];
+  const lead = { ...row, ...contact, notes: leadNotes.notes };
 
   const isOwner = me.role === "owner";
   const canEdit = isOwner || lead.created_by === me.id || lead.assigned_to === me.id;
-  const [{ data: photoRows }, { data: events }, reasons, sessionResult, { data: colourRows }, meetingRows, { data: outcomeSettings }] = await Promise.all([
+  const [{ data: photoRows }, { data: eventRows }, reasons, sessionResult, { data: colourRows }, meetingRows, { data: outcomeSettings }] = await Promise.all([
     supabase.from("lead_photos").select("id, storage_path, slot").eq("lead_id", id).order("created_at"),
     supabase
       .from("lead_events")
@@ -113,6 +116,11 @@ export default async function LeadPage({
       ? supabase.from("settings").select("not_qualified_reasons, company").eq("id", 1).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
+  // Notes on the timeline: the lead's setter and Keenan only (round 6). The
+  // database keeps them from other setters; View as, reading with Keenan's
+  // session, drops them here for the person viewed.
+  const events = (eventRows ?? []).filter((event) => contactShown || event.type !== "note");
+  const timelineNotes = events.filter((event) => event.type === "note");
   // The quote and its customer link: the owner's only (View as a setter
   // never loads them).
   const quoteCard = isOwner ? await loadQuoteCard(supabase, lead, outcomeSettings?.company ?? null) : null;
@@ -158,7 +166,7 @@ export default async function LeadPage({
   const names = await namesById(supabase, [
     lead.created_by,
     lead.assigned_to,
-    ...(events ?? []).map((event) => event.actor_id),
+    ...events.map((event) => event.actor_id),
     ...meetings.flatMap((meeting) => [meeting.setter_id, meeting.booked_by, meeting.outcome_by]),
   ]);
   const owner = names.get(lead.created_by) ?? "someone";
@@ -425,6 +433,60 @@ export default async function LeadPage({
         </CardContent>
       </Card>
 
+      {/* Round 6 (Keenan, 2026-11-07): every note on the lead in one place,
+          for Keenan to read before the meeting: the setter's notes, a note
+          on each answer, and the notes added on the timeline. Only the
+          lead's own setter and Keenan see them. */}
+      <Card id="notes" className="scroll-mt-24" data-testid="lead-notes">
+        <CardHeader>
+          <CardTitle>Notes</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 text-sm">
+          {!contactShown ? (
+            <p className="text-pretty text-muted-foreground" data-testid="notes-hidden">
+              Notes show only to this lead&apos;s own setter and Keenan.
+            </p>
+          ) : (
+            <>
+              {NOTE_KEYS.some((key) => leadNotes.answerNotes[key]) ? (
+                <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[auto_1fr] sm:gap-y-2" data-testid="answer-notes">
+                  {NOTE_KEYS.filter((key) => leadNotes.answerNotes[key]).map((key) => (
+                    <Fragment key={key}>
+                      <dt className="text-muted-foreground">{NOTE_LABELS[key]}</dt>
+                      <dd className="mb-2 text-pretty whitespace-pre-wrap sm:mb-0" data-note={key}>
+                        {leadNotes.answerNotes[key]}
+                      </dd>
+                    </Fragment>
+                  ))}
+                </dl>
+              ) : null}
+              {lead.notes ? (
+                <p className="whitespace-pre-wrap" data-testid="setter-free-notes">
+                  {lead.notes}
+                </p>
+              ) : null}
+              {timelineNotes.length > 0 ? (
+                <ul className="flex flex-col gap-2" aria-label="Notes added later">
+                  {timelineNotes.map((event) => (
+                    <li key={event.id} className="border-l-2 border-border pl-3">
+                      <p className="whitespace-pre-wrap">{describeEvent(event)}</p>
+                      <p className="text-muted-foreground">
+                        {event.actor_id === me.id ? "You" : (names.get(event.actor_id ?? "") ?? "Someone")}, {formatDateTime(event.created_at)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {!NOTE_KEYS.some((key) => leadNotes.answerNotes[key]) && !lead.notes && timelineNotes.length === 0 ? (
+                <p className="text-muted-foreground" data-testid="no-notes">
+                  No notes yet. A note on any answer, or one added on the timeline, shows here.
+                </p>
+              ) : null}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       <Card id="photos" className="scroll-mt-24">
         <CardHeader>
           <CardTitle>Photos</CardTitle>
@@ -464,9 +526,7 @@ export default async function LeadPage({
             <dt className="text-muted-foreground">{SETTER_READ_LABEL}</dt>
             <dd className="mb-2 sm:mb-0" data-testid="setter-read">{setterReadLabel(lead.setter_read) ?? "Not noted"}</dd>
             <dt className="text-muted-foreground">{HOT_BUTTONS_LABEL}</dt>
-            <dd className="mb-2 text-pretty sm:mb-0" data-testid="hot-buttons">{hotButtonsLabel(lead.hot_buttons) ?? "Not noted"}</dd>
-            <dt className="text-muted-foreground">{CONFIRM_BY_LABEL}</dt>
-            <dd data-testid="confirm-by">{confirmByLabel(lead.confirm_by) ?? "Not noted"}</dd>
+            <dd className="text-pretty" data-testid="hot-buttons">{hotButtonsLabel(lead.hot_buttons) ?? "Not noted"}</dd>
           </dl>
         </CardContent>
       </Card>
@@ -482,7 +542,6 @@ export default async function LeadPage({
             <dt className="text-muted-foreground">Came from</dt>
             <dd>{labelFor(SOURCE_OPTIONS, lead.source)}</dd>
           </dl>
-          {lead.notes ? <p className="mt-4 text-sm whitespace-pre-wrap">{lead.notes}</p> : null}
         </CardContent>
       </Card>
 
@@ -523,7 +582,7 @@ export default async function LeadPage({
         </CardHeader>
         <CardContent>
           <ol className="flex flex-col gap-4" aria-label="Timeline">
-            {(events ?? []).map((event) => (
+            {events.map((event) => (
               <li key={event.id} className="flex flex-col gap-1 border-l-2 border-border pl-3">
                 <p className={event.type === "note" ? "text-sm whitespace-pre-wrap" : "text-sm font-semibold"}>
                   {describeEvent(event)}

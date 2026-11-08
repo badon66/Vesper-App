@@ -26,20 +26,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { useViewAs } from "@/components/view-as-context";
 import type { PhotoSlot } from "@/lib/leads/door";
 import {
-  CONFIRM_BY_LABEL,
-  CONFIRM_BY_OPTIONS,
   HOT_BUTTON_OPTIONS,
   HOT_BUTTONS_LABEL,
   SETTER_READ_LABEL,
   SETTER_READ_OPTIONS,
-  type ConfirmBy,
   type HotButton,
   type SetterRead,
 } from "@/lib/leads/extras";
 import { defaultsFromDraft, draftFromFormData, draftHasContent, draftKey, draftPhotoPaths, readDraft, type LeadDraft } from "@/lib/leads/draft";
 import { timed } from "@/lib/answer-within";
 import { takeHandOff } from "@/lib/leads/hand-off";
-import { QUESTION_LABELS, type CountedQuestion } from "@/lib/leads/questions";
+import { QUESTION_LABELS, type AnswerNotes, type CountedQuestion } from "@/lib/leads/questions";
 import { ANSWER_OR_NOT_COLLECTED, leadFormDataToInput, unansweredQuestions, type LeadFormErrors } from "@/lib/leads/schema";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/client";
@@ -61,11 +58,13 @@ export type LeadFormDefaults = {
   // Round 3: optional, never counted.
   setter_read?: SetterRead | null;
   hot_buttons?: HotButton[];
-  confirm_by?: ConfirmBy | null;
   // The answers as the form holds them: a choice, Not collected, or nothing.
   questions: QuestionDefaults;
   phone_not_collected: boolean;
   soffit_note: string;
+  // Round 6: a split soffit's second colour, and each question's note.
+  soffit_colour_2?: string | null;
+  answer_notes?: AnswerNotes;
   notes: string;
   source: LeadSource;
   address: AddressDefaults;
@@ -99,8 +98,6 @@ const NOTHING_FOUND_OUT: QuestionDefaults = {
   soffit_colour: null,
   christmas_lights_now: null,
   looked_into_before: null,
-  areas_wanted: null,
-  install_timing: null,
 };
 
 // One screen for a new lead at the door, and the same form for editing.
@@ -486,18 +483,18 @@ export function LeadForm({
         phone={shown?.phone ?? ""}
         phoneNotCollected={shown?.phone_not_collected ?? false}
         soffitNote={shown?.soffit_note ?? ""}
+        soffitSecond={shown?.soffit_colour_2 ?? null}
+        answerNotes={shown?.answer_notes ?? {}}
         errors={errors}
         onOpenChange={(open) => setOpenNow((current) => (current === null ? null : open.length > 0 ? open : null))}
         onBookingChange={setBookingBlocked}
         markRestRef={markRestRef}
         afterPhone={
-          <OptionalChoice
-            name="confirm_by"
-            legend={`${CONFIRM_BY_LABEL} (optional)`}
-            options={CONFIRM_BY_OPTIONS}
-            defaultValue={shown?.confirm_by}
-            error={errors.confirm_by}
-          />
+          // Round 6 (Keenan, 2026-11-07): Keenan does the confirming, so
+          // Call or text isn't asked any more.
+          <p className="text-sm text-muted-foreground" data-testid="keenan-confirms">
+            Keenan confirms the meeting with them.
+          </p>
         }
         afterQuestions={
           <>

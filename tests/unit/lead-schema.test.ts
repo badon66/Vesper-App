@@ -29,8 +29,6 @@ const blank = {
   both_decision_makers: "not_collected",
   christmas_lights_now: "not_collected",
   looked_into_before: "not_collected",
-  areas_wanted: "not_collected",
-  install_timing: "not_collected",
   notes: "",
   source: "door",
   photo_paths: [] as string[],
@@ -103,8 +101,6 @@ describe("parseLeadForm", () => {
       both_decision_makers: null,
       soffit_colour: null,
       christmas_lights_now: null,
-      areas_wanted: null,
-      install_timing: null,
       slot_photos: [],
     });
     expect(result.values.not_collected).toEqual([
@@ -114,19 +110,17 @@ describe("parseLeadForm", () => {
       "both_decision_makers",
       "christmas_lights_now",
       "looked_into_before",
-      "areas_wanted",
-      "install_timing",
     ]);
   });
 
   it("refuses to save while a question has neither an answer nor Not collected, naming each one", () => {
-    const result = parseLeadForm({ ...blank, phone_not_collected: "", wants_price: "", install_timing: "" });
+    const result = parseLeadForm({ ...blank, phone_not_collected: "", wants_price: "", looked_into_before: "" });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.errors).toEqual({
       phone: ANSWER_OR_NOT_COLLECTED,
       wants_price: ANSWER_OR_NOT_COLLECTED,
-      install_timing: ANSWER_OR_NOT_COLLECTED,
+      looked_into_before: ANSWER_OR_NOT_COLLECTED,
     });
   });
 
@@ -156,22 +150,23 @@ describe("parseLeadForm", () => {
   it("accepts the listed answers to the other Find out questions", () => {
     const result = parseLeadForm({
       ...blank,
-      christmas_lights_now: "hires",
-      areas_wanted: "front_and_sides",
-      install_timing: "before_christmas",
+      christmas_lights_now: "hires_and_diy",
+      looked_into_before: "quotes_and_thought",
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.values).toMatchObject({
-      christmas_lights_now: "hires",
-      areas_wanted: "front_and_sides",
-      install_timing: "before_christmas",
+      christmas_lights_now: "hires_and_diy",
+      looked_into_before: "quotes_and_thought",
     });
-    const wrong = parseLeadForm({ ...blank, christmas_lights_now: "neighbour", areas_wanted: "roof", install_timing: "never" });
+    const wrong = parseLeadForm({ ...blank, christmas_lights_now: "neighbour", looked_into_before: "never" });
     expect(wrong.ok).toBe(false);
     if (!wrong.ok) {
-      expect(Object.keys(wrong.errors).sort()).toEqual(["areas_wanted", "christmas_lights_now", "install_timing"]);
+      expect(Object.keys(wrong.errors).sort()).toEqual(["christmas_lights_now", "looked_into_before"]);
     }
+    // Round 6: Which areas and Timing are no longer read, so a save never touches them.
+    const old = parseLeadForm({ ...blank, areas_wanted: "full_wrap", install_timing: "no_rush" });
+    expect(old.ok && "areas_wanted" in old.values).toBe(false);
   });
 
   it("offers only White, Off-white or cream, Other and Not sure for the soffit", () => {
@@ -216,7 +211,7 @@ describe("leadFormDataToInput and leadColumnsFromValues", () => {
   function formWithNotCollected(): FormData {
     const fd = new FormData();
     fd.set("phone_not_collected", "1");
-    for (const question of ["owns_home", "wants_price", "both_decision_makers", "christmas_lights_now", "looked_into_before", "areas_wanted", "install_timing"]) {
+    for (const question of ["owns_home", "wants_price", "both_decision_makers", "christmas_lights_now", "looked_into_before"]) {
       fd.set(question, "not_collected");
     }
     return fd;
@@ -248,12 +243,13 @@ describe("leadFormDataToInput and leadColumnsFromValues", () => {
     fd.set("owns_home", "yes");
     fd.set("wants_price", "not_yet");
     fd.set("soffit_colour", "off_white");
-    fd.set("install_timing", "no_rush");
+    fd.set("looked_into_before", "got_quotes");
+    fd.set("note_owns_home", "Wife's name on title");
     fd.set("photo_slot_right_corner", `${me}/${photo}.jpg`);
     fd.set("track_colour_id", photo);
     fd.set("track_ral_code", "7016");
     const input = leadFormDataToInput(fd);
-    expect(input).toMatchObject({ christmas_lights_now: "not_collected", areas_wanted: "not_collected", photo_slot_front: "" });
+    expect(input).toMatchObject({ christmas_lights_now: "not_collected", photo_slot_front: "" });
     const parsed = parseLeadForm(input);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
@@ -264,10 +260,11 @@ describe("leadFormDataToInput and leadColumnsFromValues", () => {
       wants_price: false,
       soffit_colour: "off_white",
       christmas_lights_now: null,
-      areas_wanted: null,
-      install_timing: "no_rush",
-      not_collected: ["phone", "both_decision_makers", "christmas_lights_now", "looked_into_before", "areas_wanted"],
+      looked_into_before: "got_quotes",
+      not_collected: ["phone", "both_decision_makers", "christmas_lights_now"],
+      answer_notes: { owns_home: "Wife's name on title" },
     });
+    for (const key of ["areas_wanted", "install_timing", "confirm_by"]) expect(columns).not.toHaveProperty(key);
     for (const key of ["track_colour_id", "track_ral_code", "slot_photos", "photo_slot_right_corner"]) {
       expect(columns).not.toHaveProperty(key);
     }

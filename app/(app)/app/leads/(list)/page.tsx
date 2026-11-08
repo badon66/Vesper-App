@@ -3,16 +3,41 @@ import Form from "next/form";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { ClearLeadDraft } from "@/components/leads/clear-lead-draft";
+import { LeadsWhoMenu } from "@/components/leads/leads-who-menu";
 import { StatusBadge } from "@/components/leads/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { requireProfile } from "@/lib/auth/profile";
-import { ACTIVE_STATUSES, followUpLabel, groupByAttention } from "@/lib/leads/attention";
+import { followUpLabel, groupByAttention } from "@/lib/leads/attention";
 import { formatMeetingTime, sentence } from "@/lib/schedule/meetings";
 import { namesById } from "@/lib/leads/queries";
 import { leadIdsByPhone } from "@/lib/leads/contacts";
 import { cleanSearch, searchFilter } from "@/lib/leads/search";
-import { groupByStatus, leadName, STATUS_LABELS, type LeadStatus } from "@/lib/leads/status";
+import {
+  groupByStatus,
+  labelFor,
+  leadName,
+  SOURCE_OPTIONS,
+  STATUS_LABELS,
+  type LeadSource,
+  type LeadStatus,
+} from "@/lib/leads/status";
+import {
+  DEFAULT_TAB,
+  defaultWho,
+  groupByOutcome,
+  LEAD_TABS,
+  latestMeetingByLead,
+  leadsHref,
+  outcomeLine,
+  parseTab,
+  parseWho,
+  tabStatuses,
+  whoFilter,
+  whoOptions,
+  type LeadTab,
+  type LeadWho,
+} from "@/lib/leads/tabs";
 import { createClient } from "@/lib/supabase/server";
 import { calgaryToday, formatDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -21,9 +46,13 @@ export const metadata: Metadata = {
   title: "Leads",
 };
 
-// All and search show the newest this many. Active lists every open lead.
+// Met, Closed and search show the newest this many. Active and Later list
+// every open lead.
 const LIMIT = 200;
-const ACTIVE_LIMIT = 500;
+const OPEN_LIMIT = 500;
+
+const COLUMNS =
+  "id, first_name, last_name, address_line, neighbourhood, status, source, follow_up_on, created_at, created_by, assigned_to, sold_at, installed_at, lost_at, lost_reason";
 
 type Row = {
   id: string;
@@ -32,34 +61,42 @@ type Row = {
   address_line: string;
   neighbourhood: string | null;
   status: LeadStatus;
+  source: LeadSource;
   follow_up_on: string | null;
   created_at: string;
   created_by: string;
   assigned_to: string | null;
+  sold_at: string | null;
+  installed_at: string | null;
+  lost_at: string | null;
+  lost_reason: string | null;
 };
 
 type Section = { key: string; title: string; leads: Row[] };
 
-// Leads opens to Active: New, Follow up and Meeting booked, in the order they
-// need attention. Lost and closed leads are behind All and search, and search
-// always covers every status. Mine is the person's own leads; Everyone shows
-// the whole team's, read only unless they are yours. Every query is scoped to
-// the person the screen is for, so View as shows exactly what they see.
+// Leads (round 6, Keenan, 2026-11-08): one compact row of status tabs
+// (Active, Later, Met, Closed) and a small menu for whose leads. Keenan opens
+// on Everyone; a setter opens on their own, with Everyone one tap away.
+// Search covers every status. Every query is scoped in code to the person
+// the screen is for, so View as shows exactly what they see.
 export default async function LeadsPage({
   searchParams,
 }: {
   searchParams: Promise<{
     q?: string | string[];
+    tab?: string | string[];
+    who?: string | string[];
+    // Before round 6: scope=mine|everyone still works; view is ignored.
     scope?: string | string[];
-    view?: string | string[];
     added?: string | string[];
   }>;
 }) {
   const me = await requireProfile();
+  const owner = me.role === "owner";
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q : "";
-  const everyone = params.scope === "everyone";
-  const all = params.view === "all";
+  const tab = parseTab(params.tab);
+  const who = parseWho(me.role, { who: params.who, scope: params.scope });
   const added = typeof params.added === "string" ? params.added : null;
   const search = cleanSearch(q);
   const supabase = await createClient();
@@ -67,51 +104,79 @@ export default async function LeadsPage({
   const phoneMatches = search.digits.length >= 3 ? await leadIdsByPhone(supabase, me, search.digits) : [];
   const filter = searchFilter(search, phoneMatches);
   const searching = Boolean(filter);
-  const showActive = !all && !searching;
+  const whose = whoFilter(me.role, who, me.id);
   const today = calgaryToday();
+  const statuses = [...tabStatuses(tab)];
 
-  let query = supabase
-    .from("leads")
-    .select("id, first_name, last_name, address_line, neighbourhood, status, follow_up_on, created_at, created_by, assigned_to");
-  if (!everyone) query = query.or(`created_by.eq.${me.id},assigned_to.eq.${me.id}`);
-  if (filter) query = query.or(filter);
-  if (showActive) {
-    query = query.in("status", [...ACTIVE_STATUSES]).order("created_at", { ascending: true }).limit(ACTIVE_LIMIT);
+  let query = supabase.from("leads").select(COLUMNS);
+  if (whose) query = query.or(whose);
+  if (filter) {
+    query = query.or(filter).order("created_at", { ascending: false }).limit(LIMIT);
+  } else if (tab === "active") {
+    query = query.in("status", statuses).order("created_at", { ascending: true }).limit(OPEN_LIMIT);
+  } else if (tab === "later") {
+    query = query.in("status", statuses).order("follow_up_on", { ascending: true }).limit(OPEN_LIMIT);
   } else {
-    query = query.order("created_at", { ascending: false }).limit(LIMIT);
+    query = query.in("status", statuses).order("updated_at", { ascending: false }).limit(LIMIT);
   }
+
+  // How many leads each tab holds, for the same who. Not while searching:
+  // the tabs give way to Clear search then.
+  const countTab = async (statusesOfTab: readonly LeadStatus[]) => {
+    let count = supabase.from("leads").select("id", { count: "exact", head: true }).in("status", [...statusesOfTab]);
+    if (whose) count = count.or(whose);
+    const { count: n, error } = await count;
+    return error ? null : n;
+  };
+  const countsQuery: Promise<(number | null)[]> = searching
+    ? Promise.resolve([])
+    : Promise.all(LEAD_TABS.map((entry) => countTab(entry.statuses)));
   const addedQuery = added
     ? supabase.from("leads").select("id, first_name, last_name, created_by").eq("id", added).maybeSingle()
     : null;
-  const [{ data, error }, addedResult] = await Promise.all([query, addedQuery]);
+  const [{ data, error }, counts, addedResult] = await Promise.all([query, countsQuery, addedQuery]);
   if (error) throw new Error("Leads could not be loaded.");
 
   const leads: Row[] = data ?? [];
-  const names = everyone ? await namesById(supabase, leads.map((lead) => lead.created_by)) : new Map<string, string>();
+  const showWho = who !== "mine";
   const bookedIds = leads.filter((lead) => lead.status === "meeting_booked").map((lead) => lead.id);
-  const { data: live } =
-    bookedIds.length > 0
-      ? await supabase.from("meetings").select("lead_id, starts_at").in("lead_id", bookedIds).in("status", ["booked", "confirmed"])
-      : { data: [] };
-  const meetingAt = new Map((live ?? []).map((meeting) => [meeting.lead_id, new Date(meeting.starts_at).toISOString()]));
-  const sections: Section[] = showActive
-    ? groupByAttention(leads, today, meetingAt)
-    : groupByStatus(leads).map((group) => ({ key: group.status, title: STATUS_LABELS[group.status], leads: group.leads }));
-  const addedLead = addedResult?.data ?? undefined;
-
-  const link = (next: { scope?: "mine" | "everyone"; view?: "active" | "all"; keepSearch?: boolean }) => {
-    const target = new URLSearchParams();
-    target.set("scope", next.scope ?? (everyone ? "everyone" : "mine"));
-    target.set("view", next.view ?? (all ? "all" : "active"));
-    if (q && next.keepSearch !== false) target.set("q", q);
-    return `/app/leads?${target.toString()}`;
+  const metIds = leads.filter((lead) => lead.status === "met").map((lead) => lead.id);
+  const meetingsOf = async (ids: string[], meetingStatuses: ("booked" | "confirmed" | "qualified" | "not_qualified")[]) => {
+    if (ids.length === 0) return [];
+    const { data: rows } = await supabase.from("meetings").select("lead_id, starts_at").in("lead_id", ids).in("status", meetingStatuses);
+    return rows ?? [];
   };
+  const [names, live, held] = await Promise.all([
+    showWho ? namesById(supabase, leads.map((lead) => lead.created_by)) : new Map<string, string>(),
+    meetingsOf(bookedIds, ["booked", "confirmed"]),
+    // A met lead's latest meeting that was held, marked or not yet marked.
+    meetingsOf(metIds, ["qualified", "not_qualified", "booked", "confirmed"]),
+  ]);
+  const meetingAt = new Map(live.map((meeting) => [meeting.lead_id, new Date(meeting.starts_at).toISOString()]));
+  const metAt = latestMeetingByLead(held);
+
+  const sections: Section[] = searching
+    ? groupByStatus(leads).map((group) => ({ key: group.status, title: STATUS_LABELS[group.status], leads: group.leads }))
+    : tab === "active" || tab === "later"
+      ? groupByAttention(leads, today, meetingAt)
+      : groupByOutcome(leads, tab, metAt).map((group) => ({
+          key: group.status,
+          title: STATUS_LABELS[group.status],
+          leads: group.leads,
+        }));
+  const addedLead = addedResult?.data ?? undefined;
+  const limited = (searching || tab === "met" || tab === "closed") && leads.length === LIMIT;
+
+  const tabParam = tab === DEFAULT_TAB ? undefined : tab;
+  const whoParam = who === defaultWho(me.role) ? undefined : who;
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Leads</h1>
-        <Button asChild className="h-11">
+    <div className="flex flex-col gap-4">
+      {/* One row at 390 wide: the title, whose leads, and New lead. */}
+      <div className="flex items-center gap-2">
+        <h1 className="shrink-0 text-2xl font-bold">Leads</h1>
+        <LeadsWhoMenu current={who} options={whoOptions(me.role)} hidden={{ tab: tabParam, q: q || undefined }} />
+        <Button asChild className="ml-auto h-11">
           <Link href="/app/leads/new">
             <Plus aria-hidden="true" className="size-5" />
             New lead
@@ -135,38 +200,34 @@ export default async function LeadsPage({
         </div>
       ) : null}
 
-      <div className="grid gap-2 sm:grid-cols-2">
-        {/* A search covers every status, so while searching, Active and All
-            give way to the way back (2026-11-03). */}
-        {searching ? (
+      {/* A search covers every status, so while searching the tabs give way
+          to the way back (2026-11-03). */}
+      {searching ? (
+        <div className="flex min-h-[3.375rem] items-center justify-between gap-3 rounded-md border py-1 pr-1 pl-4">
+          <p className="text-sm text-pretty text-muted-foreground">Search covers every status.</p>
           <Link
-            href={link({ keepSearch: false })}
-            className="flex h-[3.375rem] items-center justify-center rounded-md border text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            href={leadsHref(me.role, { tab, who })}
+            className="inline-flex h-11 shrink-0 items-center rounded-sm px-3 text-sm font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
             data-testid="clear-search"
           >
-            Clear search: every status shown
+            Clear search
           </Link>
-        ) : (
-          <Switch
-            label="Which leads"
-            options={[
-              { label: "Active", href: link({ view: "active" }), current: !all },
-              { label: "All", href: link({ view: "all" }), current: all },
-            ]}
-          />
-        )}
-        <Switch
-          label="Whose leads"
-          options={[
-            { label: "Mine", href: link({ scope: "mine" }), current: !everyone },
-            { label: "Everyone", href: link({ scope: "everyone" }), current: everyone },
-          ]}
+        </div>
+      ) : (
+        <StatusTabs
+          tabs={LEAD_TABS.map((entry, index) => ({
+            value: entry.value,
+            label: entry.label,
+            href: leadsHref(me.role, { tab: entry.value, who }),
+            count: counts[index] ?? null,
+          }))}
+          current={tab}
         />
-      </div>
+      )}
 
       <Form action="/app/leads" role="search" className="flex gap-2">
-        <input type="hidden" name="scope" value={everyone ? "everyone" : "mine"} />
-        <input type="hidden" name="view" value={all ? "all" : "active"} />
+        {tabParam ? <input type="hidden" name="tab" value={tabParam} /> : null}
+        {whoParam ? <input type="hidden" name="who" value={whoParam} /> : null}
         <Input
           type="search"
           name="q"
@@ -181,30 +242,23 @@ export default async function LeadsPage({
         </Button>
       </Form>
 
-      {/* One short line only when it tells something the switches don't. */}
-      {searching || everyone ? (
+      {/* Only when it tells a setter something the menu doesn't. */}
+      {!owner && who === "everyone" ? (
         <p className="text-sm text-pretty text-muted-foreground">
-          {searching ? "Search covers every status, lost and closed leads included." : ""}
-          {searching && everyone ? " " : ""}
-          {everyone ? "Everyone's leads, to check an address before knocking. You can change only your own." : ""}
+          Everyone&apos;s leads, to check an address before knocking. You can change only your own.
         </p>
       ) : null}
 
       {sections.length === 0 ? (
-        <p className="rounded-md border px-4 py-6 text-sm text-muted-foreground">
-          {searching
-            ? `No leads match "${q}".`
-            : showActive
-              ? everyone
-                ? "No one has an active lead right now. Lost and closed leads are under All."
-                : "No active leads. Tap New lead to add one from the door, or look under All for lost and closed ones."
-              : everyone
-                ? "No one has added a lead yet."
-                : "No leads yet. Tap New lead to add the first one from the door."}
-          {searching && !everyone ? (
+        <p className="rounded-md border px-4 py-6 text-sm text-pretty text-muted-foreground">
+          {searching ? `No leads match "${q}".` : emptyText(tab, who, owner)}
+          {searching && who !== "everyone" ? (
             <>
               {" "}
-              <Link href={link({ scope: "everyone" })} className="inline-flex min-h-11 items-center font-semibold text-foreground underline underline-offset-4">
+              <Link
+                href={leadsHref(me.role, { tab, who: "everyone", q })}
+                className="inline-flex min-h-11 items-center font-semibold text-foreground underline underline-offset-4"
+              >
                 Search everyone&apos;s leads
               </Link>
             </>
@@ -220,12 +274,15 @@ export default async function LeadsPage({
               {section.leads.map((lead) => {
                 const mine = lead.created_by === me.id || lead.assigned_to === me.id;
                 const overdue = lead.status === "follow_up" && lead.follow_up_on !== null && lead.follow_up_on < today;
+                const outcome = outcomeLine(lead, metAt.get(lead.id));
                 const followUp =
                   lead.status === "follow_up" && lead.follow_up_on
                     ? `${followUpLabel(lead.follow_up_on, today)}. `
                     : meetingAt.has(lead.id)
                       ? `${sentence(`Meeting ${formatMeetingTime(meetingAt.get(lead.id) as string)}`)} `
                       : "";
+                const by = showWho && lead.created_by !== me.id ? ` by ${names.get(lead.created_by) ?? "someone"}` : "";
+                const source = owner ? labelFor(SOURCE_OPTIONS, lead.source) : "";
                 return (
                   <li key={lead.id}>
                     <Link
@@ -241,9 +298,11 @@ export default async function LeadsPage({
                         {lead.neighbourhood ? `, ${lead.neighbourhood}` : ""}
                       </span>
                       <span className="text-sm text-muted-foreground">
+                        {outcome ? <span className="text-foreground">{sentence(outcome)} </span> : null}
                         {overdue ? <span className="font-bold text-foreground">{followUp}</span> : followUp}
                         Added {formatDate(lead.created_at)}
-                        {everyone && !mine ? ` by ${names.get(lead.created_by) ?? "someone"}, read only` : ""}
+                        {owner ? by : by && !mine ? `${by}, read only` : ""}
+                        {source ? ` · ${source}` : ""}
                       </span>
                     </Link>
                   </li>
@@ -254,29 +313,64 @@ export default async function LeadsPage({
         ))
       )}
 
-      {!showActive && leads.length === LIMIT ? (
-        <p className="text-sm text-muted-foreground">
-          Showing the {LIMIT} newest. Search to find older leads.
-        </p>
+      {limited ? (
+        <p className="text-sm text-muted-foreground">Showing the {LIMIT} newest. Search to find older leads.</p>
       ) : null}
     </div>
   );
 }
 
-function Switch({ label, options }: { label: string; options: { label: string; href: string; current: boolean }[] }) {
+// What each empty tab will hold, and how a lead gets there.
+function emptyText(tab: LeadTab, who: LeadWho, owner: boolean): string {
+  const everyone = who === "everyone";
+  switch (tab) {
+    case "active":
+      if (owner && who === "mine") return "None of your own leads are active. Tap New lead to add a phone call or referral.";
+      if (owner && who === "setters") return "No active leads from setters. A lead they add at the door shows here.";
+      if (everyone) return "No active leads. New leads and booked meetings show here.";
+      return "No active leads. Tap New lead to add one from the door.";
+    case "later":
+      return everyone
+        ? "No follow-ups. A lead set to Follow up shows here, with the day to come back."
+        : "No follow-ups. A lead you set to Follow up shows here, with the day to come back.";
+    case "met":
+      return owner
+        ? "No one is waiting on a decision. A lead shows here once you mark it Met or Quoted."
+        : "No leads waiting on a decision. A lead shows here once Keenan has met them.";
+    case "closed":
+      return "No closed leads yet. Sold, installed and lost leads show here.";
+  }
+}
+
+// Four status tabs in one row: a filter inside Leads, not app navigation.
+function StatusTabs({
+  tabs,
+  current,
+}: {
+  tabs: { value: LeadTab; label: string; href: string; count: number | null }[];
+  current: LeadTab;
+}) {
   return (
-    <nav aria-label={label} className="grid grid-cols-2 rounded-md border p-1">
-      {options.map((option) => (
+    <nav aria-label="Lead status" className="grid grid-cols-4 rounded-md border p-1">
+      {tabs.map((tab) => (
         <Link
-          key={option.label}
-          href={option.href}
-          aria-current={option.current ? "page" : undefined}
+          key={tab.value}
+          href={tab.href}
+          aria-current={tab.value === current ? "page" : undefined}
           className={cn(
-            "flex h-11 items-center justify-center rounded-sm text-sm font-semibold text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring",
-            option.current && "bg-secondary text-secondary-foreground",
+            "flex h-11 min-w-0 items-center justify-center gap-1 rounded-sm px-1 text-sm font-semibold text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            tab.value === current && "bg-secondary text-secondary-foreground",
           )}
         >
-          {option.label}
+          <span>{tab.label}</span>
+          {tab.count !== null ? (
+            <>
+              <span aria-hidden="true" className="text-xs font-medium tabular-nums">
+                {tab.count > 999 ? "999+" : tab.count}
+              </span>
+              <span className="sr-only">, {tab.count} leads</span>
+            </>
+          ) : null}
         </Link>
       ))}
     </nav>
