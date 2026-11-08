@@ -5,18 +5,28 @@ import { WARM_WHITE } from "@/lib/lights/looks";
 import {
   bandHeight,
   BAND_HEIGHT_CSS,
+  bottomRowRight,
+  bottomRowWidth,
   buildDeckPayload,
   CHECK_TOGETHER,
   companyLines,
   companyOf,
   coverLine,
+  DECK_CLEAR_CSS,
+  DECK_CLEAR_PX,
+  DECK_ROW,
+  DECK_ROW_BOTTOM_CSS,
+  DECK_SIZES,
   deckPages,
   deckPhotoPathsToSign,
   entryOf,
+  exitHoldMoved,
+  EXIT_HOLD_SLOP_PX,
   fluidPx,
   fluidValue,
   fullWarrantyShows,
   GALLERY_HERO_COUNT,
+  galleryCounter,
   galleryItems,
   installSteps,
   isNear,
@@ -194,6 +204,18 @@ describe("the gallery", () => {
     expect(seeAllLabel(WORDS.pages.gallery.moreLabel, 12)).toBe("See all 12");
   });
 
+  it("counts the band's photos only while they are the whole gallery, so See all N is the only total", () => {
+    expect(galleryCounter(0, 6, 6)).toBe("1 of 6");
+    expect(galleryCounter(1, 3, 3)).toBe("2 of 3");
+    expect(galleryCounter(9, 6, 6)).toBe("6 of 6");
+    // Six on the band out of twelve: no "1 of 6" beside "See all 12".
+    expect(galleryCounter(0, 6, 12)).toBeNull();
+    // In rehearsal the examples count toward the gallery too.
+    expect(galleryCounter(0, 6, 7)).toBeNull();
+    expect(galleryCounter(0, 1, 1)).toBeNull();
+    expect(galleryCounter(0, 0, 0)).toBeNull();
+  });
+
   it("steps through its first six photos with the chevrons before turning the page", () => {
     expect(stepFor("gallery", 0, 6, 1)).toEqual({ photo: 1 });
     expect(stepFor("gallery", 5, 6, 1)).toEqual({ page: 1 });
@@ -296,12 +318,66 @@ describe("the deck's sizes", () => {
     expect(Number(slope) * 13.66 + Number(intercept)).toBeCloseTo(60, 2);
   });
 
+  it("grow the colour page's names, the full warranty and a More's words at 1366 too (round 7 review)", () => {
+    const at = (css: string, width: number) => {
+      const [, slope, intercept] = css.match(/calc\(([\d.]+)cqw \+ (-?[\d.]+)px\)/) ?? [];
+      return Number(slope) * (width / 100) + Number(intercept);
+    };
+    for (const [css, air, pro] of [
+      [DECK_SIZES.small, 20, 22],
+      [DECK_SIZES.name, 32, 36],
+      [DECK_SIZES.warranty, 24, 27],
+      [DECK_SIZES.moreLabel, 44, 50],
+      [DECK_SIZES.moreBody, 30, 32],
+    ] as const) {
+      expect(at(css, 1180)).toBeCloseTo(air, 2);
+      expect(at(css, 1366)).toBeCloseTo(pro, 2);
+    }
+    // A More's label is in the headline's family, between the words and the headline.
+    expect(fluidValue(44, 50, 1180)).toBeGreaterThan(fluidValue(27, 30, 1180));
+    expect(fluidValue(44, 50, 1180)).toBeLessThanOrEqual(fluidValue(52, 60, 1180));
+  });
+
   it("keep the band about 30% of 820 and 28% of 1024", () => {
     expect(bandHeight(820)).toBeCloseTo(246, 6);
     expect(bandHeight(1024)).toBeCloseTo(286.72, 6);
     const [, slope, intercept] = BAND_HEIGHT_CSS.match(/calc\(([\d.]+)cqh \+ ([\d.]+)px\)/) ?? [];
     expect(Number(slope) * 8.2 + Number(intercept)).toBeCloseTo(246, 1);
     expect(Number(slope) * 10.24 + Number(intercept)).toBeCloseTo(286.72, 1);
+  });
+});
+
+describe("the bottom row", () => {
+  it("puts the dots and chevrons on the More button's centre line: 56 px tall, 20 px up or above the home indicator", () => {
+    expect(DECK_ROW.height).toBe(56);
+    expect(DECK_ROW_BOTTOM_CSS).toBe("max(20px, env(safe-area-inset-bottom, 0px))");
+    // Chevrons 44 px or larger; dot targets 44 px tall.
+    expect(DECK_ROW.chevron).toBeGreaterThanOrEqual(44);
+    expect(DECK_ROW.dotHeight).toBeGreaterThanOrEqual(44);
+  });
+
+  it("ends a picture 8 px above the row's tallest part: 78 px up without a home indicator", () => {
+    expect(DECK_CLEAR_PX).toBe(20 + (56 + 44) / 2 + 8);
+    expect(DECK_CLEAR_CSS).toBe("calc(var(--deck-row-bottom, 20px) + 58px)");
+  });
+
+  it("with all twelve pages, ends clear of the widest seeded More button at 1180", () => {
+    expect(bottomRowWidth(12)).toBe(12 * 40 + 8 + 2 * (44 + 6));
+    // "What the app does" at 20 px semibold with 24 px padding starts at x 901
+    // at 1180 (measured in the browser); the row ends at least 16 px before it.
+    expect(bottomRowRight(1180, 12)).toBeLessThanOrEqual(901 - 16);
+    expect(bottomRowRight(1180, 10)).toBeLessThan(bottomRowRight(1180, 12));
+  });
+});
+
+describe("the exit", () => {
+  it("is a hold only while the finger stays within 10 px of where it went down", () => {
+    expect(EXIT_HOLD_SLOP_PX).toBe(10);
+    expect(exitHoldMoved({ x: 44, y: 44 }, { x: 44, y: 44 })).toBe(false);
+    expect(exitHoldMoved({ x: 44, y: 44 }, { x: 50, y: 52 })).toBe(false);
+    expect(exitHoldMoved({ x: 44, y: 44 }, { x: 54, y: 44 })).toBe(false);
+    expect(exitHoldMoved({ x: 44, y: 44 }, { x: 52, y: 52 })).toBe(true);
+    expect(exitHoldMoved({ x: 44, y: 44 }, { x: 44, y: 70 })).toBe(true);
   });
 });
 

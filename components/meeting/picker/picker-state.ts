@@ -24,9 +24,10 @@ import { MOTION } from "@/lib/motion";
 //                                and Reduce Motion, open lit
 //   shouldPlay(state)            Twinkle and Chase run only while the page is
 //                                current, the app visible, no layer open
-//   swipeDelta(move), swipePointer(type), isControlTarget(target)
-//                                a one-finger swipe turns the page; a touch
-//                                that starts on a button never does
+//   swipeDelta(move, area), swipePointer(type), isControlTarget(target)
+//                                a one-finger swipe turns the page (on the
+//                                photo only a real flick or a long drag); a
+//                                touch that starts on a button never does
 
 export type PickerChoice = { look: string; effect: Effect; played: boolean };
 
@@ -157,19 +158,39 @@ export function shouldPlay(state: {
 // ---------------------------------------------------------------- touches
 
 // A swipe: far enough, or a quick flick, and clearly sideways.
+// On the tray: 60 px, or a 24 px flick.
 export const SWIPE_MIN_PX = 60;
 export const FLICK_MIN_PX = 24;
 export const FLICK_PX_PER_MS = 0.45;
 export const SWIPE_SIDEWAYS_RATIO = 1.5;
+// On the photo (round 7 review): customers point at and trace their own
+// roofline ("could we do just this part?"), so only a real flick (40 px at
+// 0.45 px/ms or faster) or a long drag (a quarter of the page's width)
+// turns the page. A slow trace along an eave never does.
+export const PHOTO_FLICK_MIN_PX = 40;
+export const PHOTO_DRAG_SHARE = 0.25;
+
+// Where the finger came down: the photo (with the page's width), or the tray.
+export type SwipeArea = { on: "photo"; width: number } | { on: "tray" };
 
 // The page to turn to after a one-finger swipe from (0, 0) to (dx, dy) over
 // `ms`: 1 (the next page, a swipe to the left), -1 (the previous), or null.
-export function swipeDelta({ dx, dy, ms }: { dx: number; dy: number; ms: number }): 1 | -1 | null {
+export function swipeDelta(
+  { dx, dy, ms }: { dx: number; dy: number; ms: number },
+  area: SwipeArea = { on: "tray" },
+): 1 | -1 | null {
   const across = Math.abs(dx);
   if (!Number.isFinite(across) || across === 0) return null;
   if (across < SWIPE_SIDEWAYS_RATIO * Math.abs(dy)) return null;
-  const flick = ms > 0 && across >= FLICK_MIN_PX && across / ms >= FLICK_PX_PER_MS;
-  if (across < SWIPE_MIN_PX && !flick) return null;
+  const fast = ms > 0 && across / ms >= FLICK_PX_PER_MS;
+  if (area.on === "photo") {
+    const flick = fast && across >= PHOTO_FLICK_MIN_PX;
+    const long = area.width > 0 && across >= PHOTO_DRAG_SHARE * area.width;
+    if (!flick && !long) return null;
+  } else {
+    const flick = fast && across >= FLICK_MIN_PX;
+    if (across < SWIPE_MIN_PX && !flick) return null;
+  }
   return dx < 0 ? 1 : -1;
 }
 

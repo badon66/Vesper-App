@@ -94,7 +94,9 @@ export function QuoteScreen({
   }
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-6 overflow-y-auto px-6 pt-14 pb-12 lg:grid lg:grid-cols-[1fr_380px] lg:gap-10 lg:overflow-hidden lg:px-10 lg:pt-16 lg:pb-10">
+    // Round 7 review: the top clears the exit (20 px in, 48 px) and the foot
+    // clears the bottom row of dots and chevrons; the page is otherwise as built.
+    <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-6 overflow-y-auto px-6 pt-[88px] pb-[var(--deck-clear,78px)] lg:grid lg:grid-cols-[1fr_380px] lg:gap-10 lg:overflow-hidden lg:px-10">
       {/* ------------------------------------------------ the builder */}
       <div className="flex min-w-0 flex-col gap-5 lg:min-h-0 lg:overflow-y-auto lg:pr-1 lg:pb-4" data-testid="quote-builder">
         <h2 className="text-3xl font-bold lg:text-4xl">Your price</h2>

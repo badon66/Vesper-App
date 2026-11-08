@@ -13,7 +13,10 @@ import { MOTION, transition } from "@/lib/motion";
 //
 // The line is a 1 px warm white hairline with a 56 px navy grip ringed in
 // gold (the one thing to touch on the page); "Night" and "Day" ride either
-// side of the grip at 20 px on small solid navy plates. Only the 96 px strip
+// side of the grip at 20/22 px on small solid navy plates. The grip and its
+// plates sit in the lower third (round 7 review), over the wall and the
+// ground, clear of every roofline in Keenan's pair (his rooflines sit in the
+// middle 60%) and in the drawn pair. Only the 96 px strip
 // around the line drags, following the finger one to one; a tap anywhere
 // else on the picture moves the line there over 250 ms (in one step with
 // Reduce Motion), and a swipe anywhere else turns the page like every other
@@ -22,8 +25,9 @@ import { MOTION, transition } from "@/lib/motion";
 //
 // day and night are the two pictures, each filling its box: Keenan's pair of
 // photos, or the drawn pair (HouseDayDrawing and LitHouse).
-const PLATE =
-  "absolute top-1/2 -translate-y-1/2 rounded-md bg-navy px-2.5 py-1.5 text-[20px] leading-none font-semibold whitespace-nowrap text-foreground";
+// The grip's centre, down the picture.
+const GRIP_AT = "top-[78%]";
+const PLATE = `absolute ${GRIP_AT} -translate-y-1/2 rounded-md bg-navy px-2.5 py-1.5 text-[length:var(--deck-small,20px)] leading-none font-semibold whitespace-nowrap text-foreground`;
 
 export function DayNightSlider({
   day,
@@ -84,7 +88,9 @@ export function DayNightSlider({
           onClick={(event) => event.stopPropagation()}
         >
           <span className={`${PLATE} right-[calc(50%+36px)]`}>Night</span>
-          <span className="absolute top-1/2 left-1/2 flex size-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-primary bg-navy text-foreground">
+          <span
+            className={`absolute ${GRIP_AT} left-1/2 flex size-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-primary bg-navy text-foreground`}
+          >
             {/* An icon, not the arrow character: some fonts promote it to emoji. */}
             <MoveHorizontal className="size-6" />
           </span>

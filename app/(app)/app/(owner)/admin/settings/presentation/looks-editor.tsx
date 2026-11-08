@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Check, CircleAlert, Plus, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, CircleAlert, Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { LitHouse } from "@/components/drawings/lit-house";
 import { useBoxSize } from "@/components/lights/light-canvas";
@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { MAX_ACTIVE_LOOKS, MAX_LOOK_COLOURS, WORD_LIMITS, type Effect, type Look } from "@/lib/deck";
 import { WARM_WHITE } from "@/lib/lights/looks";
+import { smartApostrophes } from "@/lib/typography";
 import {
   blankLook,
   isDraftLook,
@@ -48,10 +49,11 @@ type Props = {
   onBlur: (fieldKey: string) => void;
   openKey: string | null;
   onOpen: (key: string | null) => void;
-  measured: boolean;
+  // True for at most a second while the meeting's font loads.
+  checking: boolean;
 };
 
-export function LooksEditor({ looks, onLooks, issues, wrap, due, onBlur, openKey, onOpen, measured }: Props) {
+export function LooksEditor({ looks, onLooks, issues, wrap, due, onBlur, openKey, onOpen, checking }: Props) {
   const [effect, setEffect] = useState<Exclude<Effect, "off">>("steady");
   const on = looks.filter((look) => look.active).length;
   const previewed = looks.find((look) => look.key === openKey) ?? looks.find((look) => look.active) ?? null;
@@ -131,9 +133,9 @@ export function LooksEditor({ looks, onLooks, issues, wrap, due, onBlur, openKey
             <Plus aria-hidden="true" />
             Add a look
           </Button>
-          {!measured ? (
-            <p className="text-sm text-muted-foreground">
-              Checking whether each label fits the meeting&apos;s row once the font has loaded.
+          {checking ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              Checking whether each label fits the meeting&apos;s row.
             </p>
           ) : null}
         </div>
@@ -199,19 +201,24 @@ function LookItem({
           aria-expanded={open}
           aria-controls={panelId}
           onClick={onToggle}
-          className="flex min-h-11 min-w-0 flex-1 flex-col items-start rounded-md px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <span className="flex max-w-full min-w-0 items-center gap-2 font-semibold">
-            <span className="truncate">{title}</span>
-            {isDraftLook(look) ? <DraftTag /> : null}
-            {needsLook ? (
-              <>
-                <CircleAlert aria-hidden="true" className="size-4 shrink-0 text-destructive" />
-                <span className="sr-only">needs a look</span>
-              </>
-            ) : null}
+          <span className="flex min-w-0 flex-1 flex-col items-start">
+            <span className="flex max-w-full min-w-0 items-center gap-2 font-semibold">
+              <span className="truncate">{title}</span>
+              {isDraftLook(look) ? <DraftTag /> : null}
+              {needsLook ? (
+                <>
+                  <CircleAlert aria-hidden="true" className="size-4 shrink-0 text-destructive" />
+                  <span className="sr-only">needs fixing</span>
+                </>
+              ) : null}
+            </span>
+            <span className="max-w-full truncate text-sm text-muted-foreground">{look.words.trim() || "No colour words yet"}</span>
+            {opening ? <span className="text-sm text-muted-foreground">Always on: every meeting opens on it.</span> : null}
           </span>
-          <span className="max-w-full truncate text-sm text-muted-foreground">{look.words.trim() || "No colour words yet"}</span>
+          {/* The edit cue: the row opens to change the look. */}
+          <ChevronDown aria-hidden="true" className={cn("size-4 shrink-0 text-muted-foreground", open && "rotate-180")} />
         </button>
         <div className="flex items-center gap-2 px-1">
           <Switch
@@ -524,8 +531,8 @@ function LookPreview({
 }
 
 // The row of look buttons as the meeting's tray draws it at 1180 wide,
-// laid out at full size and then scaled down to fit here, so a label that
-// wraps at the meeting wraps here too, at a glance.
+// laid out at full size and then scaled down to fit here, so a label too
+// long for the meeting is cut short here too, at a glance.
 const ROW_PREVIEW_PAD = 8;
 
 function RowPreview({ looks, chosenKey }: { looks: Look[]; chosenKey: string | null }) {
@@ -567,15 +574,16 @@ function RowPreview({ looks, chosenKey }: { looks: Look[]; chosenKey: string | n
                   )}
                   style={{ paddingInline: LOOK_ROW.buttonPadding }}
                 >
-                  <span className="flex items-center gap-2 font-semibold" style={{ fontSize: LOOK_ROW.name.size, lineHeight: 1.2 }}>
-                    {chosen ? <Check className="size-5 shrink-0" /> : null}
-                    {look.name || "New look"}
+                  <span className="flex max-w-full items-center font-semibold" style={{ fontSize: LOOK_ROW.name.size, lineHeight: 1.2 }}>
+                    <span className="min-w-0 truncate">{smartApostrophes(look.name || "New look")}</span>
+                    {/* The tick's room is kept on every button, as at the meeting. */}
+                    <Check className={cn("size-5 shrink-0", !chosen && "invisible")} style={{ marginLeft: LOOK_ROW.tick - 20 }} />
                   </span>
                   <span
-                    className={chosen ? undefined : "text-muted-foreground"}
+                    className={cn("max-w-full truncate", chosen ? undefined : "text-muted-foreground")}
                     style={{ fontSize: LOOK_ROW.words.size, lineHeight: 1.2, fontWeight: LOOK_ROW.words.weight }}
                   >
-                    {look.words}
+                    {smartApostrophes(look.words)}
                   </span>
                 </div>
               );

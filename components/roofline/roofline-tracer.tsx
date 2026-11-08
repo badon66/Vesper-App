@@ -29,6 +29,7 @@ import {
   placeSnap,
   scaleFromStored,
   scaleOf,
+  scaleLine,
   scaleProblem,
   setOtherFeet,
   setScaleKind,
@@ -38,13 +39,23 @@ import {
   type PointRef,
   type ScaleDraft,
 } from "@/components/roofline/trace-edit";
-import { checkTraceSave, DIDNT_SAVE, FALLBACK_DUSK_BRIGHTNESS, readBackParts, type TraceSave } from "@/components/roofline/trace-save";
+import {
+  checkTraceSave,
+  DIDNT_SAVE,
+  FALLBACK_DUSK_BRIGHTNESS,
+  readBackOf,
+  readBackParts,
+  sameTrace,
+  storedForm,
+  type TraceSave,
+  type TraceShape,
+} from "@/components/roofline/trace-save";
 import { TraceStage } from "@/components/roofline/trace-stage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Look, Pt, ScaleKind, TraceScale } from "@/lib/deck";
 import { TOO_DARK_LINE, measureDusk } from "@/lib/lights/dusk";
-import { SCALE_LOOKS_WRONG, placeLights, traceReadBack, type Size, type TraceGeometry } from "@/lib/lights/place";
+import { SCALE_LOOKS_WRONG, placeLights, type Size, type TraceGeometry } from "@/lib/lights/place";
 import { ROOFLINE_PHOTO_CHANGED } from "@/lib/meetings/prep";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +69,12 @@ import { cn } from "@/lib/utils";
 // (spacing is never faked), with optional feet per line. Save stores it
 // all photo-relative, owner only. Designed for the iPad, usable on a phone
 // in landscape. For Keenan only: the read-backs never reach a customer.
+//
+// The read-back counts with the same function Save stores light_count with
+// (readBackOf), so the tracer and prep never disagree; while what's on
+// screen isn't what's saved, it says "Not saved yet" beside the count. A
+// reopened trace shows its scale beside the read-back, and Undo works on it
+// from the start (the last point, then the last line; never the scale).
 
 export const TRACE_HINT =
   "Tap along the bottom of the roof edge, where the track goes. Trace only what you'd quote. Start a new line for each separate edge.";
@@ -78,9 +95,18 @@ export type TracerStart = {
   lines: Pt[][];
   lineFeet: (number | null)[];
   scale: TraceScale | null;
+  // The light_count the last save stored (what prep shows); null when there
+  // is no saved trace to open.
+  lightCount: number | null;
 };
 
-type SeeLit = { photoUrl: string; trace: TraceGeometry & { duskBrightness: number }; tooDark: boolean; readBack: string | null };
+type SeeLit = {
+  photoUrl: string;
+  trace: TraceGeometry & { duskBrightness: number };
+  tooDark: boolean;
+  readBack: string | null;
+  unsaved: boolean;
+};
 
 export function RooflineTracer({
   leadId,
@@ -156,13 +182,27 @@ export function RooflineTracer({
   const feetInvalid = (id: number) => parseFeet(feetText[id] ?? "") === "invalid";
   const finished = useMemo(() => finishedTrace(draft, feetById), [draft, feetById]);
   const lineNumbers = useMemo(() => new Map(finished.ids.map((id, at) => [id, at + 1])), [finished]);
+  // The trace as Save would store it, so the preview points, See it lit and
+  // the read-back show exactly what gets saved.
   const geometry = useMemo(
-    () => (scale && finished.lines.length > 0 ? { lines: finished.lines, lineFeet: finished.lineFeet, scale } : null),
+    () => (scale && finished.lines.length > 0 ? storedForm({ lines: finished.lines, lineFeet: finished.lineFeet, scale }) : null),
     [scale, finished],
   );
   const placement = useMemo(() => (geometry && natural ? placeLights(geometry, natural) : null), [geometry, natural]);
-  const readBack = geometry && natural ? traceReadBack(geometry, natural) : null;
+  const readBack = useMemo(() => (geometry && natural ? readBackOf(geometry, natural) : null), [geometry, natural]);
   const readBackText = readBack ? readBackParts(readBack, quoteFeet) : null;
+  // What was saved: when the tracer opened, then what a save just wrote
+  // (so the tag goes while the page heads back).
+  const [saved, setSaved] = useState<{ photoId: string | null; trace: TraceShape | null; lightCount: number | null }>(() => ({
+    photoId: start.photoId,
+    trace: start.scale && start.lines.length > 0 ? { lines: start.lines, lineFeet: start.lineFeet, scale: start.scale } : null,
+    lightCount: start.lightCount,
+  }));
+  // A count shown for anything but the saved trace (or one the saved count
+  // doesn't match) is not saved yet.
+  const unsaved = readBack
+    ? !sameTrace({ photoId, trace: geometry }, saved) || (saved.lightCount != null && readBack.lights !== saved.lightCount)
+    : false;
   const photoDark = photoId ? darkPhotos[photoId] === true : false;
   const photoFailed = photoId ? failedPhotos[photoId] === true : false;
 
@@ -198,7 +238,11 @@ export function RooflineTracer({
     return () => window.removeEventListener("beforeunload", onUnload);
   }, [dirty]);
 
-  // A keyboard's Undo, on the trace.
+  // A keyboard's Undo, on the trace: the same as the Undo button.
+  const undoRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    undoRef.current = onUndo;
+  });
   useEffect(() => {
     if (step !== "trace" || menuOpen || seeLit) return;
     const onKey = (event: KeyboardEvent) => {
@@ -206,7 +250,7 @@ export function RooflineTracer({
         const target = event.target as HTMLElement | null;
         if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
         event.preventDefault();
-        setHistory((now) => undo(now));
+        undoRef.current();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -367,6 +411,7 @@ export function RooflineTracer({
       trace: { ...geometry, duskBrightness: measured?.brightness ?? FALLBACK_DUSK_BRIGHTNESS },
       tooDark: measured?.tooDark ?? false,
       readBack: readBackText?.traced ?? null,
+      unsaved,
     });
   }
 
@@ -414,6 +459,7 @@ export function RooflineTracer({
       return;
     }
     setDirty(false);
+    setSaved({ photoId, trace: { lines: payload.lines, lineFeet: payload.lineFeet, scale: payload.scale }, lightCount: result.lightCount });
     setAnnounce("Saved.");
     router.push(backHref);
   }
@@ -433,13 +479,30 @@ export function RooflineTracer({
       return { tone: "hint", text: TRACE_HINT };
     }
     if (readBackText) {
+      // The scale shows on the trace; on the scale step its chips say it.
+      const scaleText = step === "trace" && scale ? scaleLine(scale) : null;
       return {
         tone: "info",
         text: (
-          <>
-            <span data-testid="roofline-read-back">{readBackText.traced}</span>
-            {readBackText.quote ? <span className="font-normal text-muted-foreground"> · {readBackText.quote}</span> : null}
-          </>
+          <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span data-testid="roofline-read-back">{readBackText.traced}</span>
+              {unsaved ? (
+                <span
+                  className="inline-flex h-6 items-center rounded-full border border-input px-2 text-sm font-semibold text-muted-foreground"
+                  data-testid="roofline-unsaved"
+                >
+                  Not saved yet
+                </span>
+              ) : null}
+            </span>
+            {readBackText.quote ? <span className="font-normal text-muted-foreground">{readBackText.quote}</span> : null}
+            {scaleText ? (
+              <span className="font-normal text-muted-foreground" data-testid="roofline-scale">
+                {scaleText}
+              </span>
+            ) : null}
+          </span>
         ),
       };
     }
@@ -663,7 +726,15 @@ export function RooflineTracer({
       </p>
 
       {seeLit ? (
-        <SeeItLit photoUrl={seeLit.photoUrl} trace={seeLit.trace} look={look} tooDark={seeLit.tooDark} readBack={seeLit.readBack} onClose={closeSeeLit} />
+        <SeeItLit
+          photoUrl={seeLit.photoUrl}
+          trace={seeLit.trace}
+          look={look}
+          tooDark={seeLit.tooDark}
+          readBack={seeLit.readBack}
+          unsaved={seeLit.unsaved}
+          onClose={closeSeeLit}
+        />
       ) : null}
     </div>
   );

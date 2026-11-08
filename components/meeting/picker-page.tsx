@@ -14,7 +14,7 @@ import {
 } from "react";
 
 import { LitPhoto } from "@/components/lights/lit-photo";
-import { BAND_HEIGHT_CSS, DOTS_RESERVE_CSS, TRAY } from "@/components/meeting/picker/layout";
+import { BAND_HEIGHT_CSS, DOTS_RESERVE_CSS, TRAY, TRAY_CSS } from "@/components/meeting/picker/layout";
 import {
   arrivalPhase,
   chooseEffect,
@@ -30,10 +30,12 @@ import {
   swipePointer,
   type Phase,
   type PickerChoice,
+  type SwipeArea,
 } from "@/components/meeting/picker/picker-state";
 import { EFFECTS, type Effect, type Look, type Trace } from "@/lib/deck";
 import { lookLabel, pickerCanvasLabel } from "@/lib/lights/looks";
 import { useReducedMotion } from "@/lib/motion";
+import { smartApostrophes } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 
 // Try it on your house (round 7, the settled spec's light_picker and the
@@ -41,7 +43,8 @@ import { cn } from "@/lib/utils";
 // and they choose the look on the spot. The deck's one peak and Keenan's
 // trial close.
 //
-// The photo fills the top, framed to the trace's bounds plus 10% on one
+// The photo fills the top, framed to the trace's bounds joined with its
+// scale handles (the garage or front door's bottom corners) plus 10%, on one
 // explicit crop transform shared by the day photo, its dusk copy, the navy
 // multiply layer and the light canvas (Part A's LitPhoto, which is also
 // prep's See it lit, so prep shows exactly this). Below it, a solid Night
@@ -58,8 +61,15 @@ import { cn } from "@/lib/utils";
 //
 // Touch: the whole page is touch-action none, so nothing zooms and a tap or
 // double tap on the photo does nothing. A one-finger swipe that did not
-// start on a button turns the page (onSwipe); a touch that starts on a
-// button never does.
+// start on a button turns the page (onSwipe): on the photo only a real
+// flick or a long drag, so a customer tracing their roofline with a finger
+// never turns it; a touch that starts on a button never does.
+//
+// The tray (round 7 review): the chosen look and effect are Night Text with
+// a tick, and the tick's room is kept on every button, so no label moves or
+// misaligns when chosen. While Off, the look the lights come back on in is
+// an outline with its tick, never the fill, so it never reads as on. At
+// 1366 the tray grows with the deck's fluid sizes (TRAY_CSS).
 //
 // CONTRACT
 //   <PickerPage
@@ -181,8 +191,10 @@ export function PickerPage({
   }
 
   // One finger, not starting on a button, clearly sideways: turn the page.
-  const swipe = useRef<{ id: number; x: number; y: number; at: number } | null>(null);
+  // On the photo it takes a real flick or a long drag (swipeDelta).
+  const swipe = useRef<{ id: number; x: number; y: number; at: number; area: SwipeArea } | null>(null);
   const down = useRef(new Set<number>());
+  const photoBox = useRef<HTMLDivElement>(null);
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     down.current.add(event.pointerId);
@@ -191,7 +203,9 @@ export function PickerPage({
       swipe.current = null;
       return;
     }
-    swipe.current = { id: event.pointerId, x: event.clientX, y: event.clientY, at: event.timeStamp };
+    const onPhoto = event.target instanceof Node && photoBox.current?.contains(event.target) === true;
+    const area: SwipeArea = onPhoto ? { on: "photo", width: event.currentTarget.clientWidth } : { on: "tray" };
+    swipe.current = { id: event.pointerId, x: event.clientX, y: event.clientY, at: event.timeStamp, area };
   }
 
   function onPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
@@ -200,7 +214,7 @@ export function PickerPage({
     if (!from || from.id !== event.pointerId) return;
     swipe.current = null;
     if (layerOpen) return;
-    const delta = swipeDelta({ dx: event.clientX - from.x, dy: event.clientY - from.y, ms: event.timeStamp - from.at });
+    const delta = swipeDelta({ dx: event.clientX - from.x, dy: event.clientY - from.y, ms: event.timeStamp - from.at }, from.area);
     if (delta) onSwipe(delta);
   }
 
@@ -219,7 +233,7 @@ export function PickerPage({
       onPointerCancel={onPointerCancel}
       onContextMenu={(event) => event.preventDefault()}
     >
-      <div className="relative min-h-0 flex-1">
+      <div ref={photoBox} className="relative min-h-0 flex-1">
         <LitPhoto
           key={picker.photoUrl}
           photoUrl={picker.photoUrl}
@@ -248,7 +262,12 @@ export function PickerPage({
               style={{ gap: TRAY.lookGap }}
             >
               {list.map((item) => (
-                <LookButton key={item.key} look={item} chosen={item.key === look.key} onChoose={onLook} />
+                <LookButton
+                  key={item.key}
+                  look={item}
+                  state={item.key !== look.key ? "none" : choice.effect === "off" ? "kept" : "on"}
+                  onChoose={onLook}
+                />
               ))}
             </div>
 
@@ -258,17 +277,17 @@ export function PickerPage({
                   <h2
                     id={headlineId}
                     className="font-semibold tracking-[-0.015em] text-balance"
-                    style={{ fontSize: TRAY.headlineSize, lineHeight: `${TRAY.headlineLeading}px` }}
+                    style={{ fontSize: TRAY_CSS.headlineSize, lineHeight: TRAY_CSS.headlineLeading }}
                   >
-                    {headline}
+                    {smartApostrophes(headline)}
                   </h2>
                 ) : null}
                 {words ? (
                   <p
                     className="mt-1 text-pretty text-muted-foreground"
-                    style={{ fontSize: TRAY.wordsSize, lineHeight: `${TRAY.wordsLeading}px` }}
+                    style={{ fontSize: TRAY_CSS.wordsSize, lineHeight: TRAY_CSS.wordsLeading }}
                   >
-                    {words}
+                    {smartApostrophes(words)}
                   </p>
                 ) : null}
               </div>
@@ -298,43 +317,52 @@ export function PickerPage({
 // ---------------------------------------------------------------- the controls
 
 // The chosen thing is Night Text with navy text and a tick (DESIGN.md's
-// choice button), never gold; the others a 1 px Night Input outline. Colours
-// swap at once: only opacity and transform ever animate.
+// choice button), never gold; the others a 1 px Night Input outline. While
+// Off, the look kept for when the lights come back on is a 2 px Night Text
+// outline with its tick and no fill. Colours swap at once: only opacity and
+// transform ever animate.
 const CONTROL =
   "outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 const CHOSEN = "border-foreground bg-foreground text-background";
+const KEPT = "border-foreground inset-ring inset-ring-foreground bg-background text-foreground active:bg-secondary";
 const UNCHOSEN = "border-input bg-background text-foreground active:bg-secondary";
 
 // A look: its name, and its colour words under it. Words only: no dots,
-// chips or swatches, because the house is the swatch.
-function LookButton({ look, chosen, onChoose }: { look: Look; chosen: boolean; onChoose: (key: string) => void }) {
+// chips or swatches, because the house is the swatch. "on": lit on the
+// house; "kept": the look while Off; "none": not chosen. The tick follows
+// the name, in room every button keeps (Settings' LOOK_ROW counts it), so
+// the name and its words never move and always line up.
+function LookButton({ look, state, onChoose }: { look: Look; state: "on" | "kept" | "none"; onChoose: (key: string) => void }) {
   return (
     <button
       type="button"
-      aria-pressed={chosen}
+      aria-pressed={state !== "none"}
       aria-label={lookLabel(look)}
       data-testid={`picker-look-${look.key}`}
+      data-state={state}
       onClick={() => onChoose(look.key)}
       className={cn(
         "flex min-w-0 flex-1 flex-col items-start justify-center rounded-md border text-left",
         CONTROL,
-        chosen ? CHOSEN : UNCHOSEN,
+        state === "on" ? CHOSEN : state === "kept" ? KEPT : UNCHOSEN,
       )}
-      style={{ height: TRAY.lookHeight, paddingInline: TRAY.lookPadding }}
+      style={{ height: TRAY_CSS.lookHeight, paddingInline: TRAY.lookPadding }}
     >
-      <span
-        className="flex max-w-full items-center gap-2 font-semibold"
-        style={{ fontSize: TRAY.nameSize, lineHeight: `${TRAY.nameLeading}px` }}
-      >
-        {chosen ? <Check aria-hidden="true" className="size-5 shrink-0" strokeWidth={2.5} /> : null}
-        <span className="truncate">{look.name}</span>
+      <span className="flex max-w-full items-center font-semibold" style={{ fontSize: TRAY_CSS.nameSize, lineHeight: TRAY_CSS.nameLeading }}>
+        <span className="min-w-0 truncate">{smartApostrophes(look.name)}</span>
+        <Check
+          aria-hidden="true"
+          className={cn("shrink-0", state === "none" && "invisible")}
+          style={{ width: TRAY.tickIcon, height: TRAY.tickIcon, marginLeft: TRAY.tick - TRAY.tickIcon }}
+          strokeWidth={2.5}
+        />
       </span>
       {look.words ? (
         <span
-          className={cn("max-w-full truncate", chosen ? undefined : "text-muted-foreground")}
-          style={{ fontSize: TRAY.wordsSize, lineHeight: `${TRAY.wordsLeading}px` }}
+          className={cn("max-w-full truncate", state === "on" ? undefined : "text-muted-foreground")}
+          style={{ fontSize: TRAY_CSS.wordsSize, lineHeight: TRAY_CSS.wordsLeading }}
         >
-          {look.words}
+          {smartApostrophes(look.words)}
         </span>
       ) : null}
     </button>
@@ -342,6 +370,8 @@ function LookButton({ look, chosen, onChoose }: { look: Look; chosen: boolean; o
 }
 
 // One segment of Steady, Twinkle, Chase, Off: equal widths, joined edges.
+// The label is centred and never moves; the chosen one's tick hangs just
+// after it, as it follows a chosen look's name.
 function EffectButton({
   effect,
   label,
@@ -364,16 +394,30 @@ function EffectButton({
       data-testid={`picker-effect-${effect}`}
       onClick={() => onChoose(effect)}
       className={cn(
-        "relative flex items-center justify-center gap-2 border font-semibold focus-visible:z-20",
+        "relative flex items-center justify-center border font-semibold focus-visible:z-20",
         CONTROL,
         first ? "rounded-l-md" : "-ml-px",
         last ? "rounded-r-md" : null,
         chosen ? cn(CHOSEN, "z-10") : UNCHOSEN,
       )}
-      style={{ height: TRAY.effectHeight, width: TRAY.effectSegment, fontSize: TRAY.wordsSize, lineHeight: `${TRAY.wordsLeading}px` }}
+      style={{
+        height: TRAY_CSS.effectHeight,
+        width: TRAY_CSS.effectSegment,
+        fontSize: TRAY_CSS.wordsSize,
+        lineHeight: TRAY_CSS.wordsLeading,
+      }}
     >
-      {chosen ? <Check aria-hidden="true" className="size-5 shrink-0" strokeWidth={2.5} /> : null}
-      {label}
+      <span className="relative">
+        {label}
+        {chosen ? (
+          <Check
+            aria-hidden="true"
+            className="absolute top-1/2 left-full -translate-y-1/2"
+            style={{ width: TRAY_CSS.effectTick, height: TRAY_CSS.effectTick, marginLeft: TRAY.effectTickGap }}
+            strokeWidth={2.5}
+          />
+        ) : null}
+      </span>
     </button>
   );
 }

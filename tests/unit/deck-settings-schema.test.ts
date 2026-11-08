@@ -1,15 +1,24 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { firstFamily } from "@/app/(app)/app/(owner)/admin/settings/presentation/measure-labels";
+import { TRAY, TRAY_AT_PRO } from "@/components/meeting/picker/layout";
 import { parseLooks, WORDS_PAGES, type DeckWords, type Look } from "@/lib/deck";
+import { BAND_AT_AIR, BAND_AT_PRO, DECK_ROW, DECK_SIZES, fluidPx } from "@/lib/meeting/deck-pages";
 import {
+  BAND_FIT,
+  bandWordsFit,
+  bandWordsFitIssue,
   blankLook,
   captionIssue,
   DECK_SEED,
+  deckFitIssues,
   deckWordIssues,
   editableFields,
   headlineIssue,
   isDraftField,
   isDraftLook,
   isWebUrl,
+  lineCount,
   linesUpFrontIssue,
   LOOK_ROW,
   lookIssues,
@@ -21,10 +30,14 @@ import {
   mergeEditableWords,
   newLookKey,
   normaliseHex,
+  PAGE_HELP,
   pageWordIssues,
   parseDeckWordsInput,
   parseLooksInput,
   parseReferenceInput,
+  PICKER_LINE_FIT,
+  pickerLineFitIssue,
+  pickerLineWidth,
   referenceIssues,
   sameLooks,
   sameWords,
@@ -33,6 +46,7 @@ import {
   tidyText,
   warrantyLines,
   wordsToAvoid,
+  type TextMeasure,
 } from "@/lib/settings/deck-schema";
 
 const copy = (): DeckWords => JSON.parse(JSON.stringify(DECK_SEED));
@@ -419,5 +433,107 @@ describe("copy-rule reminders", () => {
       const value = DECK_SEED.pages[key];
       expect(wordsToAvoid([value.headline, value.words, value.moreLabel, value.moreText].join("\n"))).toEqual([]);
     }
+  });
+});
+
+// ---------------------------------------------------------------- will the words fit at the meeting?
+
+// A stand-in for Manrope: 0.46 em a character. Measured in Chromium with
+// the app's own Manrope, the seeded band words run 0.42 to 0.44 em a
+// character (3 lines at both iPads) and the picker's line 0.46 em, so this
+// errs on the long side.
+const approx: TextMeasure = (text, font) => text.length * font.size * 0.46;
+
+describe("will the words fit at the meeting?", () => {
+  it("wraps a paragraph between words, as the browser does", () => {
+    const tenPx = (line: string) => line.length * 10;
+    expect(lineCount("", 100, tenPx)).toBe(0);
+    expect(lineCount("aaaa bbbb", 100, tenPx)).toBe(1);
+    expect(lineCount("aaaa bbbb cccc", 100, tenPx)).toBe(2);
+    expect(lineCount("aaaa   bbbb\ncccc dddd eeee", 100, tenPx)).toBe(3);
+    // A word wider than the column is a line of its own.
+    expect(lineCount("a averyveryverylongword b", 100, tenPx)).toBe(3);
+  });
+
+  it("knows the band's words column and how many lines stay above the More button", () => {
+    const [air, pro] = BAND_FIT.screens.map(bandWordsFit);
+    expect(air.width).toBeCloseTo(431.2, 1);
+    expect(air.maxLines).toBe(4);
+    expect(pro.width).toBeCloseTo(513.04, 1);
+    expect(pro.maxLines).toBe(4);
+  });
+
+  it("refuses band words that would reach the button, with the line count", () => {
+    expect(bandWordsFitIssue(DECK_SEED.pages.what_vesper_is.words, approx)).toBeNull();
+    expect(bandWordsFitIssue("", approx)).toBeNull();
+    const long = "Permanent lights that stay up all year and change with the seasons, the holidays and your team, with no ladders or tangled strings every single fall.";
+    expect(bandWordsFitIssue(long, approx)).toMatch(/runs to \d lines and reaches the button\. Keep it to 4\./);
+  });
+
+  it("keeps the picker's line to one line at both iPads", () => {
+    expect(pickerLineWidth(PICKER_LINE_FIT.screens[0])).toBe(535);
+    expect(pickerLineWidth(PICKER_LINE_FIT.screens[1])).toBe(673);
+    expect(pickerLineFitIssue(DECK_SEED.pages.light_picker.words, approx)).toBeNull();
+    expect(pickerLineFitIssue("A preview drawn on our own photo of your house tonight. Tap a look to see it.", approx)).toMatch(/one line/);
+  });
+
+  it("checks the band pages' words and the picker's line only, and passes the seeded words", () => {
+    expect(deckFitIssues(DECK_SEED, approx)).toEqual({});
+    const words = copy();
+    const long = Array.from({ length: 25 }, () => "neighbourhood").join(" ");
+    for (const page of WORDS_PAGES) words.pages[page].words = long;
+    expect(Object.keys(deckFitIssues(words, approx)).sort()).toEqual([
+      "hidden_by_day.words",
+      "light_picker.words",
+      "phone_control.words",
+      "what_vesper_is.words",
+      "whites_first.words",
+    ]);
+  });
+
+  it("measures the words as the meeting draws them, typographic apostrophes and all", () => {
+    const seen: string[] = [];
+    bandWordsFitIssue("We'll   set it\nup", (text, font) => {
+      seen.push(text);
+      return approx(text, font);
+    });
+    expect(seen.every((text) => !text.includes("'") && !text.includes("\n") && !text.includes("  "))).toBe(true);
+    expect(seen.some((text) => text.includes("We\u2019ll"))).toBe(true);
+  });
+
+  it("stays in step with the deck's band and the picker's tray", () => {
+    expect(BAND_FIT.screens[0].band).toBe(BAND_AT_AIR);
+    expect(BAND_FIT.screens[1].band).toBe(BAND_AT_PRO);
+    expect(BAND_FIT.buttonBottom).toBe(DECK_ROW.bottom);
+    expect(BAND_FIT.buttonHeight).toBe(DECK_ROW.height);
+    expect(DECK_SIZES.body).toBe(fluidPx(BAND_FIT.screens[0].size, BAND_FIT.screens[1].size));
+    // The band's right column: the line at 56%, then 40 px in and 48 px from the edge, 24 px down.
+    const parts = readFileSync("components/meeting/deck-parts.tsx", "utf8");
+    const band = parts.slice(parts.indexOf("export function BandPage("), parts.indexOf("export function SplitPage("));
+    const share = Math.round(BAND_FIT.split * 100);
+    expect(band).toContain(`grid-cols-[${share}%_${100 - share}%]`);
+    expect(band).toMatch(/pt-6 pr-12 pl-10/);
+    expect(PICKER_LINE_FIT.sidePadding).toBe(TRAY.sidePadding);
+    expect(PICKER_LINE_FIT.columnGap).toBe(TRAY.columnGap);
+    expect(PICKER_LINE_FIT.screens[0].effectSegment).toBe(TRAY.effectSegment);
+    expect(PICKER_LINE_FIT.screens[1].effectSegment).toBe(TRAY_AT_PRO.effectSegment);
+    expect(PICKER_LINE_FIT.screens[0].size).toBe(TRAY.wordsSize);
+    expect(PICKER_LINE_FIT.screens[1].size).toBe(TRAY_AT_PRO.wordsSize);
+  });
+
+  it("measures with Manrope alone, never the whole font stack", () => {
+    expect(firstFamily('"__Manrope_a1b2c3", "__Manrope_Fallback_a1b2c3", ui-sans-serif, system-ui, sans-serif')).toBe('"__Manrope_a1b2c3"');
+    expect(firstFamily("__Manrope_a1b2c3, sans-serif")).toBe("__Manrope_a1b2c3");
+    expect(firstFamily("")).toBeNull();
+  });
+});
+
+describe("Settings' help for Keenan", () => {
+  it("talks to Keenan plainly, never about how the deck was decided", () => {
+    for (const page of WORDS_PAGES) {
+      expect(PAGE_HELP[page], page).not.toMatch(/debate|seat|agent|\bpx\b/i);
+    }
+    expect(PAGE_HELP.what_vesper_is).toContain("We left out");
+    expect(PAGE_HELP.whites_first).not.toMatch(/pure/);
   });
 });

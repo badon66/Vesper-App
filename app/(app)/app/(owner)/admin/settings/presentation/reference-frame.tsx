@@ -120,7 +120,11 @@ export function ReferenceFrame({
 
 const FIELDS: { field: ReferenceField; label: string; hint?: string; rows?: number }[] = [
   { field: "pageUrl", label: "Page it lives on" },
-  { field: "imageUrl", label: "Image address", hint: "Optional. Right-click the photo and copy its address. Many sites block showing it here; the page link always works." },
+  {
+    field: "imageUrl",
+    label: "Image address",
+    hint: "Optional. On a computer, right-click the photo and copy its address. On an iPad, press and hold the photo, open it in a new tab and copy that address. Many sites block showing it here; the page link always works.",
+  },
   { field: "site", label: "Site" },
   { field: "why", label: "Why it works", rows: 4 },
   { field: "shot", label: "How to copy it with our lights", rows: 4 },

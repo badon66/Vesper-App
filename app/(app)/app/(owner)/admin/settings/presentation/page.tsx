@@ -72,7 +72,8 @@ export default async function PresentationSettingsPage() {
             <h1 className="text-2xl font-bold">Presentation</h1>
             <p className="text-pretty text-muted-foreground">
               The meeting&apos;s pages in the order customers see them: the words on each, your photo for each slot, and the
-              light picker&apos;s looks. Every word here is read by customers.
+              light picker&apos;s looks. Every word in a box here is read by customers. The notes, shots and examples are for
+              you.
             </p>
           </div>
           <Button asChild variant="outline">

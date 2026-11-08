@@ -1,5 +1,6 @@
 "use client";
 
+import { Check } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,8 +17,9 @@ import {
   type PageWords as PageWordsValue,
   type WordsPageKey,
 } from "@/lib/deck";
-import { filledSlotCount, referencesBySlot, standardPoints, type ReferenceRow } from "@/lib/photos-deck";
+import { filledSlotCount, referencesBySlot, slotsByWhen, standardPoints, type ReferenceRow } from "@/lib/photos-deck";
 import {
+  deckFitIssues,
   deckWordIssues,
   editableFields,
   fieldKey,
@@ -37,9 +39,9 @@ import { formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { saveDeck } from "./actions";
 import { LooksEditor, lookFieldId } from "./looks-editor";
-import { useLabelMeasure } from "./measure-labels";
+import { labelMeasure, useTextMeasure } from "./measure-labels";
 import { LINES_UP_FRONT_ID, PageWords, wordsFieldId } from "./page-words";
-import { GalleryOrder, SlotCard, type DeckPhotoView, type PhotosUpdate } from "./slot-card";
+import { GalleryOrder, ShotRow, SlotCard, slotAnchor, type DeckPhotoView, type PhotosUpdate } from "./slot-card";
 
 export type { DeckPhotoView } from "./slot-card";
 
@@ -48,7 +50,15 @@ export type { DeckPhotoView } from "./slot-card";
 // its photo slots with an example to copy, and on the light picker's page
 // the looks. Words and looks save together from one bar at the bottom;
 // photos, captions, focus points and example links save the moment they
-// change.
+// change. "Group by: When to shoot" (round 7 review, Keenan) lists the same
+// slots under Daylight, Blue hour, After a snowfall and Install day, each
+// with its upload, for planning a shoot; Page stays the default.
+
+type GroupBy = "page" | "when";
+
+// What a page is called here: its headline from Settings, as the deck and
+// its dot read it, or its own name while the headline is empty.
+const pageTitle = (words: DeckWords, page: WordsPageKey) => words.pages[page].headline.trim() || PAGE_NAMES[page];
 
 type Props = {
   words: DeckWords;
@@ -66,6 +76,11 @@ const LAYOUT_WORDS: Record<(typeof PAGE_LAYOUT)[WordsPageKey], string> = {
   picker: "Their house at dusk, lit, with the looks in the tray under it.",
 };
 
+// The mockup page is a band page with their mockup for its photo and its
+// title alone in the band.
+const layoutWords = (page: WordsPageKey) =>
+  page === "mockup" ? "Their mockup above, the title alone in the band under it." : LAYOUT_WORDS[PAGE_LAYOUT[page]];
+
 export function DeckEditor(props: Props) {
   const [words, setWords] = useState(props.words);
   const [looks, setLooks] = useState(props.looks);
@@ -77,13 +92,20 @@ export function DeckEditor(props: Props) {
   const [serverErrors, setServerErrors] = useState<DeckWordErrors>({});
   const [status, setStatus] = useState<Status>(null);
   const [openLook, setOpenLook] = useState<string | null>(null);
+  const [groupBy, setGroupBy] = useState<GroupBy>("page");
   const [pending, startTransition] = useTransition();
-  const measure = useLabelMeasure();
+  const { measure, checking } = useTextMeasure();
   const blobs = useRef<string[]>([]);
 
-  const wordErrors = useMemo(() => deckWordIssues(words, props.warrantyText), [words, props.warrantyText]);
+  // The counts and copy rules first; then, once Manrope is measured, words
+  // that would run into a band's button or wrap the picker's line.
+  const wordErrors = useMemo(
+    () => ({ ...(measure ? deckFitIssues(words, measure) : {}), ...deckWordIssues(words, props.warrantyText) }),
+    [words, props.warrantyText, measure],
+  );
   const lookIssues = useMemo(() => looksIssues(looks), [looks]);
-  const wrap = useMemo(() => (measure ? lookWrapIssues(looks, measure) : {}), [looks, measure]);
+  const labels = useMemo(() => labelMeasure(measure), [measure]);
+  const wrap = useMemo(() => (labels ? lookWrapIssues(looks, labels) : {}), [looks, labels]);
   const wordsDirty = !sameWords(words, saved.words);
   const looksDirty = !sameLooks(looks, saved.looks);
   const dirty = wordsDirty || looksDirty;
@@ -159,7 +181,7 @@ export function DeckEditor(props: Props) {
     return out;
   }
 
-  // After a refused save: open and focus the first thing that needs a look.
+  // After a refused save: open and focus the first thing that needs fixing.
   function focusFirstProblem(errors: DeckWordErrors) {
     let target: string | null = null;
     for (const page of WORDS_PAGES) {
@@ -185,11 +207,15 @@ export function DeckEditor(props: Props) {
     }
     if (!target) return;
     const id = target;
-    window.requestAnimationFrame(() => {
-      const element = document.getElementById(id);
-      element?.scrollIntoView({ block: "center" });
-      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) element.focus({ preventScroll: true });
-    });
+    // The fields are on the pages: back to Group by Page first, if needed.
+    setGroupBy("page");
+    window.requestAnimationFrame(() =>
+      window.requestAnimationFrame(() => {
+        const element = document.getElementById(id);
+        element?.scrollIntoView({ block: "center" });
+        if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) element.focus({ preventScroll: true });
+      }),
+    );
   }
 
   function save() {
@@ -197,7 +223,7 @@ export function DeckEditor(props: Props) {
     const wordsBlocked = wordsDirty && Object.keys(wordErrors).length > 0;
     const looksBlocked = looksDirty && (hasLooksIssues(lookIssues) || Object.keys(wrap).length > 0);
     if (wordsBlocked || looksBlocked) {
-      setStatus({ kind: "error", text: "Some fields need a look." });
+      setStatus({ kind: "error", text: "Some fields need fixing. They're marked below." });
       focusFirstProblem(wordsBlocked ? wordErrors : {});
       return;
     }
@@ -236,11 +262,28 @@ export function DeckEditor(props: Props) {
 
   const on = looks.filter((look) => look.active).length;
 
+  // From a row in the When to shoot list to the slot's card, on its page.
+  function openSlot(key: string) {
+    setGroupBy("page");
+    window.requestAnimationFrame(() => document.getElementById(slotAnchor(key))?.scrollIntoView({ block: "start" }));
+  }
+
   return (
     <div className="flex flex-col gap-10">
-      <Overview photos={photos} looksOn={on} pagesNeedingLook={WORDS_PAGES.filter((page) => Object.keys(pageErrors(page)).length > 0)} />
+      <Overview
+        photos={photos}
+        words={words}
+        looksOn={on}
+        groupBy={groupBy}
+        onGroupBy={setGroupBy}
+        pagesNeedingFixing={WORDS_PAGES.filter((page) => Object.keys(pageErrors(page)).length > 0)}
+      />
 
-      {WORDS_PAGES.map((page) => {
+      {groupBy === "when" ? (
+        <ShotsByWhen photos={photos} onPhotos={updatePhotos} onBlobUrl={(url) => blobs.current.push(url)} onOpen={openSlot} />
+      ) : null}
+
+      {groupBy === "page" ? WORDS_PAGES.map((page) => {
         const slots = slotsFor(page);
         const number = DECK_PAGES.indexOf(page) + 1;
         return (
@@ -250,9 +293,9 @@ export function DeckEditor(props: Props) {
                 Page {number} of {DECK_PAGES.length}
               </p>
               <h2 id={`page-${page}-title`} className="text-xl font-bold">
-                {PAGE_NAMES[page]}
+                {pageTitle(words, page)}
               </h2>
-              <p className="text-sm text-muted-foreground">{LAYOUT_WORDS[PAGE_LAYOUT[page]]}</p>
+              <p className="text-sm text-muted-foreground">{layoutWords(page)}</p>
             </div>
             <Card>
               <CardContent>
@@ -281,7 +324,7 @@ export function DeckEditor(props: Props) {
                 onBlur={touch}
                 openKey={openLook}
                 onOpen={setOpenLook}
-                measured={measure !== null}
+                checking={checking}
               />
             ) : null}
             {page === "gallery" ? <GalleryOrder photos={photos} onPhotos={updatePhotos} /> : null}
@@ -298,7 +341,7 @@ export function DeckEditor(props: Props) {
             ))}
           </section>
         );
-      })}
+      }) : null}
 
       {dirty || pending || status ? (
         <div
@@ -330,8 +373,23 @@ export function DeckEditor(props: Props) {
 }
 
 // The top of the page: how many slots have Keenan's photo, the shooting
-// standard every photo follows, and the pages to jump to.
-function Overview({ photos, looksOn, pagesNeedingLook }: { photos: DeckPhotoView[]; looksOn: number; pagesNeedingLook: WordsPageKey[] }) {
+// standard every photo follows, how the shot list is grouped, and the pages
+// (or times) to jump to.
+function Overview({
+  photos,
+  words,
+  looksOn,
+  groupBy,
+  onGroupBy,
+  pagesNeedingFixing,
+}: {
+  photos: DeckPhotoView[];
+  words: DeckWords;
+  looksOn: number;
+  groupBy: GroupBy;
+  onGroupBy: (group: GroupBy) => void;
+  pagesNeedingFixing: WordsPageKey[];
+}) {
   const filled = filledSlotCount(photos);
   const standard = standardPoints(SHOOTING_STANDARD);
   const slotsFilled = (page: WordsPageKey) => {
@@ -352,7 +410,8 @@ function Overview({ photos, looksOn, pagesNeedingLook }: { photos: DeckPhotoView
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
-          <h3 className="font-semibold">The shooting standard</h3>
+          <GroupByToggle value={groupBy} onChange={onGroupBy} />
+          <h3 className="mt-3 font-semibold">The shooting standard</h3>
           <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-pretty">
             {standard.night.map((point) => (
               <li key={point}>{point}</li>
@@ -366,45 +425,154 @@ function Overview({ photos, looksOn, pagesNeedingLook }: { photos: DeckPhotoView
           ) : null}
         </CardContent>
       </Card>
-      <nav aria-label="Pages" className="lg:sticky lg:top-24 lg:self-start">
-        <Card className="gap-3">
-          <CardHeader>
-            <h2 className="font-semibold">Pages</h2>
-          </CardHeader>
-          <CardContent>
-            <ol className="flex flex-col">
-              {WORDS_PAGES.map((page) => {
-                const count = slotsFilled(page);
-                return (
-                  <li key={page}>
-                    <a
-                      href={`#page-${page}`}
-                      className="flex min-h-11 items-center justify-between gap-3 rounded-md px-2 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      <span className="font-semibold">
-                        <span className="text-muted-foreground tabular-nums">{DECK_PAGES.indexOf(page) + 1}. </span>
-                        {PAGE_NAMES[page]}
-                      </span>
-                      <span className={cn("shrink-0 text-right", pagesNeedingLook.includes(page) ? "font-semibold text-destructive" : "text-muted-foreground")}>
-                        {pagesNeedingLook.includes(page)
-                          ? "Needs a look"
-                          : page === "light_picker"
-                            ? `${looksOn} ${looksOn === 1 ? "look" : "looks"} on`
-                            : count.total > 0
-                              ? `${count.done} of ${count.total} ${count.total === 1 ? "photo" : "photos"}`
-                              : "Words only"}
-                      </span>
-                    </a>
-                  </li>
-                );
-              })}
-            </ol>
-            <p className="mt-2 px-2 text-sm text-muted-foreground">
-              The cover, Your colours and Your price use built words and need nothing here.
-            </p>
-          </CardContent>
-        </Card>
-      </nav>
+      {groupBy === "page" ? (
+        <nav aria-label="Pages" className="lg:sticky lg:top-24 lg:self-start">
+          <Card className="gap-3">
+            <CardHeader>
+              <h2 className="font-semibold">Pages</h2>
+            </CardHeader>
+            <CardContent>
+              <ol className="flex flex-col">
+                {WORDS_PAGES.map((page) => {
+                  const count = slotsFilled(page);
+                  const fixing = pagesNeedingFixing.includes(page);
+                  return (
+                    <li key={page}>
+                      <a
+                        href={`#page-${page}`}
+                        className="flex min-h-11 items-center justify-between gap-3 rounded-md px-2 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span className="min-w-0 font-semibold">
+                          <span className="text-muted-foreground tabular-nums">{DECK_PAGES.indexOf(page) + 1}. </span>
+                          {pageTitle(words, page)}
+                        </span>
+                        <span className={cn("shrink-0 text-right", fixing ? "font-semibold text-destructive" : "text-muted-foreground")}>
+                          {fixing
+                            ? "Needs fixing"
+                            : page === "light_picker"
+                              ? `${looksOn} ${looksOn === 1 ? "look" : "looks"} on`
+                              : count.total > 0
+                                ? `${count.done} of ${count.total} ${count.total === 1 ? "slot" : "slots"}`
+                                : "Title only"}
+                        </span>
+                      </a>
+                    </li>
+                  );
+                })}
+              </ol>
+              <p className="mt-2 px-2 text-sm text-muted-foreground">
+                The cover, Your colours and Your price use built words and need nothing here.
+              </p>
+            </CardContent>
+          </Card>
+        </nav>
+      ) : (
+        <nav aria-label="When to shoot" className="lg:sticky lg:top-24 lg:self-start">
+          <Card className="gap-3">
+            <CardHeader>
+              <h2 className="font-semibold">When to shoot</h2>
+            </CardHeader>
+            <CardContent>
+              <ol className="flex flex-col">
+                {slotsByWhen().map((group) => {
+                  const done = new Set(photos.map((photo) => photo.slot));
+                  const count = group.slots.filter((slot) => done.has(slot.key)).length;
+                  return (
+                    <li key={group.key}>
+                      <a
+                        href={`#when-${group.key}`}
+                        className="flex min-h-11 items-center justify-between gap-3 rounded-md px-2 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span className="font-semibold">{group.label}</span>
+                        <span className="shrink-0 text-right text-muted-foreground">
+                          {count} of {group.slots.length} {group.slots.length === 1 ? "slot" : "slots"}
+                        </span>
+                      </a>
+                    </li>
+                  );
+                })}
+              </ol>
+            </CardContent>
+          </Card>
+        </nav>
+      )}
+    </div>
+  );
+}
+
+// Group by: Page (the default, in deck order) or When to shoot. Two equal
+// choice buttons; the chosen one is Night Text with a tick, as DESIGN.md's
+// one-tap answers are.
+function GroupByToggle({ value, onChange }: { value: GroupBy; onChange: (group: GroupBy) => void }) {
+  const options: { key: GroupBy; label: string }[] = [
+    { key: "page", label: "Page" },
+    { key: "when", label: "When to shoot" },
+  ];
+  return (
+    <div className="flex flex-col gap-2">
+      <p id="deck-group-by" className="text-sm font-semibold">
+        Group the shots by
+      </p>
+      <div role="radiogroup" aria-labelledby="deck-group-by" className="grid max-w-sm grid-cols-2 gap-2" data-testid="deck-group-by">
+        {options.map((option) => {
+          const chosen = option.key === value;
+          return (
+            <button
+              key={option.key}
+              type="button"
+              role="radio"
+              aria-checked={chosen}
+              onClick={() => onChange(option.key)}
+              className={cn(
+                "flex min-h-11 items-center justify-center gap-1.5 rounded-md border px-3 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                chosen ? "border-foreground bg-foreground text-background" : "border-input bg-background hover:bg-muted",
+              )}
+            >
+              <Check aria-hidden="true" className={cn("size-4 shrink-0", !chosen && "hidden")} />
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// The shot list by when to shoot: each time's slots in deck order, one line
+// of the shot each, with its upload. "The full shot" opens the slot's card
+// on its page, with the example to copy.
+function ShotsByWhen({
+  photos,
+  onPhotos,
+  onBlobUrl,
+  onOpen,
+}: {
+  photos: DeckPhotoView[];
+  onPhotos: PhotosUpdate;
+  onBlobUrl: (url: string) => void;
+  onOpen: (key: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-8" data-testid="shots-by-when">
+      {slotsByWhen().map((group) => (
+        <section key={group.key} id={`when-${group.key}`} aria-labelledby={`when-${group.key}-title`} className="flex scroll-mt-24 flex-col gap-4">
+          <div className="flex flex-col gap-1 border-b pb-3">
+            <h2 id={`when-${group.key}-title`} className="text-xl font-bold">
+              {group.label}
+            </h2>
+            <p className="text-sm text-pretty text-muted-foreground">{group.note}</p>
+          </div>
+          <Card>
+            <CardContent>
+              <ul className="flex flex-col divide-y">
+                {group.slots.map((slot) => (
+                  <ShotRow key={slot.key} slot={slot} photos={photos} onPhotos={onPhotos} onBlobUrl={onBlobUrl} onOpen={() => onOpen(slot.key)} />
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </section>
+      ))}
     </div>
   );
 }

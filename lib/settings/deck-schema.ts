@@ -4,6 +4,7 @@ import {
   hasExclamation,
   MAX_ACTIVE_LOOKS,
   MAX_LOOK_COLOURS,
+  PAGE_LAYOUT,
   WORD_LIMITS,
   WORDS_PAGES,
   wordCount,
@@ -12,6 +13,7 @@ import {
   type PageWords,
   type WordsPageKey,
 } from "@/lib/deck";
+import { smartApostrophes } from "@/lib/typography";
 import type { Json } from "@/types/database";
 
 // Settings for the deck (round 7, Branch B): the rules Keenan's words and
@@ -39,6 +41,11 @@ import type { Json } from "@/types/database";
 //   LOOK_ROW, lookTextWidth(n), lookWrapIssues(looks, measure)
 //                              the meeting's row of look buttons, and which
 //                              labels would wrap in it (measured in the browser)
+//   BAND_FIT, PICKER_LINE_FIT, lineCount, bandWordsFitIssue,
+//   pickerLineFitIssue, deckFitIssues(words, measure)
+//                              whether a band's words stay above its button,
+//                              and the picker's line on one line, at 1180 and
+//                              1366 (measured in the browser)
 //   captionIssue(text)         a gallery caption: the look only
 //   referenceIssues(input) / parseReferenceInput(input)
 //                              a replaced example link
@@ -404,7 +411,7 @@ export function parseLooksInput(input: unknown): { ok: true; looks: Look[] } | {
   const keys = new Set(looks.map((look) => look.key));
   if (keys.size !== looks.length) return { ok: false, error: "Two looks share a key. Reload the page and try again." };
   const issues = looksIssues(looks);
-  if (hasLooksIssues(issues)) return { ok: false, error: issues.list ?? "Some looks need a look." };
+  if (hasLooksIssues(issues)) return { ok: false, error: issues.list ?? "Some looks need fixing." };
   return { ok: true, looks };
 }
 
@@ -472,11 +479,138 @@ export function lookWrapIssues(looks: Look[], measure: MeasureLabel): Record<str
   const out: Record<string, LookIssues> = {};
   for (const look of on.slice(0, MAX_ACTIVE_LOOKS)) {
     const issues: LookIssues = {};
-    if (look.name.trim() && measure(look.name.trim(), "name") + LOOK_ROW.tick > width) issues.name = message;
-    if (look.words.trim() && measure(look.words.trim(), "words") > width) issues.words = message;
+    // Measured as the meeting draws them, typographic apostrophes and all.
+    if (look.name.trim() && measure(smartApostrophes(look.name.trim()), "name") + LOOK_ROW.tick > width) issues.name = message;
+    if (look.words.trim() && measure(smartApostrophes(look.words.trim()), "words") > width) issues.words = message;
     if (Object.keys(issues).length > 0) out[look.key] = issues;
   }
   return out;
+}
+
+// ---------------------------------------------------------------- will the words fit at the meeting?
+
+// How wide a line of text draws at a weight and size, in CSS px: a canvas
+// measureText in the browser (Manrope, as the meeting draws it), a stand-in
+// in tests.
+export type TextMeasure = (text: string, font: { weight: number; size: number }) => number;
+
+// The band under a page's photo, at both iPads (round 7 review). The words
+// sit in the band's right 44%, 40 px from the line at 56% and 48 px from
+// the edge, 24 px below the band's top, at the words size (27 px at 1180,
+// 30 px at 1366) on 1.3 lines. The More button sits bottom right, 56 px
+// tall and 20 px up, and the words must end above its top. These are the
+// deck's numbers (lib/meeting/deck-pages.ts: BAND_AT_AIR, BAND_AT_PRO,
+// DECK_SIZES.body, DECK_ROW; components/meeting/deck-parts.tsx: BandPage);
+// a unit test keeps them in step.
+export const BAND_FIT = {
+  split: 0.56,
+  padLeft: 40,
+  padRight: 48,
+  padTop: 24,
+  lineHeight: 1.3,
+  weight: 400,
+  buttonBottom: 20,
+  buttonHeight: 56,
+  screens: [
+    { width: 1180, height: 820, band: 0.3 * 820, size: 27 },
+    { width: 1366, height: 1024, band: 0.28 * 1024, size: 30 },
+  ],
+} as const;
+
+// The light picker's line under its headline, at both iPads: left of the
+// four joined effect buttons (their edges overlap by 1 px), 48 px from the
+// tray's edge and 24 px from the effects, at 20 px (1180) and 22 px (1366).
+// It stays on one line. The tray's numbers (components/meeting/picker/
+// layout.ts: TRAY, TRAY_AT_PRO); a unit test keeps them in step.
+export const PICKER_LINE_FIT = {
+  sidePadding: 48,
+  columnGap: 24,
+  effects: 4,
+  weight: 400,
+  screens: [
+    { width: 1180, effectSegment: 132, size: 20 },
+    { width: 1366, effectSegment: 144, size: 22 },
+  ],
+} as const;
+
+// How many lines a paragraph wraps to in a column that wide, breaking
+// between words as the browser does. A word wider than the column is a
+// line of its own.
+export function lineCount(text: string, width: number, measureLine: (line: string) => number): number {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  let lines = 0;
+  let line = "";
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && measureLine(next) > width) {
+      lines += 1;
+      line = word;
+    } else {
+      line = next;
+    }
+  }
+  return line ? lines + 1 : lines;
+}
+
+// The band's words as the meeting draws them: one paragraph, typographic
+// apostrophes.
+const shownWords = (text: string) => smartApostrophes(text.replace(/\s+/g, " ").trim());
+
+export function bandWordsFit(screen: (typeof BAND_FIT.screens)[number]): { width: number; maxLines: number } {
+  const width = screen.width * (1 - BAND_FIT.split) - BAND_FIT.padLeft - BAND_FIT.padRight;
+  const top = screen.height - screen.band + BAND_FIT.padTop;
+  const buttonTop = screen.height - BAND_FIT.buttonBottom - BAND_FIT.buttonHeight;
+  return { width, maxLines: Math.floor((buttonTop - top) / (screen.size * BAND_FIT.lineHeight)) };
+}
+
+// Refused when, on either iPad, the words would run down into the button.
+export function bandWordsFitIssue(text: string, measure: TextMeasure): string | null {
+  const shown = shownWords(text);
+  if (!shown) return null;
+  for (const screen of BAND_FIT.screens) {
+    const { width, maxLines } = bandWordsFit(screen);
+    const lines = lineCount(shown, width, (line) => measure(line, { weight: BAND_FIT.weight, size: screen.size }));
+    if (lines > maxLines) {
+      return `Too long for the band: at the meeting it runs to ${lines} lines and reaches the button. Keep it to ${maxLines}.`;
+    }
+  }
+  return null;
+}
+
+export function pickerLineWidth(screen: (typeof PICKER_LINE_FIT.screens)[number]): number {
+  const effects = PICKER_LINE_FIT.effects * screen.effectSegment - (PICKER_LINE_FIT.effects - 1);
+  return screen.width - 2 * PICKER_LINE_FIT.sidePadding - effects - PICKER_LINE_FIT.columnGap;
+}
+
+// Refused when, on either iPad, the line would wrap to a second line.
+export function pickerLineFitIssue(text: string, measure: TextMeasure): string | null {
+  const shown = shownWords(text);
+  if (!shown) return null;
+  for (const screen of PICKER_LINE_FIT.screens) {
+    if (measure(shown, { weight: PICKER_LINE_FIT.weight, size: screen.size }) > pickerLineWidth(screen)) {
+      return "Keep it to one line: at the meeting it would wrap under the headline. Shorten it.";
+    }
+  }
+  return null;
+}
+
+// { "page.words": message } for the band pages' words and the picker's line
+// that would not fit at the meeting. Settings refuses a save with any of
+// them; the server, which can't measure a font, checks the counts only.
+export function deckFitIssues(words: DeckWords, measure: TextMeasure): DeckWordErrors {
+  const errors: DeckWordErrors = {};
+  for (const page of WORDS_PAGES) {
+    if (!PAGE_FIELDS[page].words) continue;
+    const text = words.pages[page].words;
+    const issue =
+      page === "light_picker"
+        ? pickerLineFitIssue(text, measure)
+        : PAGE_LAYOUT[page] === "band"
+          ? bandWordsFitIssue(text, measure)
+          : null;
+    if (issue) errors[fieldKey(page, "words")] = issue;
+  }
+  return errors;
 }
 
 // ---------------------------------------------------------------- gallery captions
@@ -678,12 +812,12 @@ export function isDraftLook(look: Pick<Look, "key" | "name" | "words">): boolean
 // reaches a customer.
 export const PAGE_HELP: Record<WordsPageKey, string> = {
   what_vesper_is:
-    "Answers the Christmas-only worry in the first minute. The debate dropped \"an investment in your home\" from the screen; add it back if you want it.",
+    "Answers the Christmas-only worry in the first minute. We left out \"an investment in your home\". Add it back if you want it.",
   hidden_by_day: "Never say the track matches the soffit: white is the only stock track.",
   whites_first:
-    "Once you've confirmed the white light's warmth, you can add \"so warm white looks warm\". Never say both whites are pure.",
+    "Once you've confirmed how warm the lights' own white is, you can add \"so warm white looks warm\". Each light has one white of its own, so don't claim both whites are true whites.",
   light_picker:
-    "The headline and the line under it sit in the tray under their house, at 32 and 20 px. Keep \"our photo\": the setter or you took it, not the customer.",
+    "The headline and the line under it sit in the tray under their house, smaller than other headlines, and the line has to fit on one line. Keep \"our photo\": the setter or you took it, not the customer.",
   phone_control:
     "Only what the app does today. Once you've confirmed them, you can add lines about schedules, more than one phone, after a power cut or any monthly fee. Never the app's brand name.",
   gallery: "The gallery's words are each photo's caption, set on the photo below: the look only. The button opens the grid of every photo.",

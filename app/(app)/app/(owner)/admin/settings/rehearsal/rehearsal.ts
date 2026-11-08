@@ -29,6 +29,10 @@ import { addDays, calgaryDateOf, formatDay, formatTime } from "@/lib/time";
 //   scenarioLines(height)           how many lines of the scenario fit
 //   exampleSide(slot)               which part of its box an example uses
 //   looksLoaded(width, height)      whether a hotlinked image really loaded
+//   exampleClearance(box, row)      where an example's tags start (clear of
+//                                   the deck's exit) and how far its frame's
+//                                   foot rises (clear of the dots row)
+//   customerViewFor(leadId)         the Customer view switch's starting state
 //   RehearsalData                   what the view's server function hands the page
 
 // ---------------------------------------------------------------- words
@@ -246,6 +250,40 @@ export function exampleSide(slot: Pick<DeckSlot, "role">): ExampleSide {
   if (slot.role === "day") return "right";
   if (slot.role === "night") return "left";
   return "whole";
+}
+
+// The deck's exit (components/meeting/deck-view.tsx): a 48 px disc 20 px in
+// from the deck's top left corner. An example's tags start 12 px right of
+// it, so "Example to copy" and "From [site]" never sit under it.
+export const EXIT_CORNER = { inset: 20, size: 48, gap: 12 } as const;
+// The frame's foot keeps this far above the bottom row (the dots and the
+// chevrons), as the deck's own pictures do (DECK_ROW.clearance).
+export const ROW_CLEARANCE = 8;
+
+export type Rect = { left: number; top: number; right: number; bottom: number };
+
+// Measured against the deck's own frame (0, 0 at its top left): the box the
+// deck gives an example, and the bottom row's dots and chevrons (null while
+// a layer is open, when they hide). tagsLeft is where the tags start inside
+// the box; lift is how far the frame and the picture end above the box's
+// foot. A box that already ends above the row, as the deck's split pages
+// and Mores do, needs no lift.
+export function exampleClearance(box: Rect, row: Rect | null, base = 16): { tagsLeft: number; lift: number } {
+  const exitRight = EXIT_CORNER.inset + EXIT_CORNER.size + EXIT_CORNER.gap;
+  const exitBottom = EXIT_CORNER.inset + EXIT_CORNER.size;
+  const underExit = box.top < exitBottom && box.left + base < exitRight;
+  const tagsLeft = underExit ? Math.max(base, exitRight - box.left) : base;
+  const overlapsRow = row !== null && row.left < box.right && row.right > box.left && row.top - ROW_CLEARANCE < box.bottom && row.bottom > box.top;
+  const lift = overlapsRow ? Math.max(0, Math.ceil(box.bottom - (row.top - ROW_CLEARANCE))) : 0;
+  return { tagsLeft: Math.round(tagsLeft), lift };
+}
+
+// The Customer view switch (round 7 review, Keenan): on once a lead is
+// chosen in "Rehearse with", so a run-through of tonight's meeting shows
+// what the customer will see; off with no lead, for studying the examples.
+// Keenan can still switch it either way.
+export function customerViewFor(leadId: string | null): boolean {
+  return leadId !== null && leadId !== "";
 }
 
 // Some sites answer a hotlinked picture with a tiny placeholder instead of

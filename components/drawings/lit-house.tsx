@@ -2,11 +2,21 @@
 
 import { useMemo } from "react";
 
-import { cropOf, HouseDrawing } from "@/components/drawings/house-drawing";
+import { HouseDrawing, type DrawingGround } from "@/components/drawings/house-drawing";
 import { LightCanvas, useBoxSize } from "@/components/lights/light-canvas";
 import type { Effect, Look } from "@/lib/deck";
-import { cropRect, houseLines, HOUSE_UNITS_PER_METRE, LIT_RUNS, type Crop, type HouseCropName, type HouseRun } from "@/lib/drawings/house";
-import { fitContain } from "@/lib/lights/frame";
+import {
+  fitView,
+  houseLines,
+  HOUSE_UNITS_PER_METRE,
+  LIT_RUNS,
+  runsFor,
+  viewOf,
+  type Crop,
+  type DrawingFit,
+  type HouseCropName,
+  type HouseRun,
+} from "@/lib/drawings/house";
 import { WARM_WHITE } from "@/lib/lights/looks";
 import { placeAlong, type Placement } from "@/lib/lights/place";
 import { cn } from "@/lib/utils";
@@ -20,23 +30,27 @@ import { cn } from "@/lib/utils";
 //
 // CONTRACT
 //   <LitHouse
-//     crop?        "whole" (default) | "entry" (the garage and entry, for Warm
-//                  white, most nights) | "corner" | "roofline" | [x, y, w, h]
+//     crop?        "whole" (default) | "medium" | "entry" | "corner" |
+//                  "roofline" | [x, y, w, h]; a view that leaves out a part
+//                  of the house (the upper floor in medium and entry, the
+//                  garage in corner) leaves out its lines and its lights
+//     fit?         "contain" (default) | "cover": as HouseDrawing; the lines
+//                  and the light canvas share one transform and both clip to
+//                  the box, so no line or light shows beyond it
+//     ground?      "navy" (default) | "none": no ground of its own, for a
+//                  More layer's Night Card
 //     look?        default WARM_WHITE; pass the meeting's own warm white
 //                  (warmWhiteOf(deck.looks)) or, in Settings, the look being edited
 //     effect?, playing?, lit?, fadeMs?, lookFadeMs?   as LightCanvas
-//     runs?        which eaves are lit (default LIT_RUNS)
-//     above?       draw only the lines wholly above this height (HouseDrawing)
+//     runs?        which eaves are lit (default LIT_RUNS), of those in view
 //     label?       a screen reader's words (a plain default is given)
 //     decorative?  hidden from screen readers (beside words that say it)
-//     className?   size it with this; it fills its box, the drawing fitted
-//                  whole and centred
+//     className?   size it with this; it fills its box
 //   />
-
-const DEFAULT_PLACEMENT = placeAlong(houseLines(LIT_RUNS), HOUSE_UNITS_PER_METRE);
 
 const CROP_WORDS: Record<HouseCropName, string> = {
   whole: "a two-storey house",
+  medium: "the garage and front of a house",
   entry: "a garage and front entry",
   corner: "the front corner of a house",
   roofline: "the edge of a roof",
@@ -47,21 +61,37 @@ export function litHouseLabel(crop: HouseCropName | Crop, look: Pick<Look, "name
   return `A drawing of ${what} at night, lit in ${look.name.toLowerCase()}.`;
 }
 
+const placements = new Map<string, Placement>();
+
+// The lights along those runs, placed once per set of runs.
+export function housePlacement(runs: readonly HouseRun[]): Placement {
+  const key = runs.join(",");
+  let placement = placements.get(key);
+  if (!placement) {
+    placement = placeAlong(houseLines(runs), HOUSE_UNITS_PER_METRE);
+    placements.set(key, placement);
+  }
+  return placement;
+}
+
 export function LitHouse({
   crop = "whole",
+  fit = "contain",
+  ground = "navy",
   look = WARM_WHITE,
   effect = "steady",
   playing = false,
   lit = 1,
   fadeMs,
   lookFadeMs,
-  runs,
-  above,
+  runs = LIT_RUNS,
   label,
   decorative = false,
   className,
 }: {
   crop?: HouseCropName | Crop;
+  fit?: DrawingFit;
+  ground?: DrawingGround;
   look?: Look;
   effect?: Effect;
   playing?: boolean;
@@ -69,27 +99,24 @@ export function LitHouse({
   fadeMs?: number;
   lookFadeMs?: number;
   runs?: readonly HouseRun[];
-  above?: number;
   label?: string;
   decorative?: boolean;
   className?: string;
 }) {
   const [boxRef, box] = useBoxSize<HTMLDivElement>();
-  const view = cropOf(crop);
-  const runsKey = runs ? runs.join(",") : "";
-  const placement: Placement = useMemo(
-    () => (runsKey ? placeAlong(houseLines(runsKey.split(",") as HouseRun[]), HOUSE_UNITS_PER_METRE) : DEFAULT_PLACEMENT),
-    [runsKey],
-  );
-  const transform = useMemo(() => fitContain(cropRect(view), box), [view, box]);
+  const view = viewOf(crop);
+  const runsKey = runsFor(runs, view.parts).join(",");
+  const placement = useMemo(() => housePlacement(runsKey ? (runsKey.split(",") as HouseRun[]) : []), [runsKey]);
+  const { x: rx, y: ry, width: rw, height: rh } = view.rect;
+  const transform = useMemo(() => fitView({ x: rx, y: ry, width: rw, height: rh }, box, fit), [rx, ry, rw, rh, box, fit]);
   return (
     <div
       ref={boxRef}
       {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": label ?? litHouseLabel(crop, look) })}
-      className={cn("dark relative overflow-hidden bg-background text-foreground select-none", className)}
+      className={cn("dark relative overflow-hidden text-foreground select-none", ground === "navy" && "bg-background", className)}
     >
-      <HouseDrawing tone="night" crop={view} above={above} decorative className="absolute inset-0" />
-      {box.width > 0 && box.height > 0 ? (
+      <HouseDrawing tone="night" crop={crop} fit={fit} ground="none" decorative className="absolute inset-0" />
+      {box.width > 0 && box.height > 0 && runsKey ? (
         <LightCanvas
           placement={placement}
           transform={transform}

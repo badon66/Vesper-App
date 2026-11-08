@@ -262,10 +262,20 @@ describe("the page and the light picker, picked up again", () => {
     expect(startingPoint(payload(), stored(local, { screen: { index: 7, at: now - 60_000, key: "colour" } }), now, true).screenKey).toBeNull();
   });
 
-  it("keeps the look, effect and played light-up for the same meeting, a fresh start included", () => {
+  it("keeps the look, effect and played light-up through a reload or auto-lock mid-meeting", () => {
     const within = stored(local, { screen: { index: 4, at: now - 60_000 }, picker: lit });
     expect(startingPoint(payload(), within, now).picker).toEqual(lit);
-    expect(startingPoint(payload(), within, now, true).picker).toEqual(lit);
+  });
+
+  it("opened fresh, opens the picker on Warm white, Steady, with the light-up to play, even an hour after a check", () => {
+    // Keenan pressed Start from prep at 5:30 to check the picker, left it on
+    // Cool white chasing, and opens the meeting fresh at the table an hour later.
+    const checked = stored(local, { screen: { index: 4, at: now - 60 * 60_000, key: "light_picker" }, picker: lit });
+    const start = startingPoint(payload(), checked, now, true);
+    expect(start.picker).toBeNull();
+    expect(start.index).toBe(0);
+    // The quote is still kept: only the screen and the picker start over.
+    expect(start.quote).toEqual(local);
   });
 
   it("starts a later meeting on the first look, Steady, with the light-up to play", () => {

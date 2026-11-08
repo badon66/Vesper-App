@@ -73,7 +73,7 @@ export async function saveDeck(input: { words?: unknown; looks?: unknown }): Pro
   const update: { deck?: Json; light_looks?: Json } = {};
   if (input.words !== undefined) {
     const parsed = parseDeckWordsInput(input.words, current.warranty_text);
-    if (!parsed.ok) return { ok: false, error: "Some words need a look.", wordErrors: parsed.errors };
+    if (!parsed.ok) return { ok: false, error: "Some words need fixing. They're marked below.", wordErrors: parsed.errors };
     update.deck = deckWordsToJson(mergeEditableWords(parseDeckWords(current.deck), parsed.words));
   }
   if (input.looks !== undefined) {

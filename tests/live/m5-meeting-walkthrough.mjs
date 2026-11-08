@@ -21,6 +21,14 @@
 // picker is skipped (prep's tracer and the picker have their own checks).
 // The test lead carries a split soffit with a setter's note, to prove the
 // note never reaches the deck.
+//
+// The layout check (round 7 review; the spec's "every seeded page fits at
+// 1180x820 and 1366x1024"): at both sizes, every page and every layer it
+// opens (each More, the contact sheet, the colour chooser) is measured: the
+// band, the split columns and the layer never scroll, no line of text
+// crosses into the bottom row (the More button or Back, the dots, the
+// chevrons), the chevrons and the exit never sit on another control, the
+// row's dots share the button's centre line, and a layer hides the dots.
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -56,6 +64,14 @@ const digits = String(Date.now() % 10000).padStart(4, "0");
 const setter = { email: `m5-live-a-${stamp}@example.com`, password: `cedar-lantern-orbit-${digits}`, name: "M5 Test Setter", id: null };
 
 const ipad = { viewport: { width: 1194, height: 834 }, deviceScaleFactor: 1, hasTouch: true };
+// The two iPads the deck is laid out for: the 11-inch Air and the 12.9-inch Pro.
+const LAYOUT_SIZES = [
+  { width: 1180, height: 820 },
+  { width: 1366, height: 1024 },
+];
+
+// The deck draws customer words with typographic apostrophes (lib/typography.ts).
+const smart = (text) => text.replace(/(\p{L})'(?=\p{L})/gu, "$1\u2019");
 const phone = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true };
 
 // The deck's pages as lib/meeting/deck-pages.ts builds them: in the spec's
@@ -134,6 +150,61 @@ async function goToScreen(page, label) {
     )
     .catch(() => {});
   await page.waitForTimeout(300);
+}
+
+// Everything the layout check measures, in the page: the page on screen (or
+// the layer open over it). Text is measured line by line (its ranges), so a
+// wide paragraph box with short lines is never mistaken for a collision.
+function measureDeck() {
+  const problems = [];
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && style.visibility !== "hidden" && style.display !== "none";
+  };
+  const hit = (a, b) => a.right > b.left + 0.5 && a.left < b.right - 0.5 && a.bottom > b.top + 0.5 && a.top < b.bottom - 0.5;
+  const name = (el) => (el.getAttribute("aria-label") ?? el.textContent ?? el.tagName).trim().slice(0, 30);
+  const layer = document.querySelector("[data-deck-layer]");
+  const scope = layer ?? document.querySelector("section[data-page]:not([inert])");
+  if (!scope) return { problems: ["no page on screen"], info: {} };
+  for (const box of scope.querySelectorAll("[data-deck-box]")) {
+    if (visible(box) && box.scrollHeight > box.clientHeight + 1) problems.push(`the ${box.dataset.deckBox} scrolls (${box.scrollHeight} > ${box.clientHeight})`);
+  }
+  const row = [...document.querySelectorAll('[data-deck-row="button"] button, [data-deck-row="nav"] button, [data-deck-row="nav"] ol')].filter(visible);
+  const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.textContent.trim();
+    const parent = node.parentElement;
+    if (!text || !parent || parent.closest("[data-deck-row], button, [aria-hidden='true'], .sr-only") || !visible(parent)) continue;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    for (const line of range.getClientRects()) {
+      for (const control of row) {
+        if (hit(line, control.getBoundingClientRect())) problems.push(`"${text.slice(0, 30)}" runs into ${name(control)}`);
+      }
+    }
+  }
+  const mine = [...document.querySelectorAll('[aria-label="Previous"], [aria-label="Next"], [aria-label^="Hold to leave"]')].filter(visible);
+  const controls = [
+    ...scope.querySelectorAll("button, input, a, select, textarea, label[data-answer]"),
+    ...document.querySelectorAll("[data-deck-row] button, [data-deck-row] ol"),
+  ].filter(visible);
+  for (const one of mine) {
+    for (const control of controls) {
+      if (control === one || control.contains(one) || one.contains(control)) continue;
+      if (hit(one.getBoundingClientRect(), control.getBoundingClientRect())) problems.push(`${name(one)} sits on ${name(control)}`);
+    }
+  }
+  const nav = document.querySelector('[data-deck-row="nav"]');
+  const info = { layer: Boolean(layer), dots: Boolean(nav) };
+  if (layer && nav) problems.push("the dots and chevrons stay up while a layer is open");
+  const button = scope.querySelector('[data-deck-row="button"] button');
+  if (nav && button) {
+    const dots = nav.querySelector("ol").getBoundingClientRect();
+    const b = button.getBoundingClientRect();
+    if (Math.abs(dots.top + dots.height / 2 - (b.top + b.height / 2)) > 1) problems.push("the dots are off the button's centre line");
+  }
+  return { problems, info };
 }
 
 async function ownerFootprint(ownerId) {
@@ -296,10 +367,12 @@ try {
   const moreLabel = typeof settings.deck?.pages?.what_vesper_is?.more_label === "string" ? settings.deck.pages.what_vesper_is.more_label.trim() : "";
   if (expected.includes(whatLabel) && moreLabel) {
     await goToScreen(page, whatLabel);
-    await page.getByRole("region", { name: whatLabel }).getByRole("button", { name: moreLabel }).click();
-    const layer = page.getByRole("dialog", { name: moreLabel });
+    await page.getByRole("region", { name: whatLabel }).getByRole("button", { name: smart(moreLabel) }).click();
+    const layer = page.getByRole("dialog", { name: smart(moreLabel) });
     await layer.waitFor({ timeout: 5000 }).catch(() => {});
     const opened = (await layer.count()) === 1;
+    const openedNoDots = (await dots(page).count()) === 0;
+    const pagerLocked = (await page.locator('[aria-label="Meeting screens"]').evaluate((el) => getComputedStyle(el).overflowX)) === "hidden";
     const lb = opened ? await layer.boundingBox() : null;
     if (lb) await touchSwipe(page, cdp, Math.round(lb.x + lb.width * 0.8), Math.round(lb.y + lb.height * 0.5), -500);
     check(
@@ -307,6 +380,7 @@ try {
       opened && (await layer.count()) === 0 && (await currentScreen(page)) === whatLabel,
       await currentScreen(page),
     );
+    check("while it was open the dots and chevrons were hidden and the pager locked", openedNoDots && pagerLocked);
   } else {
     note("What Vesper is's More was not reached: Settings has no words for it");
   }
@@ -317,14 +391,23 @@ try {
     await goToScreen(page, galleryLabel);
     const region = page.getByRole("region", { name: galleryLabel });
     const heroes = Math.min(galleryCount, 6);
-    const counter = heroes > 1 ? await region.getByTestId("gallery-counter").innerText() : "";
-    check("the gallery shows one photo at a time, counted", (await region.locator("img").count()) >= 1 && (heroes < 2 || counter === `1 of ${heroes}`), counter);
+    // The band counts its photos only while they are the whole gallery; with
+    // more, See all N is the only total.
+    const counted = heroes > 1 && galleryCount <= 6;
+    const counter = counted ? await region.getByTestId("gallery-counter").innerText() : "";
+    check(
+      "the gallery shows one photo at a time, counted only while the band holds them all",
+      (await region.locator("img").count()) >= 1 && (counted ? counter === `1 of ${heroes}` : (await region.getByTestId("gallery-counter").count()) === 0),
+      counter,
+    );
     if (heroes > 1) {
+      const first = await region.locator("img").last().getAttribute("src");
       await page.keyboard.press("ArrowRight");
       await page.waitForTimeout(500);
       check(
         "the arrow key steps to the next photo before turning the page",
-        (await currentScreen(page)) === galleryLabel && (await region.getByTestId("gallery-counter").innerText()) === `2 of ${heroes}`,
+        (await currentScreen(page)) === galleryLabel &&
+          (counted ? (await region.getByTestId("gallery-counter").innerText()) === `2 of ${heroes}` : (await region.locator("img").last().getAttribute("src")) !== first),
       );
     }
   } else {
@@ -358,6 +441,11 @@ try {
   check("never the setter's which-is-where note", !colourText.includes(SOFFIT_NOTE));
   const initialsBox = await colourScreen.locator("#colour-initials").boundingBox();
   check("the initials sit no lower than 400 px from the top, clear of the keyboard", initialsBox && initialsBox.y + initialsBox.height <= 400 + 834 - 820, `${Math.round(initialsBox?.y ?? 0)}`);
+  check(
+    "the initials field says what goes in it",
+    (await colourScreen.locator("#colour-initials").getAttribute("placeholder")) === "Initials" &&
+      (await colourScreen.locator("#colour-initials").getAttribute("aria-label")) === "Your initials",
+  );
   const confirm = colourScreen.getByRole("button", { name: "Confirm" });
   const waitsForInitials = await confirm.isDisabled();
   await colourScreen.locator("#colour-initials").fill("ab");
@@ -374,20 +462,44 @@ try {
     "the colour can be changed without leaving the deck: names only, no swatches",
     chooserText.includes(colour.name) && (await chooser.locator('[style*="background"]').count()) === 0,
   );
+  check(
+    "the chooser is one of the deck's layers: the dots and chevrons hide and the pager locks",
+    (await dots(page).count()) === 0 &&
+      (await page.locator('[aria-label="Meeting screens"]').evaluate((el) => getComputedStyle(el).overflowX)) === "hidden",
+  );
+  check(
+    "in front of the customer it says the colour book: Choose the colour, the page's screens line, never RAL Classic or powder coating",
+    chooserText.includes("Choose the colour") &&
+      chooserText.includes(smart("Screens can't show colour exactly, so we choose it from the colour book together.")) &&
+      !/RAL Classic|RAL K7|powder/i.test(chooserText),
+  );
   const saveColour = chooser.getByRole("button", { name: "Save track colour" });
   await chooser.locator("label").filter({ has: page.getByText(colour.name, { exact: true }) }).click();
   check("tapping the chosen colour to agree with it can never save no colour", await saveColour.isDisabled());
   await chooser.locator("label").filter({ hasText: /^Custom$/ }).click();
+  const customText = await chooser.innerText();
+  check(
+    "Custom asks for the Colour number, from the colour book",
+    customText.includes("Colour number") && customText.includes("From the colour book.") && !/RAL Classic|RAL K7|powder/i.test(customText),
+  );
   await chooser.locator("#lead-track-ral").fill("12");
   await chooser.getByRole("button", { name: "Save track colour" }).click();
   await chooser.locator("#lead-track-ral-error").waitFor({ timeout: 20000 }).catch(() => {});
   const { data: colourAfter } = await admin.from("leads").select("track_colour_id, track_ral_code").eq("id", leadId).single();
   check(
-    "a RAL number that is not four digits is refused there, and nothing is saved",
-    (await chooser.locator("#lead-track-ral-error").count()) === 1 && colourAfter?.track_colour_id === colour.id && colourAfter?.track_ral_code === null,
+    "a colour number that is not four digits is refused there, in the colour book's words, and nothing is saved",
+    (await chooser.locator("#lead-track-ral-error").count()) === 1 &&
+      (await chooser.locator("#lead-track-ral-error").innerText()) === "Four digits, from the colour book." &&
+      colourAfter?.track_colour_id === colour.id &&
+      colourAfter?.track_ral_code === null,
   );
   await chooser.getByRole("button", { name: "Back" }).click();
-  check("Back closes the chooser and keeps the colour", (await chooser.count()) === 0 && (await colourScreen.getByTestId("deck-track-colour").innerText()).includes(colour.name));
+  // The chooser fades out like every layer.
+  await chooser.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  check(
+    "Back closes the chooser and keeps the colour, and the dots come back",
+    (await chooser.count()) === 0 && (await colourScreen.getByTestId("deck-track-colour").innerText()).includes(colour.name) && (await dots(page).count()) === 1,
+  );
 
   // ---------------------------------------------------------------- Your price
   await goToScreen(page, "Your price");
@@ -453,6 +565,60 @@ try {
   await page.waitForTimeout(800);
   check("#start opens at the cover, #quote on the price page", fromStart === "Vesper" && (await currentScreen(page)) === "Your price", `${fromStart}, ${await currentScreen(page)}`);
 
+  // ---------------------------------------------------------------- the layout check, at 1180 x 820 and 1366 x 1024
+  // Every page and every layer it opens, measured as it stands (nothing is
+  // typed or saved). The X's place and size are checked here too.
+  for (const size of LAYOUT_SIZES) {
+    const at = `${size.width}x${size.height}`;
+    const lp = await ownerContext.newPage();
+    await lp.setViewportSize(size);
+    await lp.goto(`${base}/meeting/${leadId}#start`);
+    await dots(lp).waitFor({ timeout: 30000 });
+    await lp.waitForTimeout(600);
+    const exitBox = await lp.getByRole("button", { name: "Hold to leave meeting mode" }).boundingBox();
+    check(
+      `${at}: the exit is 48 px, 20 px in from the top and left`,
+      exitBox && Math.round(exitBox.x) === 20 && Math.round(exitBox.y) === 20 && Math.round(exitBox.width) === 48,
+      JSON.stringify(exitBox),
+    );
+    const found = [];
+    let layers = 0;
+    for (const label of expected) {
+      await goToScreen(lp, label);
+      await lp.waitForTimeout(500);
+      const onPage = await lp.evaluate(measureDeck);
+      found.push(...onPage.problems.map((problem) => `${label}: ${problem}`));
+      if (label === "Your colours") {
+        const initials = await lp.locator("#colour-initials").boundingBox();
+        if (size.height === 820 && !(initials && initials.y + initials.height <= 400)) found.push(`Your colours: the initials end at ${Math.round((initials?.y ?? 0) + (initials?.height ?? 0))}, below 400 px`);
+      }
+      const openers = await lp.getByRole("region", { name: label }).locator('button[aria-haspopup="dialog"]').all();
+      for (const opener of openers) {
+        const name = (await opener.innerText()).trim();
+        await opener.click();
+        await lp.locator("[data-deck-layer]").waitFor({ timeout: 5000 }).catch(() => {});
+        await lp.waitForTimeout(400);
+        const inLayer = await lp.evaluate(measureDeck);
+        found.push(...inLayer.problems.map((problem) => `${label} > ${name}: ${problem}`));
+        if (!inLayer.info.layer) found.push(`${label} > ${name}: no layer opened`);
+        layers += 1;
+        await lp.keyboard.press("Escape");
+        await lp.waitForTimeout(400);
+        if ((await lp.locator("[data-deck-layer]").count()) > 0) {
+          await lp.locator("[data-deck-layer]").getByRole("button", { name: "Back" }).last().click();
+          await lp.waitForTimeout(400);
+        }
+      }
+    }
+    check(
+      `${at}: every page and every layer (${expected.length} pages, ${layers} layers) fits with nothing scrolled, nothing in the bottom row's way, and nothing under the exit or the chevrons`,
+      found.length === 0,
+      found.slice(0, 8).join("; "),
+    );
+    await lp.screenshot({ path: `${out}/m5-layout-${at}.png` });
+    await lp.close();
+  }
+
   // ---------------------------------------------------------------- the way out: hold the X for 600 ms
   const exit = page.getByRole("button", { name: "Hold to leave meeting mode" });
   const xb = await exit.boundingBox();
@@ -462,6 +628,15 @@ try {
   await page.mouse.up();
   await page.waitForTimeout(600);
   const stillIn = page.url().split("#")[0] === `${base}/meeting/${leadId}` && (await dots(page).count()) === 1;
+  // A hand gripping the corner: the finger drifts more than 10 px.
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  await page.mouse.move(xb.x + xb.width / 2 + 12, xb.y + xb.height / 2 + 12);
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  const driftStays = page.url().split("#")[0] === `${base}/meeting/${leadId}` && (await dots(page).count()) === 1;
+  check("a press that drifts more than 10 px is a grip, not a hold: it stays in the deck", driftStays);
+  await page.mouse.move(xb.x + xb.width / 2, xb.y + xb.height / 2);
   await page.mouse.down();
   await page.waitForTimeout(900);
   await page.mouse.up();

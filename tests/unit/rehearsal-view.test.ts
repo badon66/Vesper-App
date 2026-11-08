@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   chosenLead,
+  customerViewFor,
+  EXIT_CORNER,
+  exampleClearance,
   exampleLayout,
   exampleSide,
   firstExamples,
@@ -294,5 +297,41 @@ describe("the view's own words", () => {
       expect(hasDash(text), text).toBe(false);
       expect(hasExclamation(text), text).toBe(false);
     }
+  });
+});
+
+describe("an example's tags and frame, clear of the deck's own controls", () => {
+  // At 1180 x 764 (under the 56 px bar): the deck's dots and chevrons, centred, 20 px up.
+  const row = { left: 322, top: 692, right: 858, bottom: 744 };
+
+  it("starts the tags right of the exit when the box starts under it", () => {
+    const exitRight = EXIT_CORNER.inset + EXIT_CORNER.size + EXIT_CORNER.gap;
+    expect(exitRight).toBe(80);
+    // A band page's photo, a split page's picture, a More's panel: all from the top left.
+    expect(exampleClearance({ left: 0, top: 0, right: 1180, bottom: 518 }, row).tagsLeft).toBe(80);
+    expect(exampleClearance({ left: 0, top: 0, right: 661, bottom: 704 }, row).tagsLeft).toBeGreaterThanOrEqual(72);
+    // The cool half of the warm and cool pair, or a box below the exit: their own 16 px.
+    expect(exampleClearance({ left: 331, top: 0, right: 661, bottom: 704 }, row).tagsLeft).toBe(16);
+    expect(exampleClearance({ left: 0, top: 120, right: 400, bottom: 400 }, row).tagsLeft).toBe(16);
+    // A contact-sheet tile under the exit moves too, from its own 12 px.
+    expect(exampleClearance({ left: 40, top: 40, right: 300, bottom: 230 }, null, 12).tagsLeft).toBe(40);
+  });
+
+  it("ends the frame above the dots and chevrons, only where the box runs under them", () => {
+    // A box that already ends above the row (the deck's split pages and Mores): no lift.
+    expect(exampleClearance({ left: 0, top: 0, right: 661, bottom: 684 }, row).lift).toBe(0);
+    // A box down to the deck's foot under the row: the frame ends 8 px above it.
+    expect(exampleClearance({ left: 0, top: 0, right: 661, bottom: 764 }, row).lift).toBe(764 - (692 - 8));
+    // Beside the row, or with the row hidden while a layer is open: no lift.
+    expect(exampleClearance({ left: 900, top: 0, right: 1180, bottom: 764 }, row).lift).toBe(0);
+    expect(exampleClearance({ left: 0, top: 0, right: 661, bottom: 764 }, null).lift).toBe(0);
+  });
+});
+
+describe("the Customer view switch", () => {
+  it("starts on once a lead is chosen, and off with no lead", () => {
+    expect(customerViewFor(LEAD_A)).toBe(true);
+    expect(customerViewFor(null)).toBe(false);
+    expect(customerViewFor("")).toBe(false);
   });
 });

@@ -1,3 +1,5 @@
+import { DECK_CLEAR_PX, DECK_ROW, fluidPx } from "@/lib/meeting/deck-pages";
+
 // The light picker's tray, in numbers (round 7, light_picker.controls).
 // Pure, so the arithmetic the layout depends on is unit tested.
 //
@@ -10,13 +12,17 @@
 // CONTRACT
 //   bandHeight(pageHeight)   the band in px for a page that tall
 //   BAND_HEIGHT_CSS          the same as a CSS height (inside the page box)
-//   TRAY                     the tray's sizes in px (row 1: the looks, 72 px,
-//                            12 px apart; row 2: the headline and the 56 px
-//                            Steady, Twinkle, Chase, Off control). The look
-//                            row's padding and tick match Settings' LOOK_ROW
-//                            (lib/settings/deck-schema.ts), which refuses a
-//                            label that would wrap in it; a test keeps the
-//                            two in step.
+//   TRAY                     the tray's sizes in px at 1180 x 820 (row 1: the
+//                            looks, 72 px, 12 px apart; row 2: the headline
+//                            and the 56 px Steady, Twinkle, Chase, Off
+//                            control). The look row's padding and tick match
+//                            Settings' LOOK_ROW (lib/settings/deck-schema.ts),
+//                            which refuses a label that would wrap in it; a
+//                            test keeps the two in step.
+//   TRAY_AT_PRO              the sizes that grow at 1366 x 1024 (round 7
+//                            review), so the iPad Pro leaves no dead navy
+//   TRAY_CSS                 TRAY to TRAY_AT_PRO as the deck's fluid sizes
+//                            (fluidPx), for the page's styles
 //   DOTS_RESERVE_CSS         the space kept clear at the tray's bottom for the
 //                            deck's dots: their 44 px targets, 4 px up (or above
 //                            the home indicator), and 24 px with nothing
@@ -37,8 +43,10 @@ export const TRAY = {
   lookGap: 12,
   lookHeight: 72,
   lookPadding: 16,
-  // The tick beside a chosen look's name: 20 px and an 8 px gap.
+  // The tick after a chosen look's name: 20 px and an 8 px gap. Its room is
+  // kept on every button, so neither line moves when a look is chosen.
   tick: 28,
+  tickIcon: 20,
   nameSize: 22,
   nameLeading: 26,
   wordsSize: 20,
@@ -52,17 +60,60 @@ export const TRAY = {
   headlineSize: 32,
   headlineLeading: 38,
   effectHeight: 56,
-  // One segment of the effects control: the widest label ("Twinkle", 72 px
-  // at 20 px semibold), the tick and its gap, and 16 px either side.
+  // One segment of the effects control. Its label is centred and never
+  // moves; the chosen one's 16 px tick hangs 6 px after it, so with the
+  // widest label ("Twinkle", 72 px at 20 px semibold) it keeps 8 px clear of
+  // the edge.
   effectSegment: 132,
   effectLabelMax: 72,
+  effectTick: 16,
+  effectTickGap: 6,
   // Between the headline's column and the effects.
   columnGap: 24,
 } as const;
 
-// The deck's dots sit below the controls on the tray's navy.
-export const DOTS = { target: 44, inset: 4, clearance: 24 } as const;
-export const DOTS_RESERVE_CSS = `calc(${DOTS.target + DOTS.clearance}px + max(${DOTS.inset}px, env(safe-area-inset-bottom, 0px)))`;
+// The sizes that grow at 1366 x 1024 (the spec's 1366 note and the review):
+// look buttons 80 px with 24 px names, the colour words and the line under
+// the headline 22 px (the deck's secondary size), the headline 36 px, the
+// effects 62 px with 22 px labels. Widths grow faster than type between
+// 1180 and 1366, so a label Settings lets through at 1180 never wraps here.
+export const TRAY_AT_PRO = {
+  lookHeight: 80,
+  nameSize: 24,
+  nameLeading: 28,
+  wordsSize: 22,
+  wordsLeading: 24,
+  headlineSize: 36,
+  headlineLeading: 42,
+  effectHeight: 62,
+  effectSegment: 144,
+  effectLabelMax: 80,
+  effectTick: 18,
+} as const;
+
+const grows = (key: keyof typeof TRAY_AT_PRO) => fluidPx(TRAY[key], TRAY_AT_PRO[key]);
+
+export const TRAY_CSS = {
+  lookHeight: grows("lookHeight"),
+  nameSize: grows("nameSize"),
+  nameLeading: grows("nameLeading"),
+  wordsSize: grows("wordsSize"),
+  wordsLeading: grows("wordsLeading"),
+  headlineSize: grows("headlineSize"),
+  headlineLeading: grows("headlineLeading"),
+  effectHeight: grows("effectHeight"),
+  effectSegment: grows("effectSegment"),
+  effectTick: grows("effectTick"),
+} as const;
+
+// The deck's bottom row (the dots with a chevron either side) sits below the
+// controls on the tray's navy. The tray keeps the same clear space every
+// picture keeps above that row (--deck-clear): the row's top stands
+// `target` px above its foot, its foot sits at max(`inset` px, the home
+// indicator), and nothing tappable comes within `clearance` px of it.
+const ROW_TOP_OVER_FOOT = (DECK_ROW.height + Math.max(DECK_ROW.chevron, DECK_ROW.dotHeight)) / 2;
+export const DOTS = { target: ROW_TOP_OVER_FOOT, inset: DECK_ROW.bottom, clearance: DECK_ROW.clearance } as const;
+export const DOTS_RESERVE_CSS = `var(--deck-clear, ${DECK_CLEAR_PX}px)`;
 
 // The lowest a tappable control in the tray reaches, measured from the tray's
 // top, when row 1 and the effects sit as high as they can.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DECK_SLOTS, SHOOTING_STANDARD, SLOT_BY_KEY, type DeckSlot } from "@/lib/deck";
+import { DECK_SLOTS, hasDash, hasExclamation, SHOOTING_STANDARD, SHOT_TIMES, SLOT_BY_KEY, type DeckSlot } from "@/lib/deck";
 import {
   BAND_PHOTO_ASPECT,
   deckPhotoPaths,
@@ -15,6 +15,7 @@ import {
   placeNewPhoto,
   referencesBySlot,
   slotCrop,
+  slotsByWhen,
   slotStatus,
   sortGroup,
   SPLIT_PHOTO_ASPECT,
@@ -117,7 +118,10 @@ describe("what a customer sees today", () => {
     expect(slotStatus(slot("what_vesper_is.hero"), []).text).toBe("Empty: customers see the drawing");
     expect(slotStatus(slot("phone_control.hero"), []).text).toBe("Empty: customers see the drawing");
     expect(slotStatus(slot("install_day.hero"), []).text).toBe("Empty: words only");
-    expect(slotStatus(slot("hidden_by_day.more"), []).text).toBe("Empty: words only");
+    // Up close shows the eave drawn by day until its photo is in (round 7 review).
+    expect(slot("hidden_by_day.more").fallback).toBe("drawing_eave");
+    expect(slotStatus(slot("hidden_by_day.more"), []).text).toBe("Empty: customers see the drawing");
+    expect(slotStatus(slot("install_day.more"), []).text).toBe("Empty: words only");
     expect(slotStatus(slot("gallery.snow"), []).text).toBe("Empty: page skipped");
     expect(slotStatus(slot("gallery.snow"), [{ slot: "gallery.more" }]).text).toBe("Empty: the gallery shows your other photos");
   });
@@ -181,6 +185,13 @@ describe("the shot list's text", () => {
     expect(day).toBe("Bright overcast or open shade, sun behind the camera.");
   });
 
+  it("asks for a white balance step the iPhone's own Camera app can do, or names an app that can", () => {
+    for (const item of DECK_SLOTS) {
+      if (/white balance/i.test(item.scenario)) expect(item.scenario, item.key).toMatch(/camera app that can lock it/);
+    }
+    expect(slot("whites_first.warm").scenario).toMatch(/Lightroom or Halide/);
+  });
+
   it("groups example links by slot, best first", () => {
     const refs = [
       { slot: "warranty.hero", rank: 2, id: "b" },
@@ -191,5 +202,39 @@ describe("the shot list's text", () => {
     expect(grouped.get("warranty.hero")?.map((ref) => ref.id)).toEqual(["a", "b"]);
     expect(grouped.get("gallery.snow")?.map((ref) => ref.id)).toEqual(["c"]);
     expect(grouped.get("cover.none")).toBeUndefined();
+  });
+});
+
+describe("the shot list by when to shoot", () => {
+  it("gives every slot a time and the shot in one short line", () => {
+    const times = new Set(SHOT_TIMES.map((time) => time.key));
+    for (const item of DECK_SLOTS) {
+      expect(times.has(item.when), item.key).toBe(true);
+      expect(item.line.length, item.key).toBeGreaterThan(10);
+      expect(item.line.length, item.key).toBeLessThanOrEqual(80);
+      expect(item.line, item.key).toMatch(/^[A-Z].*\.$/);
+      expect(hasDash(item.line) || hasExclamation(item.line), item.key).toBe(false);
+    }
+  });
+
+  it("groups the slots under Daylight, Blue hour, After a snowfall and Install day, each in deck order", () => {
+    const groups = slotsByWhen();
+    expect(groups.map((group) => group.label)).toEqual(["Daylight", "Blue hour", "After a snowfall", "Install day"]);
+    expect(groups.flatMap((group) => group.slots)).toHaveLength(DECK_SLOTS.length);
+    for (const group of groups) {
+      const order = group.slots.map((item) => DECK_SLOTS.indexOf(item));
+      expect(order).toEqual([...order].sort((a, b) => a - b));
+    }
+    const keys = (label: string) => groups.find((group) => group.label === label)?.slots.map((item) => item.key);
+    expect(keys("Daylight")).toEqual(["hidden_by_day.day", "hidden_by_day.more", "phone_control.screens"]);
+    expect(keys("After a snowfall")).toEqual(["gallery.snow", "warranty.hero"]);
+    expect(keys("Install day")).toEqual(["install_day.hero", "install_day.more"]);
+    expect(keys("Blue hour")).toContain("hidden_by_day.night");
+    expect(keys("Blue hour")).toContain("whites_first.warm");
+  });
+
+  it("leaves out a time with no slots", () => {
+    expect(slotsByWhen([slot("gallery.snow")]).map((group) => group.key)).toEqual(["snowfall"]);
+    expect(slotsByWhen([])).toEqual([]);
   });
 });

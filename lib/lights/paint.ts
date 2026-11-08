@@ -1,8 +1,13 @@
 import {
   BLOOM_ALPHA,
-  HALO_ALPHA,
+  BLOOM_STOPS,
+  CORE_STOPS,
+  HALO_STOPS,
+  WASH_FALLOFF,
   coreColour,
+  haloAlpha,
   hexToRgb,
+  isWhiteLight,
   rgbToCss,
   spriteRadii,
   washAlpha,
@@ -33,17 +38,24 @@ export function releaseCanvas(canvas: HTMLCanvasElement | null | undefined): voi
   canvas.height = 0;
 }
 
-function disc(ctx: CanvasRenderingContext2D, centre: number, radius: number, rgb: Rgb, stops: [number, number][]): void {
+function disc(
+  ctx: CanvasRenderingContext2D,
+  centre: number,
+  radius: number,
+  rgb: Rgb,
+  strength: number,
+  stops: readonly (readonly [number, number])[],
+): void {
   if (!(radius > 0)) return;
   const gradient = ctx.createRadialGradient(centre, centre, 0, centre, centre, radius);
-  for (const [at, alpha] of stops) gradient.addColorStop(at, rgbToCss(rgb, alpha));
+  for (const [at, k] of stops) gradient.addColorStop(at, rgbToCss(rgb, strength * k));
   ctx.fillStyle = gradient;
   ctx.fillRect(centre - radius, centre - radius, radius * 2, radius * 2);
 }
 
 // One light of one colour, for an on-screen pitch (CSS px) at `dpr`.
 export function makeLightSprite(hex: string, pitchCss: number, dpr: number): Sprite {
-  const radii = spriteRadii(pitchCss);
+  const radii = spriteRadii(pitchCss, isWhiteLight(hex));
   const core = radii.core * dpr;
   const halo = radii.halo * dpr;
   const bloom = radii.bloom * dpr;
@@ -54,31 +66,18 @@ export function makeLightSprite(hex: string, pitchCss: number, dpr: number): Spr
   const rgb = hexToRgb(hex);
   // The bloom and halo add up; the core then sits on top of them.
   ctx.globalCompositeOperation = "lighter";
-  disc(ctx, half, bloom, rgb, [
-    [0, BLOOM_ALPHA],
-    [0.3, BLOOM_ALPHA * 0.7],
-    [0.65, BLOOM_ALPHA * 0.25],
-    [1, 0],
-  ]);
-  disc(ctx, half, halo, rgb, [
-    [0, HALO_ALPHA],
-    [0.35, HALO_ALPHA * 0.75],
-    [0.7, HALO_ALPHA * 0.28],
-    [1, 0],
-  ]);
+  disc(ctx, half, bloom, rgb, BLOOM_ALPHA, BLOOM_STOPS);
+  disc(ctx, half, halo, rgb, haloAlpha(hex), HALO_STOPS);
   ctx.globalCompositeOperation = "source-over";
-  disc(ctx, half, core, coreColour(hex), [
-    [0, 1],
-    [0.55, 1],
-    [1, 0],
-  ]);
+  disc(ctx, half, core, coreColour(hex), 1, CORE_STOPS);
   return { canvas, half };
 }
 
 // The wash under one light, in the wash canvas's own pixels: a band
-// `down` deep under the line and a glow `up` high on the soffit, as wide as
-// two pitches with a triangular falloff each side, so neighbours a pitch
-// apart add up to an even band. (ox, oy) is where the light sits in the tile.
+// `down` deep under the line, fading softly (WASH_FALLOFF), and a glow `up`
+// high on the soffit, as wide as two pitches with a triangular falloff each
+// side, so neighbours a pitch apart add up to an even band. (ox, oy) is
+// where the light sits in the tile.
 export function makeWashTile(hex: string, pitch: number, down: number, up: number): WashTile {
   const half = Math.max(1, pitch);
   const width = Math.max(2, Math.ceil(half * 2));
@@ -94,9 +93,7 @@ export function makeWashTile(hex: string, pitch: number, down: number, up: numbe
   const vertical = ctx.createLinearGradient(0, 0, 0, height);
   vertical.addColorStop(0, rgbToCss(rgb, 0));
   vertical.addColorStop(line, rgbToCss(rgb, alpha));
-  vertical.addColorStop(below(0.3), rgbToCss(rgb, alpha * 0.55));
-  vertical.addColorStop(below(0.65), rgbToCss(rgb, alpha * 0.2));
-  vertical.addColorStop(1, rgbToCss(rgb, 0));
+  for (const [share, k] of WASH_FALLOFF) vertical.addColorStop(below(share), rgbToCss(rgb, alpha * k));
   ctx.fillStyle = vertical;
   ctx.fillRect(0, 0, width, height);
   // Keep only a triangle across: 0 at the edges, full at the light.

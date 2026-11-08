@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   FLICK_MIN_PX,
+  PHOTO_DRAG_SHARE,
+  PHOTO_FLICK_MIN_PX,
   SWIPE_MIN_PX,
   arrivalPhase,
   chooseEffect,
@@ -230,11 +232,42 @@ describe("a swipe", () => {
     expect(swipeDelta({ dx: 120, dy: -10, ms: 300 })).toBe(-1);
   });
 
-  it("needs to travel, unless it is a quick flick", () => {
+  it("on the tray needs to travel, unless it is a quick flick", () => {
     expect(swipeDelta({ dx: -(SWIPE_MIN_PX - 1), dy: 0, ms: 1000 })).toBeNull();
     expect(swipeDelta({ dx: -SWIPE_MIN_PX, dy: 0, ms: 1000 })).toBe(1);
     expect(swipeDelta({ dx: -40, dy: 0, ms: 60 })).toBe(1);
     expect(swipeDelta({ dx: -(FLICK_MIN_PX - 1), dy: 0, ms: 10 })).toBeNull();
+  });
+
+  describe("on the photo", () => {
+    const photo = { on: "photo" as const, width: 1180 };
+
+    it("never turns the page on a slow trace along the roofline", () => {
+      // A customer tracing 200 px of their eave over a second and a half.
+      expect(swipeDelta({ dx: -200, dy: 6, ms: 1500 }, photo)).toBeNull();
+      expect(swipeDelta({ dx: 200, dy: -4, ms: 900 }, photo)).toBeNull();
+      // 60 px is a page turn on the tray, never on the photo.
+      expect(swipeDelta({ dx: -SWIPE_MIN_PX, dy: 0, ms: 1000 }, photo)).toBeNull();
+    });
+
+    it("turns on a real flick: 40 px or more at 0.45 px/ms or faster", () => {
+      expect(swipeDelta({ dx: -PHOTO_FLICK_MIN_PX, dy: 0, ms: 80 }, photo)).toBe(1);
+      expect(swipeDelta({ dx: 160, dy: 10, ms: 200 }, photo)).toBe(-1);
+      expect(swipeDelta({ dx: -(PHOTO_FLICK_MIN_PX - 1), dy: 0, ms: 20 }, photo)).toBeNull();
+      expect(swipeDelta({ dx: -100, dy: 0, ms: 300 }, photo)).toBeNull();
+    });
+
+    it("turns on a long drag: a quarter of the page's width, however slow", () => {
+      expect(PHOTO_DRAG_SHARE).toBe(0.25);
+      expect(swipeDelta({ dx: -295, dy: 0, ms: 2000 }, photo)).toBe(1);
+      expect(swipeDelta({ dx: -294, dy: 0, ms: 2000 }, photo)).toBeNull();
+      expect(swipeDelta({ dx: -342, dy: 0, ms: 2000 }, { on: "photo", width: 1366 })).toBe(1);
+      expect(swipeDelta({ dx: -342, dy: 0, ms: 2000 }, { on: "photo", width: 1400 })).toBeNull();
+    });
+
+    it("is still clearly sideways", () => {
+      expect(swipeDelta({ dx: -300, dy: 250, ms: 2000 }, photo)).toBeNull();
+    });
   });
 
   it("is clearly sideways: a tap, or a drag up or down, never turns the page", () => {

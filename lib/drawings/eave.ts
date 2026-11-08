@@ -1,4 +1,4 @@
-import type { Vec } from "@/lib/lights/place";
+import type { Size, Vec } from "@/lib/lights/place";
 
 // The eave in section (round 7): an original line drawing of the edge of a
 // roof cut through, so a customer can see which surface is the soffit, the
@@ -18,6 +18,9 @@ import type { Vec } from "@/lib/lights/place";
 //                               drawing's right edge, where the HTML label sits
 //   eaveLabelsFor(variant)      "lit": Roof edge, Fascia, Track, Light, Soffit;
 //                               "colour": Fascia, Track, Soffit (no light)
+//   EAVE_LABEL_COLUMN           the labels' column beside the drawing (7.5 rem)
+//   eaveFit(box)                the width that fits the drawing and its labels
+//                               whole inside a box, with a margin all round
 
 export const EAVE_VIEW = [0, 0, 520, 440] as const;
 
@@ -140,4 +143,16 @@ export type EaveVariant = "lit" | "colour";
 export function eaveLabelsFor(variant: EaveVariant): EaveLabel[] {
   if (variant === "lit") return EAVE_LABELS;
   return EAVE_LABELS.filter((label) => label.key === "fascia" || label.key === "track" || label.key === "soffit");
+}
+
+// The labels sit in a 7.5 rem column right of the drawing, whose height
+// follows its width (520 x 440).
+export const EAVE_LABEL_COLUMN = 120;
+
+export function eaveFit(box: Size): number {
+  const margin = Math.max(24, Math.min(box.width, box.height) * 0.06);
+  const width = box.width - 2 * margin;
+  const height = box.height - 2 * margin;
+  if (!(width > EAVE_LABEL_COLUMN) || !(height > 0)) return 0;
+  return Math.min(width, height * (EAVE_VIEW[2] / EAVE_VIEW[3]) + EAVE_LABEL_COLUMN);
 }

@@ -1,8 +1,9 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import { exitHoldMoved } from "@/lib/meeting/deck-pages";
 import { MOTION } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +12,11 @@ import { cn } from "@/lib/utils";
 // nothing on screen says how (a customer holding the iPad would do what a
 // "Tap again to leave" said, and land on the lead page with its notes).
 // Escape does the same from a keyboard (the deck listens for it).
+//
+// A hand holding the iPad is not a hold (round 7 review): the hold is
+// cancelled when the finger moves more than 10 px from where it went down,
+// and when a second touch lands anywhere while it is held (a hand gripping
+// the iPad's corner usually has more than one finger on the glass).
 //
 // The ring fills by transform alone: two half rings, each turning 180
 // degrees inside a half-width clip, the second starting as the first ends.
@@ -21,22 +27,43 @@ const HALF_MS = MOTION.exitHoldMs / 2;
 export function ExitHold({ onExit, label = "Hold to leave meeting mode" }: { onExit: () => void; label?: string }) {
   const [holding, setHolding] = useState(false);
   const timer = useRef<number | null>(null);
+  // The pointer holding it and where it went down; null for a key.
+  const down = useRef<{ id: number; x: number; y: number } | null>(null);
 
   function start() {
     if (timer.current !== null) return;
     setHolding(true);
     timer.current = window.setTimeout(() => {
       timer.current = null;
+      down.current = null;
       setHolding(false);
       onExit();
     }, MOTION.exitHoldMs);
   }
 
-  function cancel() {
+  const cancel = useCallback(() => {
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = null;
+    down.current = null;
     setHolding(false);
-  }
+  }, []);
+
+  // While it is held, any other touch, anywhere, cancels it.
+  useEffect(() => {
+    if (!holding) return;
+    function onOtherPointer(event: PointerEvent) {
+      if (down.current === null || event.pointerId !== down.current.id) cancel();
+    }
+    function onTouches(event: TouchEvent) {
+      if (event.touches.length > 1) cancel();
+    }
+    window.addEventListener("pointerdown", onOtherPointer, true);
+    window.addEventListener("touchstart", onTouches, true);
+    return () => {
+      window.removeEventListener("pointerdown", onOtherPointer, true);
+      window.removeEventListener("touchstart", onTouches, true);
+    };
+  }, [holding, cancel]);
 
   useEffect(
     () => () => {
@@ -58,7 +85,12 @@ export function ExitHold({ onExit, label = "Hold to leave meeting mode" }: { onE
       onPointerDown={(event) => {
         if (!event.isPrimary) return;
         event.currentTarget.setPointerCapture(event.pointerId);
+        down.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
         start();
+      }}
+      onPointerMove={(event) => {
+        const from = down.current;
+        if (from && event.pointerId === from.id && exitHoldMoved(from, { x: event.clientX, y: event.clientY })) cancel();
       }}
       onPointerUp={cancel}
       onPointerCancel={cancel}
@@ -73,7 +105,7 @@ export function ExitHold({ onExit, label = "Hold to leave meeting mode" }: { onE
       }}
       onContextMenu={(event) => event.preventDefault()}
       className={cn(
-        "relative inline-flex size-11 touch-none items-center justify-center rounded-full bg-background text-muted-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring",
+        "relative inline-flex size-12 touch-none items-center justify-center rounded-full bg-background text-muted-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-ring",
         holding && "text-foreground",
       )}
       style={{ WebkitTouchCallout: "none" }}

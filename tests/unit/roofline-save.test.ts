@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { NOT_TRACED, SCALE_NOT_SET, checkTraceSave, quoteRunFeet, readBackParts, type TraceSave } from "@/components/roofline/trace-save";
+import {
+  NOT_TRACED,
+  SCALE_NOT_SET,
+  checkTraceSave,
+  quoteRunFeet,
+  readBackOf,
+  readBackParts,
+  sameTrace,
+  storedForm,
+  type TraceSave,
+  type TraceShape,
+} from "@/components/roofline/trace-save";
+import type { Pt } from "@/lib/deck";
 import { parseTrace } from "@/lib/deck";
 import { TOO_DARK_LINE } from "@/lib/lights/dusk";
 import { SCALE_LOOKS_WRONG } from "@/lib/lights/place";
@@ -109,5 +121,79 @@ describe("The read-back, for Keenan only", () => {
   it("adds up a quote's runs as stored", () => {
     expect(quoteRunFeet([{ name: "Front", feet: 60, level: "lower" }, { name: "Garage", feet: "22" }, { feet: -4 }, null])).toBe(82);
     expect(quoteRunFeet(null)).toBe(0);
+  });
+});
+
+describe("One count for the tracer, the save and prep", () => {
+  // A small seeded random walk, so the run is the same every time.
+  function rng(seed: number) {
+    let state = seed >>> 0;
+    return () => {
+      state = (state * 1664525 + 1013904223) >>> 0;
+      return state / 2 ** 32;
+    };
+  }
+  function randomTrace(random: () => number): TraceShape {
+    const lines: Pt[][] = Array.from({ length: 1 + Math.floor(random() * 3) }, () =>
+      Array.from({ length: 2 + Math.floor(random() * 4) }, (): Pt => [0.05 + random() * 0.9, 0.1 + random() * 0.5]),
+    );
+    const left = 0.2 + random() * 0.3;
+    return {
+      lines,
+      lineFeet: lines.map(() => (random() < 0.2 ? Math.round(random() * 4000) / 100 + 5 : null)),
+      scale: { a: [left, 0.8], b: [left + 0.12 + random() * 0.1, 0.8 + random() * 0.002], feet: 16, kind: "double" },
+    };
+  }
+
+  it("gives the tracer's read-back the count Save stores, for any trace as drawn", () => {
+    const random = rng(7);
+    for (let run = 0; run < 300; run++) {
+      const trace = randomTrace(random);
+      const photo = random() < 0.5 ? { width: 3200, height: 2400 } : { width: 1600, height: 1200 };
+      const check = checkTraceSave({ ...good, ...trace, photo });
+      if (!check.ok) continue;
+      expect(readBackOf(trace, photo).lights).toBe(check.row.light_count);
+    }
+  });
+
+  it("reads a reopened trace back at the count prep shows", () => {
+    const random = rng(11);
+    for (let run = 0; run < 100; run++) {
+      const trace = randomTrace(random);
+      const check = checkTraceSave({ ...good, ...trace });
+      if (!check.ok) continue;
+      const stored = parseTrace({
+        lines: check.row.lines,
+        line_feet: check.row.line_feet,
+        scale: check.row.scale,
+        dusk_brightness: check.row.dusk_brightness,
+        light_count: check.row.light_count,
+      });
+      if (!stored) throw new Error("stored trace didn't parse");
+      expect(readBackOf(stored, good.photo).lights).toBe(stored.lightCount);
+    }
+  });
+
+  it("stores a trace once: storing it again changes nothing", () => {
+    const trace: TraceShape = { lines: [[[0.1234567891, 0.3], [0.7, 0.30000001]]], lineFeet: [0], scale: good.scale };
+    const once = storedForm(trace);
+    expect(once.lines[0]).toEqual([
+      [0.12346, 0.3],
+      [0.7, 0.3],
+    ]);
+    expect(once.lineFeet).toEqual([null]);
+    expect(storedForm(once)).toEqual(once);
+  });
+
+  it("knows when the trace on screen is the one saved", () => {
+    const saved = { photoId: good.photoId, trace: { lines: good.lines, lineFeet: good.lineFeet, scale: good.scale } };
+    const drawn: TraceShape = { lines: [[[0.1000000004, 0.3], [0.725, 0.3]]], lineFeet: [null], scale: good.scale };
+    expect(sameTrace({ photoId: good.photoId, trace: drawn }, saved)).toBe(true);
+    expect(sameTrace({ photoId: good.photoId, trace: { ...drawn, lines: [[[0.11, 0.3], [0.725, 0.3]]] } }, saved)).toBe(false);
+    expect(sameTrace({ photoId: good.photoId, trace: { ...drawn, lineFeet: [40] } }, saved)).toBe(false);
+    expect(sameTrace({ photoId: good.photoId, trace: { ...drawn, scale: { ...good.scale, feet: 9, kind: "single" } } }, saved)).toBe(false);
+    expect(sameTrace({ photoId: "another", trace: drawn }, saved)).toBe(false);
+    expect(sameTrace({ photoId: good.photoId, trace: drawn }, { photoId: good.photoId, trace: null })).toBe(false);
+    expect(sameTrace({ photoId: good.photoId, trace: null }, { photoId: good.photoId, trace: null })).toBe(true);
   });
 });

@@ -106,11 +106,12 @@ function swRules(): (request: Request) => Rule {
   return (request) => cacheRule({ method: "GET", mode: "no-cors", ...request }, ORIGIN);
 }
 
-// Every link in the seeded examples, as the migration stores them.
+// Every link in the examples, as the migrations store them: the seed, and
+// any later migration that changes them (round 7 review).
 function seededLinks(): string[] {
-  const name = readdirSync("supabase/migrations").find((file) => file.endsWith("_presentation_references_seed.sql"));
-  expect(name).toBeDefined();
-  const sql = read(join("supabase/migrations", name as string));
+  const names = readdirSync("supabase/migrations").filter((file) => /_presentation_references_\w+\.sql$/.test(file));
+  expect(names.some((file) => file.endsWith("_presentation_references_seed.sql"))).toBe(true);
+  const sql = names.map((name) => read(join("supabase/migrations", name))).join("\n");
   return [...new Set(sql.match(/https?:\/\/[^\s'")]+/g) ?? [])];
 }
 

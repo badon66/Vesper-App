@@ -73,7 +73,7 @@ function PresentationCard({ filled, looksOn }: { filled: number; looksOn: number
     {
       href: "/app/admin/settings/rehearsal",
       title: "Rehearse the presentation",
-      text: "Walk through the pages as a customer sees them, with an example in each empty slot. Customers never see this view.",
+      text: "Walk through the pages with an example in each empty slot. Customer view shows exactly what a customer sees.",
     },
   ];
   return (

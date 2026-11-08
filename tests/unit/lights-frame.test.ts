@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { IDENTITY, fitContain, screenBox, toScreen, traceFrame, type Transform } from "@/lib/lights/frame";
-import type { Rect, Size } from "@/lib/lights/place";
+import { IDENTITY, TRACE_MARGIN, fitContain, scaleHandles, screenBox, toScreen, traceFrame, type Transform } from "@/lib/lights/frame";
+import type { Rect, Size, Vec } from "@/lib/lights/place";
 
 const IPAD_AIR_PHOTO_AREA: Size = { width: 1180, height: 574 };
+const IPAD_PRO_PHOTO_AREA: Size = { width: 1366, height: 737 };
 const PHOTO: Size = { width: 1600, height: 1200 };
 
 // Where a content rect lands on screen.
@@ -64,13 +65,14 @@ describe("the light picker's frame", () => {
     expect(gaps).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
   });
 
-  it("covers the view when that keeps the whole roofline in", () => {
+  it("fits the roofline and its margin whole, with the photo covering the rest of the view", () => {
     // A trace about the view's own shape.
     const bounds: Rect = { x: 500, y: 400, width: 600, height: 280 };
     const t = traceFrame(bounds, PHOTO, IPAD_AIR_PHOTO_AREA);
-    expect(insideView(t, bounds, IPAD_AIR_PHOTO_AREA)).toBe(true);
-    const target = { width: 600 + 2 * 60, height: 280 + 2 * 60 };
-    expect(t.scale).toBeCloseTo(Math.max(1180 / target.width, 574 / target.height), 6);
+    const target: Rect = { x: 440, y: 340, width: 600 + 2 * 60, height: 280 + 2 * 60 };
+    expect(insideView(t, target, IPAD_AIR_PHOTO_AREA)).toBe(true);
+    expect(t.scale).toBeCloseTo(Math.min(1180 / target.width, 574 / target.height), 6);
+    expect(uncovered(t, PHOTO, IPAD_AIR_PHOTO_AREA)).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
   });
 
   it("keeps the roofline in when it sits at the photo's edge, with Night Background where the photo runs out", () => {
@@ -111,6 +113,127 @@ describe("the light picker's frame", () => {
       };
       const t = traceFrame(bounds, photo, view);
       expect(insideView(t, bounds, view), JSON.stringify({ bounds, photo, view })).toBe(true);
+      expect(t.scale).toBeGreaterThan(0);
+    }
+  });
+});
+
+// The review's stand-in house (2400 x 1800): a two-storey with a gable and
+// an attached garage, traced along its eaves, gable and garage line, and
+// its double garage door's bottom corners marked as the scale.
+const HOUSE: Size = { width: 2400, height: 1800 };
+const HOUSE_ROOFLINE: Rect = { x: 200, y: 250, width: 1760, height: 700 };
+const HOUSE_HANDLES: Vec[] = [
+  [330, 1450],
+  [820, 1450],
+];
+
+describe("the frame brings in the doors and some ground", () => {
+  it("finds the scale handles on the photo, and leaves out one that is off it or unreadable", () => {
+    expect(scaleHandles({ a: [0.25, 0.5], b: [0.75, 0.5] }, PHOTO)).toEqual([
+      [400, 600],
+      [1200, 600],
+    ]);
+    expect(scaleHandles({ a: [1.4, 0.5], b: [Number.NaN, 0.5] }, PHOTO)).toEqual([]);
+    expect(scaleHandles(null, PHOTO)).toEqual([]);
+  });
+
+  it("shows the garage door and the ground under it when the photo has room", () => {
+    // A front photo from across the street: the roofline in the upper half,
+    // the garage door's bottom at 70% of the height.
+    const bounds: Rect = { x: 300, y: 330, width: 1000, height: 300 };
+    const handles: Vec[] = [
+      [420, 840],
+      [760, 840],
+    ];
+    for (const view of [IPAD_AIR_PHOTO_AREA, IPAD_PRO_PHOTO_AREA]) {
+      const t = traceFrame(bounds, PHOTO, view, TRACE_MARGIN, handles);
+      expect(insideView(t, bounds, view)).toBe(true);
+      // The handles and some ground below them.
+      const [, handleY] = toScreen(t, handles[0]);
+      expect(handleY).toBeLessThan(view.height - 10);
+      // Never letterboxed for them.
+      expect(uncovered(t, PHOTO, view)).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
+    }
+  });
+
+  it("keeps the margin above the roofline's top point, and gives the extra to the wall and ground below", () => {
+    const bounds: Rect = { x: 300, y: 330, width: 1000, height: 300 };
+    const handles: Vec[] = [
+      [420, 840],
+      [760, 840],
+    ];
+    const t = traceFrame(bounds, PHOTO, IPAD_AIR_PHOTO_AREA, TRACE_MARGIN, handles);
+    const pad = TRACE_MARGIN * 1000;
+    const [, peakY] = toScreen(t, [0, bounds.y]);
+    expect(peakY).toBeCloseTo(pad * t.scale, 6);
+    // A trace in the upper half of a 4:3 photo keeps more photo below it
+    // than above it.
+    const [, eaveY] = toScreen(t, [0, bounds.y + bounds.height]);
+    expect(IPAD_AIR_PHOTO_AREA.height - eaveY).toBeGreaterThan(peakY);
+  });
+
+  it("on a house that fills the photo, keeps at least half the margin above the peak and lets the ground go first", () => {
+    for (const view of [IPAD_AIR_PHOTO_AREA, IPAD_PRO_PHOTO_AREA]) {
+      const t = traceFrame(HOUSE_ROOFLINE, HOUSE, view, TRACE_MARGIN, HOUSE_HANDLES);
+      expect(insideView(t, HOUSE_ROOFLINE, view)).toBe(true);
+      expect(uncovered(t, HOUSE, view)).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
+      const subjectPad = TRACE_MARGIN * Math.max(1760, 1450 - 250);
+      const [, peakY] = toScreen(t, [0, HOUSE_ROOFLINE.y]);
+      expect(peakY).toBeGreaterThanOrEqual((subjectPad / 2) * t.scale - 1e-6);
+      // More of the house shows below the garage line than the old frame
+      // (the roofline plus 10%, centred) gave.
+      const old = traceFrame(HOUSE_ROOFLINE, HOUSE, view);
+      const below = (frame: Transform) => (view.height - frame.y) / frame.scale;
+      expect(below(t)).toBeGreaterThan(below(old) + 100);
+    }
+    // On the 13-inch iPad the garage door's bottom is in.
+    const pro = traceFrame(HOUSE_ROOFLINE, HOUSE, IPAD_PRO_PHOTO_AREA, TRACE_MARGIN, HOUSE_HANDLES);
+    expect(toScreen(pro, HOUSE_HANDLES[0])[1]).toBeLessThanOrEqual(IPAD_PRO_PHOTO_AREA.height);
+  });
+
+  it("keeps what the photo has above a peak near its top edge, never sliding the peak onto the edge", () => {
+    // A front photo taken close: the peak 30 to 90 px from the photo's top,
+    // the garage door's bottom far below, so the bottom has to give way.
+    for (const view of [IPAD_AIR_PHOTO_AREA, IPAD_PRO_PHOTO_AREA]) {
+      for (const y of [10, 30, 60, 90]) {
+        const bounds: Rect = { x: 250, y, width: 1100, height: 420 };
+        const handles: Vec[] = [
+          [400, y + 750],
+          [800, y + 750],
+        ];
+        const t = traceFrame(bounds, PHOTO, view, TRACE_MARGIN, handles);
+        expect(insideView(t, bounds, view)).toBe(true);
+        const subjectPad = TRACE_MARGIN * Math.max(1100, 750);
+        const [, peakY] = toScreen(t, [0, y]);
+        expect(peakY, `peak at ${y}`).toBeGreaterThanOrEqual(Math.min(subjectPad / 2, y) * t.scale - 1e-6);
+      }
+    }
+  });
+
+  it("never lets a handle off the photo, or unreadable, move the frame", () => {
+    const bounds: Rect = { x: 300, y: 330, width: 1000, height: 300 };
+    const plain = traceFrame(bounds, PHOTO, IPAD_AIR_PHOTO_AREA);
+    expect(traceFrame(bounds, PHOTO, IPAD_AIR_PHOTO_AREA, TRACE_MARGIN, [[-50, 2000]])).toEqual(plain);
+    expect(traceFrame(bounds, PHOTO, IPAD_AIR_PHOTO_AREA, TRACE_MARGIN, [[Number.NaN, 400]])).toEqual(plain);
+  });
+
+  it("never crops the roofline, whatever the handles, on either iPad, on any photo shape", () => {
+    const next = random(11);
+    const views: Size[] = [IPAD_AIR_PHOTO_AREA, IPAD_PRO_PHOTO_AREA, { width: 844, height: 280 }];
+    const photos: Size[] = [PHOTO, HOUSE, { width: 1600, height: 900 }, { width: 1200, height: 1600 }];
+    for (let n = 0; n < 2000; n++) {
+      const photo = photos[n % photos.length];
+      const view = views[n % views.length];
+      const x0 = next() * photo.width;
+      const y0 = next() * photo.height;
+      const bounds: Rect = { x: x0, y: y0, width: next() * (photo.width - x0), height: next() * (photo.height - y0) };
+      const handles: Vec[] = [
+        [next() * photo.width, y0 + next() * (photo.height - y0)],
+        [next() * photo.width, y0 + next() * (photo.height - y0)],
+      ];
+      const t = traceFrame(bounds, photo, view, TRACE_MARGIN, handles);
+      expect(insideView(t, bounds, view), JSON.stringify({ bounds, handles, photo, view })).toBe(true);
       expect(t.scale).toBeGreaterThan(0);
     }
   });

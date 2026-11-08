@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LightCanvas, useBoxSize } from "@/components/lights/light-canvas";
 import type { Effect, Look } from "@/lib/deck";
 import { DUSK_NAVY, NAVY_MULTIPLY_OPACITY, duskFilter } from "@/lib/lights/dusk";
-import { IDENTITY, TRACE_MARGIN, screenBox, traceFrame } from "@/lib/lights/frame";
+import { IDENTITY, TRACE_MARGIN, scaleHandles, screenBox, traceFrame } from "@/lib/lights/frame";
 import { placeLights, type Size, type TraceGeometry } from "@/lib/lights/place";
 import { MOTION, transition } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -19,7 +19,9 @@ import { cn } from "@/lib/utils";
 //      saturate 0.65), cross-faded in by opacity;
 //   3. one flat Vesper navy layer, multiply, at 38% of the dusk level;
 //   4. the light canvas, screen-blended.
-// Framed to the trace's bounds plus 10%. Where the photo runs out, the
+// Framed to the trace's bounds joined with its scale handles (the garage or
+// front door's bottom corners) plus 10%, with the top kept above the
+// roofline (lib/lights/frame.ts traceFrame). Where the photo runs out, the
 // box's Night Background shows. Both photo loads are crossOrigin anonymous,
 // so the service worker can keep them and nothing is ever tainted. It never
 // takes a touch: the page around it decides what a touch does.
@@ -89,9 +91,14 @@ export function LitPhoto({
   }, []);
 
   const placement = useMemo(() => (natural ? placeLights(trace, natural) : null), [trace, natural]);
+  // Framed to the roofline joined with the scale handles (the garage or
+  // front door's bottom corners), so the doors and some ground show.
   const transform = useMemo(
-    () => (natural && placement && box.width > 0 && box.height > 0 ? traceFrame(placement.bounds, natural, box, TRACE_MARGIN) : IDENTITY),
-    [natural, placement, box],
+    () =>
+      natural && placement && box.width > 0 && box.height > 0
+        ? traceFrame(placement.bounds, natural, box, TRACE_MARGIN, scaleHandles(trace.scale, natural))
+        : IDENTITY,
+    [natural, placement, box, trace.scale],
   );
   const ready = Boolean(natural && placement && box.width > 0 && box.height > 0);
 

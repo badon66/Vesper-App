@@ -16,7 +16,9 @@ import type { TraceGeometry } from "@/lib/lights/place";
 // Warm white, steady, framed to the trace's bounds plus 10%, in the space
 // above the deck's band (about 30% of the height at 1180x820, 28% at
 // 1366x1024). It opens already lit, like a later arrival on the picker:
-// prep tracing has no animation. The words under it are for Keenan only.
+// prep tracing has no animation. The words under it are for Keenan only,
+// with "Not saved yet" after the count while the trace on screen isn't the
+// one saved.
 
 export function SeeItLit({
   photoUrl,
@@ -24,6 +26,7 @@ export function SeeItLit({
   look,
   tooDark,
   readBack,
+  unsaved = false,
   onClose,
 }: {
   photoUrl: string;
@@ -32,6 +35,7 @@ export function SeeItLit({
   look: Look;
   tooDark: boolean;
   readBack: string | null;
+  unsaved?: boolean;
   onClose: () => void;
 }) {
   const [boxRef, box] = useBoxSize<HTMLDivElement>();
@@ -73,7 +77,7 @@ export function SeeItLit({
           <p className="text-lg font-semibold">What the customer sees</p>
           <p className="text-pretty text-muted-foreground">
             At dusk, in {look.name}, steady, framed as the light picker frames it.
-            {readBack ? ` ${readBack}.` : ""}
+            {readBack ? ` ${readBack}.${unsaved ? " Not saved yet." : ""}` : ""}
           </p>
           {tooDark ? (
             <p className="flex items-center gap-2 font-semibold" role="alert">

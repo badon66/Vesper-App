@@ -20,7 +20,11 @@ import type { Size, Vec } from "@/lib/lights/place";
 //   finishedTrace(draft, feet)  the lines worth saving (2 points or more),
 //                               with their measured feet, in order
 //   History, commit, undo       Undo walks back the last point, then the
-//                               last line (and a Clear, and a photo change)
+//                               last line (and a Clear, and a photo change);
+//                               with nothing to walk back (a saved trace just
+//                               reopened), it takes the last point of the
+//                               last line, then that line, all the same
+//   scaleLine(scale)            "Scale: double garage door, 16 ft"
 //   ScaleDraft, scaleOf, ...    the garage door's two handles and its width
 //
 // A point placed within 20 px of an open line's end takes that end's exact
@@ -293,13 +297,38 @@ export function commit(history: History, next: TraceDraft): History {
   return { past: past.length > HISTORY_LIMIT ? past.slice(past.length - HISTORY_LIMIT) : past, present: next };
 }
 
+// Undo walks back this session's changes first. With none left (a saved
+// trace just reopened, or every change already undone), it still works as
+// the spec says: the last point of the last line goes, and once a line is
+// down to its last point, the line goes. The scale is not part of the
+// draft, so Undo never removes it.
 export function canUndo(history: History): boolean {
-  return history.past.length > 0;
+  return history.past.length > 0 || history.present.lines.length > 0;
 }
 
 export function undo(history: History): History {
-  if (history.past.length === 0) return history;
-  return { past: history.past.slice(0, -1), present: history.past[history.past.length - 1] };
+  if (history.past.length > 0) {
+    // A line's id is never handed out twice, so a line drawn after an Undo
+    // never takes the feet typed for the line that was undone.
+    const previous = history.past[history.past.length - 1];
+    const present = previous.nextId >= history.present.nextId ? previous : { ...previous, nextId: history.present.nextId };
+    return { past: history.past.slice(0, -1), present };
+  }
+  const present = dropLastPoint(history.present);
+  return present === history.present ? history : { past: [], present };
+}
+
+// The last point of the last line, taken off. The line it leaves is the one
+// being drawn, so the next point carries it on, as it would after undoing
+// a point placed this session; a line's last point takes the line with it.
+export function dropLastPoint(draft: TraceDraft): TraceDraft {
+  const at = draft.lines.length - 1;
+  if (at < 0) return draft;
+  const line = draft.lines[at];
+  if (line.points.length <= 1) return { ...draft, lines: draft.lines.slice(0, at), active: null };
+  const lines = draft.lines.slice();
+  lines[at] = { ...line, points: line.points.slice(0, -1) };
+  return { ...draft, lines, active: line.id };
 }
 
 // ---------------------------------------------------------------- the scale
@@ -383,6 +412,20 @@ export function scaleFeet(scale: Pick<ScaleDraft, "kind" | "otherFeet">): number
   if (scale.kind !== "other") return SCALE_FEET[scale.kind];
   const feet = scale.otherFeet;
   return feet != null && Number.isFinite(feet) && feet >= OTHER_FEET_MIN && feet <= OTHER_FEET_MAX ? feet : null;
+}
+
+// The scale beside the read-back, so Keenan can check it without dragging
+// the handles again (Keenan only): "Scale: double garage door, 16 ft".
+const SCALE_NAMES: Record<ScaleKind, string> = {
+  double: "double garage door",
+  single: "single garage door",
+  door: "front door",
+  other: "other door",
+};
+
+export function scaleLine(scale: Pick<TraceScale, "kind" | "feet">): string {
+  const feet = Math.round(scale.feet * 100) / 100;
+  return `Scale: ${SCALE_NAMES[scale.kind] ?? SCALE_NAMES.other}, ${feet} ft`;
 }
 
 // The scale to measure with, or null while it isn't set: a handle not yet

@@ -56,17 +56,15 @@ type SlotCardProps = {
   onBlobUrl: (url: string) => void;
 };
 
-export function SlotCard({ slot, photos, references, onPhotos, onReference, onBlobUrl }: SlotCardProps) {
-  const mine = photosInOrder(photos.filter((photo) => photo.slot === slot.key));
-  const status = slotStatus(slot, photos);
-  const [main, ...others] = references;
+// Uploading a photo into a slot, shared by the slot's card and its row in
+// the shot list grouped by when to shoot: the hidden file input, what is
+// happening, and any error. pick(null) adds a photo, pick(id) replaces one.
+function useSlotUpload(slot: DeckSlot, onPhotos: PhotosUpdate, onBlobUrl: (url: string) => void) {
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const replacing = useRef<string | null>(null);
-  const room = mine.length < slot.max;
-  const headingId = `slot-${slot.key.replace(".", "-")}`;
 
   function pick(replaceId: string | null) {
     replacing.current = replaceId;
@@ -109,8 +107,45 @@ export function SlotCard({ slot, photos, references, onPhotos, onReference, onBl
     }
   }
 
+  const fileInput = (
+    <input
+      ref={input}
+      type="file"
+      accept="image/*"
+      tabIndex={-1}
+      aria-hidden="true"
+      className="sr-only"
+      data-testid={`deck-slot-input-${slot.key}`}
+      onChange={(event) => void upload(event.currentTarget.files?.[0])}
+    />
+  );
+  const messages = (
+    <>
+      {progress ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          {progress}
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-sm font-semibold text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </>
+  );
+  return { busy, pick, fileInput, messages };
+}
+
+export function SlotCard({ slot, photos, references, onPhotos, onReference, onBlobUrl }: SlotCardProps) {
+  const mine = photosInOrder(photos.filter((photo) => photo.slot === slot.key));
+  const status = slotStatus(slot, photos);
+  const [main, ...others] = references;
+  const { busy, pick, fileInput, messages } = useSlotUpload(slot, onPhotos, onBlobUrl);
+  const room = mine.length < slot.max;
+  const headingId = `slot-${slot.key.replace(".", "-")}`;
+
   return (
-    <Card role="group" aria-labelledby={headingId} data-testid="deck-slot" data-slot-key={slot.key}>
+    <Card id={slotAnchor(slot.key)} role="group" aria-labelledby={headingId} data-testid="deck-slot" data-slot-key={slot.key} className="scroll-mt-24">
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
           <h3 id={headingId} className="text-lg leading-tight font-bold">
@@ -155,26 +190,8 @@ export function SlotCard({ slot, photos, references, onPhotos, onReference, onBl
               {busy === "add" ? "Uploading" : "Add another photo"}
             </Button>
           ) : null}
-          <input
-            ref={input}
-            type="file"
-            accept="image/*"
-            tabIndex={-1}
-            aria-hidden="true"
-            className="sr-only"
-            data-testid={`deck-slot-input-${slot.key}`}
-            onChange={(event) => void upload(event.currentTarget.files?.[0])}
-          />
-          {progress ? (
-            <p role="status" className="text-sm text-muted-foreground">
-              {progress}
-            </p>
-          ) : null}
-          {error ? (
-            <p role="alert" className="text-sm font-semibold text-destructive">
-              {error}
-            </p>
-          ) : null}
+          {fileInput}
+          {messages}
         </div>
         <div className="flex flex-col gap-4">
           {main ? (
@@ -205,6 +222,71 @@ function OtherExamples({ references, slotName, onSaved }: { references: Referenc
         </div>
       ) : null}
     </details>
+  );
+}
+
+// Where a slot's card is on the page, for a link from its row.
+export const slotAnchor = (key: string) => `slot-card-${key.replace(".", "-")}`;
+
+// One slot in the shot list grouped by when to shoot (round 7 review,
+// Keenan): its name, the shot in one line, what customers see today, and
+// the same upload as its card. Readable at 390 px: the button wraps under
+// the words on a phone.
+export function ShotRow({
+  slot,
+  photos,
+  onPhotos,
+  onBlobUrl,
+  onOpen,
+}: {
+  slot: DeckSlot;
+  photos: DeckPhotoView[];
+  onPhotos: PhotosUpdate;
+  onBlobUrl: (url: string) => void;
+  // Shows the slot's card (its page, its example and its full shot).
+  onOpen: () => void;
+}) {
+  const mine = photosInOrder(photos.filter((photo) => photo.slot === slot.key));
+  const status = slotStatus(slot, photos);
+  const { busy, pick, fileInput, messages } = useSlotUpload(slot, onPhotos, onBlobUrl);
+  const first = mine[0] ?? null;
+  const room = mine.length < slot.max;
+  const action = room
+    ? { label: mine.length === 0 ? "Upload my photo" : "Add another photo", replaceId: null }
+    : slot.max === 1 && first
+      ? { label: "Replace", replaceId: first.id }
+      : null;
+  return (
+    <li className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0" data-testid="shot-row" data-slot-key={slot.key}>
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
+        {first?.url ? (
+          // eslint-disable-next-line @next/next/no-img-element -- Keenan's own 640 px copy behind a signed link, or a local copy just uploaded
+          <img src={first.url} alt="" className="h-14 w-20 shrink-0 rounded-sm border object-cover" />
+        ) : null}
+        <div className="flex min-w-0 flex-1 basis-56 flex-col gap-1">
+          <p className="font-semibold">{slot.name}</p>
+          <p className="text-sm text-pretty">{slot.line}</p>
+          <p className="flex items-center gap-1.5 text-sm" data-testid="shot-row-status">
+            {status.filled ? <Check aria-hidden="true" className="size-4 shrink-0" /> : <Circle aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />}
+            <span className={status.filled ? "font-semibold" : "text-muted-foreground"}>{status.text}</span>
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {action ? (
+            <Button type="button" variant="outline" disabled={busy !== null} onClick={() => pick(action.replaceId)}>
+              {action.replaceId ? <RefreshCw aria-hidden="true" /> : <ImagePlus aria-hidden="true" />}
+              {busy !== null ? "Uploading" : action.label}
+              <span className="sr-only">: {slot.name}</span>
+            </Button>
+          ) : null}
+          <Button type="button" variant="ghost" size="sm" onClick={onOpen}>
+            The full shot<span className="sr-only">: {slot.name}</span>
+          </Button>
+        </div>
+      </div>
+      {fileInput}
+      {messages}
+    </li>
   );
 }
 

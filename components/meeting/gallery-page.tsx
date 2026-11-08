@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { BandPage, BottomRight, DeckButton, DeckImage, DECK_TYPE, MoreLayer, SlotExample, useDeck, useSideSwipe } from "@/components/meeting/deck-parts";
+import { BandPage, BottomRight, DeckButton, DeckImage, DECK_TYPE, MoreLayer, say, SlotExample, useDeck, useSideSwipe } from "@/components/meeting/deck-parts";
 import type { PageWords } from "@/lib/deck";
-import { GALLERY_HERO_COUNT, seeAllLabel, type GalleryItem } from "@/lib/meeting/deck-pages";
+import { GALLERY_HERO_COUNT, galleryCounter, seeAllLabel, type GalleryItem } from "@/lib/meeting/deck-pages";
 import { EASE_QUIET, MOTION } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -15,9 +15,10 @@ import { cn } from "@/lib/utils";
 // owns `at`); a swipe always turns the deck's page, so no scroller is nested
 // inside the deck. Each photo's caption names the look only. "See all N"
 // opens the contact sheet: 3 across at 1180, 4 at 1366, 2 px gutters, from
-// the 640 px copies; a tap opens one full screen with its own Back, and a
+// the 640 px copies, clear of the exit and Back; a tap opens one full screen with its own Back, and a
 // swipe there moves photo to photo. In the rehearsal view an empty slot shows
-// its example among them.
+// its example among them. The band counts its photos ("2 of 6") only while
+// they are the whole gallery; with more, See all N is the only total.
 
 const itemAlt = (item: GalleryItem) =>
   item.kind === "photo" ? (item.photo.caption ? `A home we've lit, ${item.photo.caption.toLowerCase()}` : "A home we've lit") : item.slot.name;
@@ -103,11 +104,17 @@ function FullPhoto({ items, at, onAt, onBack }: { items: GalleryItem[]; at: numb
   );
 }
 
+// The grid scrolls between a strip at the top that holds the exit and one at
+// the foot that holds Back (round 7 review), so neither ever sits on a photo.
 function ContactSheet({ items, label }: { items: GalleryItem[]; label: string }) {
   const [full, setFull] = useState<number | null>(null);
   return (
     <>
-      <div className="absolute inset-0 overflow-y-auto overscroll-contain pb-24" style={{ touchAction: "pan-y" }}>
+      <div
+        data-deck-sheet=""
+        className="absolute inset-x-0 top-[88px] overflow-y-auto overscroll-contain"
+        style={{ touchAction: "pan-y", bottom: "var(--deck-clear, 78px)" }}
+      >
         <h2 className="sr-only">{label}</h2>
         <ul className="grid grid-cols-3 gap-[2px] @min-[1280px]:grid-cols-4">
           {items.map((item, at) => (
@@ -149,7 +156,8 @@ export function GalleryPage({
   const current = heroes[shown];
   const caption = current?.kind === "photo" ? current.photo.caption : current?.kind === "example" ? current.slot.name : null;
   const label = words.moreLabel.trim();
-  const sheet = label && items.length > 1 ? seeAllLabel(label, items.length) : null;
+  const sheet = label && items.length > 1 ? say(seeAllLabel(label, items.length)) : null;
+  const counter = galleryCounter(shown, heroes.length, items.length);
 
   return (
     <>
@@ -158,14 +166,18 @@ export function GalleryPage({
         headline={words.headline}
         more={sheet ? <DeckButton onClick={() => onSheet(true)} aria-haspopup="dialog">{sheet}</DeckButton> : null}
       >
-        <div aria-live="polite" className="flex flex-col gap-2">
-          {caption ? <p className={DECK_TYPE.body}>{caption}</p> : null}
-          {heroes.length > 1 ? (
-            <p className={cn(DECK_TYPE.small, "text-muted-foreground tabular-nums")} data-testid="gallery-counter">
-              {shown + 1} of {heroes.length}
-            </p>
-          ) : null}
-        </div>
+        {/* Nothing at all with one uncaptioned photo, so the band has no
+            empty right column (it never steps, so nothing to announce). */}
+        {caption || heroes.length > 1 ? (
+          <div aria-live="polite" className="flex flex-col gap-2">
+            {caption ? <p className={DECK_TYPE.body}>{say(caption)}</p> : null}
+            {counter ? (
+              <p className={cn(DECK_TYPE.small, "text-muted-foreground tabular-nums")} data-testid="gallery-counter">
+                {counter}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </BandPage>
       {sheet ? (
         <MoreLayer open={sheetOpen} onClose={() => onSheet(false)} label={sheet} variant="fade">

@@ -71,6 +71,37 @@ export type TraceCheck =
 const round5 = (value: number) => Math.round(value * 1e5) / 1e5;
 const roundPt = ([x, y]: Pt): Pt => [round5(x), round5(y)];
 
+// The parts of a trace that set its lights.
+export type TraceShape = { lines: Pt[][]; lineFeet: (number | null)[]; scale: TraceScale };
+
+// A trace as Save stores it: its points and the door's handles to five
+// decimals. Storing it again changes nothing.
+export function storedForm(trace: TraceShape): TraceShape {
+  return {
+    lines: trace.lines.map((line) => line.map(roundPt)),
+    lineFeet: trace.lines.map((_, at) => {
+      const feet = trace.lineFeet[at];
+      return feet != null && Number.isFinite(feet) && feet > 0 ? feet : null;
+    }),
+    scale: { a: roundPt(trace.scale.a), b: roundPt(trace.scale.b), feet: trace.scale.feet, kind: trace.scale.kind },
+  };
+}
+
+// The one count. The tracer's read-back and the light_count Save stores
+// (which prep shows) both come from here, on the trace as it is stored, so
+// the two never disagree.
+export function readBackOf(trace: TraceShape, photo: Size): ReadBack {
+  return traceReadBack(storedForm(trace), photo);
+}
+
+// Whether the trace on screen is the one saved: same photo, same lines,
+// feet and scale once stored.
+export function sameTrace(a: { photoId: string | null; trace: TraceShape | null }, b: { photoId: string | null; trace: TraceShape | null }): boolean {
+  if (a.photoId !== b.photoId) return false;
+  if (!a.trace || !b.trace) return a.trace === b.trace;
+  return JSON.stringify(storedForm(a.trace)) === JSON.stringify(storedForm(b.trace));
+}
+
 export const NOT_TRACED = "Trace at least one line along the roof edge.";
 export const SCALE_NOT_SET = "Drag both handles to the garage door's bottom corners.";
 export const DIDNT_SAVE = "The trace didn't save. Check your signal and try again.";
@@ -83,9 +114,8 @@ export function checkTraceSave(input: unknown): TraceCheck {
     return { ok: false, error: "Something in the trace didn't look right. Check it and save again." };
   }
   const value = parsed.data;
-  const lines = value.lines.map((line) => line.map((point) => roundPt(point as Pt)));
-  const scale: TraceScale = { a: roundPt(value.scale.a as Pt), b: roundPt(value.scale.b as Pt), feet: value.scale.feet, kind: value.scale.kind };
-  const readBack = traceReadBack({ lines, lineFeet: value.lineFeet, scale }, value.photo);
+  const { lines, scale } = storedForm({ lines: value.lines as Pt[][], lineFeet: value.lineFeet, scale: value.scale as TraceScale });
+  const readBack = readBackOf({ lines, lineFeet: value.lineFeet, scale }, value.photo);
   if (!readBack.scaleSet) return { ok: false, error: SCALE_NOT_SET };
   if (readBack.lights > MAX_LIGHTS) return { ok: false, error: SCALE_LOOKS_WRONG };
   if (readBack.lights < 1) return { ok: false, error: NOT_TRACED };

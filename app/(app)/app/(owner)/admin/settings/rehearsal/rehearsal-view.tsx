@@ -11,7 +11,7 @@ import type { DeckPageKey, DeckSlot } from "@/lib/deck";
 import { deckPages } from "@/lib/meeting/deck-pages";
 
 import { ExampleShot } from "./example-shot";
-import { landingPage, PRESENTATION_SETTINGS, REHEARSAL_WORDS, rehearsalHref, type RehearsalData } from "./rehearsal";
+import { customerViewFor, landingPage, PRESENTATION_SETTINGS, REHEARSAL_WORDS, rehearsalHref, type RehearsalData } from "./rehearsal";
 
 // The rehearsal view (round 7, rehearsal_and_references): the meeting's own
 // deck, exactly as meeting mode renders it, under a permanent gold bar. Every
@@ -19,7 +19,9 @@ import { landingPage, PRESENTATION_SETTINGS, REHEARSAL_WORDS, rehearsalHref, typ
 // exactly what a real meeting would show today, fallbacks and skipped pages
 // included, with the bar still on. "Rehearse with" picks one of the upcoming
 // meetings, or no lead (the picker, mockup, colour and price pages are then
-// skipped).
+// skipped). Choosing a lead turns the Customer view on, so a run-through of
+// tonight's meeting shows what the customer will see; No lead turns it off,
+// for studying the examples. Keenan can switch it either way after.
 //
 // It writes nothing: the deck runs in its rehearsal mode (no iPad copy, no
 // history guard, Save and Confirm acted out on screen, no server action),
@@ -31,7 +33,11 @@ const BAR_FOCUS =
 
 export function RehearsalView({ deck, meeting, examples, choices, leadId }: RehearsalData) {
   const router = useRouter();
-  const [customerView, setCustomerView] = useState(false);
+  // The switch starts from the lead (on with a lead, off with none); a flip
+  // holds for that lead until another is chosen.
+  const [flipped, setFlipped] = useState<{ lead: string | null; on: boolean } | null>(null);
+  const customerView = flipped && flipped.lead === leadId ? flipped.on : customerViewFor(leadId);
+  const setCustomerView = (on: boolean) => setFlipped({ lead: leadId, on });
   const [page, setPage] = useState<DeckPageKey | null>(null);
   const [pending, startTransition] = useTransition();
   const [shownLead, setShownLead] = useOptimistic(leadId ?? "");

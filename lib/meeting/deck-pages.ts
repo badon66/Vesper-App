@@ -20,7 +20,7 @@ import {
 import { SOFFIT_LABELS, type SoffitColour } from "@/lib/leads/status";
 import type { DeckPayload, DeckPhoto, MeetingPayload } from "@/lib/meeting/state";
 import { galleryPhotos, isGallerySlot, photosInOrder } from "@/lib/photos-deck";
-import { formatMoney, screenTotal } from "@/lib/pricing";
+import { screenTotal } from "@/lib/pricing";
 import type { Json } from "@/types/database";
 
 // The deck (round 7, the settled spec's page_order, pages and colour_screen):
@@ -38,10 +38,16 @@ import type { Json } from "@/types/database";
 //   pairView(deck, a, b, fillEmpty?)        the day and night or warm and cool pair
 //   galleryItems(deck, fillEmpty?)          the gallery's photos (and, in
 //                                           rehearsal, its empty slots)
-//   moreWords(page), seeAllLabel, installSteps, warrantyLines,
-//   serviceCallLine, companyLines, placeOf, soffitView, coverLine
+//   moreWords(page), seeAllLabel, galleryCounter, installSteps,
+//   warrantyLines, serviceCallLine, companyLines, placeOf, soffitView,
+//   coverLine, COLOUR_LINES, CHOOSER_LINES
 //   fluidPx, fluidValue, BAND_HEIGHT_CSS    the deck's type and band sizes
-//   stepFor, isNear, entryOf, startIndex    deck mechanics
+//   DECK_ROW, DECK_ROW_BOTTOM_CSS, DECK_CLEAR_CSS
+//                                           the bottom row (the More button,
+//                                           the dots and the chevrons) and
+//                                           where a picture ends above it
+//   stepFor, isNear, entryOf, startIndex, exitHoldMoved
+//                                           deck mechanics
 //   buildDeckPayload, deckPhotoPathsToSign, pickerFrom   the payload, from rows
 
 // ---------------------------------------------------------------- pages
@@ -148,6 +154,15 @@ export function seeAllLabel(label: string, count: number): string {
   return `${label.trim()} ${count}`;
 }
 
+// The band's counter, "2 of 6", only while the photos stepped through on
+// the band are the whole gallery. With more than that, See all N is the
+// only total a customer sees (round 7 review): no counter, rather than "1
+// of 6" beside "See all 12".
+export function galleryCounter(at: number, shown: number, total: number): string | null {
+  if (shown < 2 || shown !== total) return null;
+  return `${Math.min(Math.max(0, at), shown - 1) + 1} of ${shown}`;
+}
+
 // ---------------------------------------------------------------- words
 
 export function splitLines(text: string): string[] {
@@ -219,13 +234,24 @@ export function coverLine(lead: Pick<MeetingPayload["lead"], "addressLine" | "ne
 
 export const CHECK_TOGETHER = "We'll check it together.";
 
-// The colour page's built lines, word for word from the spec.
+// The colour page's built lines, word for word from the spec. The chooser
+// opened over it reads the same screens line (round 7 review).
 export const COLOUR_LINES = {
   splitTrack: "One track colour for the whole house.",
   screens: "Screens can't show colour exactly, so we choose it from the colour book together.",
   initials: "Your initials confirm the track colour we'll order.",
-  // The chooser's line, as built, with "the RAL book" now "the colour book".
-  chooser: "Screens can't show colour accurately, so choose it from the colour book together.",
+} as const;
+
+// The colour chooser in front of the customer (round 7 review): the colour
+// book, never "RAL Classic" or "powder coating". The read-back of a typed
+// number (its RAL name) stays. The lead page and prep keep their own words.
+export const CHOOSER_LINES = {
+  heading: "Your track colour",
+  legend: "Choose the colour",
+  codeLabel: "Colour number",
+  codeHint: "From the colour book.",
+  codeShort: "Four digits, from the colour book.",
+  codeUnknown: "That number isn't in the colour book.",
 } as const;
 
 // The soffit by name: one colour, or two on their own lines for a split
@@ -260,7 +286,9 @@ export function soffitView(lead: Pick<MeetingPayload["lead"], "soffitColour" | "
 // Air), the second at 1366 (iPad Pro 12.9), in a straight line between,
 // held to that range. Written with container units, so the rehearsal view's
 // smaller frame scales the same way. 52/60 headlines, 27/30 words, 20/22
-// secondary lines, 64/72 the cover's wordmark, 28/30 its address.
+// secondary lines, 64/72 the cover's wordmark, 28/30 its address; the
+// colour page's names 32/36, the full warranty 24/27, a More's label 44/50
+// and a words-only More's words 30/32 (round 7 review).
 const AIR = 1180;
 const PRO = 1366;
 const round = (value: number, places: number) => Number(value.toFixed(places));
@@ -297,8 +325,40 @@ export const DECK_SIZES = {
   small: fluidPx(20, 22),
   wordmark: fluidPx(64, 72),
   address: fluidPx(28, 30),
+  name: fluidPx(32, 36),
+  warranty: fluidPx(24, 27),
+  moreLabel: fluidPx(44, 50),
+  moreBody: fluidPx(30, 32),
   band: BAND_HEIGHT_CSS,
 } as const;
+
+// The bottom row (round 7 review): every page's More button (and Back on
+// its layer) sits bottom right, 56 px tall, 20 px up (or above the home
+// indicator); the dots and the Previous and Next chevrons share its centre
+// line in the middle, so the bottom edge reads as one row. Dot targets 40 px
+// wide and 44 px tall in a pill with 4 px ends, 44 px chevron discs, 6 px
+// between them and the pill: with all 12 pages that is 588 px, which clears
+// the widest seeded More button ("What the app does") at 1180. Whatever
+// sits in the bottom row's band (the tray's controls, a picture on a split
+// page or a More) ends 8 px above the row's tallest part: --deck-clear.
+export const DECK_ROW = { height: 56, bottom: 20, dot: 40, dotHeight: 44, pillEnds: 4, chevron: 44, gap: 6, clearance: 8 } as const;
+export const DECK_ROW_BOTTOM_CSS = `max(${DECK_ROW.bottom}px, env(safe-area-inset-bottom, 0px))`;
+const rowTopOverBottom = (DECK_ROW.height + Math.max(DECK_ROW.chevron, DECK_ROW.dotHeight)) / 2;
+// 78 px above the deck's foot without a home indicator.
+export const DECK_CLEAR_PX = DECK_ROW.bottom + rowTopOverBottom + DECK_ROW.clearance;
+export const DECK_CLEAR_CSS = `calc(var(--deck-row-bottom, ${DECK_ROW.bottom}px) + ${rowTopOverBottom + DECK_ROW.clearance}px)`;
+
+// The middle of the bottom row, in px: the dots for every page, the two
+// chevrons and their gaps, centred on the deck. A More button's left edge
+// has to stay clear of it (Settings can check a label against it).
+export function bottomRowWidth(pages: number): number {
+  return pages * DECK_ROW.dot + 2 * DECK_ROW.pillEnds + 2 * (DECK_ROW.chevron + DECK_ROW.gap);
+}
+
+// The x where the middle of the bottom row ends, on a deck that wide.
+export function bottomRowRight(deckWidth: number, pages: number): number {
+  return (deckWidth + bottomRowWidth(pages)) / 2;
+}
 
 // ---------------------------------------------------------------- mechanics
 
@@ -315,6 +375,15 @@ export function stepFor(
     if (next >= 0 && next < galleryCount) return { photo: next };
   }
   return { page: delta };
+}
+
+// The exit (round 7 review): a hold on the X is a hold only while the finger
+// stays within 10 px of where it went down; further is a hand gripping the
+// iPad's corner, and cancels it.
+export const EXIT_HOLD_SLOP_PX = 10;
+
+export function exitHoldMoved(from: { x: number; y: number }, to: { x: number; y: number }): boolean {
+  return Math.hypot(to.x - from.x, to.y - from.y) > EXIT_HOLD_SLOP_PX;
 }
 
 // Only the page on screen and its neighbours mount full-size pictures.

@@ -280,7 +280,8 @@ export type MeetingStart = {
   index: number;
   // The page the iPad was on, by key, when it picks up where it left off.
   screenKey: string | null;
-  // The light picker as it was this meeting; null for a new meeting.
+  // The light picker as it was this meeting; null for a fresh open or a
+  // new meeting (Warm white, Steady, the light-up to play).
   picker: PickerStored | null;
 };
 
@@ -300,9 +301,11 @@ export function pickerFromStored(value: unknown, looks: Pick<Look, "key">[]): Pi
 // another device). Then the server's, so the price in the room is current.
 // Opened fresh from Tonight or the lead page, it starts at the cover; only
 // a reload mid-meeting picks up on the screen it left. The light picker
-// keeps its look, effect and played light-up for the same meeting (within
-// RESUME_MS of the last screen), fresh start or not, so stepping out and
-// back in never replays the light-up; a later meeting starts it anew.
+// does the same (round 7 review, Keenan): a fresh open (#start) opens it on
+// Warm white, Steady, with the light-up to play the first time the page is
+// reached, so a check from prep or the truck before the visit never spends
+// the reveal; only a reload or auto-lock mid-meeting (within RESUME_MS of
+// the last screen) keeps its look, effect and played light-up.
 export function startingPoint(
   payload: MeetingPayload,
   stored: MeetingStored | null,
@@ -316,7 +319,7 @@ export function startingPoint(
   const sameMeeting = Boolean(stored?.screen && now - stored.screen.at < RESUME_MS);
   const index = !fresh && sameMeeting && stored?.screen ? stored.screen.index : 0;
   const screenKey = !fresh && sameMeeting && typeof stored?.screen?.key === "string" ? stored.screen.key : null;
-  const picker = sameMeeting ? pickerFromStored(stored?.picker, payload.deck.looks) : null;
+  const picker = !fresh && sameMeeting ? pickerFromStored(stored?.picker, payload.deck.looks) : null;
   const initialsDraft = stored?.initialsDraft ?? "";
   const where = { index, screenKey, picker };
 

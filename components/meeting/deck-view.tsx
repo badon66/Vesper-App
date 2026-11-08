@@ -35,6 +35,8 @@ import { CUSTOM_CHOICE, leadTrackColour, trackColourText } from "@/lib/leads/tra
 import { coolWhiteOf, warmWhiteOf } from "@/lib/lights/looks";
 import {
   coverLine,
+  DECK_CLEAR_CSS,
+  DECK_ROW_BOTTOM_CSS,
   DECK_SIZES,
   deckPages,
   entryOf,
@@ -88,9 +90,12 @@ import { cn } from "@/lib/utils";
 //     onPage?          told the page in view each time it changes
 //   />
 // Layers (a page's More, the contact sheet, the colour chooser) mount inside
-// the deck, so a frame smaller than the screen keeps them. The deck's root
-// sets --deck-band (the band's and the picker tray's height) and the type
-// sizes as CSS variables, in container units of the deck's own frame.
+// the deck, so a frame smaller than the screen keeps them. While one is open
+// the pager is locked, the dots and chevrons hide (Back is the way out), and
+// any page change closes it. The deck's root sets --deck-band (the band's
+// and the picker tray's height), the type sizes, --deck-row-bottom (the
+// bottom row's foot) and --deck-clear (where a picture ends above that row)
+// as CSS variables, in container units of the deck's own frame.
 
 export type DeckMode = "meeting" | "rehearsal";
 
@@ -113,7 +118,13 @@ const ROOT_STYLE = {
   "--deck-small": DECK_SIZES.small,
   "--deck-wordmark": DECK_SIZES.wordmark,
   "--deck-address": DECK_SIZES.address,
+  "--deck-name": DECK_SIZES.name,
+  "--deck-warranty": DECK_SIZES.warranty,
+  "--deck-more-label": DECK_SIZES.moreLabel,
+  "--deck-more-body": DECK_SIZES.moreBody,
   "--deck-band": DECK_SIZES.band,
+  "--deck-row-bottom": DECK_ROW_BOTTOM_CSS,
+  "--deck-clear": DECK_CLEAR_CSS,
 } as CSSProperties;
 
 const ROOT_CLASS =
@@ -456,6 +467,7 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             onInitialsDraft={setInitialsDraft}
             onConfirmed={setConfirmation}
             onColourSaved={onColourSaved}
+            chooser={moreOf("colour")}
             readOnly={readOnly}
           />
         ) : null;
@@ -486,8 +498,11 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
   const onGallery = currentKey === "gallery";
   const canBack = current > 0 || (onGallery && galleryAt > 0);
   const canForward = current < pages.length - 1 || (onGallery && galleryAt < galleryCount - 1);
+  // Solid Night Background discs with a Night Text chevron, so they read the
+  // same wherever they sit. One that can't move keeps its place, unseen, so
+  // the dots never shift.
   const chevron =
-    "absolute top-1/2 z-40 hidden size-11 -translate-y-1/2 touch-none items-center justify-center rounded-full bg-background/40 text-foreground/60 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex";
+    "pointer-events-auto hidden size-11 shrink-0 touch-none items-center justify-center rounded-full bg-background text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex";
 
   return (
     <DeckContext.Provider value={context}>
@@ -524,39 +539,64 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
         {/* Layers mount here: over the pages, under the way out and the dots. */}
         <div ref={setOverlay} className="pointer-events-none absolute inset-0 z-30 [&>*]:pointer-events-auto" />
 
-        {/* Quiet over navy, still findable over a bright photo. Hidden on a
-            phone, where a swipe does it, and while a layer is open. */}
-        {!layer && canBack ? (
-          <button type="button" aria-label="Previous" onClick={() => step(-1)} className={cn(chevron, "left-2")}>
-            <ChevronLeft className="size-6" />
-          </button>
-        ) : null}
-        {!layer && canForward ? (
-          <button type="button" aria-label="Next" onClick={() => step(1)} className={cn(chevron, "right-2")}>
-            <ChevronRight className="size-6" />
-          </button>
+        {/* The bottom row's middle: Previous, the dots, Next, on the same
+            centre line as the bottom-right button, away from where hands
+            hold the iPad. All of it hides while a layer is open (the pager
+            is locked and Back is the way out). The chevrons hide on a phone,
+            where a swipe does it. */}
+        {!layer ? (
+          <div
+            data-deck-row="nav"
+            className="pointer-events-none absolute inset-x-0 z-40 flex h-14 items-center justify-center gap-1.5"
+            style={{ bottom: "var(--deck-row-bottom)" }}
+          >
+            <button
+              type="button"
+              aria-label="Previous"
+              onClick={() => step(-1)}
+              disabled={!canBack}
+              aria-hidden={canBack ? undefined : true}
+              tabIndex={canBack ? undefined : -1}
+              className={cn(chevron, !canBack && "invisible")}
+            >
+              <ChevronLeft aria-hidden="true" className="size-6" />
+            </button>
+            <ol aria-label="Where you are" className="pointer-events-auto flex rounded-full bg-background px-1">
+              {pages.map((page, at) => (
+                <li key={page.key}>
+                  <button
+                    type="button"
+                    aria-label={page.label}
+                    aria-current={at === current ? "true" : undefined}
+                    onClick={() => goTo(at)}
+                    className="flex size-9 touch-none items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring lg:h-11 lg:w-10"
+                  >
+                    <span className={cn("size-2 rounded-full", at === current ? "bg-foreground" : "bg-foreground/35")} />
+                  </button>
+                </li>
+              ))}
+            </ol>
+            <button
+              type="button"
+              aria-label="Next"
+              onClick={() => step(1)}
+              disabled={!canForward}
+              aria-hidden={canForward ? undefined : true}
+              tabIndex={canForward ? undefined : -1}
+              className={cn(chevron, !canForward && "invisible")}
+            >
+              <ChevronRight aria-hidden="true" className="size-6" />
+            </button>
+          </div>
         ) : null}
 
-        <div className="pointer-events-none absolute inset-x-0 bottom-[max(0.25rem,env(safe-area-inset-bottom))] z-40 flex justify-center">
-          <ol aria-label="Where you are" className="pointer-events-auto flex rounded-full bg-background px-1">
-            {pages.map((page, at) => (
-              <li key={page.key}>
-                <button
-                  type="button"
-                  aria-label={page.label}
-                  aria-current={at === current ? "true" : undefined}
-                  onClick={() => goTo(at)}
-                  className="flex size-9 touch-none items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring lg:size-11"
-                >
-                  <span className={cn("size-2 rounded-full", at === current ? "bg-foreground" : "bg-foreground/35")} />
-                </button>
-              </li>
-            ))}
-          </ol>
-        </div>
-
-        {/* The way out: small, top left, out of the customer's eye line. */}
-        <div className="absolute top-[max(0.5rem,env(safe-area-inset-top))] left-2 z-50">
+        {/* The way out: top left, in from the bezel so a hand holding the
+            iPad by its corner doesn't rest on it, out of the customer's eye
+            line. */}
+        <div
+          className="absolute z-50"
+          style={{ top: "max(20px, env(safe-area-inset-top, 0px))", left: "max(20px, env(safe-area-inset-left, 0px))" }}
+        >
           <ExitHold onExit={onExit} label={mode === "rehearsal" ? "Hold to leave the rehearsal" : "Hold to leave meeting mode"} />
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { DECK_SLOTS, PAGE_LAYOUT, SLOT_BY_KEY, type DeckSlot } from "@/lib/deck";
+import { DECK_SLOTS, PAGE_LAYOUT, SHOT_TIMES, SLOT_BY_KEY, type DeckSlot, type ShotTime } from "@/lib/deck";
 import { MEETING_PHOTO_MAX_EDGE, shrinkPhoto } from "@/lib/photos";
 
 // Keenan's own photos for the deck's named slots (round 7, Branch B): where
@@ -29,6 +29,9 @@ import { MEETING_PHOTO_MAX_EDGE, shrinkPhoto } from "@/lib/photos";
 //   slotCrop(slot)             the shape the meeting crops this slot's photo to
 //   focusFromPoint(box, x, y), nudgeFocus(focus, key)
 //   standardPoints(text)       the shooting standard as a list
+//   slotsByWhen(slots?)        the shot list by when to shoot: Daylight,
+//                              Blue hour, After a snowfall, Install day,
+//                              each in deck order
 //   referencesBySlot(refs)     example links per slot, best first
 
 export const DECK_BUCKET = "presentation";
@@ -219,6 +222,15 @@ export function standardPoints(text: string): { night: string[]; day: string } {
     .map((line) => upper(line.trim()))
     .filter(Boolean);
   return { night, day: upper(dayPart.trim()) };
+}
+
+// The shot list by when to shoot (round 7 review, Keenan): a shoot follows
+// the light, so the slots are grouped by their time, each group in deck
+// order. A time with no slots is left out.
+export function slotsByWhen(slots: DeckSlot[] = DECK_SLOTS): { key: ShotTime; label: string; note: string; slots: DeckSlot[] }[] {
+  return SHOT_TIMES.map((time) => ({ ...time, slots: slots.filter((slot) => slot.when === time.key) })).filter(
+    (group) => group.slots.length > 0,
+  );
 }
 
 export type ReferenceRow = {

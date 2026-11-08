@@ -80,11 +80,12 @@ export default async function RooflinePage({
     return url ? [{ id: photo.id, label: photo.label, url }] : [];
   });
 
-  // It opens on the photo the trace was drawn on, else the Front photo.
+  // It opens on the photo the trace was drawn on, else the Front photo,
+  // with the light count the save stored (prep shows the same one).
   const start: TracerStart =
     trace && traceRow && photos.some((photo) => photo.id === traceRow.photo_id)
-      ? { photoId: traceRow.photo_id, lines: trace.lines, lineFeet: trace.lineFeet, scale: trace.scale }
-      : { photoId: photos[0]?.id ?? null, lines: [], lineFeet: [], scale: null };
+      ? { photoId: traceRow.photo_id, lines: trace.lines, lineFeet: trace.lineFeet, scale: trace.scale, lightCount: trace.lightCount }
+      : { photoId: photos[0]?.id ?? null, lines: [], lineFeet: [], scale: null, lightCount: null };
 
   const quoteWithRuns = (quoteRows ?? []).find((quote) => quoteRunFeet(quote.runs) > 0) ?? null;
   const quoteFeet = quoteWithRuns ? quoteRunFeet(quoteWithRuns.runs) : null;

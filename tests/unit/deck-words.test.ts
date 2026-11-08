@@ -11,7 +11,8 @@ import {
   WORDS_PAGES,
   wordCount,
 } from "@/lib/deck";
-import { CHECK_TOGETHER, COLOUR_LINES, moreWords, soffitView } from "@/lib/meeting/deck-pages";
+import { CHECK_TOGETHER, CHOOSER_LINES, COLOUR_LINES, galleryCounter, moreWords, seeAllLabel, soffitView } from "@/lib/meeting/deck-pages";
+import { smartApostrophes } from "@/lib/typography";
 
 // Every seeded page's words fit the copy rules' limits (round 7, copy_rules),
 // read straight from the seed migration, and so do the lines the deck builds
@@ -58,6 +59,9 @@ function customerStrings(): string[] {
     NO_PAYMENT_LINE,
     CHECK_TOGETHER,
     ...Object.values(COLOUR_LINES),
+    ...Object.values(CHOOSER_LINES),
+    seeAllLabel(WORDS.pages.gallery.moreLabel, 12),
+    galleryCounter(1, 6, 6) ?? "",
     soffitView({ soffitColour: "white", soffitColour2: "off_white" }).label,
     soffitView({ soffitColour: "other", soffitColour2: null }).names[0],
   );
@@ -119,6 +123,22 @@ describe("every seeded page's words", () => {
       expect(hasExclamation(text), text).toBe(false);
       for (const never of NEVER) expect(never.test(text), `${text} (${never})`).toBe(false);
     }
+  });
+
+  it("read with typographic apostrophes on screen, while what Settings stores stays as typed", () => {
+    const stored = customerStrings();
+    expect(stored.some((text) => /\p{L}'\p{L}/u.test(text))).toBe(true);
+    for (const text of stored) expect(/\p{L}'\p{L}/u.test(smartApostrophes(text)), text).toBe(false);
+    expect(smartApostrophes(WORDS.pages.gallery.headline)).toBe("Homes we’ve lit");
+  });
+
+  it("put the colour book in front of the customer, never RAL Classic, the RAL K7 book or powder coating", () => {
+    for (const text of Object.values(CHOOSER_LINES)) expect(/RAL|powder/i.test(text), text).toBe(false);
+    // The chooser reads the page's own screens line, not a second wording.
+    expect(Object.keys(COLOUR_LINES)).not.toContain("chooser");
+    expect(CHOOSER_LINES.legend).toBe("Choose the colour");
+    expect(CHOOSER_LINES.codeLabel).toBe("Colour number");
+    expect(CHOOSER_LINES.codeHint).toBe("From the colour book.");
   });
 
   it("say No payment until your install is complete. word for word", () => {

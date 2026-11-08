@@ -11,6 +11,7 @@ import {
   commit,
   defaultHandles,
   draftFrom,
+  dropLastPoint,
   finishedTrace,
   hitHandle,
   hitPoint,
@@ -24,6 +25,7 @@ import {
   placeSnap,
   ptToScreen,
   scaleFromStored,
+  scaleLine,
   scaleOf,
   scaleProblem,
   screenDistance,
@@ -190,6 +192,56 @@ describe("New line, Clear and Undo", () => {
     expect(clearLines(start)).toBe(start);
   });
 
+  it("works on a saved trace just reopened: the last point, then the last line, then the line before", () => {
+    const reopened = historyOf(
+      draftFrom("photo-1", [
+        [at(100, 100), at(300, 100), at(300, 200)],
+        [at(500, 300), at(700, 300)],
+      ]),
+    );
+    expect(canUndo(reopened)).toBe(true);
+    let history = undo(reopened);
+    expect(history.present.lines.map((line) => line.points.length)).toEqual([3, 1]);
+    // The line it leaves is the one being drawn: the next point carries it on.
+    expect(history.present.active).toBe(history.present.lines[1].id);
+    expect(placePoint(history.present, at(720, 280), geo).lines[1].points).toEqual([at(500, 300), at(720, 280)]);
+    history = undo(history);
+    expect(history.present.lines).toHaveLength(1);
+    expect(history.present.active).toBeNull();
+    history = undo(history);
+    expect(history.present.lines[0].points).toEqual([at(100, 100), at(300, 100)]);
+    expect(history.present.active).toBe(history.present.lines[0].id);
+    history = undo(undo(history));
+    expect(history.present.lines).toEqual([]);
+    expect(canUndo(history)).toBe(false);
+    expect(undo(history)).toBe(history);
+  });
+
+  it("walks back this session's changes first, then carries on into the saved lines", () => {
+    const reopened = draftFrom("photo-1", [[at(100, 100), at(300, 100), at(300, 200)]]);
+    const moved = movePoint(reopened, { line: 0, index: 0 }, at(120, 90), geo);
+    let history = commit(historyOf(reopened), moved);
+    history = undo(history);
+    expect(history.present).toBe(reopened);
+    history = undo(history);
+    expect(history.present.lines[0].points).toEqual([at(100, 100), at(300, 100)]);
+    expect(history.past).toEqual([]);
+  });
+
+  it("never hands a line's id out twice, so an undone line's feet don't move to the next line", () => {
+    let history = commit(historyOf(start), trace([at(100, 100), at(300, 100)]));
+    const undoneId = history.present.lines[0].id;
+    history = undo(undo(history));
+    const redrawn = trace([at(100, 300), at(300, 300)], history.present);
+    expect(redrawn.lines[0].id).not.toBe(undoneId);
+    expect(finishedTrace(redrawn, { [undoneId]: 22 }).lineFeet).toEqual([null]);
+  });
+
+  it("takes nothing from an empty draft, and keeps the photo", () => {
+    expect(dropLastPoint(start)).toBe(start);
+    expect(dropLastPoint(draftFrom("photo-9", [[at(1, 1), at(2, 2)]])).photoId).toBe("photo-9");
+  });
+
   it("starts a fresh trace on another photo, which Undo takes back", () => {
     const traced = trace([at(100, 100), at(300, 100)]);
     const history = commit(commit(historyOf(start), traced), changePhoto(traced, "photo-2"));
@@ -259,6 +311,16 @@ describe("The scale", () => {
     expect(hitHandle(both, [310, 405], geo)).toBe(0);
     expect(hitHandle(both, [590, 395], geo)).toBe(1);
     expect(hitHandle(both, [450, 400], geo)).toBeNull();
+  });
+
+  it("names the scale beside the read-back", () => {
+    expect(scaleLine({ kind: "double", feet: 16 })).toBe("Scale: double garage door, 16 ft");
+    expect(scaleLine({ kind: "single", feet: 9 })).toBe("Scale: single garage door, 9 ft");
+    expect(scaleLine({ kind: "door", feet: 3 })).toBe("Scale: front door, 3 ft");
+    expect(scaleLine({ kind: "other", feet: 12.5 })).toBe("Scale: other door, 12.5 ft");
+    expect(scaleLine(scaleOf(scaleFromStored({ a: [0.1, 0.8], b: [0.3, 0.8], feet: 16, kind: "double" }))!)).toBe(
+      "Scale: double garage door, 16 ft",
+    );
   });
 
   it("reopens a saved scale as placed", () => {
