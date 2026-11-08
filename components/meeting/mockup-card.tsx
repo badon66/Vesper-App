@@ -18,11 +18,14 @@ export function MockupCard({
   userId,
   mockupUrl,
   bare = false,
+  primary = false,
 }: {
   leadId: string;
   userId: string;
   mockupUrl: string | null;
   bare?: boolean;
+  // The prep list: gold only on the first thing still to do.
+  primary?: boolean;
 }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
@@ -58,7 +61,7 @@ export function MockupCard({
 
   const upload = (
     <>
-      <Button type="button" variant={bare ? (shown ? "outline" : "default") : "outline"} size={bare ? "lg" : "default"} className={bare ? "h-12 px-5" : undefined} disabled={busy} onClick={() => input.current?.click()}>
+      <Button type="button" variant={bare && primary && !shown ? "default" : "outline"} size={bare ? "lg" : "default"} className={bare ? "h-12 px-5" : undefined} disabled={busy} onClick={() => input.current?.click()}>
         <ImagePlus aria-hidden="true" />
         {busy ? "Uploading" : shown ? "Replace the mockup" : "Upload the mockup"}
       </Button>

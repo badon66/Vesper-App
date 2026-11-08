@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, Circle } from "lucide-react";
+import { Check, ChevronLeft, Circle, CircleAlert } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -122,10 +122,14 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
   const address = [lead.address_line, lead.neighbourhood].filter(Boolean).join(", ");
   const name = leadName(lead);
 
+  // One gold thing at a time (DESIGN.md): the first item still to do, or
+  // Start once it's all Ready.
+  const firstOpen = summary.items.find((item) => !item.done)?.key ?? null;
   const body = (item: PrepItem) => {
+    const primary = item.key === firstOpen;
     switch (item.key) {
       case "mockup":
-        return <MockupCard leadId={leadId} userId={me.id} mockupUrl={mockupUrl} bare />;
+        return <MockupCard leadId={leadId} userId={me.id} mockupUrl={mockupUrl} bare primary={primary} />;
       case "track_colour":
         return (
           <div className="flex flex-col gap-3 text-sm">
@@ -140,6 +144,7 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
               options={trackOptions}
               current={{ choice: lead.track_ral_code ? "custom" : lead.track_colour_id, ralCode: lead.track_ral_code }}
               ralNames={Object.fromEntries(ralNames)}
+              quiet={!primary}
             />
           </div>
         );
@@ -151,7 +156,7 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
                 ? `A quote with ${runCount} ${runCount === 1 ? "run" : "runs"} is saved. Change it in meeting mode before you go.`
                 : "Measure from the photos and save the runs ahead, so the price is ready at the table."}
             </p>
-            <Button asChild size="lg" variant={item.done ? "outline" : "default"} className="h-12 px-5">
+            <Button asChild size="lg" variant={primary ? "default" : "outline"} className="h-12 px-5">
               {/* A full page load on purpose, as Start: the service worker
                   keeps the meeting page for a reload without signal. */}
               <a href={`/meeting/${leadId}#quote`} data-testid="prep-quote">
@@ -166,14 +171,14 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
             <p className="text-sm text-muted-foreground">
               Text opens Messages with the text ready to change before you send it. The wording is in Settings.
             </p>
-            <ConfirmMeeting meetingId={meeting.id} phone={lead.phone} smsHref={smsHref} confirmedAt={meeting.confirmed_at} />
+            <ConfirmMeeting meetingId={meeting.id} phone={lead.phone} smsHref={smsHref} confirmedAt={meeting.confirmed_at} primary={primary} />
           </div>
         ) : null;
       case "answers":
         return item.done ? (
           <p className="text-sm text-muted-foreground">All six answered.</p>
         ) : (
-          <FillAnswers leadId={leadId} missing={missing} />
+          <FillAnswers leadId={leadId} missing={missing} primary={primary} />
         );
       default:
         return null;
@@ -198,7 +203,7 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
               {meeting ? sentenceCase(timePhrase(meeting.starts_at, today)) : "No meeting booked"}
             </p>
           </div>
-          <Button asChild size="lg" className="h-14 shrink-0 px-10 text-lg">
+          <Button asChild size="lg" variant={summary.ready ? "default" : "outline"} className="h-14 shrink-0 px-10 text-lg">
             <a href={`/meeting/${leadId}#start`} aria-label={`Start the meeting with ${name}`} data-testid="prep-start">
               Start
             </a>
@@ -209,7 +214,7 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
           data-testid="prep-status"
           data-ready={summary.ready ? "true" : "false"}
         >
-          {summary.ready ? <Check aria-hidden="true" className="size-5 shrink-0" /> : null}
+          {summary.ready ? <Check aria-hidden="true" className="size-5 shrink-0" /> : <CircleAlert aria-hidden="true" className="size-5 shrink-0" />}
           {summary.ready ? "Ready" : `Prepare for the meeting: ${summary.left} left`}
         </p>
       </div>
@@ -280,7 +285,7 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
                       {item.label}
                       <span className="sr-only">{item.done ? ", done" : ", still to do"}</span>
                     </h3>
-                    {!item.done && item.detail ? <p className="text-sm text-pretty text-muted-foreground">{item.detail}</p> : null}
+                    {!item.done && item.detail && item.key !== "answers" ? <p className="text-sm text-pretty text-muted-foreground">{item.detail}</p> : null}
                   </div>
                 </div>
                 <div className="sm:pl-8">{body(item)}</div>

@@ -78,6 +78,7 @@ door_guide text not null                        -- the M2.6 Door guide; unused s
 step_note_at_door text not null                 -- M3.5: the "?" note for the booking sheet's At the door step, owner edited; starts as in the product spec
 step_note_after_door text not null              -- M3.5: the note for After the door
 step_note_book text not null                    -- M3.5: the note for Book
+confirm_text text not null default 'Hi {first_name}, it''s Keenan with Vesper Lighting. Just confirming {day} at {time}. See you then!'  -- round 7: the ready-made confirmation text on the prep list; 1 to 400 characters; {day} is tonight, tomorrow or the weekday; not in settings_public
 not_qualified_reasons text[] not null default '{Not the homeowner, Decision maker missing, Didn''t want a price, Roofline we can''t do, Other}'   -- Other asks for text
 meeting_days int[] not null default '{1,2,3,4,5,6}'   -- 0 = Sunday
 meeting_start time not null default '18:00'
@@ -299,6 +300,7 @@ outcome_note text                               -- optional for no_show and canc
 outcome_at timestamptz                          -- when the status left booked: an outcome, a cancel or a move
 outcome_by uuid references profiles
 rebooked_as uuid references meetings            -- on a no_show, cancelled or moved meeting: the meeting that replaced it
+confirmed_at timestamptz                        -- round 7: when Keenan confirmed the time with them (text or call); set only through confirm_meeting, owner only; a moved meeting starts unconfirmed
 created_at, updated_at
 unique (host_id, starts_at) where status in ('booked','confirmed','qualified','not_qualified')
 unique (lead_id) where status in ('booked','confirmed')   -- one live booking per lead
@@ -307,6 +309,7 @@ Rules, all enforced in the database:
 - **No double booking** (a hard rule). Tapping an open time places a hold; booking takes the caller's own active hold or a free time, never a time someone else holds. Holds and bookings take the same transaction lock, one per host and Calgary evening, and the unique indexes are the last line.
 - **Who may book.** The lead's setter or the owner, for a lead in New or Follow up that passes Before you book, into a time on the template, inside the window and before the cutoff (setters: `booking_cutoff_minutes` before it starts; the owner: until it starts), not blocked.
 - **Move and cancel.** A move creates a new meeting at the new time (held first, like a booking) and marks the old one `moved` with `rebooked_as` pointing to the new one. A cancel marks it `cancelled` and sends the lead to Follow up for the next Calgary day. Setters may do either on their own upcoming bookings until the time starts; the owner on any.
+- **Confirmed** (round 7): `confirm_meeting(meeting, confirmed)` sets or clears `confirmed_at`, for the owner only (42501 for anyone else, the secret key included) and only on a meeting still `booked` or `confirmed`.
 - **Outcomes** are the owner's: from the slot's start for Qualified, Not qualified and No-show, and any time for Cancelled. Qualified and Not qualified set the lead to Met; No-show and Cancelled set it to Follow up for the next day. An outcome can be corrected until the booking fee is paid.
 - `lead_events` records `meeting_booked`, `meeting_moved`, `meeting_cancelled` and `meeting_outcome` with the meeting ids, times, outcome and reason, never an amount.
 

@@ -250,7 +250,7 @@ try {
   );
   check(
     "the card opens its prep list and its Start opens meeting mode",
-    (await soonCard.getByRole("link", { name: `${TEST_LEAD} Later` }).getAttribute("href")) === `/app/meetings/prep/${laterLead}` &&
+    (await soonCard.getByRole("link", { name: `${TEST_LEAD} Later`, exact: true }).getAttribute("href")) === `/app/meetings/prep/${laterLead}` &&
       (await soonCard.getByRole("link", { name: `Start the meeting with ${TEST_LEAD} Later` }).getAttribute("href")) === `/meeting/${laterLead}#start`,
   );
   check(
@@ -270,7 +270,7 @@ try {
   await page.screenshot({ path: `${out}/m5p-ipad-meetings.png`, fullPage: true });
 
   // ---------------------------------------------------------------- the prep list (round 7)
-  await soonCard.getByRole("link", { name: `${TEST_LEAD} Later` }).click();
+  await soonCard.getByRole("link", { name: `${TEST_LEAD} Later`, exact: true }).click();
   await page.waitForURL(`**/app/meetings/prep/${laterLead}`, { timeout: 30000 }).catch(() => {});
   await page.getByTestId("prep-list").waitFor({ timeout: 30000 }).catch(() => {});
   const itemKeys = await page.getByTestId("prep-list").locator("> li").evaluateAll((items) => items.map((item) => `${item.getAttribute("data-testid")}:${item.getAttribute("data-done")}`));

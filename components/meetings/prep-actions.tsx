@@ -20,11 +20,13 @@ export function ConfirmMeeting({
   phone,
   smsHref,
   confirmedAt,
+  primary = false,
 }: {
   meetingId: string;
   phone: string | null;
   smsHref: string | null;
   confirmedAt: string | null;
+  primary?: boolean;
 }) {
   const router = useRouter();
   const [at, setAt] = useState(confirmedAt);
@@ -80,7 +82,15 @@ export function ConfirmMeeting({
           </button>
         </p>
       ) : (
-        <Button type="button" size="lg" className="h-12 self-start px-6" onClick={() => set(true)} disabled={pending} data-testid="prep-confirm-button">
+        <Button
+          type="button"
+          size="lg"
+          variant={primary ? "default" : "outline"}
+          className="h-12 self-start px-6"
+          onClick={() => set(true)}
+          disabled={pending}
+          data-testid="prep-confirm-button"
+        >
           {pending ? "Saving" : "Confirmed"}
         </Button>
       )}
@@ -103,7 +113,7 @@ const OPTIONS: Partial<Record<CountedQuestion, { value: string; label: string }[
 
 // Missing answers filled (round 7): each question left Not collected or
 // never asked, answered right here.
-export function FillAnswers({ leadId, missing }: { leadId: string; missing: CountedQuestion[] }) {
+export function FillAnswers({ leadId, missing, primary = false }: { leadId: string; missing: CountedQuestion[]; primary?: boolean }) {
   const router = useRouter();
   const [answers, setAnswers] = useState<Record<string, string | null>>({});
   const [error, setError] = useState<string | null>(null);
@@ -160,7 +170,15 @@ export function FillAnswers({ leadId, missing }: { leadId: string; missing: Coun
         );
       })}
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" size="lg" className="h-12 px-6" onClick={save} disabled={pending || Object.keys(given).length === 0} data-testid="prep-answers-save">
+        <Button
+          type="button"
+          size="lg"
+          variant={primary ? "default" : "outline"}
+          className="h-12 px-6"
+          onClick={save}
+          disabled={pending || Object.keys(given).length === 0}
+          data-testid="prep-answers-save"
+        >
           {pending ? "Saving" : "Save answers"}
         </Button>
         {saved && !pending ? <span className="text-sm text-muted-foreground">Saved.</span> : null}
