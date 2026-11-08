@@ -177,7 +177,7 @@ function MeetingDeck({ payload }: { payload: MeetingPayload }) {
   const screens = useMemo<Screen[]>(() => {
     const list: Screen[] = [];
     list.push({ key: "cover", label: "Vesper", node: <CoverScreen lead={lead} /> });
-    for (const page of payload.pages) {
+    for (const page of payload.pages ?? []) {
       if (page.kind === "hidden_by_day") {
         const [day, night] = page.images;
         if (!day || !night) continue;

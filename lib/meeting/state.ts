@@ -6,7 +6,26 @@
 import type { SoffitColour } from "@/lib/leads/status";
 import type { TrackColour } from "@/lib/leads/track-colour";
 import { defaultValidUntil, type ColourTiming, type QuoteInputs, type QuoteRun } from "@/lib/pricing";
+import type { DeckWords, Effect, Look, Trace } from "@/lib/deck";
 import type { PresentationKind } from "@/lib/presentation";
+
+// Round 7 (Keenan, 2026-11-08): the deck's own part of the payload. Keenan's
+// photos come as short-lived signed storage links, so Get tonight ready keeps
+// them for a meeting without signal. Never a reference shot: those live only
+// in Settings and the rehearsal view (lib/deck.ts, presentation_references).
+export type DeckPhoto = { url: string; thumbUrl: string | null; focus: [number, number]; caption: string | null };
+export type DeckPayload = {
+  words: DeckWords;
+  // Keenan's photos by slot key (lib/deck.ts DECK_SLOTS), in his order.
+  photos: Record<string, DeckPhoto[]>;
+  // The looks on offer, in order, at most six.
+  looks: Look[];
+  // The light picker: the photo the roofline was traced on and the trace;
+  // null when the page is skipped (not traced, or that photo changed).
+  picker: { photoUrl: string; trace: Trace } | null;
+  // The warranty page's company line.
+  company: { name: string; phone: string };
+};
 
 export type MeetingPayload = {
   lead: {
@@ -16,13 +35,20 @@ export type MeetingPayload = {
     addressLine: string;
     neighbourhood: string | null;
     soffitColour: SoffitColour | null;
-    soffitNote: string | null;
+    // Round 7: the split soffit's second colour. The setter's which-is-where
+    // note is never sent to meeting mode (a field that isn't sent can't show).
+    soffitColour2?: SoffitColour | null;
+    // Take 1 only; round 7's deck drops it from the payload.
+    soffitNote?: string | null;
     colourKind: "none" | "list" | "custom";
     colourText: string;
     initials: string | null;
     initialledAt: string | null;
   };
-  pages: { kind: PresentationKind; title: string; body: string; images: (string | null)[] }[];
+  // Take 1's pages; round 7's deck reads deck instead.
+  pages?: { kind: PresentationKind; title: string; body: string; images: (string | null)[] }[];
+  // Round 7: required once the deck is built.
+  deck?: DeckPayload;
   // For changing the colour at the table: Keenan's list (retired ones too,
   // so the lead's own still names itself), the RAL Classic names, and the
   // lead's choice as the lead page's form takes it.
@@ -219,6 +245,9 @@ export type MeetingStored = {
   // Optional: copies written before these existed lack them.
   savedQuote?: string | null;
   screen?: { index: number; at: number };
+  // Round 7: the light picker's look and effect, and whether the light-up
+  // has played this meeting, so a reload or auto-lock keeps them.
+  picker?: { look: string; effect: Effect; played: boolean };
 };
 
 // A meeting reopened within this long picks up on the screen it left,

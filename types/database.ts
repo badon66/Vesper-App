@@ -245,6 +245,45 @@ export type Database = {
           },
         ]
       }
+      deck_photos: {
+        Row: {
+          caption: string | null
+          created_at: string
+          created_by: string | null
+          focus_x: number
+          focus_y: number
+          id: string
+          path: string
+          slot: string
+          sort: number
+          thumb_path: string | null
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          focus_x?: number
+          focus_y?: number
+          id?: string
+          path: string
+          slot: string
+          sort?: number
+          thumb_path?: string | null
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          focus_x?: number
+          focus_y?: number
+          id?: string
+          path?: string
+          slot?: string
+          sort?: number
+          thumb_path?: string | null
+        }
+        Relationships: []
+      }
       knock_sessions: {
         Row: {
           conversations: number
@@ -884,6 +923,42 @@ export type Database = {
           },
         ]
       }
+      presentation_references: {
+        Row: {
+          created_at: string
+          id: string
+          image_url: string | null
+          page_url: string
+          rank: number
+          shot: string
+          site: string
+          slot: string
+          why: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          page_url: string
+          rank?: number
+          shot: string
+          site: string
+          slot: string
+          why: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          page_url?: string
+          rank?: number
+          shot?: string
+          site?: string
+          slot?: string
+          why?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           active: boolean
@@ -1261,8 +1336,52 @@ export type Database = {
         }
         Relationships: []
       }
+      roofline_traces: {
+        Row: {
+          dusk_brightness: number
+          lead_id: string
+          light_count: number
+          line_feet: Json
+          lines: Json
+          luminance: number | null
+          photo_id: string
+          photo_slot: Database["public"]["Enums"]["photo_slot"] | null
+          scale: Json
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          dusk_brightness: number
+          lead_id: string
+          light_count: number
+          line_feet?: Json
+          lines: Json
+          luminance?: number | null
+          photo_id: string
+          photo_slot?: Database["public"]["Enums"]["photo_slot"] | null
+          scale: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          dusk_brightness?: number
+          lead_id?: string
+          light_count?: number
+          line_feet?: Json
+          lines?: Json
+          luminance?: number | null
+          photo_id?: string
+          photo_slot?: Database["public"]["Enums"]["photo_slot"] | null
+          scale?: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       settings: {
         Row: {
+          deck: Json
+          light_looks: Json
           confirm_text: string
           booking_cutoff_minutes: number
           booking_pay: number
@@ -1301,6 +1420,8 @@ export type Database = {
           warranty_text: string
         }
         Insert: {
+          deck?: Json
+          light_looks?: Json
           confirm_text?: string
           booking_cutoff_minutes?: number
           booking_pay?: number
@@ -1339,6 +1460,8 @@ export type Database = {
           warranty_text: string
         }
         Update: {
+          deck?: Json
+          light_looks?: Json
           confirm_text?: string
           booking_cutoff_minutes?: number
           booking_pay?: number

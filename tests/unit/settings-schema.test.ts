@@ -199,6 +199,8 @@ describe("settingsRowToFormDefaults", () => {
       step_note_after_door: "Photos.",
       step_note_book: "Book it.",
       confirm_text: "Hi {first_name}, see you {day} at {time}.",
+      deck: {},
+      light_looks: [],
       not_qualified_reasons: ["Not the homeowner", "Other"],
       booking_cutoff_minutes: 30,
       hold_grace_minutes: 2,
@@ -233,7 +235,7 @@ describe("settingsRowToFormDefaults", () => {
   it("survives a company value that is not an object", () => {
     const defaults = settingsRowToFormDefaults({
       id: 1, price_per_ft: 1, box_price: 1, neighbour_discount: 0, referral_credit: 0, gst_rate: 0, gst_enabled: false, gst_number: null,
-      booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], door_guide: "g", step_note_at_door: "a", step_note_after_door: "b", step_note_book: "c", confirm_text: "Hi {first_name}", not_qualified_reasons: ["Other"], booking_cutoff_minutes: 30, hold_grace_minutes: 2, hold_minutes: 5, booking_window_days: 14, meeting_host_id: null, meeting_days: [1],
+      booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], door_guide: "g", step_note_at_door: "a", step_note_after_door: "b", step_note_book: "c", confirm_text: "Hi {first_name}", deck: {}, light_looks: [], not_qualified_reasons: ["Other"], booking_cutoff_minutes: 30, hold_grace_minutes: 2, hold_minutes: 5, booking_window_days: 14, meeting_host_id: null, meeting_days: [1],
       meeting_start: "18:00:00", meeting_slot_minutes: 45, meeting_slot_count: 4, distance_warning_km: 10,
       company: "nonsense", rush_colour_fee_per_ft: null, service_call_fee: null, quote_valid_days: 14, min_job_total: 2500, faq_text: "",
       updated_at: "2026-10-26T00:00:00Z",
