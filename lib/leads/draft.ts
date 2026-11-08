@@ -8,7 +8,8 @@
 import type { LeadFormDefaults } from "@/components/leads/lead-form";
 import { FIND_OUT_QUESTIONS, PHOTO_SLOTS, slotFieldName, type FindOutField, type PhotoSlot } from "@/lib/leads/door";
 import { HOUSE_TYPE_OPTIONS, SOURCE_OPTIONS, type HouseType, type LeadSource } from "@/lib/leads/status";
-import { CONFIRM_BY_OPTIONS, HOT_BUTTON_OPTIONS, SETTER_READ_OPTIONS, type ConfirmBy, type HotButton, type SetterRead } from "@/lib/leads/extras";
+import { HOT_BUTTON_OPTIONS, SETTER_READ_OPTIONS, type HotButton, type SetterRead } from "@/lib/leads/extras";
+import { NOTE_KEYS } from "@/lib/leads/questions";
 
 export const DRAFT_HOURS = 12;
 
@@ -39,8 +40,9 @@ const COUNTED = [
   "house_type",
   "setter_read",
   "hot_buttons",
-  "confirm_by",
+  "soffit_colour_2",
   "soffit_note",
+  ...NOTE_KEYS.map((key) => `note_${key}`),
   "both_decision_makers",
   "phone_not_collected",
   ...FIND_OUT_FIELDS,
@@ -111,13 +113,14 @@ export function defaultsFromDraft(draft: LeadDraft): LeadFormDefaults {
       .split(",")
       .map((value) => oneOf<HotButton>(HOT_BUTTON_OPTIONS, value))
       .filter((value): value is HotButton => value !== null),
-    confirm_by: oneOf<ConfirmBy>(CONFIRM_BY_OPTIONS, v.confirm_by),
     questions: {
       ...(Object.fromEntries(FIND_OUT_FIELDS.map((field) => [field, v[field] ? v[field] : null])) as Record<FindOutField, string | null>),
       both_decision_makers: v.both_decision_makers ? v.both_decision_makers : null,
     },
     phone_not_collected: v.phone_not_collected === "1",
     soffit_note: v.soffit_note ?? "",
+    soffit_colour_2: v.soffit_colour_2 ? v.soffit_colour_2 : null,
+    answer_notes: Object.fromEntries(NOTE_KEYS.flatMap((key) => (v[`note_${key}`] ? [[key, v[`note_${key}`]]] : []))),
     notes: v.notes ?? "",
     source: oneOf<LeadSource>(SOURCE_OPTIONS, v.source) ?? "door",
     saveKey: v.save_key ? v.save_key : null,

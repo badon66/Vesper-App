@@ -4,7 +4,7 @@ import { Check, ChevronRight } from "lucide-react";
 import { useEffect, useState, type RefObject } from "react";
 import { AddressField, type AddressFieldValue } from "@/components/leads/address-field";
 import { useViewAs } from "@/components/view-as-context";
-import { AnswerGroup, NotCollectedToggle } from "@/components/leads/answer-group";
+import { AnswerGroup, NoteField, NotCollectedToggle, NoteToggle } from "@/components/leads/answer-group";
 import { CheckGroup } from "@/components/leads/check-group";
 import { PhotoSlots } from "@/components/leads/photo-slots";
 import { Button } from "@/components/ui/button";
@@ -21,17 +21,15 @@ import {
   type SheetScreen,
 } from "@/lib/booking/sheet";
 import {
-  CONFIRM_BY_OPTIONS,
   HOT_BUTTON_OPTIONS,
   HOT_BUTTONS_LABEL,
   SETTER_READ_LABEL,
   SETTER_READ_OPTIONS,
-  type ConfirmBy,
   type HotButton,
   type SetterRead,
 } from "@/lib/leads/extras";
-import { FIND_OUT_QUESTIONS, PHOTO_SLOTS, type PhotoSlot } from "@/lib/leads/door";
-import { EVERYONE_OPTIONS, NOT_COLLECTED, NOT_COLLECTED_LABEL, QUESTION_LABELS, type CountedQuestion } from "@/lib/leads/questions";
+import { FIND_OUT_QUESTIONS, PHOTO_SLOTS, splitAnswer, toggleAnswer, toggleSoffit, type PairedQuestion, type PhotoSlot } from "@/lib/leads/door";
+import { EVERYONE_OPTIONS, NOT_COLLECTED, NOT_COLLECTED_LABEL, QUESTION_LABELS, type CountedQuestion, type NoteKey } from "@/lib/leads/questions";
 import type { DuplicateLead } from "@/app/(app)/app/leads/actions";
 import type { PickedAddress } from "@/lib/places";
 import { HOUSE_TYPE_OPTIONS, SOFFIT_OPTIONS, type HouseType, type SoffitColour } from "@/lib/leads/status";
@@ -196,6 +194,7 @@ export function QuestionsScreen({
   onMarkRest,
   onKeepAsLead,
   onChange,
+  onNote,
 }: {
   screen: SheetScreen;
   questions: CountedQuestion[];
@@ -205,6 +204,8 @@ export function QuestionsScreen({
   onKeepAsLead: () => void;
   // The learned step's optional answers (round 3).
   onChange?: Change;
+  // Round 6: a note on each answer.
+  onNote: (key: NoteKey, value: string) => void;
 }) {
   const answers = draftAnswers(draft);
   const open = screenOpenQuestions(screen, draft);
@@ -212,6 +213,10 @@ export function QuestionsScreen({
     <div className="flex flex-col gap-5 min-[420px]:gap-6">
       {questions.map((question) => {
         const setup = questionSetup(question);
+        const value = answers[question] ?? null;
+        // Round 6: Christmas lights now and Looked into it before take two
+        // answers together.
+        const paired = question === "christmas_lights_now" || question === "looked_into_before" ? (question as PairedQuestion) : null;
         return (
           <AnswerGroup
             key={question}
@@ -219,9 +224,16 @@ export function QuestionsScreen({
             legend={setup.legend}
             options={setup.options}
             columns={setup.columns}
-            value={answers[question] ?? null}
+            value={value}
             notCollected
             size="sheet"
+            note={{ value: draft.answer_notes?.[question] ?? "", onChange: (text) => onNote(question, text) }}
+            {...(paired
+              ? {
+                  chosen: value === NOT_COLLECTED ? [] : splitAnswer(paired, value),
+                  onTap: (option: string) => onAnswer(question, toggleAnswer(paired, value === NOT_COLLECTED ? null : value, option)),
+                }
+              : {})}
             onChange={(next) => onAnswer(question, next)}
           />
         );
@@ -287,6 +299,8 @@ export function AddressScreen({
   onChange: Change;
 }) {
   const { viewingAs } = useViewAs();
+  const [soffitNoteOpen, setSoffitNoteOpen] = useState(false);
+  const soffitNoteText = draft.answer_notes?.soffit_colour ?? "";
   return (
     <form ref={formRef} onSubmit={(event) => event.preventDefault()} className="flex flex-col gap-3 min-[420px]:gap-4">
       <div className="flex flex-col gap-3">
@@ -333,14 +347,30 @@ export function AddressScreen({
       </div>
 
       <section className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-3">
           <span aria-hidden="true" className="text-sm font-semibold min-[420px]:text-base">
             Soffit colour
           </span>
-          <span id="sheet-soffit-note-hint" className="text-sm text-muted-foreground">
-            Look closely: white or off-white?
+          {/* The chip reaches into the space around the line, like Not
+              collected, so it costs the step no height. */}
+          <span className="-my-1.5 ml-auto flex items-center gap-2">
+            <span id="sheet-soffit-note-hint" className="text-sm text-muted-foreground">
+              Split? Pick both.
+            </span>
+            {/* Round 6: the soffit's private note, on its own line so the
+                step doesn't grow. */}
+            <NoteToggle
+              open={soffitNoteOpen}
+              hasText={soffitNoteText.trim() !== ""}
+              size="sheet"
+              label="Soffit colour: note"
+              testId="sheet-soffit-note-toggle"
+              onToggle={() => setSoffitNoteOpen(!soffitNoteOpen)}
+            />
           </span>
         </div>
+        {/* Round 6: a split soffit takes two colours, then a short note
+            saying which is where. Not sure stands alone. */}
         <AnswerGroup
           name="sheet-soffit"
           legend="Soffit colour"
@@ -350,15 +380,31 @@ export function AddressScreen({
           columns={2}
           size="sheet"
           value={draft.soffit_colour}
-          onChange={(next) => onChange({ soffit_colour: next as SoffitColour | null })}
+          chosen={[draft.soffit_colour, draft.soffit_colour_2].filter((item): item is SoffitColour => item !== null)}
+          onTap={(option) => {
+            const current = [draft.soffit_colour, draft.soffit_colour_2].filter((item): item is SoffitColour => item !== null);
+            const next = toggleSoffit(current, option as SoffitColour);
+            onChange({ soffit_colour: next[0] ?? null, soffit_colour_2: next[1] ?? null });
+          }}
+          onChange={() => {}}
         />
-        {draft.soffit_colour === "other" ? (
+        {soffitNoteOpen || soffitNoteText.trim() !== "" ? (
+          <NoteField
+            id="sheet-soffit-private-note"
+            label="Soffit colour: note"
+            value={soffitNoteText}
+            onChange={(text) => onChange({ answer_notes: { ...(draft.answer_notes ?? {}), soffit_colour: text } })}
+            autoFocus={soffitNoteOpen}
+          />
+        ) : null}
+        {draft.soffit_colour === "other" || draft.soffit_colour_2 !== null ? (
           <div className="flex flex-col gap-2">
-            <Label htmlFor="sheet-soffit-note">Which colour?</Label>
+            <Label htmlFor="sheet-soffit-note">{draft.soffit_colour_2 !== null ? "Which colour is where?" : "Which colour?"}</Label>
             <Input
               id="sheet-soffit-note"
               value={draft.soffit_note}
               maxLength={200}
+              placeholder={draft.soffit_colour_2 !== null ? "White at the front, cream at the back" : undefined}
               onChange={(event) => onChange({ soffit_note: event.target.value })}
             />
           </div>
@@ -629,40 +675,48 @@ export function PhoneFooter({ draft, onChange }: { draft: SheetDraft; onChange: 
   );
 }
 
-// On Book (round 5): how to confirm, and the phone's Not collected, which
-// rules booking out as before. The number itself is in the footer below.
+// On Book (round 5; round 6, Keenan, 2026-11-07): Keenan does the
+// confirming, so Call or text isn't asked any more, just said. The phone's
+// Not collected (which rules booking out, as before) and its Note sit here;
+// the number itself is in the footer below.
 function BookConfirm({ draft, onChange, onAnswer }: { draft: SheetDraft; onChange: Change; onAnswer: Answer }) {
   const phoneNotCollected = draft.not_collected.includes("phone");
+  const noteText = draft.answer_notes?.phone ?? "";
+  const [noteOpen, setNoteOpen] = useState(false);
   return (
-    <section className="flex flex-col gap-2 border-t pt-3" data-testid="book-confirm" aria-label="Confirming the meeting">
-      <div className="flex items-center gap-3">
-        <span aria-hidden="true" className="shrink-0 text-sm font-semibold min-[420px]:text-base">
-          Confirm by
-        </span>
-        <div className="min-w-0 flex-1">
-          <AnswerGroup
-            name="sheet-confirm-by"
-            legend="Call or text to confirm (optional)"
-            hideLegend
-            options={CONFIRM_BY_OPTIONS}
-            columns={2}
-            value={draft.confirm_by}
-            onChange={(next) => onChange({ confirm_by: next as ConfirmBy | null })}
+    <section className="flex flex-col gap-2 border-t pt-3" data-testid="book-confirm" aria-label="The phone">
+      <p className="text-sm text-muted-foreground min-[420px]:text-base" data-testid="keenan-confirms">
+        Keenan confirms the meeting with them.
+      </p>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm text-pretty text-muted-foreground min-[420px]:text-base">Didn&apos;t get a number?</span>
+        <span className="flex shrink-0 items-center gap-2">
+          <NoteToggle
+            open={noteOpen}
+            hasText={noteText.trim() !== ""}
+            size="sheet"
+            label="Phone: note"
+            testId="sheet-phone-note-toggle"
+            onToggle={() => setNoteOpen(!noteOpen)}
           />
-        </div>
-      </div>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-sm text-pretty text-muted-foreground min-[420px]:text-base">
-          Didn&apos;t get a number?
+          <NotCollectedToggle
+            pressed={phoneNotCollected}
+            size="sheet"
+            label="Phone: Not collected"
+            testId="sheet-phone-not-collected"
+            onToggle={() => onAnswer("phone", phoneNotCollected ? null : NOT_COLLECTED)}
+          />
         </span>
-        <NotCollectedToggle
-          pressed={phoneNotCollected}
-          size="sheet"
-          label="Phone: Not collected"
-          testId="sheet-phone-not-collected"
-          onToggle={() => onAnswer("phone", phoneNotCollected ? null : NOT_COLLECTED)}
-        />
       </div>
+      {noteOpen || noteText.trim() !== "" ? (
+        <NoteField
+          id="sheet-phone-note"
+          label="Phone: note"
+          value={noteText}
+          onChange={(text) => onChange({ answer_notes: { ...(draft.answer_notes ?? {}), phone: text } })}
+          autoFocus={noteOpen}
+        />
+      ) : null}
     </section>
   );
 }

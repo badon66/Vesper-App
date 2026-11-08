@@ -41,6 +41,74 @@ export const LOOKED_INTO_BEFORE_OPTIONS: Option<LookedIntoBefore>[] = [
   { value: "new_to_them", label: "New to them" },
 ];
 
+// Round 6 (Keenan, 2026-11-07): two answers that can be given together.
+// Christmas lights now can be Hires someone and Does it themselves; Looked
+// into it before can be Got quotes and Thought about it. None and New to
+// them stay on their own. The pair is stored as one combined value, so the
+// column stays a single answer.
+export type PairedQuestion = "christmas_lights_now" | "looked_into_before";
+export const PAIRED_ANSWERS: Record<PairedQuestion, { pair: [string, string]; both: string; alone: string }> = {
+  christmas_lights_now: { pair: ["hires", "diy"], both: "hires_and_diy", alone: "none" },
+  looked_into_before: { pair: ["got_quotes", "thought_about_it"], both: "quotes_and_thought", alone: "new_to_them" },
+};
+
+export const ANSWER_LABELS: Record<PairedQuestion, Record<string, string>> = {
+  christmas_lights_now: {
+    hires: "Hires someone",
+    diy: "Does it themselves",
+    none: "None",
+    hires_and_diy: "Hires someone and does it themselves",
+  },
+  looked_into_before: {
+    got_quotes: "Got quotes",
+    thought_about_it: "Thought about it",
+    new_to_them: "New to them",
+    quotes_and_thought: "Got quotes and thought about it",
+  },
+};
+
+// A stored answer as the choices it stands for.
+export function splitAnswer(question: PairedQuestion, value: string | null | undefined): string[] {
+  if (!value) return [];
+  const { pair, both } = PAIRED_ANSWERS[question];
+  return value === both ? [...pair] : [value];
+}
+
+// The choices tapped, as the one answer stored. The one that stands alone
+// clears the others; the pair together is the combined answer.
+export function joinAnswer(question: PairedQuestion, values: readonly string[]): string | null {
+  const { pair, both, alone } = PAIRED_ANSWERS[question];
+  if (values.includes(alone)) return alone;
+  const chosen = pair.filter((item) => values.includes(item));
+  if (chosen.length === 2) return both;
+  return chosen[0] ?? null;
+}
+
+// A tap on a choice: the one that stands alone replaces the rest; either of
+// the pair adds to the other, or comes off on a second tap.
+export function toggleAnswer(question: PairedQuestion, current: string | null | undefined, tapped: string): string | null {
+  const chosen = splitAnswer(question, current);
+  const { alone } = PAIRED_ANSWERS[question];
+  if (chosen.includes(tapped)) return joinAnswer(question, chosen.filter((item) => item !== tapped));
+  if (tapped === alone) return alone;
+  return joinAnswer(question, [...chosen.filter((item) => item !== alone), tapped]);
+}
+
+// Round 6: a split soffit takes two colours, then a short note. Not sure
+// stands alone. A third colour replaces the older of the two.
+export function toggleSoffit(current: readonly SoffitColour[], tapped: SoffitColour): SoffitColour[] {
+  if (current.includes(tapped)) return current.filter((item) => item !== tapped);
+  if (tapped === "not_sure") return ["not_sure"];
+  const rest = current.filter((item) => item !== "not_sure");
+  return [...rest, tapped].slice(-2);
+}
+
+export function soffitAnswer(first: SoffitColour | null, second: SoffitColour | null | undefined, note: string | null): string | null {
+  if (!first) return null;
+  const colours = second ? `${SOFFIT_LABELS[first]} and ${SOFFIT_LABELS[second].toLowerCase()}` : SOFFIT_LABELS[first];
+  return note ? `${colours}: ${note}` : colours;
+}
+
 export const AREAS_OPTIONS: Option<RooflineAreas>[] = [
   { value: "front", label: "Front only" },
   { value: "front_and_sides", label: "Front and sides" },
@@ -58,21 +126,14 @@ export type FindOutAnswers = {
   owns_home: boolean | null;
   wants_price: boolean | null;
   soffit_colour: SoffitColour | null;
+  soffit_colour_2?: SoffitColour | null;
   soffit_note: string | null;
   christmas_lights_now: ChristmasLightsNow | null;
   looked_into_before: LookedIntoBefore | null;
-  areas_wanted: RooflineAreas | null;
-  install_timing: InstallTiming | null;
 };
 
-export type FindOutField =
-  | "owns_home"
-  | "wants_price"
-  | "soffit_colour"
-  | "christmas_lights_now"
-  | "looked_into_before"
-  | "areas_wanted"
-  | "install_timing";
+// Round 6: Which areas and Timing are no longer asked.
+export type FindOutField = "owns_home" | "wants_price" | "soffit_colour" | "christmas_lights_now" | "looked_into_before";
 
 // The seven questions, in the order they are asked, with the choices the form
 // offers. `choice` is what the form holds for a stored answer.
@@ -97,8 +158,6 @@ export const FIND_OUT_QUESTIONS: {
     options: LOOKED_INTO_BEFORE_OPTIONS,
     columns: 3,
   },
-  { field: "areas_wanted", question: "Which areas", options: AREAS_OPTIONS, columns: 4 },
-  { field: "install_timing", question: "Timing", options: TIMING_OPTIONS, columns: 3 },
 ];
 
 export function yesNoChoice(value: boolean | null, no: "no" | "not_yet"): string | null {
@@ -114,8 +173,6 @@ export function findOutChoices(answers: FindOutAnswers): Record<FindOutField, st
     soffit_colour: answers.soffit_colour,
     christmas_lights_now: answers.christmas_lights_now,
     looked_into_before: answers.looked_into_before,
-    areas_wanted: answers.areas_wanted,
-    install_timing: answers.install_timing,
   };
 }
 
@@ -130,9 +187,11 @@ export function findOutAnswerList(
   const choices = findOutChoices(answers);
   return FIND_OUT_QUESTIONS.map(({ field, question, options }) => {
     if (field === "soffit_colour") {
-      const soffit = answers.soffit_colour ? SOFFIT_LABELS[answers.soffit_colour] : null;
-      const answer = soffit && answers.soffit_note ? `${soffit}: ${answers.soffit_note}` : soffit;
-      return { field, question, answer };
+      return { field, question, answer: soffitAnswer(answers.soffit_colour, answers.soffit_colour_2, answers.soffit_note) };
+    }
+    if (field === "christmas_lights_now" || field === "looked_into_before") {
+      const value = choices[field];
+      return { field, question, answer: value ? (ANSWER_LABELS[field][value] ?? value) : null };
     }
     return { field, question, answer: optionLabel(options, choices[field]) };
   });
@@ -169,8 +228,6 @@ export function leadAnswerList(lead: LeadAnswers): LeadAnswerRow[] {
     both_decision_makers: lead.both_decision_makers === null ? null : lead.both_decision_makers ? "Yes" : "No",
     christmas_lights_now: listed.get("christmas_lights_now") ?? null,
     looked_into_before: listed.get("looked_into_before") ?? null,
-    areas_wanted: listed.get("areas_wanted") ?? null,
-    install_timing: listed.get("install_timing") ?? null,
   };
   const rows: LeadAnswerRow[] = COUNTED_QUESTIONS.map((key) => ({
     key,

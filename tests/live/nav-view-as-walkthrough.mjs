@@ -213,6 +213,11 @@ const OTHER_PHONE = "+14035550188";
 const OTHER_EMAIL = "other.setter.lead@example.com";
 const OWN_PHONE = "+14035550177";
 const OWN_EMAIL = "own.setter.lead@example.com";
+// Round 6 (Keenan, 2026-11-07): notes on B's lead, seeded with the service
+// role, that A and View as A must never see.
+const OTHER_NOTE = "TEST answer note (automated) for B only";
+const OTHER_TIMELINE_NOTE = "TEST timeline note (automated) for B only";
+let otherNoteEvent = null;
 
 try {
   // Setup: two setters, A's leads in every attention group, B's one lead,
@@ -317,6 +322,18 @@ try {
   const { data: firstColour } = await admin.from("track_colours").select("id, name").eq("active", true).order("sort_order").limit(1).single();
   const listed = await admin.from("leads").update({ track_colour_id: firstColour.id }).eq("id", leads.other);
   if (listed.error) throw new Error(`list colour: ${listed.error.message}`);
+  // Round 6: a note on one of B's answers and a note on B's timeline. Only B
+  // and Keenan may read them; the service role seeds them and removes them
+  // once they've been looked for.
+  const seededNote = await admin.from("leads").update({ answer_notes: { owns_home: OTHER_NOTE } }).eq("id", leads.other);
+  if (seededNote.error) throw new Error(`B's answer note: ${seededNote.error.message}`);
+  const seededEvent = await admin
+    .from("lead_events")
+    .insert({ lead_id: leads.other, actor_id: people.b.id, type: "note", payload: { text: OTHER_TIMELINE_NOTE } })
+    .select("id")
+    .single();
+  if (seededEvent.error) throw new Error(`B's timeline note: ${seededEvent.error.message}`);
+  otherNoteEvent = seededEvent.data.id;
 
   // A held, Qualified booking for A, so My pay has a fee to show. It sits on
   // B's evenings as a stand-in host, never on Keenan's board; the service
@@ -397,7 +414,8 @@ try {
     (await page.locator('nav[aria-label="Tabs"]:visible a[aria-current="page"]').innerText()).trim() === "Session",
   );
 
-  // 4. Leads opens to Active, in the order things need attention.
+  // 4. Leads opens to Active (round 6: new and booked leads, oldest first),
+  // with Later, Met and Closed in the same compact row and Mine as who.
   await page.locator('nav[aria-label="Tabs"]:visible').getByRole("link", { name: "Leads", exact: true }).click();
   await page.waitForURL("**/app/leads", { timeout: 20000 });
   await settle(page);
@@ -412,24 +430,48 @@ try {
   const sectionOrder = await page.locator("main section").evaluateAll((sections) =>
     sections.map((section) => [section.querySelector("h2").textContent.trim(), [...section.querySelectorAll("a")].map((link) => link.getAttribute("href"))]),
   );
-  const expected = [
-    ["Follow-ups due (2)", [`/app/leads/${leads.overdue}`, `/app/leads/${leads.dueToday}`]],
-    ["New (2)", [`/app/leads/${leads.newOld}`, `/app/leads/${leads.newYoung}`]],
-    ["Follow up later (1)", [`/app/leads/${leads.later}`]],
-  ];
-  check("Leads opens to Active: due follow-ups, then new oldest first, then later follow-ups", JSON.stringify(sectionOrder) === JSON.stringify(expected), sectionOrder.map(([title, links]) => `${title}: ${links.length}`).join(", "));
+  const expected = [["New (2)", [`/app/leads/${leads.newOld}`, `/app/leads/${leads.newYoung}`]]];
+  check("Leads opens to Active: new leads oldest first, follow-ups under Later", JSON.stringify(sectionOrder) === JSON.stringify(expected), sectionOrder.map(([title, links]) => `${title}: ${links.length}`).join(", "));
   check("Active leaves the lost lead out", (await page.locator(`a[href="/app/leads/${leads.lost}"]`).count()) === 0);
+  const statusTabs = page.getByRole("navigation", { name: "Lead status" }).getByRole("link");
+  const tabRow = await statusTabs.evaluateAll((links) =>
+    links.map((link) => [link.firstElementChild.textContent.trim(), Math.round(link.getBoundingClientRect().top), link.getAttribute("aria-current")]),
+  );
+  check(
+    "Leads has Active, Later, Met and Closed in one row, on Active",
+    JSON.stringify(tabRow.map(([label]) => label)) === JSON.stringify(["Active", "Later", "Met", "Closed"]) && new Set(tabRow.map(([, top]) => top)).size === 1 && tabRow[0][2] === "page",
+    JSON.stringify(tabRow),
+  );
+  const whoMenu = page.getByLabel("Whose leads");
+  const whoChoices = (await whoMenu.locator("option").allInnerTexts()).map((t) => t.trim());
+  check("a setter's Leads opens on Mine, with Everyone in the who menu", (await whoMenu.inputValue()) === "mine" && JSON.stringify(whoChoices) === JSON.stringify(["Mine", "Everyone"]), whoChoices.join(", "));
   await checkTapTargets(page, "Leads");
   await page.screenshot({ path: `${out}/m25-leads-active.png`, fullPage: true });
-  await page.getByRole("navigation", { name: "Which leads" }).getByRole("link", { name: "All" }).click();
-  await page.waitForURL(/view=all/, { timeout: 20000 });
+  await statusTabs.filter({ hasText: /^Later/ }).click();
+  await page.waitForURL(/tab=later/, { timeout: 20000 });
+  await settle(page);
+  await page.locator("main section").first().waitFor({ timeout: 20000 }).catch(() => {});
+  const laterOrder = await page.locator("main section").evaluateAll((sections) =>
+    sections.map((section) => [section.querySelector("h2").textContent.trim(), [...section.querySelectorAll("a")].map((link) => link.getAttribute("href"))]),
+  );
+  const laterExpected = [
+    ["Follow-ups due (2)", [`/app/leads/${leads.overdue}`, `/app/leads/${leads.dueToday}`]],
+    ["Follow up later (1)", [`/app/leads/${leads.later}`]],
+  ];
+  check("Later lists follow-ups by their day: overdue, then today, then later", JSON.stringify(laterOrder) === JSON.stringify(laterExpected), laterOrder.map(([title, links]) => `${title}: ${links.length}`).join(", "));
+  await statusTabs.filter({ hasText: /^Closed/ }).click();
+  await page.waitForURL(/tab=closed/, { timeout: 20000 });
   await settle(page);
   await page.getByRole("heading", { name: "Lost (1)" }).waitFor({ timeout: 20000 }).catch(() => {});
-  check("All shows lost leads too", (await page.getByRole("heading", { name: "Lost (1)" }).count()) === 1);
-  await page.goto(`${base}/app/leads?scope=mine&view=active&q=${encodeURIComponent("6 Attention")}`);
+  const lostRow = page.locator(`main a[href="/app/leads/${leads.lost}"]`);
+  check("Closed shows the lost lead with its reason", (await page.getByRole("heading", { name: "Lost (1)" }).count()) === 1 && (await lostRow.count()) === 1 && (await lostRow.innerText()).includes("Lost: price."));
+  await page.goto(`${base}/app/leads?q=${encodeURIComponent("6 Attention")}`);
   await settle(page);
-  check("search from Active finds a lost lead", (await page.locator(`a[href="/app/leads/${leads.lost}"]`).count()) === 1);
-  await page.goto(`${base}/app/leads?scope=everyone&view=active`);
+  check("search from Active finds a lost lead", (await page.locator(`a[href="/app/leads/${leads.lost}"]`).count()) === 1 && (await page.getByTestId("clear-search").count()) === 1);
+  await page.goto(`${base}/app/leads`);
+  await settle(page);
+  await page.getByLabel("Whose leads").selectOption("everyone");
+  await page.waitForURL(/who=everyone/, { timeout: 20000 });
   await settle(page);
   const otherRow = page.locator(`a[href="/app/leads/${leads.other}"]`);
   check("Everyone still shows another setter's lead, read only", (await otherRow.count()) === 1 && (await otherRow.innerText()).includes("by Nav Test B, read only"));
@@ -634,8 +676,9 @@ try {
   const screens = [
     ["Home", "/app"],
     ["Leads, Active", "/app/leads"],
-    ["Leads, All", "/app/leads?scope=mine&view=all"],
-    ["Leads, Everyone", "/app/leads?scope=everyone&view=active"],
+    ["Leads, Later", "/app/leads?tab=later"],
+    ["Leads, Closed", "/app/leads?tab=closed"],
+    ["Leads, Everyone", "/app/leads?who=everyone"],
     ["their own lead", `/app/leads/${leads.dueToday}`],
     ["another setter's lead", `/app/leads/${leads.other}`],
     ["New lead", "/app/leads/new"],
@@ -675,9 +718,12 @@ try {
       check(
         "View as shows the lead's Find out answers, its three slot photos and its track colour",
         viewed.text.includes(
-          "Phone Not answered Owns the home Yes Wants a price Not yet Everyone who decides will be there Not answered Christmas lights now Not answered Looked into it before Not answered Which areas Full wrap Timing New year Soffit colour Not sure",
+          "Phone Not answered Owns the home Yes Wants a price Not yet Everyone who decides will be there Not answered Christmas lights now Not answered Looked into it before Not answered Soffit colour Not sure",
         ) &&
-          viewed.text.includes("4 of 8 collected") &&
+          // Round 6: Which areas and Timing keep their saved answers but are
+          // no longer shown or counted.
+          !/Which areas|Timing/.test(viewed.text) &&
+          viewed.text.includes("2 of 6 collected") &&
           ["Front photo of the house", "Left corner photo of the house", "Right corner photo of the house"].every((alt) => viewed.images.includes(alt)) &&
           viewed.text.includes("Custom, RAL 7016 Anthracite grey Needs powder coating.") &&
           viewed.text.includes("Keenan sets the track colour."),
@@ -703,13 +749,28 @@ try {
         real.text.includes("Phone Saved, hidden") && real.text.includes("Phone and email show only to this lead's own setter."),
         real.text.slice(real.text.indexOf("Find out"), real.text.indexOf("Find out") + 60),
       );
+      // Round 6: notes follow the phone. B's answer note and timeline note
+      // never reach A, nor View as A, not even in the page's data.
+      const hiddenLine = (await op.getByTestId("notes-hidden").innerText({ timeout: 5000 }).catch(() => "")).trim();
+      check(
+        "another setter's notes stay hidden, to the setter and in View as: the Notes card says why, with no answer notes or timeline note",
+        hiddenLine === "Notes show only to this lead's own setter and Keenan." &&
+          (await page.getByTestId("notes-hidden").count()) === 1 &&
+          (await op.getByTestId("answer-notes").count()) === 0 &&
+          (await page.getByTestId("answer-notes").count()) === 0 &&
+          ![OTHER_NOTE, OTHER_TIMELINE_NOTE].some((bit) => realHtml.includes(bit) || viewedHtml.includes(bit)),
+        hiddenLine,
+      );
+      await admin.from("leads").update({ answer_notes: {} }).eq("id", leads.other);
+      if (otherNoteEvent) await admin.from("lead_events").delete().eq("id", otherNoteEvent);
+      otherNoteEvent = null;
     }
     if (label === "New lead") {
       check(
         "View as shows New lead with the ? step notes, the questions with Not collected and the four photo slots",
         (await op.getByTestId("step-notes").count()) === 1 &&
-          (await op.getByTestId("find-out").locator("legend").count()) === 8 &&
-          (await op.getByTestId("find-out").locator('input[value="not_collected"]').count()) === 7 &&
+          (await op.getByTestId("find-out").locator("legend").count()) === 6 &&
+          (await op.getByTestId("find-out").locator('input[value="not_collected"]').count()) === 5 &&
           (await op.getByRole("list", { name: "Guided photos" }).locator("li").count()) === 4,
       );
     }
@@ -750,10 +811,10 @@ try {
     const call = await tab.locator(`a[href="tel:${OWN_PHONE}"]`).count();
     const mail = await tab.locator(`a[href="mailto:${OWN_EMAIL}"]`).count();
     check(`${who}: their own lead shows its phone and email`, call === 1 && mail === 1, `${call} call, ${mail} email`);
-    await tab.goto(`${base}/app/leads?scope=everyone&view=all&q=${encodeURIComponent("403 555 0188")}`);
+    await tab.goto(`${base}/app/leads?who=everyone&q=${encodeURIComponent("403 555 0188")}`);
     await settle(tab);
     const foundOther = await tab.locator(`main a[href="/app/leads/${leads.other}"]`).count();
-    await tab.goto(`${base}/app/leads?scope=everyone&view=all&q=${encodeURIComponent("5550177")}`);
+    await tab.goto(`${base}/app/leads?who=everyone&q=${encodeURIComponent("5550177")}`);
     await settle(tab);
     const foundOwn = await tab.locator(`main a[href="/app/leads/${leads.newOld}"]`).count();
     check(`${who}: a search by phone finds only their own leads, never another setter's`, foundOther === 0 && foundOwn >= 1, `${foundOther} of B's, ${foundOwn} of theirs`);
@@ -845,9 +906,8 @@ try {
   await op.waitForTimeout(500);
   await sheetNext();
   await sheetView("book");
-  // The phone, last, on Book (round 3).
+  // The phone, last, on Book (round 3). Round 6: Call or text isn't asked.
   await op.fill("#sheet-phone", "403 555 0101");
-  await pickIn("Call or text to confirm (optional)", "Call");
   const actedReady = ((await sheetOf.getByTestId("readiness").innerText().catch(() => "")) ?? "").trim();
   check(
     "Book reads as it would for the setter, the acted-out photos included: everything is answered",

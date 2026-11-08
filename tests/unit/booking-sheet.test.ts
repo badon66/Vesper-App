@@ -52,8 +52,6 @@ function ready(): SheetDraft {
     wants_price: true,
     christmas_lights_now: "hires",
     looked_into_before: "new_to_them",
-    areas_wanted: "front_and_sides",
-    install_timing: "before_christmas",
     everyone: true,
     address_line: "123 Evanston Way NW",
     neighbourhood: "Evanston",
@@ -78,7 +76,7 @@ describe("The booking sheet's steps", () => {
     expect(SCREEN_QUESTIONS.who).toBeUndefined();
     expect(SCREEN_QUESTIONS.book).toEqual(["phone"]);
     expect(DOOR_QUESTIONS).toEqual(["owns_home", "wants_price", "both_decision_makers"]);
-    expect(LEARNED_QUESTIONS).toEqual(["christmas_lights_now", "looked_into_before", "areas_wanted", "install_timing"]);
+    expect(LEARNED_QUESTIONS).toEqual(["christmas_lights_now", "looked_into_before"]);
   });
 
   it("counts the answers still missing on every step, the same count as Book's button (round 3)", () => {
@@ -88,8 +86,8 @@ describe("The booking sheet's steps", () => {
     expect(bookNeed(empty)).toBe(`${sheetMissing(empty).length} left to answer`);
     expect(stepCount("book", ready())).toEqual({ number: 6, total: 6, left: 0 });
     // An answer missing on a step already passed still counts.
-    expect(stepCount("book", { ...ready(), install_timing: null })).toEqual({ number: 6, total: 6, left: 1 });
-    expect(stepCount("book", { ...ready(), install_timing: null, looked_into_before: null })).toEqual({ number: 6, total: 6, left: 2 });
+    expect(stepCount("book", { ...ready(), christmas_lights_now: null })).toEqual({ number: 6, total: 6, left: 1 });
+    expect(stepCount("book", { ...ready(), christmas_lights_now: null, looked_into_before: null })).toEqual({ number: 6, total: 6, left: 2 });
   });
 
   it("walks a new person through every screen, in order", () => {
@@ -146,7 +144,7 @@ describe("When a screen is done", () => {
     const marked = markScreenNotCollected("learned", draft);
     expect(isScreenComplete("learned", marked)).toBe(true);
     expect(marked.christmas_lights_now).toBe("diy");
-    expect([...marked.not_collected].sort()).toEqual(["areas_wanted", "install_timing", "looked_into_before"]);
+    expect([...marked.not_collected].sort()).toEqual(["looked_into_before"]);
     // Only that screen's questions.
     expect(isScreenComplete("door", marked)).toBe(false);
   });
@@ -220,7 +218,7 @@ describe("Before you book in the sheet", () => {
     }
     expect(draftProblems(draft)).toEqual(["phone", "owns_home", "wants_price", "everyone_deciding_present"]);
     // What they learned after the door never blocks booking.
-    expect(draftProblems(markScreenNotCollected("learned", { ...ready(), christmas_lights_now: null, looked_into_before: null, areas_wanted: null, install_timing: null }))).toEqual([]);
+    expect(draftProblems(markScreenNotCollected("learned", { ...ready(), christmas_lights_now: null, looked_into_before: null }))).toEqual([]);
   });
 });
 
@@ -248,19 +246,19 @@ describe("Saving the lead from the sheet", () => {
   it("carries Not collected to the validator, the phone included", () => {
     let draft = { ...ready(), phone: "" };
     draft = withAnswer(draft, "phone", NOT_COLLECTED);
-    draft = markScreenNotCollected("learned", { ...draft, christmas_lights_now: null, looked_into_before: null, areas_wanted: null, install_timing: null });
+    draft = markScreenNotCollected("learned", { ...draft, christmas_lights_now: null, looked_into_before: null });
     const parsed = parseLeadForm(draftToLeadInput(draft));
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(parsed.values.phone).toBeNull();
-    expect([...parsed.values.not_collected].sort()).toEqual(["areas_wanted", "christmas_lights_now", "install_timing", "looked_into_before", "phone"]);
+    expect([...parsed.values.not_collected].sort()).toEqual(["christmas_lights_now", "looked_into_before", "phone"]);
   });
 
   it("refuses to save while a question has neither an answer nor Not collected", () => {
-    const parsed = parseLeadForm(draftToLeadInput({ ...ready(), install_timing: null }));
+    const parsed = parseLeadForm(draftToLeadInput({ ...ready(), looked_into_before: null }));
     expect(parsed.ok).toBe(false);
     if (parsed.ok) return;
-    expect(parsed.errors.install_timing).toBe("Answer this, or mark it Not collected.");
+    expect(parsed.errors.looked_into_before).toBe("Answer this, or mark it Not collected.");
   });
 
   it("saves again only when a lead field changed, not for the booking's own choices", () => {
@@ -270,7 +268,9 @@ describe("Saving the lead from the sheet", () => {
     expect(savedFingerprint({ ...draft, phone: "403 555 0100" })).not.toBe(print);
     expect(savedFingerprint({ ...draft, looked_into_before: "got_quotes" })).not.toBe(print);
     expect(savedFingerprint({ ...draft, everyone: false })).not.toBe(print);
-    expect(savedFingerprint(withAnswer(draft, "install_timing", NOT_COLLECTED))).not.toBe(print);
+    expect(savedFingerprint(withAnswer(draft, "christmas_lights_now", NOT_COLLECTED))).not.toBe(print);
+    // Round 6: a note on an answer is saved like any change.
+    expect(savedFingerprint({ ...draft, answer_notes: { owns_home: "Wife owns it" } })).not.toBe(print);
   });
 
   it("sends a new person's save key with the save, and a new draft has none until its first save (2026-11-04)", () => {
@@ -331,10 +331,10 @@ describe("Move freely, check at Book (round 3, Keenan, 2026-11-05)", () => {
   });
 
   it("lists everything missing in the order of the steps, each with its step", () => {
-    const draft = { ...ready(), first_name: "", install_timing: null, phone: "", soffit_colour: null };
+    const draft = { ...ready(), first_name: "", looked_into_before: null, phone: "", soffit_colour: null };
     expect(sheetMissing(draft).map((item) => [item.screen, item.key])).toEqual([
       ["who", "first_name"],
-      ["learned", "install_timing"],
+      ["learned", "looked_into_before"],
       ["address", "soffit_colour"],
       ["book", "phone"],
     ]);
@@ -349,8 +349,8 @@ describe("Move freely, check at Book (round 3, Keenan, 2026-11-05)", () => {
 
   it("books only once everything is answered, nothing rules it out and Before you book is met", () => {
     expect(canBookDraft(ready())).toBe(true);
-    expect(canBookDraft({ ...ready(), install_timing: null })).toBe(false);
-    expect(canBookDraft(withAnswer(ready(), "install_timing", NOT_COLLECTED))).toBe(true);
+    expect(canBookDraft({ ...ready(), christmas_lights_now: null })).toBe(false);
+    expect(canBookDraft(withAnswer(ready(), "christmas_lights_now", NOT_COLLECTED))).toBe(true);
     expect(canBookDraft({ ...ready(), wants_price: false })).toBe(false);
     expect(canBookDraft(withAnswer(ready(), "phone", NOT_COLLECTED))).toBe(false);
     expect(canBookDraft({ ...ready(), photo_slots: ["front"] })).toBe(false);
@@ -391,33 +391,31 @@ describe("The optional answers (round 3)", () => {
   });
 
   it("saves them with the lead, and Not sure gives way to a real hot button", () => {
-    const draft = { ...ready(), house_type: "two_storey" as const, setter_read: "hot" as const, hot_buttons: ["no_ladders" as const, "up_for_christmas" as const], confirm_by: "text" as const };
+    const draft = { ...ready(), house_type: "two_storey" as const, setter_read: "hot" as const, hot_buttons: ["no_ladders" as const, "up_for_christmas" as const] };
     const parsed = parseLeadForm(draftToLeadInput(draft));
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(parsed.values.house_type).toBe("two_storey");
     expect(parsed.values.setter_read).toBe("hot");
     expect(parsed.values.hot_buttons).toEqual(["no_ladders", "up_for_christmas"]);
-    expect(parsed.values.confirm_by).toBe("text");
     const mixed = parseLeadForm(draftToLeadInput({ ...draft, hot_buttons: ["not_sure", "curb_appeal"] }));
     expect(mixed.ok && mixed.values.hot_buttons).toEqual(["curb_appeal"]);
     const bare = parseLeadForm(draftToLeadInput(ready()));
-    expect(bare.ok && [bare.values.setter_read, bare.values.hot_buttons, bare.values.confirm_by]).toEqual([null, [], null]);
+    expect(bare.ok && [bare.values.setter_read, bare.values.hot_buttons]).toEqual([null, []]);
   });
 
   it("changes the saved fingerprint, so a change to them is saved", () => {
     const print = savedFingerprint(ready());
     expect(savedFingerprint({ ...ready(), setter_read: "warm" })).not.toBe(print);
     expect(savedFingerprint({ ...ready(), hot_buttons: ["curb_appeal"] })).not.toBe(print);
-    expect(savedFingerprint({ ...ready(), confirm_by: "call" })).not.toBe(print);
     expect(savedFingerprint({ ...ready(), house_type: "bungalow" })).not.toBe(print);
   });
 
   it("brings a draft kept before round 3 back with them empty and marked as not asked", () => {
-    const { house_type: _h, setter_read: _r, hot_buttons: _b, confirm_by: _c, photo_paths: _p, extras: _e, ...older } = ready();
-    void [_h, _r, _b, _c, _p, _e];
+    const { house_type: _h, setter_read: _r, hot_buttons: _b, photo_paths: _p, extras: _e, answer_notes: _n, soffit_colour_2: _s, ...older } = ready();
+    void [_h, _r, _b, _p, _e, _n, _s];
     const back = withDraftDefaults(older);
-    expect([back.house_type, back.setter_read, back.hot_buttons, back.confirm_by, back.photo_paths, back.extras]).toEqual([null, null, [], null, {}, false]);
+    expect([back.house_type, back.setter_read, back.hot_buttons, back.photo_paths, back.extras, back.answer_notes, back.soffit_colour_2]).toEqual([null, null, [], {}, false, {}, null]);
     expect(withDraftDefaults(ready()).extras).toBe(true);
   });
 });
@@ -496,5 +494,42 @@ describe("Keep as a lead", () => {
     expect(takeHandOff(Date.now())).toBeNull();
     handOffToNewLead({ ...handed, savedAt: Date.now() - 11 * 60_000 });
     expect(takeHandOff(Date.now())).toBeNull();
+  });
+});
+
+// Round 6 (Keenan, 2026-11-07): a split soffit, two answers together, and
+// a note on each answer, from the sheet to the lead.
+describe("Round 6 answers from the sheet", () => {
+  it("saves a split soffit with its note, and asks for the note before Book", () => {
+    const split = { ...ready(), soffit_colour: "white" as const, soffit_colour_2: "off_white" as const, soffit_note: "" };
+    expect(sheetMissing(split).map((item) => item.key)).toContain("soffit_note");
+    expect(parseLeadForm(draftToLeadInput(split)).ok).toBe(false);
+    const noted = { ...split, soffit_note: "White at the front, cream at the back" };
+    expect(sheetMissing(noted).map((item) => item.key)).not.toContain("soffit_note");
+    const parsed = parseLeadForm(draftToLeadInput(noted));
+    expect(parsed.ok && [parsed.values.soffit_colour, parsed.values.soffit_colour_2, parsed.values.soffit_note]).toEqual([
+      "white",
+      "off_white",
+      "White at the front, cream at the back",
+    ]);
+  });
+
+  it("drops a second colour beside Not sure or the same colour", () => {
+    const parsed = parseLeadForm(draftToLeadInput({ ...ready(), soffit_colour: "not_sure" as const, soffit_colour_2: "white" as const, soffit_note: "x" }));
+    expect(parsed.ok && parsed.values.soffit_colour_2).toBeNull();
+  });
+
+  it("saves two answers given together, and each answer's note", () => {
+    const draft = { ...ready(), christmas_lights_now: "hires_and_diy" as const, looked_into_before: "quotes_and_thought" as const, answer_notes: { owns_home: "Wife's name on title", phone: " " } };
+    const parsed = parseLeadForm(draftToLeadInput(draft));
+    expect(parsed.ok && [parsed.values.christmas_lights_now, parsed.values.looked_into_before]).toEqual(["hires_and_diy", "quotes_and_thought"]);
+    expect(parsed.ok && parsed.values.answer_notes).toEqual({ owns_home: "Wife's name on title" });
+  });
+
+  it("never sends Which areas, Timing or Call or text, so a save can't touch them", () => {
+    const input = draftToLeadInput(ready());
+    expect(Object.keys(input)).not.toContain("areas_wanted");
+    expect(Object.keys(input)).not.toContain("install_timing");
+    expect(Object.keys(input)).not.toContain("confirm_by");
   });
 });

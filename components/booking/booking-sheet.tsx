@@ -95,7 +95,7 @@ import type { PhotoSlot } from "@/lib/leads/door";
 import { draftKey } from "@/lib/leads/draft";
 import { timed } from "@/lib/answer-within";
 import { handOffToNewLead } from "@/lib/leads/hand-off";
-import { COUNTED_QUESTIONS, isQuestionDone, type CountedQuestion } from "@/lib/leads/questions";
+import { COUNTED_QUESTIONS, isQuestionDone, type CountedQuestion, type NoteKey } from "@/lib/leads/questions";
 import { normalizePhone } from "@/lib/phone";
 import type { PickedAddress } from "@/lib/places";
 import { toBoardSlots, type BoardSlot } from "@/lib/schedule/board";
@@ -521,7 +521,7 @@ function BookingSheet({
           // A draft kept before round 3 never asked the optional answers:
           // the lead's own come back, so a save can't blank them.
           ...(current.extras === false
-            ? { house_type: lead.draft.house_type, setter_read: lead.draft.setter_read, hot_buttons: lead.draft.hot_buttons, confirm_by: lead.draft.confirm_by, extras: true }
+            ? { house_type: lead.draft.house_type, setter_read: lead.draft.setter_read, hot_buttons: lead.draft.hot_buttons, extras: true }
             : {}),
         }));
         if (!lead.bookable) {
@@ -865,6 +865,12 @@ function BookingSheet({
     setDraft((current) => withAnswer(current, question, value));
   }, []);
 
+  // Round 6: a short note on an answer, private to the lead's setter and
+  // Keenan. Kept with the draft and saved with the lead.
+  const noteAnswer = useCallback((key: NoteKey, value: string) => {
+    setDraft((current) => ({ ...current, answer_notes: { ...(current.answer_notes ?? {}), [key]: value } }));
+  }, []);
+
   function go(next: View) {
     setError(null);
     setMenuOpen(false);
@@ -948,7 +954,7 @@ function BookingSheet({
         setError(saveError.current);
         return null;
       }
-      const extras = { house_type: lead.draft.house_type, setter_read: lead.draft.setter_read, hot_buttons: lead.draft.hot_buttons, confirm_by: lead.draft.confirm_by, extras: true };
+      const extras = { house_type: lead.draft.house_type, setter_read: lead.draft.setter_read, hot_buttons: lead.draft.hot_buttons, extras: true };
       keyed = { ...current, ...extras };
       setDraft((latest) => (latest.extras === false ? { ...latest, ...extras } : latest));
     }
@@ -1715,6 +1721,7 @@ function BookingSheet({
                 onAnswer={answer}
                 onMarkRest={() => setDraft((current) => markScreenNotCollected("door", current))}
                 onKeepAsLead={() => void keepAsLead()}
+                onNote={noteAnswer}
               />
             ) : null}
             {view === "learned" ? (
@@ -1726,6 +1733,7 @@ function BookingSheet({
                 onMarkRest={() => setDraft((current) => markScreenNotCollected("learned", current))}
                 onKeepAsLead={() => void keepAsLead()}
                 onChange={change}
+                onNote={noteAnswer}
               />
             ) : null}
             {view === "address" || (!settled && (addressWorking || addressFailedAway)) ? (

@@ -45,6 +45,7 @@ if (!url || !anonKey || !serviceKey) {
 
 const TEST_LEAD = "TEST LEAD (automated)";
 const TEST_PLACE = "TEST (automated)";
+const SOFFIT_NOTE = "TEST (automated) white at the front, cream at the back";
 const BUCKET = "lead-photos";
 const noSession = { auth: { persistSession: false, autoRefreshToken: false } };
 const admin = createClient(url, serviceKey, noSession);
@@ -451,8 +452,8 @@ try {
   const leftLater = await secondsLeft(pageA);
   check("the countdown ticks down on its own", leftLater !== null && leftAtStart !== null && leftLater < leftAtStart, `${leftAtStart} then ${leftLater}`);
   check(
-    "the sheet starts At the door, with a clear counter: Step 1 of 6, 12 to answer",
-    (await sheet(pageA).getByTestId("sheet-part").innerText()).startsWith("At the door") && (await stepCounter(pageA)) === "Step 1 of 6, 12 to answer",
+    "the sheet starts At the door, with a clear counter: Step 1 of 6, 10 to answer",
+    (await sheet(pageA).getByTestId("sheet-part").innerText()).startsWith("At the door") && (await stepCounter(pageA)) === "Step 1 of 6, 10 to answer",
     await stepCounter(pageA),
   );
   const tapped = Date.now();
@@ -525,7 +526,7 @@ try {
   check("Next is at the bottom right, in thumb reach", bar !== null && bar.x + bar.width / 2 > viewport.width / 2 && bar.y > viewport.height * 0.8, bar ? `${Math.round(bar.x)},${Math.round(bar.y)}` : "none");
   check(
     "the first step asks only the name, and its counter says how many answers are still to come",
-    (await sheet(pageA).getByTestId("sheet-body").locator("#sheet-phone").count()) === 0 && (await nextLabel(pageA)) === "Next" && (await stepCounter(pageA)) === "Step 1 of 6, 12 to answer",
+    (await sheet(pageA).getByTestId("sheet-body").locator("#sheet-phone").count()) === 0 && (await nextLabel(pageA)) === "Next" && (await stepCounter(pageA)) === "Step 1 of 6, 10 to answer",
     `${await nextLabel(pageA)}; ${await stepCounter(pageA)}`,
   );
   // Round 5 (Keenan, 2026-11-06): the phone is a slim one-line field at the
@@ -605,7 +606,7 @@ try {
   const doorMarked = await sheet(pageA).locator('[data-testid="sheet-progress"] [data-step="door"]').getAttribute("data-missing");
   check(
     "a swipe moves on with a question open, and the progress bar marks that step",
-    doorMarked === "yes" && (await sheet(pageA).getByTestId("sheet-part").innerText()).startsWith("After the door") && (await stepCounter(pageA)) === "Step 3 of 6, 9 to answer",
+    doorMarked === "yes" && (await sheet(pageA).getByTestId("sheet-part").innerText()).startsWith("After the door") && (await stepCounter(pageA)) === "Step 3 of 6, 7 to answer",
     `${doorMarked}; ${await stepCounter(pageA)}`,
   );
   await answer(pageA, "Christmas lights now", "Hires someone");
@@ -613,11 +614,14 @@ try {
   await answer(pageA, "What would make them say yes (optional, pick any)", "No more ladders");
   await answer(pageA, "What would make them say yes (optional, pick any)", "Up for Christmas");
   await sheet(pageA).getByTestId("mark-rest").click();
-  const counted = ["christmas_lights_now", "looked_into_before", "areas_wanted", "install_timing"];
+  // Round 6 (Keenan, 2026-11-07): Which areas and Timing aren't asked any
+  // more, so the step has two counted questions.
+  const counted = ["christmas_lights_now", "looked_into_before"];
   const marked = await Promise.all(counted.map((question) => sheet(pageA).locator(`fieldset[data-question="sheet-${question}"] input:checked`).getAttribute("value").catch(() => "")));
   check(
-    "Mark the rest Not collected answers the four counted questions in one tap, keeping the answer given, and leaves the optional ones as chosen",
-    JSON.stringify(marked) === JSON.stringify(["hires", "not_collected", "not_collected", "not_collected"]) &&
+    "Mark the rest Not collected answers the two counted questions in one tap, keeping the answer given, and leaves the optional ones as chosen",
+    JSON.stringify(marked) === JSON.stringify(["hires", "not_collected"]) &&
+      (await sheet(pageA).locator("fieldset legend").filter({ hasText: /^(Which areas|Timing)$/ }).count()) === 0 &&
       (await sheet(pageA).locator('[data-question="sheet-hot-buttons"] input:checked').count()) === 2,
     marked.join(", "),
   );
@@ -733,7 +737,23 @@ try {
   await waitView(pageA, "book");
   await sheet(pageA).getByTestId("readiness").locator('li[data-item="soffit_colour"] button').click();
   await waitView(pageA, "address");
+  // Round 6 (Keenan, 2026-11-07): a split soffit takes two colours, and then
+  // a note on which is where, which Book asks for until it's typed.
   await answer(pageA, "Soffit colour", "White");
+  await answer(pageA, "Soffit colour", "Off-white or cream");
+  await next(pageA);
+  await waitView(pageA, "book");
+  const soffitNoteRow = sheet(pageA).getByTestId("readiness").locator('li[data-items~="soffit_note"]');
+  const soffitNoteText = (await soffitNoteRow.innerText({ timeout: 5000 }).catch(() => "")).replace(/\s+/g, " ").trim();
+  check(
+    "a split soffit, White and Off-white or cream, needs a note: Book lists Which soffit colour is where until it's typed",
+    soffitNoteText.startsWith("Which soffit colour is where") && (await nextLabel(pageA)) === "2 left to answer",
+    `${soffitNoteText}; ${await nextLabel(pageA)}`,
+  );
+  await soffitNoteRow.locator("button").click();
+  await waitView(pageA, "address");
+  check("the note asks Which colour is where?", (await sheet(pageA).locator('label[for="sheet-soffit-note"]').innerText().catch(() => "")).trim() === "Which colour is where?");
+  await pageA.fill("#sheet-soffit-note", SOFFIT_NOTE);
   await next(pageA);
   await waitView(pageA, "book");
   check(
@@ -741,21 +761,28 @@ try {
     (await sheet(pageA).getByTestId("readiness").innerText()).includes("Everything else is answered") && (await nextLabel(pageA)) === "1 left to answer",
     await nextLabel(pageA),
   );
-  // The number, right above Book in the footer, as on every step; Call or
-  // text and the phone's Not collected are on the Book page itself.
+  // The number, right above Book in the footer, as on every step; the
+  // phone's Not collected is on the Book page itself. Round 6: Call or text
+  // to confirm isn't asked any more; Book says Keenan confirms instead.
   const phoneBox = await sheet(pageA).getByTestId("sheet-phone-block").boundingBox();
   const bookBox = await pageA.getByTestId("sheet-next").boundingBox();
   check("on Book the phone is right above the Book button and in view", phoneBox !== null && bookBox !== null && phoneBox.y + phoneBox.height <= bookBox.y && phoneBox.y > 0);
   check(
-    "Call or text and the phone's Not collected are on the Book page, not in the footer",
+    "the phone's Not collected is on the Book page, not in the footer",
     (await sheet(pageA).getByTestId("sheet-body").getByTestId("book-confirm").count()) === 1 &&
       (await sheet(pageA).getByTestId("sheet-body").getByTestId("sheet-phone-not-collected").count()) === 1 &&
       (await sheet(pageA).getByTestId("sheet-phone-block").locator("button").count()) === 0,
   );
+  const confirmsLine = (await sheet(pageA).getByTestId("book-confirm").getByTestId("keenan-confirms").innerText({ timeout: 5000 }).catch(() => "")).trim();
+  check(
+    "Book says Keenan confirms the meeting with them, and asks no Call or text to confirm",
+    confirmsLine === "Keenan confirms the meeting with them." &&
+      (await sheet(pageA).locator("fieldset").filter({ has: pageA.locator("legend", { hasText: /^Call or text/ }) }).count()) === 0,
+    confirmsLine,
+  );
   await pageA.fill("#sheet-phone", "403 555 0166");
-  await answer(pageA, "Call or text to confirm (optional)", "Text");
   scrolls.book = await sheetScrolls(pageA);
-  // The learned step holds the four questions and the two optional ones:
+  // The learned step holds the two questions and the two optional ones:
   // it may scroll a little, and so may Book's list while things are missing
   // (the phone and Book stay pinned below it). Every other step fits
   // Keenan's phone.
@@ -787,7 +814,7 @@ try {
   check("a booked time shows who booked it, and can't be tapped", bookedLabel.includes("TEST Setter A") && (await slotButton(pageB, X).isDisabled()), bookedLabel);
   const { data: sheetLead } = await admin
     .from("leads")
-    .select("id, status, looked_into_before, christmas_lights_now, wants_price, both_decision_makers, soffit_colour, not_collected, position_source, position_accuracy_m, house_type, setter_read, hot_buttons, confirm_by")
+    .select("id, status, looked_into_before, christmas_lights_now, wants_price, both_decision_makers, soffit_colour, soffit_colour_2, soffit_note, not_collected, position_source, position_accuracy_m, house_type, setter_read, hot_buttons, confirm_by, areas_wanted, install_timing")
     .eq("address_line", "306 Sheet Test Way NW (TEST)")
     .single();
   check(
@@ -798,14 +825,21 @@ try {
       sheetLead?.wants_price === true &&
       sheetLead?.both_decision_makers === true &&
       sheetLead?.soffit_colour === "white" &&
-      JSON.stringify(sheetLead?.not_collected) === JSON.stringify(["areas_wanted", "install_timing", "looked_into_before"]) &&
+      JSON.stringify(sheetLead?.not_collected) === JSON.stringify(["looked_into_before"]) &&
+      sheetLead?.areas_wanted === null &&
+      sheetLead?.install_timing === null &&
       sheetLead?.position_source === "device" &&
       Number(sheetLead?.position_accuracy_m) === 10,
     JSON.stringify(sheetLead),
   );
   check(
-    "and the optional answers: house type, the setter's read, the hot buttons and text to confirm",
-    sheetLead?.house_type === "two_storey" && sheetLead?.setter_read === "hot" && JSON.stringify(sheetLead?.hot_buttons) === JSON.stringify(["no_ladders", "up_for_christmas"]) && sheetLead?.confirm_by === "text",
+    "and the optional answers: house type, the setter's read and the hot buttons; call or text to confirm is never written",
+    sheetLead?.house_type === "two_storey" && sheetLead?.setter_read === "hot" && JSON.stringify(sheetLead?.hot_buttons) === JSON.stringify(["no_ladders", "up_for_christmas"]) && sheetLead?.confirm_by === null,
+  );
+  check(
+    "the split soffit saves both colours and the note on which is where",
+    sheetLead?.soffit_colour === "white" && sheetLead?.soffit_colour_2 === "off_white" && sheetLead?.soffit_note === SOFFIT_NOTE,
+    `${sheetLead?.soffit_colour}, ${sheetLead?.soffit_colour_2}: ${sheetLead?.soffit_note}`,
   );
   const { data: sheetContact } = await admin.from("leads").select("phone").eq("id", sheetLead?.id).single();
   check("the number typed last is saved", sheetContact?.phone === "+14035550166", sheetContact?.phone);
@@ -868,9 +902,9 @@ try {
   await next(pageA);
   await waitView(pageA, "learned");
   await answer(pageA, "Christmas lights now", "Does it themselves");
-  await answer(pageA, "Looked into it before", "New to them");
-  await answer(pageA, "Which areas", "Full wrap");
-  await answer(pageA, "Timing", "No rush");
+  // Round 6: Got quotes and Thought about it can be picked together.
+  await answer(pageA, "Looked into it before", "Got quotes");
+  await answer(pageA, "Looked into it before", "Thought about it");
   await next(pageA);
   await waitView(pageA, "house", 30000);
   check("and skips the address it already has", true);
@@ -884,6 +918,12 @@ try {
   check("the existing lead is booked; others see the neighbourhood and who booked it", seenZ !== null && zLabel.includes(TEST_PLACE) && zLabel.includes("TEST Setter A"), zLabel);
   const { data: meeting1 } = await admin.from("meetings").select("id, status, setter_id, photos_skipped").eq("lead_id", lead1).eq("status", "booked").single();
   check("the meeting is booked for the lead's setter with the photo reason", meeting1?.setter_id === people.a.id && meeting1?.photos_skipped === "homeowner_said_no");
+  const { data: lead1Answers } = await admin.from("leads").select("christmas_lights_now, looked_into_before").eq("id", lead1).single();
+  check(
+    "Got quotes and Thought about it, picked together on the sheet, save as quotes_and_thought",
+    lead1Answers?.looked_into_before === "quotes_and_thought" && lead1Answers?.christmas_lights_now === "diy",
+    JSON.stringify(lead1Answers),
+  );
   await sheet(pageA).getByRole("button", { name: "Done", exact: true }).click();
   await sheet(pageA).waitFor({ state: "detached", timeout: 15000 });
 
@@ -1146,8 +1186,6 @@ try {
   await waitView(pageB, "learned");
   await answer(pageB, "Christmas lights now", "None");
   await answer(pageB, "Looked into it before", "Thought about it");
-  await answer(pageB, "Which areas", "Front only");
-  await answer(pageB, "Timing", "New year");
   await next(pageB);
   await waitView(pageB, "house", 30000);
   await skipPhotos(pageB);
@@ -1264,8 +1302,8 @@ try {
   check("a brand-new street gets its map position from the phone at the door", true);
   await pageA.fill("#lead-first_name", TEST_LEAD);
   await pageA.fill("#lead-phone", "403 555 0188");
-  for (const [legend, choice] of [["Owns the home", "Yes"], ["Wants a price", "Yes"], ["Everyone who decides will be there", "Yes"], ["Soffit colour", "White"]]) {
-    await pageA.locator("main fieldset").filter({ has: pageA.locator("legend", { hasText: new RegExp(`^${legend}$`) }) }).getByText(choice, { exact: true }).click();
+  for (const [legend, choice] of [["Owns the home", "Yes"], ["Wants a price", "Yes"], ["Everyone who decides will be there", "Yes"], ["Soffit colour (two for a split soffit)", "White"]]) {
+    await pageA.locator("main fieldset").filter({ has: pageA.locator("legend", { hasText: new RegExp(`^${escape(legend)}$`) }) }).getByText(choice, { exact: true }).click();
   }
   await pageA.getByTestId("mark-rest").click();
   await pageA.getByRole("button", { name: "Save and book" }).click();
@@ -1306,11 +1344,11 @@ try {
   await pageA.goto(`${base}/app/leads/${newLeadId}`);
   await settle(pageA);
   check("the position source shows on the lead", (await pageA.getByTestId("position-source").innerText()).includes("Placed from the phone at the door"));
-  check("the lead page says how complete it is: 4 of 8 collected", (await pageA.getByTestId("completeness").innerText()).trim() === "4 of 8 collected", await pageA.getByTestId("completeness").innerText());
+  check("the lead page says how complete it is: 4 of 6 collected", (await pageA.getByTestId("completeness").innerText()).trim() === "4 of 6 collected", await pageA.getByTestId("completeness").innerText());
   await pageA.goto(`${base}/app`);
   await settle(pageA);
   const myBookings = (await pageA.getByTestId("how-mine-went").innerText()).replace(/\s+/g, " ");
-  check("How mine went lists the setter's own bookings coming up, each saying how complete its lead is", /\d of 8 collected/.test(myBookings) && myBookings.includes("4 of 8 collected") && myBookings.includes("Coming up"), myBookings.slice(0, 200));
+  check("How mine went lists the setter's own bookings coming up, each saying how complete its lead is", /\d of 6 collected/.test(myBookings) && myBookings.includes("4 of 6 collected") && myBookings.includes("Coming up"), myBookings.slice(0, 200));
 
   // ---------------------------------------------------------------- My pay
   // A qualified booking on the throwaway test host, so Keenan's evenings stay

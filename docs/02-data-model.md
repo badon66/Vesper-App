@@ -7,14 +7,14 @@ Postgres on Supabase. Every table has RLS enabled. `id` columns are `uuid defaul
 ```
 role:            owner | sales | crew          -- Postgres type is named user_role; the UI says Admin, Sales associate, Crew
 lead_status:     new | follow_up | meeting_booked | met | quoted | sold | installed | lost
-lead_source:     door | referral | neighbour_card | website | other
+lead_source:     door | referral | neighbour_card | website | other | phone_call   -- phone_call added in round 6 (2026-11-07), for leads Keenan adds from a call
 house_type:      bungalow | bi_level | two_storey | other
 soffit_colour:   white | off_white | black | brown | other | not_sure    -- off_white and not_sure added 2026-11-01; black and brown stay but are unused (the app offers White, Off-white or cream, Other, Not sure)
 photo_slot:      front | left_corner | right_corner | soffit | mockup   -- mockup added in M5: the customer's mockup image, one per lead, owner-uploaded
-christmas_lights_now: hires | diy | none
-roofline_areas:  front | front_and_sides | full_wrap | not_sure
-install_timing:  before_christmas | new_year | no_rush
-looked_into_before: got_quotes | thought_about_it | new_to_them   -- added in M3.5
+christmas_lights_now: hires | diy | none | hires_and_diy   -- hires_and_diy added in round 6: both answers given together
+roofline_areas:  front | front_and_sides | full_wrap | not_sure   -- no longer asked from round 6; kept with its saved answers
+install_timing:  before_christmas | new_year | no_rush   -- no longer asked from round 6; kept with its saved answers
+looked_into_before: got_quotes | thought_about_it | new_to_them | quotes_and_thought   -- added in M3.5; quotes_and_thought (both together) in round 6
 meeting_status:  booked | confirmed | qualified | not_qualified | no_show | cancelled | moved   -- qualified and not_qualified both mean the meeting was held; moved means it was replaced by a meeting at another time; confirmed is unused for now
 map_position_source: picked | device               -- picked from the address suggestions, or the phone's own position at the door
 quote_status:    draft | presented | accepted | declined | expired   -- take 1 writes drafts only
@@ -24,7 +24,7 @@ earning_type:    booking | commission
 earning_status:  pending | paid | void
 setter_read:     hot | warm | just_curious                              -- round 3 (2026-11-05): the setter's read, optional
 hot_button:      no_ladders | up_for_christmas | curb_appeal | safety_security | not_sure   -- round 3: what would make them say yes, optional
-confirm_by:      call | text                                            -- round 3: how to confirm the meeting, optional
+confirm_by:      call | text                                            -- round 3: how to confirm the meeting, optional; no longer asked from round 6 (Keenan confirms)
 ```
 
 ## Tables
@@ -176,6 +176,11 @@ Rules enforced in the database:
 - Contact privacy (Keenan, 2026-11-04): signed-in people read `leads` column by column, every column except `phone` and `email`, so a query that names either one, or asks for `*`, is refused. Setters still write the phone and email of their own leads. The phone and email come from the view `lead_contacts` (`lead_id`, `phone`, `email`, `created_by`, `assigned_to`), which returns every lead's for Keenan and only their own leads' for a setter. It runs with the view owner's rights and a security barrier, so its own filter applies before anything a caller adds. A column added to `leads` later needs a read grant in its migration, or nobody but the service role can read it.
 - At most one lead has a given `save_key` (the unique index), so two tries of the same first save can never both make a lead, even at the same instant. The app looks the key up before it inserts, and again when the insert hits the index; it hands a lead back only to the person who created it.
 - The track colour is set by the owner only: a signed-in non-owner cannot set or change `track_colour_id` or `track_ral_code`. At most one of the two is set. A newly chosen `track_colour_id` must be an active colour; a lead keeps a colour that is later retired.
+- Round 6 (Keenan, 2026-11-07):
+  - `soffit_colour_2 soffit_colour` (nullable, read grant): a split soffit's second colour. A check allows it only beside a different first colour, never Not sure, and only with a `soffit_note` saying which is where.
+  - `answer_notes jsonb not null default '{}'` (an object): a short note per required question, keyed `phone`, `owns_home`, `wants_price`, `both_decision_makers`, `christmas_lights_now`, `looked_into_before`, `soffit_colour`. No read grant: read only through `lead_notes`.
+  - Notes are private to the lead's own setter and the owner. `notes` loses its read grant (migration `round6_notes_private`, applied once the app read notes only through the view). The view `lead_notes` (security barrier, read only) returns `lead_id, notes, answer_notes, created_by, assigned_to` for every lead to the owner and for their own leads (created or assigned) to a setter, like `lead_contacts`. The app applies the same rule again for View as (`lib/leads/notes.ts`).
+  - `areas_wanted`, `install_timing` and `confirm_by` are no longer asked; the columns and their saved answers stay, and saves never write them. The questions counted for "N of 6 collected" are phone, owns home, wants a price, everyone who decides, Christmas lights now and looked into it before.
 - Deleting a profile that still owns leads or knock sessions is refused; deactivate people instead.
 
 ### lead_photos
@@ -203,6 +208,7 @@ type event_type not null
 from_status lead_status
 to_status lead_status
 payload jsonb                                   -- note text, meeting id, quote id, etc.
+-- Round 6: a `note` entry is read only by the owner and the lead's own setter (the select policy); every other entry by the whole sales side, as before.
 created_at
 ```
 

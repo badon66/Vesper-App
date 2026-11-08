@@ -2,19 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import { FieldError } from "@/components/field-error";
-import { AnswerGroup, NotCollectedToggle } from "@/components/leads/answer-group";
+import { AnswerGroup, NoteField, NotCollectedToggle, NoteToggle } from "@/components/leads/answer-group";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FIND_OUT_QUESTIONS, type FindOutField } from "@/lib/leads/door";
+import { FIND_OUT_QUESTIONS, splitAnswer, toggleAnswer, toggleSoffit, type FindOutField, type PairedQuestion } from "@/lib/leads/door";
 import {
   EVERYONE_OPTIONS,
   isQuestionDone,
   NOT_COLLECTED,
   NOT_COLLECTED_LABEL,
   QUESTION_LABELS,
+  type AnswerNotes,
   type CountedQuestion,
+  type NoteKey,
 } from "@/lib/leads/questions";
+import type { SoffitColour } from "@/lib/leads/status";
 import { ANSWER_OR_NOT_COLLECTED, type LeadFormErrors } from "@/lib/leads/schema";
 import { formatPhone, normalizePhone } from "@/lib/phone";
 
@@ -39,7 +42,7 @@ const ASKED: { field: Exclude<QuestionField, "soffit_colour">; legend: string; o
   })),
   { field: "both_decision_makers", legend: QUESTION_LABELS.both_decision_makers, options: EVERYONE_OPTIONS, columns: 2 },
   ...FIND_OUT_QUESTIONS.filter((item) => !["owns_home", "wants_price", "soffit_colour"].includes(item.field)).map((item) => ({
-    field: item.field as "christmas_lights_now" | "looked_into_before" | "areas_wanted" | "install_timing",
+    field: item.field as "christmas_lights_now" | "looked_into_before",
     legend: item.question,
     options: item.options,
     columns: Math.min(Math.max(item.options.length, 2), 4) as 2 | 3 | 4,
@@ -63,11 +66,16 @@ export function bookingRuledOut(answers: QuestionDefaults, phoneMarked: boolean)
   return phoneMarked || ruledOut(answers.owns_home) || ruledOut(answers.wants_price) || ruledOut(answers.both_decision_makers);
 }
 
+// Round 6: the two that can take two answers together.
+const PAIRED: readonly string[] = ["christmas_lights_now", "looked_into_before"];
+
 export function LeadQuestions({
   defaults,
   phone,
   phoneNotCollected,
   soffitNote,
+  soffitSecond = null,
+  answerNotes = {},
   errors,
   onOpenChange,
   onBookingChange,
@@ -79,6 +87,9 @@ export function LeadQuestions({
   phone: string;
   phoneNotCollected: boolean;
   soffitNote: string;
+  // Round 6: a split soffit's second colour, and each question's note.
+  soffitSecond?: string | null;
+  answerNotes?: AnswerNotes;
   errors: LeadFormErrors;
   // The questions still open after each change, for the form's Save check.
   onOpenChange?: (open: CountedQuestion[]) => void;
@@ -96,6 +107,16 @@ export function LeadQuestions({
   const [phoneTyped, setPhoneTyped] = useState(phone.trim() !== "");
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const phoneRef = useRef<HTMLInputElement>(null);
+  const [soffit2, setSoffit2] = useState<string | null>(soffitSecond);
+  const [soffitText, setSoffitText] = useState(soffitNote);
+  const [notes, setNotes] = useState<AnswerNotes>(answerNotes);
+  const [phoneNoteOpen, setPhoneNoteOpen] = useState(false);
+  const noteOf = (key: NoteKey) => ({
+    value: notes[key] ?? "",
+    name: `note_${key}`,
+    onChange: (value: string) => setNotes((current) => ({ ...current, [key]: value })),
+  });
+  const soffitChosen = [answers.soffit_colour, soffit2].filter((item): item is string => Boolean(item));
 
   const open = openOf(answers, phoneTyped, phoneMarked).length;
 
@@ -142,14 +163,23 @@ export function LeadQuestions({
   return (
     <>
       <div className="flex flex-col gap-3" data-question="phone">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-2">
           <Label htmlFor="lead-phone">Phone</Label>
-          <NotCollectedToggle
-            pressed={phoneMarked}
-            label="Phone: Not collected"
-            testId="phone-not-collected"
-            onToggle={() => markPhone(!phoneMarked)}
-          />
+          <span className="flex shrink-0 items-center gap-2">
+            <NoteToggle
+              open={phoneNoteOpen}
+              hasText={(notes.phone ?? "").trim() !== ""}
+              label="Phone: note"
+              testId="phone-note-toggle"
+              onToggle={() => setPhoneNoteOpen(!phoneNoteOpen)}
+            />
+            <NotCollectedToggle
+              pressed={phoneMarked}
+              label="Phone: Not collected"
+              testId="phone-not-collected"
+              onToggle={() => markPhone(!phoneMarked)}
+            />
+          </span>
         </div>
         <Input
           ref={phoneRef}
@@ -176,6 +206,11 @@ export function LeadQuestions({
           </p>
         ) : null}
         <FieldError id="lead-phone-error" message={phoneMessage} />
+        {phoneNoteOpen || (notes.phone ?? "").trim() !== "" ? (
+          <NoteField id="phone-note" name="note_phone" label="Phone: note" value={notes.phone ?? ""} onChange={noteOf("phone").onChange} autoFocus={phoneNoteOpen} />
+        ) : (
+          <input type="hidden" name="note_phone" value={notes.phone ?? ""} />
+        )}
         {afterPhone}
       </div>
 
@@ -188,19 +223,34 @@ export function LeadQuestions({
             Answer each one, or mark it Not collected, in any order. Tap an answer again to clear it.
           </p>
         </div>
-        {ASKED.map(({ field, legend, options, columns }) => (
-          <AnswerGroup
-            key={field}
-            name={field}
-            legend={legend}
-            options={options}
-            value={answers[field]}
-            columns={columns}
-            notCollected
-            error={errors[field] === ANSWER_OR_NOT_COLLECTED && isQuestionDone(answers[field]) ? undefined : errors[field]}
-            onChange={(value) => update({ answers: { ...answers, [field]: value } })}
-          />
-        ))}
+        {ASKED.map(({ field, legend, options, columns }) => {
+          // Round 6: Christmas lights now and Looked into it before take two
+          // answers together; the hidden field carries the one stored.
+          const paired = PAIRED.includes(field) ? (field as PairedQuestion) : null;
+          const value = answers[field];
+          return (
+            <div key={field} className="contents">
+              <AnswerGroup
+                name={field}
+                legend={legend}
+                options={options}
+                value={value}
+                columns={columns}
+                notCollected
+                note={noteOf(field)}
+                {...(paired
+                  ? {
+                      chosen: value === NOT_COLLECTED ? [] : splitAnswer(paired, value),
+                      onTap: (option: string) => update({ answers: { ...answers, [field]: toggleAnswer(paired, value === NOT_COLLECTED ? null : value, option) } }),
+                    }
+                  : {})}
+                error={errors[field] === ANSWER_OR_NOT_COLLECTED && isQuestionDone(value) ? undefined : errors[field]}
+                onChange={(next) => update({ answers: { ...answers, [field]: next } })}
+              />
+              {paired ? <input type="hidden" name={field} value={value ?? ""} /> : null}
+            </div>
+          );
+        })}
         <div className="flex flex-wrap items-center justify-between gap-2" aria-live="polite">
           <p className="text-sm text-muted-foreground" data-testid="questions-open">
             {open === 0 ? "Every question has an answer." : `${open} still open.`}
@@ -212,19 +262,36 @@ export function LeadQuestions({
           ) : null}
         </div>
 
+        {/* Round 6: a split soffit takes two colours, then a short note
+            saying which is where. Not sure stands alone. */}
         <AnswerGroup
           name="soffit_colour"
-          legend={SOFFIT.question}
+          legend={`${SOFFIT.question} (two for a split soffit)`}
           options={SOFFIT.options}
           value={answers.soffit_colour}
           columns={2}
           error={errors.soffit_colour}
-          onChange={(value) => setAnswers((current) => ({ ...current, soffit_colour: value }))}
+          note={noteOf("soffit_colour")}
+          chosen={soffitChosen}
+          onTap={(option) => {
+            const next = toggleSoffit(soffitChosen as SoffitColour[], option as SoffitColour);
+            setAnswers((current) => ({ ...current, soffit_colour: next[0] ?? null }));
+            setSoffit2(next[1] ?? null);
+          }}
+          onChange={() => {}}
         />
-        {answers.soffit_colour === "other" ? (
+        <input type="hidden" name="soffit_colour" value={answers.soffit_colour ?? ""} />
+        <input type="hidden" name="soffit_colour_2" value={soffit2 ?? ""} />
+        {answers.soffit_colour === "other" || soffit2 ? (
           <div className="flex flex-col gap-2">
-            <Label htmlFor="lead-soffit_note">Soffit colour note</Label>
-            <Input id="lead-soffit_note" name="soffit_note" defaultValue={soffitNote} />
+            <Label htmlFor="lead-soffit_note">{soffit2 ? "Which colour is where?" : "Soffit colour note"}</Label>
+            <Input
+              id="lead-soffit_note"
+              name="soffit_note"
+              value={soffitText}
+              onChange={(event) => setSoffitText(event.target.value)}
+              placeholder={soffit2 ? "White at the front, cream at the back" : undefined}
+            />
             <FieldError id="lead-soffit_note-error" message={errors.soffit_note} />
           </div>
         ) : null}

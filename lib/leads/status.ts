@@ -34,6 +34,8 @@ export const SETTER_STATUSES: readonly LeadStatus[] = ["new", "follow_up", "lost
 
 export const SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
   { value: "door", label: "Door" },
+  // Round 6 (Keenan, 2026-11-07): the leads Keenan adds himself from a call.
+  { value: "phone_call", label: "Phone call" },
   { value: "referral", label: "Referral" },
   { value: "neighbour_card", label: "Neighbour card" },
   { value: "website", label: "Website" },

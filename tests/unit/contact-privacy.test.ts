@@ -55,8 +55,8 @@ describe("a number saved but not shown", () => {
 
   it("still counts as collected", () => {
     expect(questionState(hidden, "phone")).toBe("answered");
-    expect(completenessLabel(hidden)).toBe("5 of 8 collected");
-    expect(completenessLabel({ ...hidden, phone_saved: false })).toBe("4 of 8 collected");
+    expect(completenessLabel(hidden)).toBe("5 of 6 collected");
+    expect(completenessLabel({ ...hidden, phone_saved: false })).toBe("4 of 6 collected");
   });
 
   it("reads as saved, hidden in Find out", () => {

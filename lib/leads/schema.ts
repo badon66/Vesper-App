@@ -3,7 +3,7 @@ import { PHOTO_SLOTS, slotFieldName, type PhotoSlot } from "@/lib/leads/door";
 import { GPS_MAX_ACCURACY_M, inCalgaryArea } from "@/lib/geo";
 import { OFFERED_SOFFIT_COLOURS } from "@/lib/leads/status";
 import { normalizePhone } from "@/lib/phone";
-import { COUNTED_QUESTIONS, NOT_COLLECTED, type CountedQuestion } from "@/lib/leads/questions";
+import { cleanAnswerNotes, COUNTED_QUESTIONS, NOTE_KEYS, NOT_COLLECTED, type CountedQuestion } from "@/lib/leads/questions";
 import { MAX_PHOTOS_PER_FORM, PHOTO_PATH_PATTERN } from "@/lib/photos";
 import { Constants, type Database } from "@/types/database";
 
@@ -121,8 +121,9 @@ export const leadFormSchema = z
         // Not sure stands alone: it gives way to any real hot button.
         return chosen.length > 1 ? chosen.filter((value) => value !== "not_sure") : chosen;
       }),
-    confirm_by: z.preprocess((value) => value ?? "", optionalEnum(Constants.public.Enums.confirm_by)),
+    // Round 6: a split soffit's second colour, which needs the note.
     soffit_colour: optionalEnum(OFFERED_SOFFIT_COLOURS),
+    soffit_colour_2: z.preprocess((value) => value ?? "", optionalEnum(OFFERED_SOFFIT_COLOURS)),
     soffit_note: optionalText(200, "Soffit note"),
     owns_home: optionalYesNo("no"),
     wants_price: optionalYesNo("not_yet"),
@@ -130,8 +131,8 @@ export const leadFormSchema = z
     both_decision_makers: optionalYesNo("no"),
     christmas_lights_now: optionalEnum(Constants.public.Enums.christmas_lights_now),
     looked_into_before: optionalEnum(Constants.public.Enums.looked_into_before),
-    areas_wanted: optionalEnum(Constants.public.Enums.roofline_areas),
-    install_timing: optionalEnum(Constants.public.Enums.install_timing),
+    // Round 6: a short note on each required question. Private (lead_notes).
+    answer_notes: z.unknown().optional().transform((value) => cleanAnswerNotes(value)),
     notes: optionalText(4000, "Notes"),
     source: z.enum(Constants.public.Enums.lead_source, { error: "Pick where the lead came from." }),
     photo_paths: z
@@ -150,6 +151,17 @@ export const leadFormSchema = z
     const device = hasPosition && values.position_source === "device";
     if (device && (values.position_accuracy_m === null || !inCalgaryArea(values.lat as number, values.lng as number))) {
       ctx.addIssue({ code: "custom", path: ["lat"], message: "The phone's position wasn't usable. Take it again at the door." });
+      return z.NEVER;
+    }
+    // A second soffit colour only beside a different first one, never with
+    // Not sure, and always with a note saying which is where.
+    const first = values.soffit_colour;
+    const second =
+      values.soffit_colour_2 && first && values.soffit_colour_2 !== first && first !== "not_sure" && values.soffit_colour_2 !== "not_sure"
+        ? values.soffit_colour_2
+        : null;
+    if (second && !values.soffit_note) {
+      ctx.addIssue({ code: "custom", path: ["soffit_note"], message: "Say which colour is where, like white at the front and cream at the back." });
       return z.NEVER;
     }
     const {
@@ -174,7 +186,8 @@ export const leadFormSchema = z
       place_id: hasPosition && !device ? values.place_id : null,
       position_source: hasPosition ? (device ? ("device" as const) : ("picked" as const)) : null,
       position_accuracy_m: device ? values.position_accuracy_m : null,
-      soffit_note: values.soffit_colour === "other" ? values.soffit_note : null,
+      soffit_colour_2: second,
+      soffit_note: values.soffit_colour === "other" || second ? values.soffit_note : null,
       slot_photos: PHOTO_SLOTS.flatMap(({ slot }) => {
         const path = slotPaths[slot];
         return path ? [{ slot, path }] : [];
@@ -267,8 +280,8 @@ export function leadFormDataToInput(formData: FormData): Record<string, unknown>
     house_type: text("house_type"),
     setter_read: text("setter_read"),
     hot_buttons: formData.getAll("hot_buttons").map(String),
-    confirm_by: text("confirm_by"),
     soffit_colour: text("soffit_colour"),
+    soffit_colour_2: text("soffit_colour_2"),
     soffit_note: text("soffit_note"),
     owns_home: text("owns_home"),
     wants_price: text("wants_price"),
@@ -276,8 +289,7 @@ export function leadFormDataToInput(formData: FormData): Record<string, unknown>
     phone_not_collected: text("phone_not_collected"),
     christmas_lights_now: text("christmas_lights_now"),
     looked_into_before: text("looked_into_before"),
-    areas_wanted: text("areas_wanted"),
-    install_timing: text("install_timing"),
+    answer_notes: Object.fromEntries(NOTE_KEYS.map((key) => [key, text(`note_${key}`)])),
     notes: text("notes"),
     source: text("source") || "door",
     photo_paths: formData.getAll("photo_paths").map(String),
@@ -307,17 +319,18 @@ export function leadColumnsFromValues(values: LeadFormValues): LeadUpdate {
     house_type: values.house_type,
     setter_read: values.setter_read,
     hot_buttons: values.hot_buttons,
-    confirm_by: values.confirm_by,
     soffit_colour: values.soffit_colour,
+    soffit_colour_2: values.soffit_colour_2,
     soffit_note: values.soffit_note,
     owns_home: values.owns_home,
     wants_price: values.wants_price,
     both_decision_makers: values.both_decision_makers,
     christmas_lights_now: values.christmas_lights_now,
     looked_into_before: values.looked_into_before,
-    areas_wanted: values.areas_wanted,
-    install_timing: values.install_timing,
+    // Round 6: Which areas, Timing and Call or text are no longer asked, so
+    // a save never touches what an older lead has for them.
     not_collected: values.not_collected,
+    answer_notes: values.answer_notes,
     notes: values.notes,
     source: values.source,
   };

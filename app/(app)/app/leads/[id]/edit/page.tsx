@@ -10,6 +10,7 @@ import { answersOf } from "@/lib/leads/questions";
 import { formatPhone } from "@/lib/phone";
 import { maySeeContact } from "@/lib/leads/contact-rules";
 import { contactFor } from "@/lib/leads/contacts";
+import { notesFor } from "@/lib/leads/notes";
 import { LEAD_FIELDS } from "@/lib/leads/fields";
 import { createClient } from "@/lib/supabase/server";
 import { updateLead } from "../../actions";
@@ -28,8 +29,6 @@ function questionDefaults(lead: Parameters<typeof answersOf>[0] & { soffit_colou
     soffit_colour: lead.soffit_colour,
     christmas_lights_now: answers.christmas_lights_now ?? null,
     looked_into_before: answers.looked_into_before ?? null,
-    areas_wanted: answers.areas_wanted ?? null,
-    install_timing: answers.install_timing ?? null,
   };
 }
 
@@ -44,8 +43,10 @@ export default async function EditLeadPage({ params }: { params: Promise<{ id: s
   if (!maySeeContact(me, row)) {
     return <NotForYourRole message="You can only change your own leads." />;
   }
-  // Their own lead, or Keenan: its phone and email come from lead_contacts.
-  const lead = { ...row, ...(await contactFor(supabase, me, row.id)) };
+  // Their own lead, or Keenan: its phone and email come from lead_contacts,
+  // its notes from lead_notes (round 6).
+  const [contact, leadNotes] = await Promise.all([contactFor(supabase, me, row.id), notesFor(supabase, me, row.id)]);
+  const lead = { ...row, ...contact };
 
   return (
     <div className="flex flex-col gap-5">
@@ -67,11 +68,12 @@ export default async function EditLeadPage({ params }: { params: Promise<{ id: s
           house_type: lead.house_type,
           setter_read: lead.setter_read,
           hot_buttons: lead.hot_buttons ?? [],
-          confirm_by: lead.confirm_by,
           questions: questionDefaults(lead),
           phone_not_collected: (lead.not_collected ?? []).includes("phone") && !lead.phone,
           soffit_note: lead.soffit_note ?? "",
-          notes: lead.notes ?? "",
+          soffit_colour_2: lead.soffit_colour_2,
+          answer_notes: leadNotes.answerNotes,
+          notes: leadNotes.notes ?? "",
           source: lead.source,
           address: {
             addressLine: lead.address_line,

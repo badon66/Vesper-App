@@ -15,6 +15,7 @@ import { COUNTED_QUESTIONS, type CountedQuestion } from "@/lib/leads/questions";
 import { followUpLabel } from "@/lib/leads/attention";
 import { openKnockSession } from "@/lib/leads/queries";
 import { contactFor } from "@/lib/leads/contacts";
+import { notesFor } from "@/lib/leads/notes";
 import { LEAD_FIELDS } from "@/lib/leads/fields";
 import { insertLeadOnce, NOT_SAVED, readSaveKey } from "@/lib/leads/save-key";
 import { leadColumnsFromValues, parseLeadForm, type LeadFormErrors } from "@/lib/leads/schema";
@@ -130,8 +131,9 @@ export async function sheetLead(leadId: string): Promise<SheetLead> {
   ]);
   if (!lead) return { ok: false, error: "That lead was not found." };
   if (!mine(me, lead)) return { ok: false, error: "You can only book your own leads." };
-  // Their own lead, or Keenan: its phone comes from lead_contacts (2026-11-04).
-  const contact = await contactFor(supabase, me, lead.id);
+  // Their own lead, or Keenan: its phone comes from lead_contacts (2026-11-04),
+  // its answer notes from lead_notes (round 6).
+  const [contact, leadNotes] = await Promise.all([contactFor(supabase, me, lead.id), notesFor(supabase, me, lead.id)]);
 
   // The newest photo in each slot.
   const latest = new Map<string, string>();
@@ -167,8 +169,6 @@ export async function sheetLead(leadId: string): Promise<SheetLead> {
       wants_price: lead.wants_price,
       christmas_lights_now: lead.christmas_lights_now,
       looked_into_before: lead.looked_into_before,
-      areas_wanted: lead.areas_wanted,
-      install_timing: lead.install_timing,
       everyone: lead.both_decision_makers,
       not_collected: (lead.not_collected ?? []).filter((item): item is CountedQuestion =>
         (COUNTED_QUESTIONS as string[]).includes(item),
@@ -183,7 +183,9 @@ export async function sheetLead(leadId: string): Promise<SheetLead> {
       position_source: lead.position_source,
       position_accuracy_m: lead.position_accuracy_m,
       soffit_colour: lead.soffit_colour,
+      soffit_colour_2: lead.soffit_colour_2,
       soffit_note: lead.soffit_note ?? "",
+      answer_notes: leadNotes.answerNotes,
       photo_slots: Object.keys(photos) as PhotoSlot[],
       photo_paths: {},
       skip: null,
@@ -191,7 +193,6 @@ export async function sheetLead(leadId: string): Promise<SheetLead> {
       house_type: lead.house_type,
       setter_read: lead.setter_read,
       hot_buttons: lead.hot_buttons ?? [],
-      confirm_by: lead.confirm_by,
       extras: true,
     },
   };

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   answersOf,
+  cleanAnswerNotes,
   collectedCount,
   completenessLabel,
   COUNTED_QUESTIONS,
@@ -12,7 +13,7 @@ import {
 } from "@/lib/leads/questions";
 
 // Round 2 (Keenan, 2026-11-03): every question takes an answer or Not
-// collected, and "6 of 8 collected" counts the real answers only.
+// collected, and "5 of 6 collected" counts the real answers only.
 
 function lead(patch: Partial<QuestionLead> = {}): QuestionLead {
   return {
@@ -22,15 +23,13 @@ function lead(patch: Partial<QuestionLead> = {}): QuestionLead {
     both_decision_makers: null,
     christmas_lights_now: null,
     looked_into_before: null,
-    areas_wanted: null,
-    install_timing: null,
     not_collected: [],
     ...patch,
   };
 }
 
 describe("How complete a lead is", () => {
-  it("counts the eight questions in the order they're asked", () => {
+  it("counts the six questions in the order they're asked (round 6: Which areas and Timing aren't asked)", () => {
     expect(COUNTED_QUESTIONS).toEqual([
       "phone",
       "owns_home",
@@ -38,8 +37,6 @@ describe("How complete a lead is", () => {
       "both_decision_makers",
       "christmas_lights_now",
       "looked_into_before",
-      "areas_wanted",
-      "install_timing",
     ]);
   });
 
@@ -51,12 +48,12 @@ describe("How complete a lead is", () => {
       both_decision_makers: true,
       christmas_lights_now: "none",
       looked_into_before: "new_to_them",
-      not_collected: ["areas_wanted", "install_timing"],
+      not_collected: ["christmas_lights_now"],
     });
     expect(collectedCount(some)).toBe(6);
-    expect(completenessLabel(some)).toBe("6 of 8 collected");
-    expect(completenessLabel(lead())).toBe("0 of 8 collected");
-    expect(questionState(some, "areas_wanted")).toBe("not_collected");
+    expect(completenessLabel(some)).toBe("6 of 6 collected");
+    expect(completenessLabel(lead())).toBe("0 of 6 collected");
+    expect(questionState(lead({ not_collected: ["looked_into_before"] }), "looked_into_before")).toBe("not_collected");
     expect(questionState(some, "owns_home")).toBe("answered");
     expect(questionState(lead(), "phone")).toBe("open");
   });
@@ -86,7 +83,20 @@ describe("Finishing a group of questions", () => {
       owns_home: "no",
       wants_price: "not_yet",
       both_decision_makers: "no",
-      install_timing: null,
+      looked_into_before: null,
     });
+  });
+});
+
+// Round 6 (Keenan, 2026-11-07): a short note on each required question.
+describe("Notes on the answers", () => {
+  it("keeps only known questions, trimmed, and drops empty ones", () => {
+    expect(cleanAnswerNotes({ owns_home: "  Wife's name on title ", phone: "", soffit_colour: "split", nonsense: "x" })).toEqual({
+      owns_home: "Wife's name on title",
+      soffit_colour: "split",
+    });
+    expect(cleanAnswerNotes(null)).toEqual({});
+    expect(cleanAnswerNotes(["a"])).toEqual({});
+    expect(cleanAnswerNotes({ phone: "x".repeat(400) }).phone?.length).toBe(300);
   });
 });
