@@ -299,6 +299,8 @@ export function AddressScreen({
   onChange: Change;
 }) {
   const { viewingAs } = useViewAs();
+  const [soffitNoteOpen, setSoffitNoteOpen] = useState(false);
+  const soffitNoteText = draft.answer_notes?.soffit_colour ?? "";
   return (
     <form ref={formRef} onSubmit={(event) => event.preventDefault()} className="flex flex-col gap-3 min-[420px]:gap-4">
       <div className="flex flex-col gap-3">
@@ -345,12 +347,24 @@ export function AddressScreen({
       </div>
 
       <section className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-3">
           <span aria-hidden="true" className="text-sm font-semibold min-[420px]:text-base">
             Soffit colour
           </span>
-          <span id="sheet-soffit-note-hint" className="text-sm text-muted-foreground">
-            Look closely. Split? Pick both.
+          <span className="ml-auto flex items-center gap-2">
+            <span id="sheet-soffit-note-hint" className="text-sm text-muted-foreground">
+              Split? Pick both.
+            </span>
+            {/* Round 6: the soffit's private note, on its own line so the
+                step doesn't grow. */}
+            <NoteToggle
+              open={soffitNoteOpen}
+              hasText={soffitNoteText.trim() !== ""}
+              size="sheet"
+              label="Soffit colour: note"
+              testId="sheet-soffit-note-toggle"
+              onToggle={() => setSoffitNoteOpen(!soffitNoteOpen)}
+            />
           </span>
         </div>
         {/* Round 6: a split soffit takes two colours, then a short note
@@ -364,10 +378,6 @@ export function AddressScreen({
           columns={2}
           size="sheet"
           value={draft.soffit_colour}
-          note={{
-            value: draft.answer_notes?.soffit_colour ?? "",
-            onChange: (text) => onChange({ answer_notes: { ...(draft.answer_notes ?? {}), soffit_colour: text } }),
-          }}
           chosen={[draft.soffit_colour, draft.soffit_colour_2].filter((item): item is SoffitColour => item !== null)}
           onTap={(option) => {
             const current = [draft.soffit_colour, draft.soffit_colour_2].filter((item): item is SoffitColour => item !== null);
@@ -376,6 +386,15 @@ export function AddressScreen({
           }}
           onChange={() => {}}
         />
+        {soffitNoteOpen || soffitNoteText.trim() !== "" ? (
+          <NoteField
+            id="sheet-soffit-private-note"
+            label="Soffit colour: note"
+            value={soffitNoteText}
+            onChange={(text) => onChange({ answer_notes: { ...(draft.answer_notes ?? {}), soffit_colour: text } })}
+            autoFocus={soffitNoteOpen}
+          />
+        ) : null}
         {draft.soffit_colour === "other" || draft.soffit_colour_2 !== null ? (
           <div className="flex flex-col gap-2">
             <Label htmlFor="sheet-soffit-note">{draft.soffit_colour_2 !== null ? "Which colour is where?" : "Which colour?"}</Label>

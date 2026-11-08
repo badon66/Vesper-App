@@ -179,7 +179,7 @@ export function TimePicker({
   const dayNote = hideDayHeading && !tonightOnly ? eveningNote(day, today, daySlots, opening) : null;
 
   return (
-    <div className="@container flex flex-col gap-4" data-testid="time-picker">
+    <div className={cn("@container flex flex-col", hideDayHeading ? "gap-3" : "gap-4")} data-testid="time-picker">
       {!tonightOnly ? (
         <div ref={strip} className="-mx-4 overflow-x-auto px-4" role="group" aria-label="Evenings">
           <div className="flex w-max gap-2">
@@ -190,7 +190,10 @@ export function TimePicker({
                 onClick={() => choose(item.day)}
                 aria-pressed={item.day === day}
                 className={cn(
-                  "flex min-h-14 min-w-20 flex-col items-center justify-center rounded-md border px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  // Session's row is a little shorter (round 6), so the
+                  // knocking view fits one screen at 390 wide.
+                  "flex min-w-20 flex-col items-center justify-center rounded-md border px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  hideDayHeading ? "min-h-12 leading-tight" : "min-h-14",
                   item.day === day ? "border-2 border-foreground bg-secondary font-bold" : "bg-background font-semibold",
                   item.slots.length === 0 && item.day !== day && "text-muted-foreground",
                 )}

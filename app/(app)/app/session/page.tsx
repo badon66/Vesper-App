@@ -102,7 +102,10 @@ export default async function SessionPage({
             className="flex flex-col gap-2"
             data-testid="session-times"
           >
-            <h2 id="session-times-heading" className="text-base font-bold">
+            {/* The row of days says what these are (Tonight, 6 open), so
+                the heading is for screen readers only (round 6), keeping the
+                knocking view one screen at 390 wide. */}
+            <h2 id="session-times-heading" className="sr-only">
               Open times
             </h2>
             {/* The day picked stays picked when the times refresh. */}
