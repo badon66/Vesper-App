@@ -68,7 +68,7 @@ export async function activeHoldOf(supabase: Client, personId: string, holdMinut
 }
 
 const MEETING_COLUMNS =
-  "id, lead_id, host_id, setter_id, booked_by, starts_at, ends_at, status, photos_skipped, photos_skip_note, outcome_reason, outcome_note, outcome_at, outcome_by, rebooked_as, created_at";
+  "id, lead_id, host_id, setter_id, booked_by, starts_at, ends_at, status, photos_skipped, photos_skip_note, outcome_reason, outcome_note, outcome_at, outcome_by, rebooked_as, created_at, confirmed_at";
 // The counted questions come along so each card can say how complete the
 // lead is ("5 of 6 collected", round 2 and round 6). Never the phone, email
 // or notes: those come from lead_contacts (2026-11-04) and lead_notes
@@ -94,6 +94,8 @@ export type MeetingRow = Pick<
   | "outcome_by"
   | "rebooked_as"
   | "created_at"
+  // Round 7: when Keenan confirmed the time with them.
+  | "confirmed_at"
 >;
 export type MeetingLead = Pick<
   Database["public"]["Tables"]["leads"]["Row"],

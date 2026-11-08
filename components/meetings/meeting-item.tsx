@@ -1,4 +1,5 @@
-import { PrepFlags } from "@/components/meetings/prep-flags";
+import { PrepLine, type PrepGlance } from "@/components/meetings/prep-line";
+import { ConfirmedTick } from "@/components/meetings/confirmed-tick";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -16,8 +17,10 @@ export type MeetingItemData = {
   host: string | null;
   // Tonight, once Keenan has marked how it went.
   outcome: string | null;
-  missingMockup: boolean;
-  missingColour: boolean;
+  // Round 7: Ready, or what's left on the prep list; null once marked.
+  prep: PrepGlance | null;
+  // Round 7: when Keenan confirmed the time with them.
+  confirmed: boolean;
   // "6 of 8 collected" (round 2): information only.
   completeness: string;
   // The setter's read and hot buttons (round 3), or null.
@@ -49,7 +52,10 @@ export function MeetingItem({
       data-testid="meeting-item"
       data-lead={item.leadId}
     >
-      <p className={cn("shrink-0 font-bold tabular-nums", compact ? "text-lg sm:w-28" : "text-2xl sm:w-32")}>{item.time}</p>
+      <div className={cn("flex shrink-0 flex-row items-baseline gap-3 sm:flex-col sm:gap-1", compact ? "sm:w-28" : "sm:w-32")}>
+        <p className={cn("font-bold tabular-nums", compact ? "text-lg" : "text-2xl")}>{item.time}</p>
+        {item.confirmed ? <ConfirmedTick /> : null}
+      </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <p className={cn("font-semibold text-pretty", compact ? "text-base" : "text-lg")}>{item.name}</p>
         <p className="text-pretty text-muted-foreground">{item.address}</p>
@@ -63,7 +69,7 @@ export function MeetingItem({
         ) : null}
         {item.host ? <p className="text-sm text-muted-foreground">Host: {item.host}</p> : null}
         {item.outcome ? <p className="text-sm font-semibold">{item.outcome}</p> : null}
-        <PrepFlags leadId={item.leadId} missingMockup={item.missingMockup} missingColour={item.missingColour} />
+        {item.prep ? <PrepLine leadId={item.leadId} prep={item.prep} /> : null}
         {children}
       </div>
       <Button

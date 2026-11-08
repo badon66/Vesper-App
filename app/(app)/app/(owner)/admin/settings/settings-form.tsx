@@ -355,6 +355,21 @@ export function SettingsForm({
 
       <Card>
         <CardHeader>
+          <CardTitle>Confirming meetings</CardTitle>
+          <CardDescription>
+            The text the prep list puts in Messages when you confirm a meeting. You can change it before sending.
+            {" {first_name}"}, {"{day}"} (tonight, tomorrow or the weekday) and {"{time}"} are filled in.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <Field name="confirm_text" label="Confirmation text" errors={errors}>
+            {(p) => <Textarea {...p} rows={3} defaultValue={defaults.confirm_text} />}
+          </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Company</CardTitle>
           <CardDescription>Printed on quotes. Fill in anything that is blank.</CardDescription>
         </CardHeader>

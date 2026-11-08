@@ -145,6 +145,16 @@ export const settingsFormSchema = z.object({
         .min(1, { error: "cannot be empty" })
         .max(2000, { error: "must be under 2,000 characters" }),
     ),
+  // Round 7 (Keenan, 2026-11-08): the ready-made confirmation text.
+  confirm_text: z
+    .string()
+    .transform((text) => text.replace(/\s+/g, " ").trim())
+    .pipe(
+      z
+        .string()
+        .min(1, { error: "cannot be empty" })
+        .max(400, { error: "must be under 400 characters" }),
+    ),
   // Meeting mode (M5).
   rush_colour_fee_per_ft: moneyOrUnset,
   service_call_fee: moneyOrUnset,
@@ -225,6 +235,7 @@ export function settingsFormDataToInput(
     step_note_at_door: text("step_note_at_door"),
     step_note_after_door: text("step_note_after_door"),
     step_note_book: text("step_note_book"),
+    confirm_text: text("confirm_text"),
     company_name: text("company_name"),
     company_phone: text("company_phone"),
     company_email: text("company_email"),
@@ -268,6 +279,7 @@ export function settingsUpdateFromValues(v: SettingsFormValues): SettingsUpdate 
     step_note_at_door: v.step_note_at_door,
     step_note_after_door: v.step_note_after_door,
     step_note_book: v.step_note_book,
+    confirm_text: v.confirm_text,
     company: {
       name: v.company_name,
       phone: v.company_phone,
@@ -312,6 +324,7 @@ export type SettingsFormDefaults = {
   step_note_at_door: string;
   step_note_after_door: string;
   step_note_book: string;
+  confirm_text: string;
   company_name: string;
   company_phone: string;
   company_email: string;
@@ -355,6 +368,7 @@ export function settingsRowToFormDefaults(row: SettingsRow): SettingsFormDefault
     step_note_at_door: row.step_note_at_door,
     step_note_after_door: row.step_note_after_door,
     step_note_book: row.step_note_book,
+    confirm_text: row.confirm_text,
     company_name: companyField("name"),
     company_phone: companyField("phone"),
     company_email: companyField("email"),

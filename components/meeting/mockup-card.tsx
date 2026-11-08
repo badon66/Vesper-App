@@ -12,7 +12,18 @@ import { createClient } from "@/lib/supabase/client";
 // The customer's mockup (M5): made outside the app, uploaded here by
 // Keenan, shown full screen in meeting mode. One per lead; a new upload
 // takes the slot and the old one stays with the lead's extra photos.
-export function MockupCard({ leadId, userId, mockupUrl }: { leadId: string; userId: string; mockupUrl: string | null }) {
+// bare (round 7): just the picture and the upload, for the prep list.
+export function MockupCard({
+  leadId,
+  userId,
+  mockupUrl,
+  bare = false,
+}: {
+  leadId: string;
+  userId: string;
+  mockupUrl: string | null;
+  bare?: boolean;
+}) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -45,6 +56,45 @@ export function MockupCard({ leadId, userId, mockupUrl }: { leadId: string; user
     }
   }
 
+  const upload = (
+    <>
+      <Button type="button" variant={bare ? (shown ? "outline" : "default") : "outline"} size={bare ? "lg" : "default"} className={bare ? "h-12 px-5" : undefined} disabled={busy} onClick={() => input.current?.click()}>
+        <ImagePlus aria-hidden="true" />
+        {busy ? "Uploading" : shown ? "Replace the mockup" : "Upload the mockup"}
+      </Button>
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        tabIndex={-1}
+        aria-hidden="true"
+        className="sr-only"
+        data-testid="mockup-input"
+        onChange={(event) => void onFile(event.currentTarget.files)}
+      />
+    </>
+  );
+  const problem = error ? (
+    <p role="alert" className="text-sm font-semibold text-destructive">
+      {error}
+    </p>
+  ) : null;
+
+  if (bare) {
+    return (
+      <div className="flex flex-col gap-3" data-testid="mockup-card">
+        {shown ? (
+          <div className="w-fit overflow-hidden rounded-md border">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a local preview, or a private photo behind a short-lived signed link */}
+            <img src={shown} alt="The customer's mockup, lights on" className="max-h-48 w-auto object-cover" />
+          </div>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-3">{upload}</div>
+        {problem}
+      </div>
+    );
+  }
+
   return (
     <Card id="mockup" className="scroll-mt-24" data-testid="mockup-card">
       <CardHeader>
@@ -70,26 +120,9 @@ export function MockupCard({ leadId, userId, mockupUrl }: { leadId: string; user
                 the meeting page for a reload without signal. */}
             <a href={`/meeting/${leadId}#start`}>Open meeting mode</a>
           </Button>
-          <Button type="button" variant="outline" disabled={busy} onClick={() => input.current?.click()}>
-            <ImagePlus aria-hidden="true" />
-            {busy ? "Uploading" : shown ? "Replace the mockup" : "Upload the mockup"}
-          </Button>
-          <input
-            ref={input}
-            type="file"
-            accept="image/*"
-            tabIndex={-1}
-            aria-hidden="true"
-            className="sr-only"
-            data-testid="mockup-input"
-            onChange={(event) => void onFile(event.currentTarget.files)}
-          />
+          {upload}
         </div>
-        {error ? (
-          <p role="alert" className="text-sm font-semibold text-destructive">
-            {error}
-          </p>
-        ) : null}
+        {problem}
       </CardContent>
     </Card>
   );

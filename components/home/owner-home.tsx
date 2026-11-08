@@ -9,6 +9,7 @@ import { outTodayFor } from "@/lib/knock/queries";
 import { namesById, openKnockSession } from "@/lib/leads/queries";
 import { legs } from "@/lib/schedule/distance";
 import { isLive } from "@/lib/schedule/meetings";
+import { prepFor } from "@/lib/meetings/prep-queries";
 import { meetingsOnDay, type MeetingWithLead } from "@/lib/schedule/queries";
 import { createClient } from "@/lib/supabase/server";
 import { addDays, calgaryToday, formatLongDay, requestTime } from "@/lib/time";
@@ -17,7 +18,7 @@ const GONE = new Set(["moved", "cancelled"]);
 
 // Keenan's Home (Keenan, 2026-11-05), top to bottom: Start knocking or his
 // live session; today's meetings with a switch to tomorrow, each with what
-// it still needs (the Meetings page's flags: no mockup, no track colour),
+// it still needs (round 7: Ready, or what's left on the prep list),
 // how complete the lead is and, after the slot, how it went; who's out
 // knocking right now. Owner only: View as never shows it. A glance, not a
 // workbench: moved and cancelled bookings stay on Schedule, and the cards
@@ -34,21 +35,19 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
     outTodayFor(supabase, profile.id),
   ]);
   const all = [...todayMeetings, ...tomorrowMeetings];
-  const leadIds = Array.from(new Set(all.map((meeting) => meeting.lead_id)));
-  const [names, colourRows, mockupRows] = await Promise.all([
+  // Round 7: each meeting's prep list, as on the Meetings page.
+  const meetingByLead = new Map(all.filter((meeting) => isLive(meeting.status)).map((meeting) => [meeting.lead_id, meeting]));
+  const [names, prep] = await Promise.all([
     namesById(
       supabase,
       all.flatMap((meeting) => [meeting.setter_id, meeting.booked_by, meeting.outcome_by]),
     ),
-    leadIds.length > 0
-      ? supabase.from("leads").select("id, track_colour_id, track_ral_code").in("id", leadIds).then(({ data }) => data ?? [])
-      : Promise.resolve([]),
-    leadIds.length > 0
-      ? supabase.from("lead_photos").select("lead_id").eq("slot", "mockup").in("lead_id", leadIds).then(({ data }) => data ?? [])
-      : Promise.resolve([]),
+    prepFor(
+      supabase,
+      all.map((meeting) => meeting.lead),
+      (leadId) => meetingByLead.get(leadId) ?? null,
+    ),
   ]);
-  const hasColour = new Set(colourRows.filter((row) => row.track_colour_id || row.track_ral_code).map((row) => row.id));
-  const hasMockup = new Set(mockupRows.map((row) => row.lead_id));
   const reasons = settingsResult.data?.not_qualified_reasons ?? [];
   const now = requestTime();
 
@@ -58,7 +57,11 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
   const nextId = [...todayMeetings, ...tomorrowMeetings].find(
     (meeting) => isLive(meeting.status) && new Date(meeting.starts_at).getTime() > now,
   )?.id;
-  const needsPrep = (meeting: MeetingWithLead) => !hasMockup.has(meeting.lead_id) || !hasColour.has(meeting.lead_id);
+  const needsPrep = (meeting: MeetingWithLead) => prep.get(meeting.lead_id)?.ready === false;
+  const glance = (meeting: MeetingWithLead) => {
+    const summary = prep.get(meeting.lead_id);
+    return summary ? { ready: summary.ready, left: summary.left, line: summary.line } : null;
+  };
 
   const cards = (all: MeetingWithLead[], empty: string) => {
     const held = all.filter((meeting) => !GONE.has(meeting.status));
@@ -85,7 +88,7 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
           // The evening's prep in one line, so he needn't add up the cards.
           <p className="flex flex-wrap items-center gap-x-2 text-sm text-pretty" data-testid="prep-summary">
             <span>
-              {toPrep} of {upcoming} still {toPrep === 1 ? "needs" : "need"} a mockup or the track colour.
+              {toPrep} of {upcoming} still to prepare.
             </span>
             <Link href="/app/meetings" className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4">
               Open Meetings
@@ -106,7 +109,7 @@ export async function OwnerHome({ profile }: { profile: SessionProfile }) {
             showDetails
             compact
             next={meeting.id === nextId}
-            prep={{ missingMockup: !hasMockup.has(meeting.lead_id), missingColour: !hasColour.has(meeting.lead_id) }}
+            prep={glance(meeting)}
           />
         ))}
       </div>

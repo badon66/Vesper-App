@@ -105,7 +105,7 @@ export function TonightList({ items, renderedAt }: { items: MeetingItemData[]; r
     }
   }
 
-  const needFix = items.filter((item) => item.missingMockup || item.missingColour).length;
+  const needFix = items.filter((item) => item.prep && !item.prep.ready).length;
   const savedCount = saved ? leadIds.filter((id) => fresh(id, saved[id])).length : 0;
   const summary = !saved
     ? null
@@ -142,7 +142,7 @@ export function TonightList({ items, renderedAt }: { items: MeetingItemData[]; r
           </p>
           {needFix > 0 ? (
             <p className="mt-1 text-sm font-semibold" data-testid="tonight-need-fix">
-              {needFix === 1 ? "1 meeting needs" : `${needFix} meetings need`} a fix before you leave.
+              {needFix === 1 ? "1 meeting" : `${needFix} meetings`} still to prepare.
             </p>
           ) : null}
         </div>
@@ -152,7 +152,7 @@ export function TonightList({ items, renderedAt }: { items: MeetingItemData[]; r
               <CloudDownload aria-hidden="true" />
               {busy ? "Saving tonight" : "Get tonight ready"}
             </Button>
-            <p className="text-sm text-muted-foreground">Do this last, after fixing anything flagged.</p>
+            <p className="text-sm text-muted-foreground">Do this last, once each meeting is ready.</p>
             {summary ? (
               <p className="text-sm font-semibold text-pretty" role="status" data-testid="tonight-saved-summary">
                 {summary}

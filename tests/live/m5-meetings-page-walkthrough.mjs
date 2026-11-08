@@ -131,6 +131,13 @@ try {
   };
   const tonightLead = await addLead("Tonight", 2);
   const laterLead = await addLead("Later", 4);
+  // Round 7: a lead with no meeting, for the Recent leads row, and notes on
+  // the later lead for the top of its prep list.
+  const recentLead = await addLead("Recent", 6);
+  await admin
+    .from("leads")
+    .update({ phone: "+14035550199", notes: "Gate code 4411 (automated)", answer_notes: { owns_home: "Both names on title (automated)" }, setter_read: "hot", hot_buttons: ["no_ladders"] })
+    .eq("id", laterLead);
   await admin.from("leads").update({ track_colour_id: colour.id }).eq("id", tonightLead);
   const mockupPath = `${setter.id}/${crypto.randomUUID()}.jpg`;
   const jpeg = await sharp({ create: { width: 1200, height: 800, channels: 3, background: "#1d3445" } }).jpeg().toBuffer();
@@ -148,8 +155,12 @@ try {
     ends_at: new Date(Date.parse(at11pm(day)) + 45 * 60_000).toISOString(),
     everyone_deciding_present: true,
   });
-  const staged = await admin.from("meetings").insert([meeting(tonightLead, today), meeting(laterLead, addDays(today, 1))]);
+  const staged = await admin.from("meetings").insert([meeting(tonightLead, today), meeting(laterLead, addDays(today, 1))]).select("id, lead_id");
   if (staged.error) throw new Error(`meetings: ${staged.error.message}`);
+  const tonightMeeting = staged.data.find((row) => row.lead_id === tonightLead).id;
+  // Round 7: Keenan confirmed tonight's time (the walk-through only views,
+  // so the test stages it the way his Confirmed tap records it).
+  await admin.from("meetings").update({ confirmed_at: new Date().toISOString() }).eq("id", tonightMeeting);
   const before = await ownerFootprint(ownerId);
 
   // ---------------------------------------------------------------- navigation
@@ -202,10 +213,19 @@ try {
   const tonightItem = tonightSection.locator(`[data-testid="meeting-item"][data-lead="${tonightLead}"]`);
   const tonightText = (await tonightItem.innerText()).replace(/\s+/g, " ");
   check(
-    "tonight's meeting shows its time, name and address, with nothing to fix",
-    tonightText.includes("11:00 p.m.") && tonightText.includes(`${TEST_LEAD} Tonight`) && tonightText.includes(`2 ${street} Crescent SW`) && !tonightText.includes("No mockup") && !tonightText.includes("No track colour"),
+    "tonight's meeting shows its time, name and address",
+    tonightText.includes("11:00 p.m.") && tonightText.includes(`${TEST_LEAD} Tonight`) && tonightText.includes(`2 ${street} Crescent SW`),
     tonightText.slice(0, 160),
   );
+  const tonightPrep = tonightItem.getByTestId("prep-line");
+  const tonightPrepText = ((await tonightPrep.innerText().catch(() => "")) || "").replace(/\s+/g, " ").trim();
+  check(
+    "its prep line says Prepare for the meeting with what's left (the quote and the missing answers; mockup, colour and time are done), and opens the prep list",
+    tonightPrepText === "Prepare for the meeting · 2 left: quote, missing answers" &&
+      (await tonightPrep.getAttribute("href")) === `/app/meetings/prep/${tonightLead}`,
+    tonightPrepText,
+  );
+  check("a time Keenan confirmed has a tick on the Meetings page", (await tonightItem.getByTestId("confirmed-tick").count()) === 1);
   check("each meeting says how complete its lead is, out of the six counted questions (round 6)", /\b\d of 6 collected\b/.test(tonightText), tonightText.match(/\d of \d collected/)?.[0] ?? "missing");
   check(
     "its Start opens meeting mode fresh, with a full page load",
@@ -220,34 +240,105 @@ try {
     return ((Number(match[1]) % 12) + (match[3] === "p" ? 12 : 0)) * 60 + Number(match[2]);
   });
   check("tonight is in time order", minutes.every((value, index) => index === 0 || value >= minutes[index - 1]), times.join(", "));
-  const upcomingItem = page.getByTestId("meetings-upcoming").locator(`[data-testid="meeting-item"][data-lead="${laterLead}"]`);
-  const upcomingText = (await upcomingItem.innerText()).replace(/\s+/g, " ");
+  // ---------------------------------------------------------------- quick pick (round 7)
+  const soonCard = page.getByTestId("meetings-soon").locator(`[data-testid="quick-pick"][data-lead="${laterLead}"]`);
+  const soonText = (await soonCard.innerText().catch(() => "")).replace(/\s+/g, " ");
   check(
-    "an upcoming meeting with no mockup and no track colour is flagged, with the way to fix each",
-    upcomingText.includes("No mockup yet.") &&
-      upcomingText.includes("No track colour yet.") &&
-      (await upcomingItem.locator(`a[href="/app/leads/${laterLead}#mockup"]`).count()) === 1 &&
-      (await upcomingItem.locator(`a[href="/app/leads/${laterLead}#track-colour"]`).count()) === 1,
-    upcomingText.slice(0, 200),
+    "tomorrow's meeting is in the Next few days row, with its time and what's left",
+    soonText.includes(`${TEST_LEAD} Later`) && soonText.includes("11:00 p.m. tomorrow") && soonText.includes("5 left"),
+    soonText.slice(0, 160),
   );
-  check("the host shows when it isn't the person looking", upcomingText.includes(`Host: ${setter.name}`));
-  const upcomingDayHeadings = await page.getByTestId("meetings-upcoming").locator("h3").allInnerTexts();
-  check("upcoming meetings sit under their evening", upcomingDayHeadings.length >= 1, upcomingDayHeadings.join(" | "));
+  check(
+    "the card opens its prep list and its Start opens meeting mode",
+    (await soonCard.getByRole("link", { name: `${TEST_LEAD} Later` }).getAttribute("href")) === `/app/meetings/prep/${laterLead}` &&
+      (await soonCard.getByRole("link", { name: `Start the meeting with ${TEST_LEAD} Later` }).getAttribute("href")) === `/meeting/${laterLead}#start`,
+  );
+  check(
+    "the later evenings keep their own list, without the next few days",
+    (await page.getByTestId("meetings-upcoming").locator(`[data-lead="${laterLead}"]`).count()) === 0,
+  );
+  const recentCards = page.getByTestId("meetings-recent").locator('[data-testid="quick-pick"]');
+  const recentIds = await recentCards.evaluateAll((cards) => cards.map((card) => card.getAttribute("data-lead")));
+  check(
+    "Recent leads lists the newest leads first, without the booked ones, each to its prep list",
+    recentIds[0] === recentLead && !recentIds.includes(tonightLead) && !recentIds.includes(laterLead) &&
+      (await page.getByTestId("meetings-recent").locator(`[data-lead="${recentLead}"] a[href="/app/meetings/prep/${recentLead}"]`).count()) === 1,
+    recentIds.slice(0, 3).join(", "),
+  );
+  const rowScroll = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+  check("the rows scroll on their own; the page doesn't scroll sideways", rowScroll);
   await page.screenshot({ path: `${out}/m5p-ipad-meetings.png`, fullPage: true });
 
-  // A flag's link lands on the card that fixes it.
-  await upcomingItem.getByRole("link", { name: "Set it on the lead page" }).click();
-  await page.waitForURL(`**/app/leads/${laterLead}#track-colour`, { timeout: 30000 }).catch(() => {});
-  await page.locator("#track-colour").waitFor({ timeout: 30000 }).catch(() => {});
-  await page.waitForTimeout(1200);
-  const landing = await page.evaluate(() => {
-    const card = document.getElementById("track-colour")?.getBoundingClientRect();
-    return card ? { top: Math.round(card.top), height: window.innerHeight, scrolled: Math.round(window.scrollY) } : null;
-  });
+  // ---------------------------------------------------------------- the prep list (round 7)
+  await soonCard.getByRole("link", { name: `${TEST_LEAD} Later` }).click();
+  await page.waitForURL(`**/app/meetings/prep/${laterLead}`, { timeout: 30000 }).catch(() => {});
+  await page.getByTestId("prep-list").waitFor({ timeout: 30000 }).catch(() => {});
+  const itemKeys = await page.getByTestId("prep-list").locator("> li").evaluateAll((items) => items.map((item) => `${item.getAttribute("data-testid")}:${item.getAttribute("data-done")}`));
   check(
-    "a flag's link opens the lead page at the card that fixes it",
-    Boolean(landing && landing.top >= 0 && landing.top < landing.height && landing.scrolled > 0),
-    JSON.stringify(landing),
+    "the prep list has the five items in order, none done yet",
+    JSON.stringify(itemKeys) ===
+      JSON.stringify(["prep-item-mockup:false", "prep-item-track_colour:false", "prep-item-quote:false", "prep-item-confirmed:false", "prep-item-answers:false"]),
+    itemKeys.join(", "),
+  );
+  check(
+    "it says Prepare for the meeting with how many are left, and Start is there",
+    (await page.getByTestId("prep-status").innerText()).trim() === "Prepare for the meeting: 5 left" &&
+      (await page.getByTestId("prep-start").getAttribute("href")) === `/meeting/${laterLead}#start` &&
+      (await page.getByTestId("prep-when").innerText()).trim() === "11:00 p.m. tomorrow",
+  );
+  const brief = (await page.getByTestId("prep-brief").innerText()).replace(/\s+/g, " ");
+  check(
+    "the setter's read, hot buttons and the lead's notes sit at the top",
+    brief.includes("Hot") && /ladder/i.test(brief) && brief.includes("Gate code 4411 (automated)") && brief.includes("Both names on title (automated)"),
+    brief.slice(0, 200),
+  );
+  check(
+    "each item has its button right there: upload, the colour, the quote",
+    (await page.getByTestId("prep-item-mockup").getByRole("button", { name: "Upload the mockup" }).count()) === 1 &&
+      (await page.getByTestId("prep-item-track_colour").locator("select, [role=radiogroup], input").count()) > 0 &&
+      (await page.getByTestId("prep-quote").getAttribute("href")) === `/meeting/${laterLead}#quote`,
+  );
+  const smsHref = (await page.getByTestId("prep-text").getAttribute("href").catch(() => null)) ?? "";
+  const smsBody = smsHref.includes("body=") ? decodeURIComponent(smsHref.split("body=")[1]) : "";
+  check(
+    "Text opens Messages with the ready-made text for tomorrow, and Call is beside it",
+    smsHref.startsWith("sms:+") &&
+      smsBody === `Hi ${TEST_LEAD}, it's Keenan with Vesper Lighting. Just confirming tomorrow at 11:00. See you then!` &&
+      (await page.getByTestId("prep-call").getAttribute("href"))?.startsWith("tel:+") &&
+      (await page.getByTestId("prep-confirm-button").count()) === 1,
+    smsBody || smsHref.slice(0, 20),
+  );
+  const answerGroups = await page.getByTestId("prep-answers").locator("fieldset legend, label").allInnerTexts();
+  check(
+    "the missing answers can be filled right there, one for each question still open",
+    ["Owns the home", "Wants a price", "Christmas lights now", "Looked into it before"].every((label) => answerGroups.some((text) => text.includes(label))),
+    answerGroups.join(" | ").slice(0, 200),
+  );
+  await page.screenshot({ path: `${out}/m5p-ipad-prep.png`, fullPage: true });
+  const prepPhone = await browser.newContext(phone);
+  await prepPhone.addCookies((await ownerContext.cookies(base)).map(({ name, value }) => ({ name, value, url: base })));
+  const prepPhonePage = await prepPhone.newPage();
+  await prepPhonePage.goto(`${base}/app/meetings/prep/${laterLead}`);
+  await settle(prepPhonePage);
+  check("the prep list fits a phone with no sideways scroll", await prepPhonePage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+  await prepPhonePage.screenshot({ path: `${out}/m5p-phone-prep.png`, fullPage: true });
+  await prepPhone.close();
+
+  // ---------------------------------------------------------------- Home and Schedule (round 7)
+  await page.goto(`${base}/app`);
+  await settle(page);
+  const homeCard = page.locator(`[data-testid="meeting-card"][data-meeting="${tonightMeeting}"]`);
+  const homePrep = ((await homeCard.getByTestId("prep-line").innerText().catch(() => "")) || "").replace(/\s+/g, " ").trim();
+  check(
+    "his Home shows how many items are left, and the tick for a confirmed time",
+    homePrep === "2 left: quote, missing answers" && (await homeCard.getByTestId("confirmed-tick").count()) === 1,
+    homePrep,
+  );
+  await page.goto(`${base}/app/schedule`);
+  await settle(page);
+  check(
+    "Schedule shows the tick on a time Keenan confirmed",
+    (await page.locator(`[data-testid="meeting-card"][data-meeting="${tonightMeeting}"] [data-testid="confirmed-tick"]`).count()) === 1,
   );
   await page.goto(`${base}/app/meetings`);
   await settle(page);
@@ -391,6 +482,15 @@ try {
     "a setter who opens Meetings gets Not for your role, and none of the meetings",
     (await setterPage.getByRole("heading", { name: "Not for your role" }).count()) === 1 && (await setterPage.getByTestId("meeting-item").count()) === 0,
   );
+  await setterPage.goto(`${base}/app/meetings/prep/${laterLead}`);
+  await settle(setterPage);
+  const prepSource = await setterPage.content();
+  check(
+    "a setter who opens a prep list gets Not for your role, and none of it",
+    (await setterPage.getByRole("heading", { name: "Not for your role" }).count()) === 1 && !prepSource.includes("Gate code 4411") && !prepSource.includes(`${TEST_LEAD} Later`),
+  );
+  await setterPage.goto(`${base}/app/meetings`);
+  await settle(setterPage);
   const setterSource = await setterPage.content();
   check(
     "and its page source carries none of them: no names, no addresses",

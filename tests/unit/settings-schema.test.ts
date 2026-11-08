@@ -30,6 +30,7 @@ const valid = {
   step_note_at_door: "Who you are.\r\nFind out.\r\n",
   step_note_after_door: "Photos.",
   step_note_book: "Book it.",
+  confirm_text: "Hi {first_name}, it's Keenan.  Just confirming {day} at {time}.",
   not_qualified_reasons: "Not the homeowner\nDecision maker missing\nOther",
   company_name: "Vesper Lighting, Inc.",
   company_phone: "",
@@ -127,6 +128,13 @@ describe("parseSettingsForm", () => {
       expect([update.step_note_at_door, update.step_note_after_door, update.step_note_book]).toEqual(["Who you are.\nFind out.", "Photos.", "Book it."]);
       expect(update).not.toHaveProperty("door_guide");
     }
+    // Round 7: the confirmation text's wording, spaces tidied, never empty.
+    {
+      const tidied = parseSettingsForm(valid);
+      expect(tidied.ok && tidied.values.confirm_text).toBe("Hi {first_name}, it's Keenan. Just confirming {day} at {time}.");
+      expect(parseSettingsForm({ ...valid, confirm_text: "  " }).ok).toBe(false);
+      expect(parseSettingsForm({ ...valid, confirm_text: "x".repeat(401) }).ok).toBe(false);
+    }
     for (const field of ["step_note_at_door", "step_note_after_door", "step_note_book"] as const) {
       const empty = parseSettingsForm({ ...valid, [field]: "  \n " });
       expect(empty.ok).toBe(false);
@@ -190,6 +198,7 @@ describe("settingsRowToFormDefaults", () => {
       step_note_at_door: "Who you are.",
       step_note_after_door: "Photos.",
       step_note_book: "Book it.",
+      confirm_text: "Hi {first_name}, see you {day} at {time}.",
       not_qualified_reasons: ["Not the homeowner", "Other"],
       booking_cutoff_minutes: 30,
       hold_grace_minutes: 2,
@@ -224,7 +233,7 @@ describe("settingsRowToFormDefaults", () => {
   it("survives a company value that is not an object", () => {
     const defaults = settingsRowToFormDefaults({
       id: 1, price_per_ft: 1, box_price: 1, neighbour_discount: 0, referral_credit: 0, gst_rate: 0, gst_enabled: false, gst_number: null,
-      booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], door_guide: "g", step_note_at_door: "a", step_note_after_door: "b", step_note_book: "c", not_qualified_reasons: ["Other"], booking_cutoff_minutes: 30, hold_grace_minutes: 2, hold_minutes: 5, booking_window_days: 14, meeting_host_id: null, meeting_days: [1],
+      booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], door_guide: "g", step_note_at_door: "a", step_note_after_door: "b", step_note_book: "c", confirm_text: "Hi {first_name}", not_qualified_reasons: ["Other"], booking_cutoff_minutes: 30, hold_grace_minutes: 2, hold_minutes: 5, booking_window_days: 14, meeting_host_id: null, meeting_days: [1],
       meeting_start: "18:00:00", meeting_slot_minutes: 45, meeting_slot_count: 4, distance_warning_km: 10,
       company: "nonsense", rush_colour_fee_per_ft: null, service_call_fee: null, quote_valid_days: 14, min_job_total: 2500, faq_text: "",
       updated_at: "2026-10-26T00:00:00Z",
