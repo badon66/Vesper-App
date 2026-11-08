@@ -184,6 +184,13 @@ export type Database = {
             foreignKeyName: "earnings_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_notes"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "earnings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -369,6 +376,13 @@ export type Database = {
             foreignKeyName: "lead_events_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_notes"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_events_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -435,6 +449,13 @@ export type Database = {
             foreignKeyName: "lead_photos_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_notes"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_photos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -443,6 +464,7 @@ export type Database = {
       leads: {
         Row: {
           address_line: string
+          answer_notes: Json
           areas_wanted: Database["public"]["Enums"]["roofline_areas"] | null
           assigned_to: string | null
           both_decision_makers: boolean | null
@@ -487,6 +509,7 @@ export type Database = {
           save_key: string | null
           setter_read: Database["public"]["Enums"]["setter_read"] | null
           soffit_colour: Database["public"]["Enums"]["soffit_colour"] | null
+          soffit_colour_2: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_note: string | null
           sold_at: string | null
           source: Database["public"]["Enums"]["lead_source"]
@@ -500,6 +523,7 @@ export type Database = {
         }
         Insert: {
           address_line: string
+          answer_notes?: Json
           areas_wanted?: Database["public"]["Enums"]["roofline_areas"] | null
           assigned_to?: string | null
           both_decision_makers?: boolean | null
@@ -544,6 +568,7 @@ export type Database = {
           save_key?: string | null
           setter_read?: Database["public"]["Enums"]["setter_read"] | null
           soffit_colour?: Database["public"]["Enums"]["soffit_colour"] | null
+          soffit_colour_2?: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_note?: string | null
           sold_at?: string | null
           source?: Database["public"]["Enums"]["lead_source"]
@@ -557,6 +582,7 @@ export type Database = {
         }
         Update: {
           address_line?: string
+          answer_notes?: Json
           areas_wanted?: Database["public"]["Enums"]["roofline_areas"] | null
           assigned_to?: string | null
           both_decision_makers?: boolean | null
@@ -601,6 +627,7 @@ export type Database = {
           save_key?: string | null
           setter_read?: Database["public"]["Enums"]["setter_read"] | null
           soffit_colour?: Database["public"]["Enums"]["soffit_colour"] | null
+          soffit_colour_2?: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_note?: string | null
           sold_at?: string | null
           source?: Database["public"]["Enums"]["lead_source"]
@@ -787,6 +814,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "meetings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_notes"
             referencedColumns: ["lead_id"]
           },
           {
@@ -1035,6 +1069,13 @@ export type Database = {
             foreignKeyName: "quote_links_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_notes"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "quote_links_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -1085,6 +1126,7 @@ export type Database = {
           presented_at: string | null
           price_per_ft: number
           runs: Json
+          rush_fee: number | null
           rush_fee_per_ft: number | null
           status: Database["public"]["Enums"]["quote_status"]
           subtotal: number
@@ -1094,6 +1136,8 @@ export type Database = {
           track_custom: boolean
           track_ral_code: string | null
           updated_at: string
+          upper_access_fee: number | null
+          upper_gable_access_fee: number | null
           valid_until: string | null
         }
         Insert: {
@@ -1119,6 +1163,7 @@ export type Database = {
           presented_at?: string | null
           price_per_ft: number
           runs?: Json
+          rush_fee?: number | null
           rush_fee_per_ft?: number | null
           status?: Database["public"]["Enums"]["quote_status"]
           subtotal?: number
@@ -1128,6 +1173,8 @@ export type Database = {
           track_custom?: boolean
           track_ral_code?: string | null
           updated_at?: string
+          upper_access_fee?: number | null
+          upper_gable_access_fee?: number | null
           valid_until?: string | null
         }
         Update: {
@@ -1153,6 +1200,7 @@ export type Database = {
           presented_at?: string | null
           price_per_ft?: number
           runs?: Json
+          rush_fee?: number | null
           rush_fee_per_ft?: number | null
           status?: Database["public"]["Enums"]["quote_status"]
           subtotal?: number
@@ -1162,6 +1210,8 @@ export type Database = {
           track_custom?: boolean
           track_ral_code?: string | null
           updated_at?: string
+          upper_access_fee?: number | null
+          upper_gable_access_fee?: number | null
           valid_until?: string | null
         }
         Relationships: [
@@ -1197,6 +1247,13 @@ export type Database = {
             foreignKeyName: "quotes_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_notes"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "quotes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -1223,6 +1280,9 @@ export type Database = {
           booking_pay: number
           booking_window_days: number
           box_price: number
+          christmas_banner_on: boolean
+          christmas_banner_text: string
+          christmas_banner_title: string
           commission_rate: number
           company: Json
           distance_warning_km: number
@@ -1244,15 +1304,20 @@ export type Database = {
           neighbour_discount: number
           not_qualified_reasons: string[]
           presentation: Json
+          price_hold_days: number
           price_per_ft: number
+          product_points: Json
           quote_valid_days: number
           referral_credit: number
+          rush_colour_fee: number | null
           rush_colour_fee_per_ft: number | null
           service_call_fee: number | null
           step_note_after_door: string
           step_note_at_door: string
           step_note_book: string
           updated_at: string
+          upper_access_fee: number | null
+          upper_gable_access_fee: number | null
           warranty_text: string
         }
         Insert: {
@@ -1260,6 +1325,9 @@ export type Database = {
           booking_pay?: number
           booking_window_days?: number
           box_price?: number
+          christmas_banner_on?: boolean
+          christmas_banner_text?: string
+          christmas_banner_title?: string
           commission_rate?: number
           company: Json
           distance_warning_km?: number
@@ -1281,15 +1349,20 @@ export type Database = {
           neighbour_discount?: number
           not_qualified_reasons?: string[]
           presentation: Json
+          price_hold_days?: number
           price_per_ft?: number
+          product_points?: Json
           quote_valid_days?: number
           referral_credit?: number
+          rush_colour_fee?: number | null
           rush_colour_fee_per_ft?: number | null
           service_call_fee?: number | null
           step_note_after_door?: string
           step_note_at_door?: string
           step_note_book?: string
           updated_at?: string
+          upper_access_fee?: number | null
+          upper_gable_access_fee?: number | null
           warranty_text: string
         }
         Update: {
@@ -1297,6 +1370,9 @@ export type Database = {
           booking_pay?: number
           booking_window_days?: number
           box_price?: number
+          christmas_banner_on?: boolean
+          christmas_banner_text?: string
+          christmas_banner_title?: string
           commission_rate?: number
           company?: Json
           distance_warning_km?: number
@@ -1318,15 +1394,20 @@ export type Database = {
           neighbour_discount?: number
           not_qualified_reasons?: string[]
           presentation?: Json
+          price_hold_days?: number
           price_per_ft?: number
+          product_points?: Json
           quote_valid_days?: number
           referral_credit?: number
+          rush_colour_fee?: number | null
           rush_colour_fee_per_ft?: number | null
           service_call_fee?: number | null
           step_note_after_door?: string
           step_note_at_door?: string
           step_note_book?: string
           updated_at?: string
+          upper_access_fee?: number | null
+          upper_gable_access_fee?: number | null
           warranty_text?: string
         }
         Relationships: [
@@ -1438,6 +1519,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "slot_holds_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_notes"
             referencedColumns: ["lead_id"]
           },
           {
@@ -1663,6 +1751,73 @@ export type Database = {
           },
         ]
       }
+      lead_notes: {
+        Row: {
+          answer_notes: Json | null
+          assigned_to: string | null
+          created_by: string | null
+          lead_id: string | null
+          notes: string | null
+        }
+        Insert: {
+          answer_notes?: Json | null
+          assigned_to?: string | null
+          created_by?: string | null
+          lead_id?: string | null
+          notes?: string | null
+        }
+        Update: {
+          answer_notes?: Json | null
+          assigned_to?: string | null
+          created_by?: string | null
+          lead_id?: string | null
+          notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profile_names: {
         Row: {
           full_name: string | null
@@ -1817,7 +1972,6 @@ export type Database = {
         Returns: undefined
       }
       close_my_stale_knock_sessions: { Args: never; Returns: number }
-      end_open_knock_sessions: { Args: never; Returns: number }
       current_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
@@ -1834,6 +1988,7 @@ export type Database = {
         Returns: Json
       }
       default_meeting_host: { Args: never; Returns: string }
+      end_open_knock_sessions: { Args: never; Returns: number }
       end_user_sessions: { Args: { target_user: string }; Returns: number }
       extend_hold: { Args: never; Returns: Json }
       finish_welcome: { Args: never; Returns: string }
@@ -1884,6 +2039,7 @@ export type Database = {
         }[]
       }
       quote_for_customer: { Args: { p_token: string }; Returns: Json }
+      quote_gallery_signable: { Args: { p_name: string }; Returns: boolean }
       quote_link_book: {
         Args: { p_positions: number[]; p_token: string }
         Returns: Json
@@ -1913,6 +2069,7 @@ export type Database = {
           presented_at: string | null
           price_per_ft: number
           runs: Json
+          rush_fee: number | null
           rush_fee_per_ft: number | null
           status: Database["public"]["Enums"]["quote_status"]
           subtotal: number
@@ -1922,6 +2079,8 @@ export type Database = {
           track_custom: boolean
           track_ral_code: string | null
           updated_at: string
+          upper_access_fee: number | null
+          upper_gable_access_fee: number | null
           valid_until: string | null
         }
         SetofOptions: {
@@ -2053,7 +2212,7 @@ export type Database = {
       }
     }
     Enums: {
-      christmas_lights_now: "hires" | "diy" | "none"
+      christmas_lights_now: "hires" | "diy" | "none" | "hires_and_diy"
       confirm_by: "call" | "text"
       earning_status: "pending" | "paid" | "void"
       earning_type: "booking" | "commission"
@@ -2086,7 +2245,13 @@ export type Database = {
         | "not_sure"
       house_type: "bungalow" | "bi_level" | "two_storey" | "other"
       install_timing: "before_christmas" | "new_year" | "no_rush"
-      lead_source: "door" | "referral" | "neighbour_card" | "website" | "other"
+      lead_source:
+        | "door"
+        | "referral"
+        | "neighbour_card"
+        | "website"
+        | "other"
+        | "phone_call"
       lead_status:
         | "new"
         | "follow_up"
@@ -2096,7 +2261,11 @@ export type Database = {
         | "sold"
         | "installed"
         | "lost"
-      looked_into_before: "got_quotes" | "thought_about_it" | "new_to_them"
+      looked_into_before:
+        | "got_quotes"
+        | "thought_about_it"
+        | "new_to_them"
+        | "quotes_and_thought"
       map_position_source: "picked" | "device"
       meeting_status:
         | "booked"
@@ -2245,7 +2414,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      christmas_lights_now: ["hires", "diy", "none"],
+      christmas_lights_now: ["hires", "diy", "none", "hires_and_diy"],
       confirm_by: ["call", "text"],
       earning_status: ["pending", "paid", "void"],
       earning_type: ["booking", "commission"],
@@ -2280,7 +2449,14 @@ export const Constants = {
       ],
       house_type: ["bungalow", "bi_level", "two_storey", "other"],
       install_timing: ["before_christmas", "new_year", "no_rush"],
-      lead_source: ["door", "referral", "neighbour_card", "website", "other"],
+      lead_source: [
+        "door",
+        "referral",
+        "neighbour_card",
+        "website",
+        "other",
+        "phone_call",
+      ],
       lead_status: [
         "new",
         "follow_up",
@@ -2291,7 +2467,12 @@ export const Constants = {
         "installed",
         "lost",
       ],
-      looked_into_before: ["got_quotes", "thought_about_it", "new_to_them"],
+      looked_into_before: [
+        "got_quotes",
+        "thought_about_it",
+        "new_to_them",
+        "quotes_and_thought",
+      ],
       map_position_source: ["picked", "device"],
       meeting_status: [
         "booked",
