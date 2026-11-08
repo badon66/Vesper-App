@@ -1,8 +1,8 @@
 // Live walk-through of M2 on a phone-sized screen against a running
 // production build: the knock session counters, a new lead with a typed
 // address and phone, the door process (the step notes behind the "?", the
-// seven Find out questions, the four guided photos with a retake and More
-// photos), search,
+// five Find out questions and the soffit, a note on an answer, the four
+// guided photos with a retake and More photos), search,
 // the Everyone view, the status rules and the timeline, the track colour as
 // a setter sees it, tap-target sizes, and the Google address path with the
 // duplicate warning; last, New lead's save with its answer lost to the
@@ -34,6 +34,9 @@ const TEST_LEAD = "TEST LEAD (automated)";
 const TEST_PLACE = "TEST (automated)";
 const TYPED_ADDRESS = "300 Testing Lane NW (TEST)";
 const OTHER_ADDRESS = "200 Testing Lane NW (TEST)";
+// Round 6 (Keenan, 2026-11-07): New lead's soffit question takes two colours.
+const SOFFIT_LEGEND = "Soffit colour (two for a split soffit)";
+const OWNS_NOTE = "TEST answer note (automated): both names are on the title.";
 const GOOGLE_QUERY = "123 Evanston Way NW Calgary";
 const BUCKET = "lead-photos";
 const noSession = { auth: { persistSession: false, autoRefreshToken: false } };
@@ -80,9 +83,9 @@ async function checkTapTargets(page, screen) {
   check(`tap targets on ${screen} are at least 44 px`, small.length === 0, small.join("; "));
 }
 
-// A Find out question, found by its legend.
+// A Find out question, found by its legend (taken as plain text).
 const question = (page, legend) =>
-  page.locator("fieldset").filter({ has: page.locator("legend", { hasText: new RegExp(`^${legend}$`) }) });
+  page.locator("fieldset").filter({ has: page.locator("legend", { hasText: new RegExp(`^${legend.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) }) });
 
 async function answer(page, legend, choice) {
   await question(page, legend).getByText(choice, { exact: true }).click();
@@ -299,35 +302,61 @@ try {
   await page.fill("#lead-phone", "403 555 0199");
   await page.locator("#lead-phone").blur();
   check("the phone shows in the local format as soon as it is typed", (await page.inputValue("#lead-phone")) === "(403) 555-0199", await page.inputValue("#lead-phone"));
+  // Round 6 (Keenan, 2026-11-07): Keenan does the confirming, so Call or text
+  // to confirm isn't asked any more; a quiet line under the phone says so.
+  const confirmsText = (await page.getByTestId("keenan-confirms").innerText({ timeout: 5000 }).catch(() => "")).trim();
+  const confirmsBox = await page.getByTestId("keenan-confirms").boundingBox().catch(() => null);
+  const phoneBox = await page.locator("#lead-phone").boundingBox();
+  check(
+    "under the phone, a quiet line says Keenan confirms the meeting with them, and there's no Call or text to confirm",
+    confirmsText === "Keenan confirms the meeting with them." && confirmsBox !== null && phoneBox !== null && confirmsBox.y > phoneBox.y &&
+      (await page.locator("fieldset").filter({ has: page.locator("legend", { hasText: /^Call or text/ }) }).count()) === 0,
+    confirmsText,
+  );
 
   const legends = (await page.getByTestId("find-out").locator("legend").allTextContents()).map((t) => t.trim());
   check(
     "Find out asks the questions in the order of the door, then the soffit",
-    JSON.stringify(legends) === JSON.stringify(["Owns the home", "Wants a price", "Everyone who decides will be there", "Christmas lights now", "Looked into it before", "Which areas", "Timing", "Soffit colour"]),
+    JSON.stringify(legends) === JSON.stringify(["Owns the home", "Wants a price", "Everyone who decides will be there", "Christmas lights now", "Looked into it before", SOFFIT_LEGEND]),
     legends.join(", "),
   );
-  const offeredSoffit = (await question(page, "Soffit colour").locator("label").allTextContents()).map((t) => t.trim());
+  const offeredSoffit = (await question(page, SOFFIT_LEGEND).locator("label").allTextContents()).map((t) => t.trim());
   check("the soffit question offers White, Off-white or cream, Other and Not sure", JSON.stringify(offeredSoffit) === JSON.stringify(["White", "Off-white or cream", "Other", "Not sure"]), offeredSoffit.join(", "));
   const withNotCollected = await page.getByTestId("find-out").locator("fieldset").evaluateAll((sets) =>
     sets.map((set) => [set.querySelector("legend")?.textContent?.trim(), Boolean(set.querySelector('input[value="not_collected"]'))]),
   );
   check(
     "every counted question offers Not collected, and the soffit keeps Not sure instead",
-    withNotCollected.every(([legend, offered]) => (legend === "Soffit colour" ? !offered : offered)) && (await page.getByTestId("phone-not-collected").count()) === 1,
+    withNotCollected.every(([legend, offered]) => (legend === SOFFIT_LEGEND ? !offered : offered)) && (await page.getByTestId("phone-not-collected").count()) === 1,
     JSON.stringify(withNotCollected),
   );
   // Answered out of order, as at a real door.
-  await answer(page, "Timing", "Before Christmas");
+  await answer(page, "Looked into it before", "Got quotes");
   await answer(page, "Owns the home", "Yes");
-  await answer(page, "Which areas", "Front and sides");
   await answer(page, "Wants a price", "Yes");
   await answer(page, "Everyone who decides will be there", "Yes");
-  await answer(page, "Soffit colour", "Off-white or cream");
+  await answer(page, SOFFIT_LEGEND, "Off-white or cream");
   await answer(page, "Christmas lights now", "Hires someone");
-  await answer(page, "Looked into it before", "Got quotes");
   check("each answer takes one tap, in any order", (await checkedValue(page, "Christmas lights now")) === "hires" && (await checkedValue(page, "Owns the home")) === "yes");
+  // Round 6: Hires someone and Does it themselves go together; None stands
+  // alone, clearing the others.
+  await answer(page, "Christmas lights now", "Does it themselves");
+  const lightsBoth = await checkedValue(page, "Christmas lights now");
+  await answer(page, "Christmas lights now", "None");
+  const lightsNone = await checkedValue(page, "Christmas lights now");
   await answer(page, "Christmas lights now", "Hires someone");
-  check("tapping an answer again clears it", (await checkedValue(page, "Christmas lights now")) === "");
+  await answer(page, "Christmas lights now", "Does it themselves");
+  check(
+    "Christmas lights now takes Hires someone and Does it themselves together, and None on its own clears them",
+    lightsBoth === "hires,diy" && lightsNone === "none" && (await checkedValue(page, "Christmas lights now")) === "hires,diy",
+    `${lightsBoth}; ${lightsNone}`,
+  );
+  await answer(page, "Looked into it before", "Got quotes");
+  check("tapping an answer again clears it", (await checkedValue(page, "Looked into it before")) === "");
+  // Round 6: a small Note beside Not collected opens a one-line note.
+  await page.getByTestId("owns_home-note-toggle").click();
+  await page.fill("#owns_home-note", OWNS_NOTE);
+  check("the Note beside Owns the home opens a one-line note that goes with the save", (await page.locator('#owns_home-note[name="note_owns_home"]').count()) === 1);
 
   const slotLabels = await page.getByRole("list", { name: "Guided photos" }).locator("li").evaluateAll((items) => items.map((item) => item.querySelector("p").textContent.trim()));
   check("the photos are four labelled slots: Front, Left corner, Right corner, Soffit close-up", JSON.stringify(slotLabels) === JSON.stringify(["Front", "Left corner", "Right corner", "Soffit close-up"]), slotLabels.join(", "));
@@ -379,12 +408,12 @@ try {
   const stillOpen = (await page.getByTestId("questions-still-open").innerText({ timeout: 10000 }).catch(() => "")).trim();
   check(
     "Save is refused while a question has no answer, naming it, and nothing is saved",
-    stillOpen === "Christmas lights now needs an answer, or mark it Not collected." && new URL(page.url()).pathname === "/app/leads/new",
+    stillOpen === "Looked into it before needs an answer, or mark it Not collected." && new URL(page.url()).pathname === "/app/leads/new",
     stillOpen,
   );
-  check("the open question says what it needs", (await question(page, "Christmas lights now").getByText("Answer this, or mark it Not collected.").count()) === 1);
-  await question(page, "Christmas lights now").getByText("Not collected", { exact: true }).click();
-  check("Not collected is one tap, and the notice goes once nothing is open", (await checkedValue(page, "Christmas lights now")) === "not_collected" && (await page.getByTestId("questions-still-open").count()) === 0);
+  check("the open question says what it needs", (await question(page, "Looked into it before").getByText("Answer this, or mark it Not collected.").count()) === 1);
+  await question(page, "Looked into it before").getByText("Not collected", { exact: true }).click();
+  check("Not collected is one tap, and the notice goes once nothing is open", (await checkedValue(page, "Looked into it before")) === "not_collected" && (await page.getByTestId("questions-still-open").count()) === 0);
   await save.click();
   await page.waitForURL("**/app/session?added=*", { timeout: 30000 });
   await settle(page);
@@ -418,7 +447,7 @@ try {
 
   const { data: typedLead } = await admin
     .from("leads")
-    .select("id, created_by, knock_session_id, phone, lat, lng, place_id, neighbourhood, address_line, status, house_type, soffit_colour, owns_home, wants_price, both_decision_makers, christmas_lights_now, looked_into_before, areas_wanted, install_timing, not_collected, track_colour_id, track_ral_code")
+    .select("id, created_by, knock_session_id, phone, lat, lng, place_id, neighbourhood, address_line, status, house_type, soffit_colour, owns_home, wants_price, both_decision_makers, christmas_lights_now, looked_into_before, areas_wanted, install_timing, confirm_by, answer_notes, not_collected, track_colour_id, track_ral_code")
     .eq("created_by", people.a.id)
     .eq("address_line", TYPED_ADDRESS)
     .single();
@@ -437,24 +466,28 @@ try {
     looked_into_before: typedLead?.looked_into_before,
     areas_wanted: typedLead?.areas_wanted,
     install_timing: typedLead?.install_timing,
+    confirm_by: typedLead?.confirm_by,
     not_collected: typedLead?.not_collected,
   };
   check(
-    "the answers are saved, everyone who decides included, and the one marked Not collected is stored as such",
+    "the answers are saved, everyone who decides included, the one marked Not collected stored as such, and nothing for which areas, timing or call or text",
     JSON.stringify(savedAnswers) ===
       JSON.stringify({
         owns_home: true,
         wants_price: true,
         both_decision_makers: true,
         soffit_colour: "off_white",
-        christmas_lights_now: null,
-        looked_into_before: "got_quotes",
-        areas_wanted: "front_and_sides",
-        install_timing: "before_christmas",
-        not_collected: ["christmas_lights_now"],
+        christmas_lights_now: "hires_and_diy",
+        looked_into_before: null,
+        areas_wanted: null,
+        install_timing: null,
+        confirm_by: null,
+        not_collected: ["looked_into_before"],
       }),
     JSON.stringify(savedAnswers),
   );
+  check("Hires someone and Does it themselves save together as hires_and_diy", typedLead?.christmas_lights_now === "hires_and_diy", typedLead?.christmas_lights_now);
+  check("the note on Owns the home is saved with the lead", JSON.stringify(typedLead?.answer_notes) === JSON.stringify({ owns_home: OWNS_NOTE }), JSON.stringify(typedLead?.answer_notes));
   check("a setter's new lead has no track colour", typedLead?.track_colour_id === null && typedLead?.track_ral_code === null);
   const { data: photoRows } = await admin.from("lead_photos").select("storage_path, slot").eq("lead_id", typedLead.id).order("created_at");
   const slotsSaved = (photoRows ?? []).map((photo) => photo.slot ?? "extra").sort();
@@ -487,7 +520,7 @@ try {
   await settle(page);
   check("search by phone digits finds the lead", (await page.getByText(TYPED_ADDRESS).count()) === 1);
   check("Mine does not show another setter's lead", (await page.getByText(OTHER_ADDRESS).count()) === 0);
-  await page.goto(`${base}/app/leads?scope=everyone`);
+  await page.goto(`${base}/app/leads?who=everyone`);
   await settle(page);
   const otherRow = page.getByRole("link", { name: new RegExp(OTHER_ADDRESS.replace(/[()]/g, "\\$&")) });
   check("Everyone shows another setter's lead with who added it", (await otherRow.count()) === 1 && (await otherRow.innerText()).includes("by Live Test B, read only"));
@@ -513,13 +546,15 @@ try {
   check("the extra photo shows under More photos", (await page.locator('img[alt="Extra photo 1 of the house"]').count()) === 1);
   const answersShown = (await page.getByTestId("find-out-answers").innerText()).replace(/\s+/g, " ").trim();
   check(
-    "the lead page lists the eight questions in order, with Not collected where it was marked, then the soffit",
+    "the lead page lists the six questions in order, with Not collected where it was marked, then the soffit",
     answersShown ===
-      "Phone (403) 555-0199 Owns the home Yes Wants a price Yes Everyone who decides will be there Yes Christmas lights now Not collected Looked into it before Got quotes Which areas Front and sides Timing Before Christmas Soffit colour Off-white or cream",
+      "Phone (403) 555-0199 Owns the home Yes Wants a price Yes Everyone who decides will be there Yes Christmas lights now Hires someone and does it themselves Looked into it before Not collected Soffit colour Off-white or cream",
     answersShown,
   );
   const completeness = (await page.getByTestId("completeness").innerText()).trim();
-  check("the lead page says how complete the lead is: 7 of 8 collected", completeness === "7 of 8 collected", completeness);
+  check("the lead page says how complete the lead is: 5 of 6 collected", completeness === "5 of 6 collected", completeness);
+  const ownsNoteShown = (await page.getByTestId("lead-notes").locator('dd[data-note="owns_home"]').innerText({ timeout: 5000 }).catch(() => "")).trim();
+  check("the lead page's Notes card shows the note on Owns the home", ownsNoteShown === OWNS_NOTE, ownsNoteShown);
   const trackShown = (await page.getByTestId("track-colour").innerText()).replace(/\s+/g, " ").trim();
   check("a setter sees the track colour is not set, and that Keenan sets it", trackShown.startsWith("Not set yet") && trackShown.includes("Keenan sets the track colour."), trackShown);
   check("a setter gets no track colour controls", (await page.getByTestId("track-colour-form").count()) === 0 && (await page.getByRole("button", { name: "Save track colour" }).count()) === 0);
@@ -542,8 +577,9 @@ try {
   check("a status change shows in the timeline with who and when, your own as You", (await followEntry.innerText()).includes("You,"), (await followEntry.innerText()).replace(/\n/g, " | "));
   await page.fill("#lead-note", "TEST note (automated). Come back Thursday.");
   await page.getByRole("button", { name: "Add note" }).click();
-  await page.getByText("TEST note (automated). Come back Thursday.").waitFor({ timeout: 20000 });
+  await page.getByText("TEST note (automated). Come back Thursday.").first().waitFor({ timeout: 20000 });
   check("a note shows in the timeline", true);
+  check("and in the lead's Notes card (round 6)", (await page.getByTestId("lead-notes").getByText("TEST note (automated). Come back Thursday.").count()) === 1);
   const statusAgain = page.locator("fieldset").filter({ has: page.locator("legend", { hasText: /^Status$/ }) });
   await statusAgain.getByText("Lost", { exact: true }).click();
   const waiting = page.getByRole("button", { name: "Pick why it was lost" });
@@ -574,31 +610,31 @@ try {
     await checkedValue(page, "Owns the home"),
     await checkedValue(page, "Wants a price"),
     await checkedValue(page, "Everyone who decides will be there"),
-    await checkedValue(page, "Soffit colour"),
+    await checkedValue(page, SOFFIT_LEGEND),
     await checkedValue(page, "Christmas lights now"),
     await checkedValue(page, "Looked into it before"),
-    await checkedValue(page, "Which areas"),
-    await checkedValue(page, "Timing"),
+    await page.inputValue("#owns_home-note").catch(() => ""),
   ];
   check(
-    "Edit lead opens with the saved answers, Not collected included",
-    JSON.stringify(prefilled) === JSON.stringify(["yes", "yes", "yes", "off_white", "not_collected", "got_quotes", "front_and_sides", "before_christmas"]),
+    "Edit lead opens with the saved answers, Not collected and the note included",
+    JSON.stringify(prefilled) === JSON.stringify(["yes", "yes", "yes", "off_white", "hires,diy", "not_collected", OWNS_NOTE]),
     prefilled.join(", "),
   );
   check("Edit lead has no photo slots; photos are added on the lead page", (await page.getByRole("list", { name: "Guided photos" }).count()) === 0);
-  await answer(page, "Christmas lights now", "None");
-  await question(page, "Timing").getByText("Not collected", { exact: true }).click();
+  await answer(page, "Looked into it before", "Got quotes");
+  await question(page, "Christmas lights now").getByText("Not collected", { exact: true }).click();
   await checkTapTargets(page, "Edit lead with Find out");
   await page.getByRole("button", { name: "Save changes" }).click();
   await page.waitForURL(`**/app/leads/${typedLead.id}`, { timeout: 30000 });
   await settle(page);
-  const editedLine = "Updated Find out: Christmas lights now, timing and what wasn't collected.";
+  const editedLine = "Updated Find out: Christmas lights now, looked into it before and what wasn't collected.";
   await page.getByText(editedLine).waitFor({ timeout: 20000 }).catch(() => {});
   check("the timeline names the changed questions, not the answers", (await page.getByText(editedLine).count()) === 1);
-  const { data: edited } = await admin.from("leads").select("christmas_lights_now, install_timing, owns_home, not_collected").eq("id", typedLead.id).single();
+  const { data: edited } = await admin.from("leads").select("christmas_lights_now, looked_into_before, owns_home, not_collected, answer_notes").eq("id", typedLead.id).single();
   check(
     "an answer replaces Not collected, and a question marked Not collected is stored as such",
-    edited?.christmas_lights_now === "none" && edited?.install_timing === null && edited?.owns_home === true && JSON.stringify(edited?.not_collected) === JSON.stringify(["install_timing"]),
+    edited?.looked_into_before === "got_quotes" && edited?.christmas_lights_now === null && edited?.owns_home === true && JSON.stringify(edited?.not_collected) === JSON.stringify(["christmas_lights_now"]) &&
+      JSON.stringify(edited?.answer_notes) === JSON.stringify({ owns_home: OWNS_NOTE }),
     JSON.stringify(edited),
   );
 
@@ -686,23 +722,25 @@ try {
     check("the timeline says the address and map position changed", (await page.getByText(/^Changed the .*address.*map position/).count()) === 1);
   }
 
-  // 7. Active hides Lost; All groups by status, newest first within a group.
+  // 7. Active hides Lost; Closed holds it with its reason (round 6); Active
+  // lists new leads oldest first.
   await page.goto(`${base}/app/leads`);
   await settle(page);
   const activeHeadings = (await page.getByRole("heading", { level: 2 }).allTextContents()).map((t) => t.trim());
   check("Leads opens to Active, which leaves Lost out", !activeHeadings.some((h) => h.startsWith("Lost")), activeHeadings.join(", "));
-  await page.goto(`${base}/app/leads?view=all`);
+  await page.goto(`${base}/app/leads?tab=closed`);
   await settle(page);
   const headings = (await page.getByRole("heading", { level: 2 }).allTextContents()).map((t) => t.trim());
-  check("All groups by status in status order", headings[headings.length - 1] === "Lost (1)" && (!mapsKey || headings[0] === "New (1)"), headings.join(", "));
+  const lostRowText = (await page.locator('section[aria-labelledby="group-lost"] a').allInnerTexts()).join(" | ");
+  check("Closed holds the lost lead and says why it was lost", headings[headings.length - 1] === "Lost (1)" && /Lost: \S/.test(lostRowText), `${headings.join(", ")}; ${lostRowText}`);
   if (googleLeadId) {
     // Everyone's New group holds B's lead and A's later Google lead.
-    await page.goto(`${base}/app/leads?scope=everyone&view=all`);
+    await page.goto(`${base}/app/leads?who=everyone`);
     await settle(page);
     const order = await page.locator('section[aria-labelledby="group-new"] a').evaluateAll((links) => links.map((link) => link.getAttribute("href")));
     const newer = order.indexOf(`/app/leads/${googleLeadId}`);
     const older = order.indexOf(`/app/leads/${bLead.id}`);
-    check("within a group the newest lead comes first", newer !== -1 && older !== -1 && newer < older, `positions ${newer} and ${older}`);
+    check("Active lists new leads oldest first", newer !== -1 && older !== -1 && older < newer, `positions ${newer} and ${older}`);
   }
   await page.goto(`${base}/app/session`);
   await settle(page);
