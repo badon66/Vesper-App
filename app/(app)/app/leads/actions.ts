@@ -410,6 +410,9 @@ export async function setTrackColour(
   if (!data || data.length === 0) return { error: "That lead was not found." };
 
   revalidatePath(`/app/leads/${id.data}`);
+  // Round 7: the prep list and the Meetings page show it too.
+  revalidatePath(`/app/meetings/prep/${id.data}`);
+  revalidatePath("/app/meetings");
   return { ok: true };
 }
 
