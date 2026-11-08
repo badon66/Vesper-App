@@ -351,7 +351,9 @@ export function AddressScreen({
           <span aria-hidden="true" className="text-sm font-semibold min-[420px]:text-base">
             Soffit colour
           </span>
-          <span className="ml-auto flex items-center gap-2">
+          {/* The chip reaches into the space around the line, like Not
+              collected, so it costs the step no height. */}
+          <span className="-my-1.5 ml-auto flex items-center gap-2">
             <span id="sheet-soffit-note-hint" className="text-sm text-muted-foreground">
               Split? Pick both.
             </span>

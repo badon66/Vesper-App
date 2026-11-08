@@ -509,12 +509,12 @@ try {
   check("the saved lead is on Leads too", (await page.getByText(TYPED_ADDRESS).count()) >= 1);
   await checkTapTargets(page, "Leads");
   await page.screenshot({ path: `${out}/m2-leads.png`, fullPage: true });
-  await page.fill('input[name="q"]', "TEST LEAD");
+  await page.getByRole("searchbox", { name: "Search leads" }).fill("TEST LEAD");
   await page.getByRole("button", { name: "Search" }).click();
   await page.waitForURL(/q=TEST\+LEAD/, { timeout: 20000 });
   await settle(page);
   check("search by name finds the lead", (await page.getByRole("link", { name: new RegExp(TYPED_ADDRESS.replace(/[()]/g, "\\$&")) }).count()) === 1);
-  await page.fill('input[name="q"]', "5550199");
+  await page.getByRole("searchbox", { name: "Search leads" }).fill("5550199");
   await page.getByRole("button", { name: "Search" }).click();
   await page.waitForURL(/q=5550199/, { timeout: 20000 });
   await settle(page);
