@@ -36,7 +36,7 @@ export const SIGNED_URL_SECONDS = 12 * 3600;
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
-const DECK_SETTINGS = "deck, light_looks, company, warranty_text, service_call_fee";
+const DECK_SETTINGS = "deck, light_looks, company, warranty_text, service_call_fee, gst_enabled";
 
 async function signAll(supabase: Supabase, bucket: string, paths: string[]): Promise<Map<string, string>> {
   if (paths.length === 0) return new Map();
@@ -45,7 +45,7 @@ async function signAll(supabase: Supabase, bucket: string, paths: string[]): Pro
 }
 
 const TRACE = "photo_id, photo_slot, lines, line_feet, scale, dusk_brightness, light_count";
-const EMPTY_SETTINGS: DeckSettingsRow = { deck: {}, light_looks: [], company: {}, warranty_text: "", service_call_fee: null };
+const EMPTY_SETTINGS: DeckSettingsRow = { deck: {}, light_looks: [], company: {}, warranty_text: "", service_call_fee: null, gst_enabled: false };
 
 // Keenan's deck photos, every one signed for the evening.
 async function deckPhotos(supabase: Supabase) {

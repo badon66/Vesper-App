@@ -318,7 +318,7 @@ export function WarrantyPage({ deck, near, more, fillEmpty }: PageProps) {
   const hero = slotView(deck, "warranty.hero", fillEmpty);
   const lines = warrantyLines(deck.warranty.text);
   const upFront = lines.slice(0, deck.words.warrantyLinesUpFront);
-  const fee = serviceCallLine(deck.warranty.serviceCallFee);
+  const fee = serviceCallLine(deck.warranty.serviceCallFee, deck.warranty.gstEnabled);
   const label = words.moreLabel.trim();
   const full = label && fullWarrantyShows(deck.warranty.text, deck.words.warrantyLinesUpFront, deck.warranty.serviceCallFee);
   const picture = slotHasPicture(hero) ? (near ? <SlotPicture view={hero} alt={altOf("warranty.hero")} /> : <span />) : null;

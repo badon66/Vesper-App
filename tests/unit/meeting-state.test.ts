@@ -36,7 +36,7 @@ const payload = (draft: MeetingPayload["draft"] = null): MeetingPayload => ({
     looks: [WARM_WHITE, COOL_WHITE],
     picker: null,
     company: { name: "", place: null, phone: "" },
-    warranty: { text: "", serviceCallFee: null },
+    warranty: { text: "", serviceCallFee: null, gstEnabled: false },
   },
   colours: { list: [], ralNames: {}, choice: null, ralCode: null },
   mockupUrl: null,

@@ -20,7 +20,7 @@ import {
 import { SOFFIT_LABELS, type SoffitColour } from "@/lib/leads/status";
 import type { DeckPayload, DeckPhoto, MeetingPayload } from "@/lib/meeting/state";
 import { galleryPhotos, isGallerySlot, photosInOrder } from "@/lib/photos-deck";
-import { formatMoney } from "@/lib/pricing";
+import { formatMoney, screenTotal } from "@/lib/pricing";
 import type { Json } from "@/types/database";
 
 // The deck (round 7, the settled spec's page_order, pages and colour_screen):
@@ -179,8 +179,9 @@ export function warrantyLines(text: string): string[] {
 }
 
 // The service call fee's line in The full warranty, only when it is set.
-export function serviceCallLine(fee: number | null): string | null {
-  return fee === null || !Number.isFinite(fee) ? null : `The service call fee in years 6 to 10 is ${formatMoney(fee)}.`;
+// On screen a fee reads "$200 + GST" while GST is enabled, like every price.
+export function serviceCallLine(fee: number | null, gstEnabled = false): string | null {
+  return fee === null || !Number.isFinite(fee) ? null : `The service call fee in years 6 to 10 is ${screenTotal(fee, gstEnabled)}.`;
 }
 
 // Whether The full warranty adds anything past the lines up front.
@@ -370,6 +371,7 @@ export type DeckSettingsRow = {
   company: Json;
   warranty_text: string;
   service_call_fee: number | null;
+  gst_enabled?: boolean;
 };
 
 const known = (row: { slot: string }) => SLOT_BY_KEY.has(row.slot);
@@ -454,6 +456,6 @@ export function buildDeckPayload({
     looks: activeLooks(parseLooks(settings.light_looks)),
     picker,
     company: companyOf(settings.company),
-    warranty: { text: settings.warranty_text, serviceCallFee: settings.service_call_fee },
+    warranty: { text: settings.warranty_text, serviceCallFee: settings.service_call_fee, gstEnabled: settings.gst_enabled === true },
   };
 }

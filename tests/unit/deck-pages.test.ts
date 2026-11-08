@@ -67,7 +67,7 @@ const deck = (extra: Partial<DeckPayload> = {}): DeckPayload => ({
   looks: LOOKS,
   picker: null,
   company: { name: "Vesper Lighting, Inc.", place: "Calgary", phone: "(403) 895-9915" },
-  warranty: { text: WARRANTY, serviceCallFee: null },
+  warranty: { text: WARRANTY, serviceCallFee: null, gstEnabled: false },
   ...extra,
 });
 
@@ -125,7 +125,7 @@ describe("the pages a meeting shows", () => {
 
   it("skips a words page Settings has emptied, and the warranty without its text", () => {
     const empty = parseDeckWords({});
-    const pages = keys(deckPages({ deck: deck({ words: empty, warranty: { text: "  ", serviceCallFee: null } }), lead: null }));
+    const pages = keys(deckPages({ deck: deck({ words: empty, warranty: { text: "  ", serviceCallFee: null, gstEnabled: false } }), lead: null }));
     expect(pages).toEqual(["cover"]);
   });
 
@@ -235,6 +235,7 @@ describe("the words", () => {
     ]);
     expect(serviceCallLine(null)).toBeNull();
     expect(serviceCallLine(125)).toBe("The service call fee in years 6 to 10 is $125.");
+    expect(serviceCallLine(125, true)).toBe("The service call fee in years 6 to 10 is $125 + GST.");
     expect(fullWarrantyShows(WARRANTY, 3, null)).toBe(true);
     expect(fullWarrantyShows("One line.\nTwo lines.", 3, null)).toBe(false);
     expect(fullWarrantyShows("One line.", 3, 99)).toBe(true);
@@ -391,7 +392,7 @@ describe("the payload, from the database rows", () => {
     expect(built.words).toEqual(WORDS);
     expect(built.looks.map((look) => look.key)).toEqual(["warm_white", "cool_white", "christmas", "game_night", "halloween"]);
     expect(built.company).toEqual({ name: "Vesper Lighting, Inc.", place: "Calgary", phone: "(403) 895-9915" });
-    expect(built.warranty).toEqual({ text: WARRANTY, serviceCallFee: 125 });
+    expect(built.warranty).toEqual({ text: WARRANTY, serviceCallFee: 125, gstEnabled: false });
   });
 
   it("offers the picker only while the trace's photo is still the lead's, in the same slot", () => {

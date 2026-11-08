@@ -40,7 +40,7 @@ export type DeckPayload = {
   company: { name: string; place: string | null; phone: string };
   // settings.warranty_text word for word, and the service call fee for
   // The full warranty (null: not set, so its line is hidden).
-  warranty: { text: string; serviceCallFee: number | null };
+  warranty: { text: string; serviceCallFee: number | null; gstEnabled: boolean };
 };
 
 export type MeetingPayload = {
