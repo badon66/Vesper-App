@@ -79,7 +79,8 @@ describe("the examples never reach a meeting", () => {
     const example = firstExamples([
       { slot: "what_vesper_is.hero", rank: 1, image_url: "https://images.example-site.com/a.jpg", page_url: "https://example-site.com/", site: "Example" },
     ])["what_vesper_is.hero"];
-    expect(Object.keys(example).sort()).toEqual(["imageUrl", "pageUrl", "site"]);
+    // Links, the site's name and what to copy: words, never a picture.
+    expect(Object.keys(example).sort()).toEqual(["imageUrl", "note", "pageUrl", "site"]);
     const shot = read(`${REHEARSAL_DIR}/example-shot.tsx`);
     // Loaded from where it lives, with no referrer and without CORS, so the
     // service worker (which keeps only signed storage photos asked for in

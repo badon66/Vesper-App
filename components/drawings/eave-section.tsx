@@ -5,7 +5,7 @@ import { useMemo, type CSSProperties } from "react";
 import type { DrawingGround } from "@/components/drawings/house-drawing";
 import { LightCanvas, useBoxSize } from "@/components/lights/light-canvas";
 import type { Look } from "@/lib/deck";
-import { EAVE_LIGHT, EAVE_LIGHT_PITCH, EAVE_SHAPES, EAVE_TRACK, EAVE_VIEW, eaveLabelsFor, type EaveVariant } from "@/lib/drawings/eave";
+import { EAVE_LIGHT, EAVE_LIGHT_PITCH, EAVE_SHAPES, EAVE_TRACK, EAVE_VIEW, eaveLabelsFor, type EaveSectionVariant } from "@/lib/drawings/eave";
 import { pathD } from "@/lib/drawings/house";
 import { fitContain } from "@/lib/lights/frame";
 import { WARM_WHITE } from "@/lib/lights/looks";
@@ -15,12 +15,14 @@ import { cn } from "@/lib/utils";
 
 // The eave in section (round 7): the edge of a roof cut through, so a
 // customer can see which surface is which. Night Text hairlines on navy, no
-// fills; the labels are HTML beside the drawing at 20 px, each on a hairline
-// leader to the part it names.
+// fills; the labels are HTML beside the drawing at the deck's small size
+// (20 to 22 px, var(--deck-small)), each on a hairline leader to the part it
+// names.
 //   "lit"     What's in it's fallback: Roof edge, Fascia, Track, Light and
 //             Soffit, with one light drawn by the light renderer under the track.
-//   "colour"  Your colours, and Up close until its photo exists: only
-//             Soffit, Fascia and Track, unlit.
+//   "colour"  Your colours: only Soffit, Fascia and Track, unlit. (Up close
+//             draws the eave by day as an elevation instead: DeckDrawing
+//             eave="day".)
 //
 // CONTRACT
 //   <EaveSection variant? look? ground? label? decorative? className? style? />
@@ -29,8 +31,9 @@ import { cn } from "@/lib/utils";
 //     ground      "navy" (default) | "none": no ground of its own, so it sits
 //                 straight on a More layer's Night Card
 //     className   size its width; the height follows the drawing (520 x 440
-//                 plus a label column 7.5 rem wide). Best from 440 px wide.
-//                 DeckDrawing fits it whole inside a box instead.
+//                 plus a label column 7.5 rem wide, room for "Roof edge" at
+//                 22 px). Best from 440 px wide. DeckDrawing fits it whole
+//                 inside a box instead.
 
 const VIEW = { x: EAVE_VIEW[0], y: EAVE_VIEW[1], width: EAVE_VIEW[2], height: EAVE_VIEW[3] };
 
@@ -53,7 +56,7 @@ export function EaveSection({
   className,
   style,
 }: {
-  variant?: EaveVariant;
+  variant?: EaveSectionVariant;
   look?: Look;
   ground?: DrawingGround;
   label?: string;
@@ -99,7 +102,7 @@ export function EaveSection({
           return (
             <span
               key={item.key}
-              className="absolute left-2 -translate-y-1/2 text-[20px] leading-[22px] font-medium whitespace-nowrap"
+              className="absolute left-2 -translate-y-1/2 text-[length:var(--deck-small,20px)] leading-[1.1] font-medium whitespace-nowrap"
               style={{ top: `${(y / EAVE_VIEW[3]) * 100}%` }}
             >
               {smartApostrophes(item.text)}

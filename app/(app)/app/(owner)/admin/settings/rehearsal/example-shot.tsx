@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 
 import {
   exampleClearance,
+  exampleFillsBox,
   exampleLayout,
   exampleSide,
   looksLoaded,
@@ -35,7 +36,12 @@ import {
 // a split page's left side, half of the warm and cool pair, a contact-sheet
 // tile. Where the box starts under the deck's exit, the tags start right of
 // it; where it runs under the bottom row, the frame ends above the dots and
-// chevrons, as the deck's own pictures do (exampleClearance).
+// chevrons, as the deck's own pictures do (exampleClearance). Half of the
+// warm and cool pair is drawn edge to edge in its box with no ground of its
+// own, so it sits on the More's card the way the drawn pair and Keenan's
+// photos do (examplePairFill). When the example's note says what to copy
+// ("Copy the framing, not the sky..."), its first sentence is a third plate
+// under "From [site]", wrapping in a narrow frame.
 
 type Box = { width: number; height: number; inButton: boolean; tagsLeft: number; lift: number };
 
@@ -101,10 +107,25 @@ const sameBox = (a: Box | null, b: Box) =>
 
 const noCallout: CSSProperties = { WebkitTouchCallout: "none" };
 
+// A box inset this far on every side, its foot raised by `lift` more.
+const insetBy = (inset: number, lift: number): CSSProperties => ({ top: inset, left: inset, right: inset, bottom: inset + lift });
+
 export function ExampleShot({ slot, example }: { slot: DeckSlot; example: RehearsalExample | null }) {
   const [node, setNode] = useState<HTMLDivElement | null>(null);
   const [box, setBox] = useState<Box | null>(null);
+  const [tags, setTags] = useState<HTMLDivElement | null>(null);
+  const [tagsBottom, setTagsBottom] = useState(0);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
+
+  // How far down the tags reach, so the words under them start below
+  // (the site and the note wrap, so the tags grow in a narrow frame).
+  useEffect(() => {
+    if (!tags || typeof ResizeObserver === "undefined") return;
+    const update = () => setTagsBottom(Math.ceil(tags.offsetTop + tags.offsetHeight));
+    const observer = new ResizeObserver(update);
+    observer.observe(tags);
+    return () => observer.disconnect();
+  }, [tags]);
 
   // The box's own size and where it sits in the deck (it changes with the
   // iPad's rotation, and the deck mounts it inside layers and tiles of every
@@ -128,21 +149,29 @@ export function ExampleShot({ slot, example }: { slot: DeckSlot; example: Rehear
   const layout = exampleLayout(box);
   const lift = box?.lift ?? 0;
   const side = exampleSide(slot);
+  // Half of the warm and cool pair: edge to edge, on the card, no ground.
+  const fills = exampleFillsBox(slot);
+  const inset = fills ? 0 : 14;
   const image = example?.imageUrl && failedUrl !== example.imageUrl ? example.imageUrl : null;
   // A link can't sit inside the contact sheet's tile, which is itself a button.
-  const link = layout === "full" && !box?.inButton ? (example?.pageUrl ?? null) : null;
+  const link = layout !== "tiny" && !box?.inButton ? (example?.pageUrl ?? null) : null;
   const site = layout !== "tiny" ? (example?.site ?? null) : null;
+  const note = layout !== "tiny" ? (example?.note ?? null) : null;
   const lines = layout === "full" && box ? scenarioLines(box.height) : 0;
+  // The words start under the tags: the layout's own top, or lower when
+  // the site or the note wraps.
+  const wordsTop = Math.max(layout === "full" ? 96 : layout === "compact" ? 80 : 48, tagsBottom - inset + 12);
 
   return (
     <div
       ref={setNode}
       data-testid="rehearsal-example"
       data-slot={slot.key}
-      className="absolute inset-0 overflow-hidden bg-background text-foreground select-none"
+      data-fill={fills ? "box" : undefined}
+      className={cn("absolute inset-0 overflow-hidden text-foreground select-none", !fills && "bg-background")}
     >
       {image ? (
-        <div className="absolute inset-[14px] overflow-hidden rounded-sm bg-card" style={{ bottom: 14 + lift }}>
+        <div className={cn("absolute overflow-hidden bg-card", !fills && "rounded-sm")} style={insetBy(inset, lift)}>
           {/* eslint-disable-next-line @next/next/no-img-element -- another site's photo, hotlinked with no referrer, never stored, proxied or kept offline */}
           <img
             src={image}
@@ -160,32 +189,31 @@ export function ExampleShot({ slot, example }: { slot: DeckSlot; example: Rehear
         </div>
       ) : (
         <div
-          style={{ bottom: 14 + lift }}
+          // Centred under the tags; "safe" keeps a block too tall for a small
+          // box starting under them rather than rising behind them.
+          style={{ ...insetBy(inset, lift), paddingTop: wordsTop, justifyContent: "safe center" }}
           className={cn(
-            "absolute inset-[14px] flex flex-col justify-center gap-4 text-left",
+            "absolute flex flex-col justify-center gap-4 text-left",
             // Laid out for its box once measured, a moment after it mounts.
             !box && "invisible",
-            layout === "full"
-              ? box && box.width < NARROW_PX
-                ? "px-6 pt-24 pb-10"
-                : "px-12 pt-24 pb-10"
-              : layout === "compact"
-                ? "px-6 pt-20 pb-6"
-                : "px-3 pt-12 pb-3",
+            layout === "full" ? (box && box.width < NARROW_PX ? "px-6 pb-10" : "px-12 pb-10") : layout === "compact" ? "px-6 pb-6" : "px-3 pb-3",
             // Hidden by day: the words stay on the half that shows, clear of
             // the slider's grip and its Day and Night plates.
             side === "left" && "pr-[calc(50%+7.5rem)]",
             side === "right" && "pl-[calc(50%+7.5rem)]",
           )}
         >
-          <p
-            className={cn(
-              "max-w-[40rem] font-semibold text-pretty",
-              layout === "full" ? "line-clamp-2 text-[24px] leading-[1.2]" : layout === "compact" ? "line-clamp-3 text-[20px] leading-[1.25]" : "line-clamp-2 text-[16px] leading-[1.25]",
-            )}
-          >
-            {slot.name}
-          </p>
+          {/* Half of the pair is named by its caption under the box. */}
+          {fills ? null : (
+            <p
+              className={cn(
+                "max-w-[40rem] font-semibold text-pretty",
+                layout === "full" ? "line-clamp-2 text-[24px] leading-[1.2]" : layout === "compact" ? "line-clamp-3 text-[20px] leading-[1.25]" : "line-clamp-2 text-[16px] leading-[1.25]",
+              )}
+            >
+              {slot.name}
+            </p>
+          )}
           {lines > 0 ? (
             <p
               className="max-w-[40rem] overflow-hidden text-[20px] text-pretty text-muted-foreground"
@@ -217,12 +245,14 @@ export function ExampleShot({ slot, example }: { slot: DeckSlot; example: Rehear
       {/* The frame: dashed Night Text, so the example never reads as a photo of ours. */}
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-2 rounded-md border-2 border-dashed border-foreground"
-        style={{ bottom: 8 + lift }}
+        className={cn("pointer-events-none absolute border-2 border-dashed border-foreground", fills ? "rounded-sm" : "rounded-md")}
+        style={insetBy(fills ? 0 : 8, lift)}
       />
 
       {/* The tags: right of the deck's exit when the box starts under it. */}
       <div
+        ref={setTags}
+        data-testid="rehearsal-example-tags"
         // On Hidden by day each example keeps its tags on the half that shows.
         style={
           side === "right"
@@ -250,9 +280,19 @@ export function ExampleShot({ slot, example }: { slot: DeckSlot; example: Rehear
         >
           {REHEARSAL_WORDS.tag}
         </span>
+        {/* Each plate's padding sits outside its clamp, so no cut line shows under it. */}
         {site ? (
-          <span className="line-clamp-2 max-w-full rounded-sm bg-background px-2.5 py-1 text-[18px] leading-[1.2] break-words text-foreground" title={site}>
-            {REHEARSAL_WORDS.from(site)}
+          <span className="max-w-full rounded-sm bg-background px-2.5 py-1 text-[18px] leading-[1.2] text-foreground" title={site}>
+            <span className="line-clamp-2 break-words">{REHEARSAL_WORDS.from(site)}</span>
+          </span>
+        ) : null}
+        {note ? (
+          <span
+            className="max-w-[min(100%,32rem)] rounded-sm bg-background px-2.5 py-1 text-[18px] leading-[1.25] text-foreground"
+            title={note}
+            data-testid="rehearsal-example-note"
+          >
+            <span className="line-clamp-4 text-pretty break-words">{note}</span>
           </span>
         ) : null}
       </div>

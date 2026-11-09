@@ -29,6 +29,10 @@
 // crosses into the bottom row (the More button or Back, the dots, the
 // chevrons), the chevrons and the exit never sit on another control, the
 // row's dots share the button's centre line, and a layer hides the dots.
+// At 1180 x 820 the colour chooser is measured with Custom chosen, so its
+// colour number and Save are checked against the keyboard's 400 px line as
+// the initials are; at 1366 x 1024 the initials end by 55% of the height;
+// and the price page's builder never scrolls at either size.
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -474,25 +478,69 @@ try {
       !/RAL Classic|RAL K7|powder/i.test(chooserText),
   );
   const saveColour = chooser.getByRole("button", { name: "Save track colour" });
+  // Gold is Save's data-ready (the Porch Light Rule): only once there is a new colour to save.
+  const saveIsGold = async () => (await saveColour.getAttribute("data-ready")) !== null;
+  check("Save waits, outlined and off, while nothing has changed", (await saveColour.isDisabled()) && !(await saveIsGold()));
+  const chosenLabel = chooser.locator(`label[data-answer="${colour.id}"]`);
   await chooser.locator("label").filter({ has: page.getByText(colour.name, { exact: true }) }).click();
-  check("tapping the chosen colour to agree with it can never save no colour", await saveColour.isDisabled());
+  check(
+    "tapping the chosen colour to agree with it keeps it chosen and can never save no colour",
+    (await chosenLabel.locator("input").isChecked()) && (await saveColour.isDisabled()) && !(await saveIsGold()),
+  );
+  check(
+    "the chosen colour's tick hangs after its name, which stays centred, as on the light picker",
+    await chosenLabel.evaluate((label) => {
+      const name = label.querySelector("span");
+      const tick = label.querySelector("svg");
+      if (!name || !tick) return false;
+      const box = label.getBoundingClientRect();
+      const words = name.getBoundingClientRect();
+      return tick.getBoundingClientRect().left >= words.right - 1 && Math.abs(words.left + words.width / 2 - (box.left + box.width / 2)) <= 1.5;
+    }),
+  );
+  // A finger sliding across the colours (touch White, slide on, let go) is
+  // never a swipe that closes the chooser; only the layer's empty space is.
+  const swipeCdp = await ownerContext.newCDPSession(page);
+  const firstOption = await chooser.locator("label[data-answer]").first().boundingBox();
+  await touchSwipe(page, swipeCdp, Math.round(firstOption.x + firstOption.width / 2), Math.round(firstOption.y + firstOption.height / 2), 300);
+  check("a sideways slide that starts on a colour never closes the chooser", (await chooser.count()) === 1);
   await chooser.locator("label").filter({ hasText: /^Custom$/ }).click();
   const customText = await chooser.innerText();
   check(
     "Custom asks for the Colour number, from the colour book",
     customText.includes("Colour number") && customText.includes("From the colour book.") && !/RAL Classic|RAL K7|powder/i.test(customText),
   );
+  // The other thing typed in front of the customer: the colour number, its
+  // read-back and Save sit level with the colours, clear of the keyboard.
+  const numberBox = await chooser.locator("#lead-track-ral").boundingBox();
+  const saveBox = await saveColour.boundingBox();
+  check(
+    "the colour number and Save sit no lower than 400 px from the top, clear of the keyboard",
+    numberBox && saveBox && numberBox.y + numberBox.height <= 400 + 834 - 820 && saveBox.y + saveBox.height <= 400 + 834 - 820,
+    `${Math.round((numberBox?.y ?? 0) + (numberBox?.height ?? 0))}, ${Math.round((saveBox?.y ?? 0) + (saveBox?.height ?? 0))}`,
+  );
   await chooser.locator("#lead-track-ral").fill("12");
+  const waitsForNumber = !(await saveIsGold());
   await chooser.getByRole("button", { name: "Save track colour" }).click();
   await chooser.locator("#lead-track-ral-error").waitFor({ timeout: 20000 }).catch(() => {});
   const { data: colourAfter } = await admin.from("leads").select("track_colour_id, track_ral_code").eq("id", leadId).single();
   check(
     "a colour number that is not four digits is refused there, in the colour book's words, and nothing is saved",
-    (await chooser.locator("#lead-track-ral-error").count()) === 1 &&
+    waitsForNumber &&
+      (await chooser.locator("#lead-track-ral-error").count()) === 1 &&
       (await chooser.locator("#lead-track-ral-error").innerText()) === "Four digits, from the colour book." &&
       colourAfter?.track_colour_id === colour.id &&
       colourAfter?.track_ral_code === null,
   );
+  await chooser.locator("#lead-track-ral").fill("7016");
+  check(
+    "a number in the colour book reads back its name and turns Save gold (never tapped here)",
+    (await chooser.getByTestId("lead-track-ral-name").innerText()).includes("7016") && (await saveIsGold()) && (await saveColour.isEnabled()),
+    await chooser.getByTestId("lead-track-ral-name").innerText(),
+  );
+  await touchSwipe(page, swipeCdp, Math.round(numberBox.x + 20), Math.round(numberBox.y + numberBox.height / 2), 200);
+  check("a press and drag in the number field never closes the chooser or loses the number", (await chooser.count()) === 1 && (await chooser.locator("#lead-track-ral").inputValue()) === "7016");
+  await swipeCdp.detach();
   await chooser.getByRole("button", { name: "Back" }).click();
   // The chooser fades out like every layer.
   await chooser.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
@@ -590,7 +638,13 @@ try {
       found.push(...onPage.problems.map((problem) => `${label}: ${problem}`));
       if (label === "Your colours") {
         const initials = await lp.locator("#colour-initials").boundingBox();
-        if (size.height === 820 && !(initials && initials.y + initials.height <= 400)) found.push(`Your colours: the initials end at ${Math.round((initials?.y ?? 0) + (initials?.height ?? 0))}, below 400 px`);
+        const foot = Math.round((initials?.y ?? 0) + (initials?.height ?? 0));
+        if (size.height === 820 && !(initials && foot <= 400)) found.push(`Your colours: the initials end at ${foot}, below 400 px`);
+        if (size.height === 1024 && !(initials && foot <= Math.ceil(0.55 * size.height))) found.push(`Your colours: the initials end at ${foot}, below 55% of the height`);
+      }
+      if (label === "Your price") {
+        const builder = await lp.getByTestId("quote-builder").evaluate((el) => [el.scrollHeight, el.clientHeight]);
+        if (builder[0] > builder[1] + 1) found.push(`Your price: the builder scrolls (${builder[0]} > ${builder[1]}), its last row cut off`);
       }
       const openers = await lp.getByRole("region", { name: label }).locator('button[aria-haspopup="dialog"]').all();
       for (const opener of openers) {
@@ -598,6 +652,21 @@ try {
         await opener.click();
         await lp.locator("[data-deck-layer]").waitFor({ timeout: 5000 }).catch(() => {});
         await lp.waitForTimeout(400);
+        if (label === "Your colours") {
+          // Custom shows the colour number (a tap, nothing saved): measured with it.
+          const chooser = lp.locator("[data-deck-layer]");
+          await chooser.locator("label").filter({ hasText: /^Custom$/ }).click();
+          await lp.waitForTimeout(200);
+          if (size.height === 820) {
+            for (const [what, box] of [
+              ["the colour number", await chooser.locator("#lead-track-ral").boundingBox()],
+              ["Save", await chooser.getByRole("button", { name: "Save track colour" }).boundingBox()],
+            ]) {
+              const foot = Math.round((box?.y ?? 0) + (box?.height ?? 0));
+              if (!box || foot > 400) found.push(`Your colours > ${name}: ${what} ends at ${foot}, below 400 px`);
+            }
+          }
+        }
         const inLayer = await lp.evaluate(measureDeck);
         found.push(...inLayer.problems.map((problem) => `${label} > ${name}: ${problem}`));
         if (!inLayer.info.layer) found.push(`${label} > ${name}: no layer opened`);

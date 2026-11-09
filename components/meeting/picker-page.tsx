@@ -14,7 +14,7 @@ import {
 } from "react";
 
 import { LitPhoto } from "@/components/lights/lit-photo";
-import { BAND_HEIGHT_CSS, DOTS_RESERVE_CSS, TRAY, TRAY_CSS } from "@/components/meeting/picker/layout";
+import { DOTS_RESERVE_CSS, TRAY, TRAY_CSS, TRAY_HEIGHT_CSS } from "@/components/meeting/picker/layout";
 import {
   arrivalPhase,
   chooseEffect,
@@ -48,8 +48,11 @@ import { cn } from "@/lib/utils";
 // explicit crop transform shared by the day photo, its dusk copy, the navy
 // multiply layer and the light canvas (Part A's LitPhoto, which is also
 // prep's See it lit, so prep shows exactly this). Below it, a solid Night
-// Background tray exactly the band's height: the looks as words in one row,
-// then the headline and Steady, Twinkle, Chase, Off. Nothing sits on the
+// Background tray the band's height: the looks as words in one row, then the
+// headline and Steady, Twinkle, Chase, Off. On a shorter deck (the installed
+// app, the rehearsal frame) the tray keeps a floor and the photo gives way,
+// never the tray's contents; its controls always end 24 px above the dots
+// and chevrons (TRAY_HEIGHT_CSS, DOTS_RESERVE_CSS). Nothing sits on the
 // house, and there is no gold anywhere: the light is the only colour.
 //
 // Motion: the first time the page is current in a meeting, the photo as
@@ -252,7 +255,7 @@ export function PickerPage({
         />
       </div>
 
-      <div data-testid="picker-tray" className="flex shrink-0 flex-col bg-background" style={{ height: BAND_HEIGHT_CSS }}>
+      <div data-testid="picker-tray" className="flex shrink-0 flex-col bg-background" style={{ height: TRAY_HEIGHT_CSS }}>
         <div className="flex min-h-0 flex-1 flex-col" style={{ paddingTop: TRAY.padTop, paddingInline: TRAY.sidePadding }}>
           <div className="my-auto flex flex-col" style={{ gap: TRAY.rowGap }}>
             <div
@@ -284,7 +287,7 @@ export function PickerPage({
                 ) : null}
                 {words ? (
                   <p
-                    className="mt-1 text-pretty text-muted-foreground"
+                    className="text-pretty text-muted-foreground"
                     style={{ fontSize: TRAY_CSS.wordsSize, lineHeight: TRAY_CSS.wordsLeading }}
                   >
                     {smartApostrophes(words)}
@@ -307,7 +310,8 @@ export function PickerPage({
             </div>
           </div>
         </div>
-        {/* Kept clear for the deck's dots, with nothing tappable near them. */}
+        {/* Kept clear for the deck's dots and chevrons, with nothing
+            tappable within 24 px of them. */}
         <div aria-hidden="true" className="shrink-0" style={{ height: DOTS_RESERVE_CSS }} />
       </div>
     </div>

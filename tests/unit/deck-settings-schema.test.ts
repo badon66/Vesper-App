@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { firstFamily } from "@/app/(app)/app/(owner)/admin/settings/presentation/measure-labels";
 import { TRAY, TRAY_AT_PRO } from "@/components/meeting/picker/layout";
 import { parseLooks, WORDS_PAGES, type DeckWords, type Look } from "@/lib/deck";
-import { BAND_AT_AIR, BAND_AT_PRO, DECK_ROW, DECK_SIZES, fluidPx } from "@/lib/meeting/deck-pages";
+import { BAND_AT_AIR, BAND_AT_PRO, bottomRowRight, DECK_CLEAR_PX, DECK_ROW, DECK_SIZES, fluidPx } from "@/lib/meeting/deck-pages";
 import {
   BAND_FIT,
   bandWordsFit,
@@ -14,11 +14,15 @@ import {
   deckFitIssues,
   deckWordIssues,
   editableFields,
+  GALLERY_MAX_PHOTOS,
   headlineIssue,
+  installDayFitIssue,
+  installDayHeight,
   isDraftField,
   isDraftLook,
   isWebUrl,
   lineCount,
+  LINES_UP_FRONT_KEY,
   linesUpFrontIssue,
   LOOK_ROW,
   lookIssues,
@@ -28,6 +32,10 @@ import {
   lookWrapIssues,
   LOOKS_SEED,
   mergeEditableWords,
+  MORE_FIT,
+  moreLabelFitIssue,
+  moreLabelRoom,
+  moreRowRight,
   newLookKey,
   normaliseHex,
   PAGE_HELP,
@@ -41,9 +49,12 @@ import {
   referenceIssues,
   sameLooks,
   sameWords,
+  SPLIT_FIT,
+  splitColumn,
   tidyCaption,
   tidyDeckWords,
   tidyText,
+  warrantyFitIssue,
   warrantyLines,
   wordsToAvoid,
   type TextMeasure,
@@ -477,13 +488,15 @@ describe("will the words fit at the meeting?", () => {
     expect(pickerLineFitIssue("A preview drawn on our own photo of your house tonight. Tap a look to see it.", approx)).toMatch(/one line/);
   });
 
-  it("checks the band pages' words and the picker's line only, and passes the seeded words", () => {
+  it("checks the band pages' words, the picker's line and install day's steps, and passes the seeded words", () => {
     expect(deckFitIssues(DECK_SEED, approx)).toEqual({});
+    expect(deckFitIssues(DECK_SEED, approx, { warrantyText: WARRANTY, company: COMPANY })).toEqual({});
     const words = copy();
     const long = Array.from({ length: 25 }, () => "neighbourhood").join(" ");
     for (const page of WORDS_PAGES) words.pages[page].words = long;
     expect(Object.keys(deckFitIssues(words, approx)).sort()).toEqual([
       "hidden_by_day.words",
+      "install_day.words",
       "light_picker.words",
       "phone_control.words",
       "what_vesper_is.words",
@@ -521,10 +534,191 @@ describe("will the words fit at the meeting?", () => {
     expect(PICKER_LINE_FIT.screens[1].size).toBe(TRAY_AT_PRO.wordsSize);
   });
 
+  it("stays in step with the deck's bottom row and More button", () => {
+    for (const width of MORE_FIT.widths) expect(moreRowRight(width)).toBe(bottomRowRight(width, MORE_FIT.pages));
+    expect(MORE_FIT.pages).toBe(12);
+    expect(MORE_FIT.row).toEqual({ dot: DECK_ROW.dot, pillEnds: DECK_ROW.pillEnds, chevron: DECK_ROW.chevron, gap: DECK_ROW.gap });
+    // DeckButton: 20 px semibold, 24 px padding and a 1 px border each side; BottomRight: 48 px from the edge.
+    const parts = readFileSync("components/meeting/deck-parts.tsx", "utf8");
+    const button = parts.slice(parts.indexOf("export function DeckButton("), parts.indexOf("export function BottomRight("));
+    expect(button).toMatch(/\bborder\b/);
+    expect(button).toContain("px-6");
+    expect(button).toContain("text-[20px]");
+    expect(button).toContain("font-semibold");
+    const corner = parts.slice(parts.indexOf("export function BottomRight("));
+    expect(corner.slice(0, corner.indexOf("\n}\n"))).toContain("right-12");
+  });
+
+  it("stays in step with the deck's split pages", () => {
+    const parts = readFileSync("components/meeting/deck-parts.tsx", "utf8");
+    const split = parts.slice(parts.indexOf("export function SplitPage("), parts.indexOf("export function Lines("));
+    const share = Math.round(SPLIT_FIT.split * 100);
+    expect(split).toContain(`grid-cols-[${share}%_${100 - share}%]`);
+    // The words column beside the picture: 28 px apart, 64 px down, 48 px from the edge, 112 px clear at its foot, 40 px from the line.
+    expect(split).toMatch(/gap-7 overflow-hidden pt-16 pr-12 pb-28 pl-10/);
+    expect(SPLIT_FIT.padBottom).toBeGreaterThanOrEqual(DECK_CLEAR_PX);
+    const lines = parts.slice(parts.indexOf("export function Lines("));
+    expect(lines.slice(0, lines.indexOf("\n}\n"))).toContain("gap-3");
+    const pages = readFileSync("components/meeting/deck-pages.tsx", "utf8");
+    const install = pages.slice(pages.indexOf("export function InstallDayPage("), pages.indexOf("export function WarrantyPage("));
+    expect(install).toMatch(/<ol className="flex flex-col gap-4">/);
+    expect(install).toMatch(/flex items-baseline gap-4/);
+    expect(install).toMatch(/w-\[1ch\] shrink-0 font-semibold/);
+    expect(install).toMatch(/border-t border-border pt-6 font-semibold/);
+    expect(DECK_SIZES.headline).toBe(fluidPx(SPLIT_FIT.screens[0].headline, SPLIT_FIT.screens[1].headline));
+    expect(DECK_SIZES.body).toBe(fluidPx(SPLIT_FIT.screens[0].body, SPLIT_FIT.screens[1].body));
+    expect(DECK_SIZES.small).toBe(fluidPx(SPLIT_FIT.screens[0].small, SPLIT_FIT.screens[1].small));
+  });
+
   it("measures with Manrope alone, never the whole font stack", () => {
     expect(firstFamily('"__Manrope_a1b2c3", "__Manrope_Fallback_a1b2c3", ui-sans-serif, system-ui, sans-serif')).toBe('"__Manrope_a1b2c3"');
     expect(firstFamily("__Manrope_a1b2c3, sans-serif")).toBe("__Manrope_a1b2c3");
     expect(firstFamily("")).toBeNull();
+  });
+});
+
+// The app's own Manrope, measured once with a canvas measureText in
+// Chromium at the More button's 20 px semibold; anything else at the stand-in.
+const MANROPE_LABELS: Record<string, number> = {
+  "What the app does": 178.8,
+  "What\u2019s in it": 105.1,
+  "Up close": 81.4,
+  "Warm or cool": 123.8,
+  "See all 30": 91,
+  "The full warranty": 159.2,
+  "What we\u2019ll need": 151.4,
+  "What the app can do": 195.1,
+  "Homeowners association guidelines": 343.8,
+};
+const labelMeasure: TextMeasure = (text, font) => (font.size === 20 && font.weight === 600 && text in MANROPE_LABELS ? MANROPE_LABELS[text] : approx(text, font));
+
+describe("will a More button's label fit the bottom row?", () => {
+  it("leaves 16 px between the button and the dots and chevrons, with all 12 pages", () => {
+    // 588 px of dots and chevrons, centred: they end at 884 at 1180 and 977 at 1366.
+    expect(moreRowRight(1180)).toBe(884);
+    expect(moreRowRight(1366)).toBe(977);
+    // The button ends 48 px from the edge, with 24 px padding and a 1 px border each side.
+    expect(moreLabelRoom(1180)).toBe(1180 - 48 - (884 + 16) - 50);
+    expect(moreLabelRoom(1366)).toBe(1366 - 48 - (977 + 16) - 50);
+  });
+
+  it("passes every seeded label at Manrope's own widths, and refuses one that would reach the dots", () => {
+    for (const page of WORDS_PAGES) {
+      expect(deckFitIssues(DECK_SEED, labelMeasure)[`${page}.moreLabel`], page).toBeUndefined();
+    }
+    // "What the app does" leaves 19 px at 1180 (its button starts at 903, the dots end at 884).
+    expect(moreLabelFitIssue("What the app does", labelMeasure)).toBeNull();
+    // 195 px: its button would start at 887, 3 px from the dots.
+    expect(moreLabelFitIssue("What the app can do", labelMeasure)).toMatch(/run into the page dots/);
+    // Within the 4 words Settings allows, but far too wide.
+    const words = copy();
+    words.pages.hidden_by_day.moreLabel = "Homeowners association guidelines";
+    expect(pageWordIssues("hidden_by_day", words.pages.hidden_by_day).moreLabel).toBeUndefined();
+    expect(deckFitIssues(words, labelMeasure)["hidden_by_day.moreLabel"]).toMatch(/Too long for the bottom row/);
+    expect(moreLabelFitIssue("", labelMeasure)).toBeNull();
+  });
+
+  it("measures the gallery's label with the most photos it can count", () => {
+    expect(GALLERY_MAX_PHOTOS).toBe(30);
+    const seen: string[] = [];
+    moreLabelFitIssue("See all", (text, font) => {
+      seen.push(text);
+      return labelMeasure(text, font);
+    }, { countAdded: true });
+    expect(seen).toContain("See all 30");
+    // Just short enough alone, too long once the count is added.
+    const fits = "Every home we\u2019ve lit";
+    const room = moreLabelRoom(1180);
+    const exact: TextMeasure = (text) => (text === fits ? room : room + 30);
+    expect(moreLabelFitIssue(fits, exact)).toBeNull();
+    expect(moreLabelFitIssue(fits, exact, { countAdded: true })).toMatch(/with the count added/);
+  });
+
+  it("measures the label as the meeting draws it, typographic apostrophes and all", () => {
+    const seen: string[] = [];
+    moreLabelFitIssue("What we'll  need", (text, font) => {
+      seen.push(text);
+      return approx(text, font);
+    });
+    expect(seen).toEqual(["What we\u2019ll need", "What we\u2019ll need"]);
+  });
+});
+
+const WARRANTY = `10 years parts: lights, track and hardware, control box.
+5 years labour: we come out and fix covered issues at no charge.
+Years 6 to 10: parts still free, with a flat service call fee.
+5 years workmanship, including any holes we drilled.`;
+const COMPANY = ["Vesper Lighting, Inc., Calgary", "(403) 895-9915"];
+
+describe("will a split page's words fit beside its photo?", () => {
+  it("knows the words column at both iPads, at the installed app's real deck heights", () => {
+    const [air, pro] = SPLIT_FIT.screens.map(splitColumn);
+    expect(air.width).toBeCloseTo(431.2, 1);
+    expect(pro.width).toBeCloseTo(513.04, 1);
+    expect(SPLIT_FIT.screens.map((screen) => [screen.width, screen.height])).toEqual([
+      [1180, 796],
+      [1366, 1000],
+    ]);
+    // 64 px down to 112 px clear of the foot.
+    expect(air.room).toBe(796 - 64 - 112);
+    expect(pro.room).toBe(1000 - 64 - 112);
+  });
+
+  it("counts the headline's lines, the steps one by one and the payment line", () => {
+    const air = SPLIT_FIT.screens[0];
+    // 3 em a word: two headline words to a line, five words of the payment line.
+    const threeEmAWord: TextMeasure = (text, font) => text.split(" ").length * font.size * 3;
+    const bare = installDayHeight({ headline: "", words: "" }, air, threeEmAWord);
+    // Only the payment line: its rule and 24 px, then its lines.
+    expect(bare).toBeCloseTo(1 + 24 + 2 * 27 * 1.3, 5);
+    const withHeadline = installDayHeight({ headline: "How install day works", words: "" }, air, threeEmAWord);
+    // "How install day works" runs to two lines at 52 px, then the 28 px gap.
+    expect(withHeadline - bare).toBeCloseTo(28 + 2 * 52 * 1.1, 5);
+    const oneStep = installDayHeight({ headline: "", words: "We clean up" }, air, threeEmAWord);
+    const twoSteps = installDayHeight({ headline: "", words: "We clean up\nWe clean up" }, air, threeEmAWord);
+    expect(twoSteps - oneStep).toBeCloseTo(16 + 27 * 1.3, 5);
+    // A number Keenan typed is dropped: the page numbers the steps.
+    expect(installDayHeight({ headline: "", words: "1. We clean up" }, air, threeEmAWord)).toBe(oneStep);
+  });
+
+  it("passes the seeded steps and refuses 40 long words, naming the steps", () => {
+    expect(installDayFitIssue(DECK_SEED.pages.install_day, approx)).toBeNull();
+    // Within the 40 words Settings allows, but long words in five steps.
+    const long = [
+      "Together we walk around the house and confirm every run.",
+      "We double check colours, measurements and outlet locations.",
+      "A small crew fits aluminum track underneath every eave.",
+      "Electricians aren't needed: the control box plugs straight in.",
+      "Everything gets tidied afterwards.",
+    ].join("\n");
+    expect(long.split(/\s+/).length).toBeLessThanOrEqual(40);
+    expect(pageWordIssues("install_day", { ...DECK_SEED.pages.install_day, words: long }).words).toBeUndefined();
+    expect(installDayFitIssue({ headline: "How install day works", words: long }, approx)).toMatch(/steps would run into the bottom row/);
+    const words = copy();
+    words.pages.install_day.words = long;
+    expect(deckFitIssues(words, approx)["install_day.words"]).toMatch(/once its photo is in/);
+  });
+
+  it("counts the warranty's lines up front, the headline and the company lines, only when the warranty is given", () => {
+    expect(warrantyFitIssue("Our 10-year warranty", 3, { warrantyText: WARRANTY, company: COMPANY }, approx)).toBeNull();
+    const longer = Array.from({ length: 8 }, (_, at) => `${at + 1} years of something covered in full, with every part and the labour to fit it at no charge to you.`).join("\n");
+    expect(warrantyFitIssue("Our 10-year warranty", 8, { warrantyText: longer, company: COMPANY }, approx)).toMatch(/with 8 lines up front/);
+    expect(warrantyFitIssue("Our 10-year warranty", 1, { warrantyText: longer, company: COMPANY }, approx)).toBeNull();
+    const words = copy();
+    words.warrantyLinesUpFront = 8;
+    expect(deckFitIssues(words, approx, { warrantyText: longer, company: COMPANY })[LINES_UP_FRONT_KEY]).toMatch(/Show fewer lines up front/);
+    expect(deckFitIssues(words, approx)[LINES_UP_FRONT_KEY]).toBeUndefined();
+  });
+
+  it("never breaks a headline inside a hyphenated word, and draws it 0.015 em tighter", () => {
+    const air = SPLIT_FIT.screens[0];
+    const seen: string[] = [];
+    installDayHeight({ headline: "Our 10-year plan", words: "" }, air, (text, font) => {
+      if (font.size === air.headline) seen.push(text);
+      return approx(text, font);
+    });
+    expect(seen.some((text) => text.includes("10-year"))).toBe(true);
+    expect(seen.every((text) => !text.endsWith("10-"))).toBe(true);
   });
 });
 
@@ -535,5 +729,19 @@ describe("Settings' help for Keenan", () => {
     }
     expect(PAGE_HELP.what_vesper_is).toContain("We left out");
     expect(PAGE_HELP.whites_first).not.toMatch(/pure/);
+  });
+
+  it("uses typographic quotes and apostrophes in the page notes", () => {
+    for (const page of WORDS_PAGES) {
+      expect(PAGE_HELP[page], page).not.toMatch(/["']/);
+    }
+    expect(PAGE_HELP.whites_first).toContain("\u201cso warm white looks warm\u201d");
+    expect(PAGE_HELP.install_day).toContain("\u201cNo payment until your install is complete.\u201d");
+  });
+
+  it("says what to say about the track's colour, plainly", () => {
+    expect(wordsToAvoid("Colour matched to your soffit")).toContain(
+      "White is the only stock track. Say: White track is in stock. Other colours are made to order.",
+    );
   });
 });

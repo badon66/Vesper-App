@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   chosenLead,
+  copyNote,
   customerViewFor,
   EXIT_CORNER,
   exampleClearance,
+  exampleFillsBox,
   exampleLayout,
   exampleSide,
   firstExamples,
@@ -150,6 +152,7 @@ describe("the examples", () => {
       imageUrl: "https://images.example-site.com/what_vesper_is.hero-1.jpg",
       pageUrl: "https://example-site.com/what_vesper_is.hero",
       site: "Site 1",
+      note: null,
     });
     expect(examples["gallery.snow"].site).toBe("Site 3");
   });
@@ -166,9 +169,28 @@ describe("the examples", () => {
       row("hidden_by_day.night", 1, { image_url: "data:image/png;base64,AAAA", page_url: "http://example-site.com/night" }),
       row("whites_first.hero", 1, { image_url: null, page_url: null, site: null }),
     ]);
-    expect(examples["hidden_by_day.day"]).toEqual({ imageUrl: null, pageUrl: null, site: null });
-    expect(examples["hidden_by_day.night"]).toEqual({ imageUrl: null, pageUrl: "http://example-site.com/night", site: "Site 1" });
-    expect(examples["whites_first.hero"]).toEqual({ imageUrl: null, pageUrl: null, site: null });
+    expect(examples["hidden_by_day.day"]).toEqual({ imageUrl: null, pageUrl: null, site: null, note: null });
+    expect(examples["hidden_by_day.night"]).toEqual({ imageUrl: null, pageUrl: "http://example-site.com/night", site: "Site 1", note: null });
+    expect(examples["whites_first.hero"]).toEqual({ imageUrl: null, pageUrl: null, site: null, note: null });
+  });
+
+  it("say what to copy from an example that's off the brief on purpose", () => {
+    const examples = firstExamples([
+      row("whites_first.warm", 1, { why: "Copy the framing, not the sky or the house number. A close, straight-on view of a gable." }),
+      row("gallery.snow", 1, { why: "  copy the mood,   not the colour: snow on the roof edge above the lights.  It is small." }),
+      row("hidden_by_day.night", 1, { why: "The night half of the pair. Copy the locked framing." }),
+      row("whites_first.cool", 1, { why: null }),
+    ]);
+    expect(examples["whites_first.warm"].note).toBe("Copy the framing, not the sky or the house number.");
+    expect(examples["gallery.snow"].note).toBe("copy the mood, not the colour: snow on the roof edge above the lights.");
+    // Only a note that begins "Copy the": the rest stay in Settings.
+    expect(examples["hidden_by_day.night"].note).toBeNull();
+    expect(examples["whites_first.cool"].note).toBeNull();
+    expect(copyNote("Copy the angle, not the colour.")).toBe("Copy the angle, not the colour.");
+    expect(copyNote("Copy the locked tripod and the soft, even daylight")).toBe("Copy the locked tripod and the soft, even daylight");
+    expect(copyNote("Copy these colours.")).toBeNull();
+    expect(copyNote("")).toBeNull();
+    expect(copyNote(undefined)).toBeNull();
   });
 
   it("links are web addresses only, and pictures https only", () => {
@@ -272,6 +294,12 @@ describe("an example's box", () => {
     const others = DECK_SLOTS.filter((item) => item.role !== "day" && item.role !== "night");
     expect(others.length).toBe(DECK_SLOTS.length - 2);
     for (const slot of others) expect(exampleSide(slot)).toBe("whole");
+  });
+
+  it("fills half of the warm and cool pair edge to edge, and sits inset everywhere else", () => {
+    expect(exampleFillsBox({ role: "warm" })).toBe(true);
+    expect(exampleFillsBox({ role: "cool" })).toBe(true);
+    for (const slot of DECK_SLOTS.filter((item) => item.role !== "warm" && item.role !== "cool")) expect(exampleFillsBox(slot), slot.key).toBe(false);
   });
 
   it("counts a placeholder pixel as not loaded", () => {

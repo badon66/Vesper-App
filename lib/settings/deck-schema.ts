@@ -1,9 +1,12 @@
 import { z } from "zod";
 import {
+  DECK_PAGES,
+  DECK_SLOTS,
   hasDash,
   hasExclamation,
   MAX_ACTIVE_LOOKS,
   MAX_LOOK_COLOURS,
+  NO_PAYMENT_LINE,
   PAGE_LAYOUT,
   WORD_LIMITS,
   WORDS_PAGES,
@@ -42,10 +45,17 @@ import type { Json } from "@/types/database";
 //                              the meeting's row of look buttons, and which
 //                              labels would wrap in it (measured in the browser)
 //   BAND_FIT, PICKER_LINE_FIT, lineCount, bandWordsFitIssue,
-//   pickerLineFitIssue, deckFitIssues(words, measure)
-//                              whether a band's words stay above its button,
+//   pickerLineFitIssue         whether a band's words stay above its button,
 //                              and the picker's line on one line, at 1180 and
 //                              1366 (measured in the browser)
+//   MORE_FIT, moreLabelFitIssue
+//                              whether a More button stays clear of the dots
+//                              and chevrons in the bottom row
+//   SPLIT_FIT, installDayFitIssue, warrantyFitIssue
+//                              whether a split page's words fit beside its
+//                              photo, above the bottom row
+//   deckFitIssues(words, measure, { warrantyText, company })
+//                              all of the above, as { "page.field": message }
 //   captionIssue(text)         a gallery caption: the look only
 //   referenceIssues(input) / parseReferenceInput(input)
 //                              a replaced example link
@@ -594,21 +604,224 @@ export function pickerLineFitIssue(text: string, measure: TextMeasure): string |
   return null;
 }
 
-// { "page.words": message } for the band pages' words and the picker's line
-// that would not fit at the meeting. Settings refuses a save with any of
-// them; the server, which can't measure a font, checks the counts only.
-export function deckFitIssues(words: DeckWords, measure: TextMeasure): DeckWordErrors {
+// ---------------------------------------------------------------- will a More button's label fit the bottom row?
+
+// The bottom row (round 7 review): every page's More button sits bottom
+// right, 48 px from the edge, an outline button with its label at 20 px
+// semibold, 24 px of padding and a 1 px border each side. The page dots and
+// the Previous and Next chevrons sit in the middle of the same row: with all
+// 12 pages the dots' 40 px targets in a pill with 4 px ends, then a 44 px
+// chevron 6 px out on each side. A label is refused when its button's left
+// edge would come within 16 px of that middle on either iPad, so a long
+// label never slides under the Next chevron or the last dot (which jumps to
+// the price). These are the deck's numbers (lib/meeting/deck-pages.ts:
+// DECK_ROW, bottomRowRight; components/meeting/deck-parts.tsx: DeckButton,
+// BottomRight); a unit test keeps them in step.
+export const MORE_FIT = {
+  pages: DECK_PAGES.length,
+  rightInset: 48,
+  padding: 24,
+  border: 1,
+  weight: 600,
+  size: 20,
+  clearance: 16,
+  row: { dot: 40, pillEnds: 4, chevron: 44, gap: 6 },
+  widths: [1180, 1366],
+} as const;
+
+// The gallery's button adds the number of photos ("See all 6"): the most
+// the gallery's slots can hold, so a label that fits today still fits once
+// every photo is in.
+export const GALLERY_MAX_PHOTOS = DECK_SLOTS.filter((slot) => slot.page === "gallery").reduce((sum, slot) => sum + slot.max, 0);
+
+// Where the middle of the bottom row ends, in px, on a deck that wide.
+export function moreRowRight(deckWidth: number): number {
+  const { pages, row } = MORE_FIT;
+  return (deckWidth + pages * row.dot + 2 * row.pillEnds + 2 * (row.chevron + row.gap)) / 2;
+}
+
+// The widest label a More button can carry on a deck that wide, in px.
+export function moreLabelRoom(deckWidth: number): number {
+  return deckWidth - MORE_FIT.rightInset - (moreRowRight(deckWidth) + MORE_FIT.clearance) - 2 * (MORE_FIT.padding + MORE_FIT.border);
+}
+
+// Refused when, on either iPad, the button would reach the dots or a chevron.
+export function moreLabelFitIssue(label: string, measure: TextMeasure, { countAdded = false }: { countAdded?: boolean } = {}): string | null {
+  const shown = shownWords(label);
+  if (!shown) return null;
+  const drawn = countAdded ? `${shown} ${GALLERY_MAX_PHOTOS}` : shown;
+  for (const width of MORE_FIT.widths) {
+    if (measure(drawn, { weight: MORE_FIT.weight, size: MORE_FIT.size }) > moreLabelRoom(width)) {
+      return countAdded
+        ? "Too long for the bottom row: with the count added, this button would run into the page dots at the meeting. Shorten it."
+        : "Too long for the bottom row: at the meeting this button would run into the page dots. Shorten it.";
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- will a split page's words fit beside its photo?
+
+// How install day works and Our 10-year warranty, once their photo is in:
+// the picture on the left 56%, the words in the right 44%, 40 px from the
+// line and 48 px from the edge (431 px wide at 1180, 513 px at 1366), 64 px
+// from the top, the headline, then the page's words, 28 px apart. The
+// column keeps 112 px clear at its foot: words that ran into it would make
+// the column scroll (the walk-through refuses that), and its foot is above
+// the bottom row's clear line (78 px) anyway, so ending above it ends above
+// the More button, the dots and the chevrons. Measured at the installed
+// app's real deck heights (1180 x 796 and 1366 x 1000: the status bar takes
+// 24 px), the tighter case. Headlines 52/60 px semibold on 1.1 lines at
+// -0.015em, never broken inside a hyphenated word; words 27/30 px on 1.3
+// lines; install day's steps 16 px apart, each after its number (1ch of
+// semibold) and 16 px; the payment line semibold under a rule and 24 px;
+// the warranty's lines 12 px apart, then the company and phone at 20/22 px.
+// These are the deck's numbers (components/meeting/deck-parts.tsx:
+// SplitPage, Lines, DECK_TYPE; components/meeting/deck-pages.tsx:
+// InstallDayPage, WarrantyPage); a unit test keeps them in step.
+export const SPLIT_FIT = {
+  split: 0.56,
+  padLeft: 40,
+  padRight: 48,
+  padTop: 64,
+  padBottom: 112,
+  gap: 28,
+  headline: { weight: 600, lineHeight: 1.1, tracking: -0.015 },
+  body: { weight: 400, lineHeight: 1.3 },
+  steps: { gap: 16, numberGap: 16, numberWeight: 600 },
+  payment: { weight: 600, rule: 1, padTop: 24 },
+  lines: { gap: 12 },
+  small: { weight: 400, lineHeight: 1.3 },
+  screens: [
+    { width: 1180, height: 796, headline: 52, body: 27, small: 20 },
+    { width: 1366, height: 1000, headline: 60, body: 30, small: 22 },
+  ],
+} as const;
+
+type SplitScreen = (typeof SPLIT_FIT.screens)[number];
+
+// The words column's width, and the height its words may take.
+export function splitColumn(screen: SplitScreen): { width: number; room: number } {
+  return {
+    width: screen.width * (1 - SPLIT_FIT.split) - SPLIT_FIT.padLeft - SPLIT_FIT.padRight,
+    room: screen.height - SPLIT_FIT.padTop - SPLIT_FIT.padBottom,
+  };
+}
+
+// A paragraph's height in that column at a size and weight.
+function paragraphHeight(text: string, width: number, font: { weight: number; size: number; lineHeight: number; tracking?: number }, measure: TextMeasure): number {
+  const shown = shownWords(text);
+  if (!shown) return 0;
+  const tracking = (font.tracking ?? 0) * font.size;
+  const lines = lineCount(shown, width, (line) => measure(line, font) + tracking * Array.from(line).length);
+  return lines * font.size * font.lineHeight;
+}
+
+function headlineHeight(headline: string, screen: SplitScreen, width: number, measure: TextMeasure): number {
+  return paragraphHeight(headline, width, { ...SPLIT_FIT.headline, size: screen.headline }, measure);
+}
+
+// The column's blocks, top to bottom, with the gap between each: what
+// SplitPage draws.
+function stackHeight(blocks: number[]): number {
+  return blocks.reduce((sum, block) => sum + block, 0) + SPLIT_FIT.gap * Math.max(0, blocks.length - 1);
+}
+
+// How install day works: the headline, the numbered steps (one per line),
+// then "No payment until your install is complete." under its rule.
+export function installDayHeight(page: Pick<PageWords, "headline" | "words">, screen: SplitScreen, measure: TextMeasure): number {
+  const { width } = splitColumn(screen);
+  const body = { ...SPLIT_FIT.body, size: screen.body };
+  const blocks: number[] = [];
+  if (page.headline.trim()) blocks.push(headlineHeight(page.headline, screen, width, measure));
+  // One step per line, any number Keenan typed dropped: the page numbers them.
+  const steps = tidyText(page.words)
+    .split("\n")
+    .map((line) => line.replace(/^\d+[.)]?\s+/, ""))
+    .filter(Boolean);
+  if (steps.length > 0) {
+    // The number's column is 1ch wide: a semibold "0".
+    const number = measure("0", { weight: SPLIT_FIT.steps.numberWeight, size: screen.body });
+    const stepWidth = width - number - SPLIT_FIT.steps.numberGap;
+    const heights = steps.map((step) => paragraphHeight(step, stepWidth, body, measure));
+    blocks.push(heights.reduce((sum, height) => sum + height, 0) + SPLIT_FIT.steps.gap * (steps.length - 1));
+  }
+  blocks.push(SPLIT_FIT.payment.rule + SPLIT_FIT.payment.padTop + paragraphHeight(NO_PAYMENT_LINE, width, { ...body, weight: SPLIT_FIT.payment.weight }, measure));
+  return stackHeight(blocks);
+}
+
+// Our 10-year warranty: the headline, the warranty's first lines word for
+// word, then the company and phone.
+export function warrantyHeight(
+  { headline, linesUpFront, warrantyText, company }: { headline: string; linesUpFront: number; warrantyText: string; company: string[] },
+  screen: SplitScreen,
+  measure: TextMeasure,
+): number {
+  const { width } = splitColumn(screen);
+  const body = { ...SPLIT_FIT.body, size: screen.body };
+  const small = { ...SPLIT_FIT.small, size: screen.small };
+  const blocks: number[] = [];
+  if (headline.trim()) blocks.push(headlineHeight(headline, screen, width, measure));
+  const lines = warrantyLines(warrantyText).slice(0, linesUpFront);
+  blocks.push(lines.reduce((sum, line) => sum + paragraphHeight(line, width, body, measure), 0) + SPLIT_FIT.lines.gap * Math.max(0, lines.length - 1));
+  blocks.push(company.reduce((sum, line) => sum + paragraphHeight(line, width, small, measure), 0));
+  return stackHeight(blocks);
+}
+
+// What the warranty page reads besides Settings' own words: the warranty
+// text (Settings, the warranty) and the company and phone lines.
+export type SplitContext = { warrantyText?: string; company?: string[] };
+
+export function installDayFitIssue(page: Pick<PageWords, "headline" | "words">, measure: TextMeasure): string | null {
+  for (const screen of SPLIT_FIT.screens) {
+    if (installDayHeight(page, screen, measure) > splitColumn(screen).room) {
+      return "Too long for the page once its photo is in: at the meeting the steps would run into the bottom row. Shorten a step or the headline.";
+    }
+  }
+  return null;
+}
+
+export function warrantyFitIssue(headline: string, linesUpFront: number, context: Required<SplitContext>, measure: TextMeasure): string | null {
+  for (const screen of SPLIT_FIT.screens) {
+    const height = warrantyHeight({ headline, linesUpFront, warrantyText: context.warrantyText, company: context.company }, screen, measure);
+    if (height > splitColumn(screen).room) {
+      return `Too much for the page once its photo is in: with ${linesUpFront} ${linesUpFront === 1 ? "line" : "lines"} up front, the warranty would run into the bottom row at the meeting. Show fewer lines up front, or shorten the headline.`;
+    }
+  }
+  return null;
+}
+
+// { "page.field": message } for whatever would not fit at the meeting: the
+// band pages' words (above the More button), the picker's line (one line),
+// every More button's label (clear of the dots and chevrons), and the split
+// pages' words beside their photo (install day's steps; the warranty's lines
+// up front, when the warranty text is given). Settings refuses a save with
+// any of them; the server, which can't measure a font, checks the counts
+// only.
+export function deckFitIssues(words: DeckWords, measure: TextMeasure, context: SplitContext = {}): DeckWordErrors {
   const errors: DeckWordErrors = {};
   for (const page of WORDS_PAGES) {
-    if (!PAGE_FIELDS[page].words) continue;
-    const text = words.pages[page].words;
-    const issue =
-      page === "light_picker"
-        ? pickerLineFitIssue(text, measure)
-        : PAGE_LAYOUT[page] === "band"
-          ? bandWordsFitIssue(text, measure)
-          : null;
-    if (issue) errors[fieldKey(page, "words")] = issue;
+    const rules = PAGE_FIELDS[page];
+    const value = words.pages[page];
+    if (rules.words) {
+      const issue =
+        page === "light_picker"
+          ? pickerLineFitIssue(value.words, measure)
+          : PAGE_LAYOUT[page] === "band"
+            ? bandWordsFitIssue(value.words, measure)
+            : page === "install_day"
+              ? installDayFitIssue(value, measure)
+              : null;
+      if (issue) errors[fieldKey(page, "words")] = issue;
+    }
+    if (rules.moreLabel) {
+      const issue = moreLabelFitIssue(value.moreLabel, measure, { countAdded: rules.moreLabel.countAdded });
+      if (issue) errors[fieldKey(page, "moreLabel")] = issue;
+    }
+  }
+  if (context.warrantyText !== undefined) {
+    const issue = warrantyFitIssue(words.pages.warranty.headline, words.warrantyLinesUpFront, { warrantyText: context.warrantyText, company: context.company ?? [] }, measure);
+    if (issue) errors[LINES_UP_FRONT_KEY] = issue;
   }
   return errors;
 }
@@ -698,7 +911,7 @@ const AVOID: { pattern: RegExp; say: string }[] = [
   { pattern: /\bkelvin\b|\b\d{4}\s?K\b/i, say: "Warm or cool, not Kelvin." },
   { pattern: /\blumens?\b|\bIP\s?6\d\b/i, say: "No lumens or IP ratings." },
   { pattern: /\bper (metre|meter|foot|ft)\b/i, say: "The spacing is about 8 inches apart, and no prices per foot." },
-  { pattern: /colou?r[- ]?match|match(es|ed)? (its|your|the) colou?r/i, say: "White is the only stock track: White track is in stock. Other colours are made to order." },
+  { pattern: /colou?r[- ]?match|match(es|ed)? (its|your|the) colou?r/i, say: "White is the only stock track. Say: White track is in stock. Other colours are made to order." },
   { pattern: /\$|\bstarting at\b|\bdiscount\b|\bbook now\b|\blimited time\b/i, say: "No prices, discounts or deadlines before the price page." },
   { pattern: /\b(lifetime|guaranteed?|maintenance[- ]free|invisible|never)\b|\bno ladders?\b|\bno hardwiring\b|\bbefore christmas\b/i, say: "A promise to keep only once you've confirmed it." },
   { pattern: /\bKeenan\b/, say: "We, never a name." },
@@ -812,17 +1025,17 @@ export function isDraftLook(look: Pick<Look, "key" | "name" | "words">): boolean
 // reaches a customer.
 export const PAGE_HELP: Record<WordsPageKey, string> = {
   what_vesper_is:
-    "Answers the Christmas-only worry in the first minute. We left out \"an investment in your home\". Add it back if you want it.",
+    "Answers the Christmas-only worry in the first minute. We left out “an investment in your home”. Add it back if you want it.",
   hidden_by_day: "Never say the track matches the soffit: white is the only stock track.",
   whites_first:
-    "Once you've confirmed how warm the lights' own white is, you can add \"so warm white looks warm\". Each light has one white of its own, so don't claim both whites are true whites.",
+    "Once you’ve confirmed how warm the lights’ own white is, you can add “so warm white looks warm”. Each light has one white of its own, so don’t claim both whites are true whites.",
   light_picker:
-    "The headline and the line under it sit in the tray under their house, smaller than other headlines, and the line has to fit on one line. Keep \"our photo\": the setter or you took it, not the customer.",
+    "The headline and the line under it sit in the tray under their house, smaller than other headlines, and the line has to fit on one line. Keep “our photo”: the setter or you took it, not the customer.",
   phone_control:
-    "Only what the app does today. Once you've confirmed them, you can add lines about schedules, more than one phone, after a power cut or any monthly fee. Never the app's brand name.",
-  gallery: "The gallery's words are each photo's caption, set on the photo below: the look only. The button opens the grid of every photo.",
+    "Only what the app does today. Once you’ve confirmed them, you can add lines about schedules, more than one phone, after a power cut or any monthly fee. Never the app’s brand name.",
+  gallery: "The gallery’s words are each photo’s caption, set on the photo below: the look only. The button opens the grid of every photo.",
   install_day:
-    "One step per line; the screen numbers them. \"No payment until your install is complete.\" is always added under the steps, word for word. No durations, dates or \"before Christmas\".",
+    "One step per line; the screen numbers them. “No payment until your install is complete.” is always added under the steps, word for word. No durations, dates or “before Christmas”.",
   warranty:
     "The page shows the first lines of the Warranty text in Settings, word for word, then the company and phone. The button opens every line, and the service call fee when it is set.",
   mockup: "The title over their mockup. No words or button: you point, and they pinch to zoom.",

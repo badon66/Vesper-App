@@ -5,11 +5,12 @@ import { createPortal } from "react-dom";
 
 import { DeckDrawing, isDrawingFallback } from "@/components/drawings/deck-drawing";
 import type { DrawingGround } from "@/components/drawings/house-drawing";
+import { isControlTarget } from "@/components/meeting/picker/picker-state";
 import type { DeckSlot, Look } from "@/lib/deck";
 import type { EaveVariant } from "@/lib/drawings/eave";
 import type { DrawingFit, HouseCropName } from "@/lib/drawings/house";
 import { COOL_WHITE, WARM_WHITE } from "@/lib/lights/looks";
-import type { SlotView } from "@/lib/meeting/deck-pages";
+import { layerSwipe, type SlotView } from "@/lib/meeting/deck-pages";
 import type { DeckPhoto } from "@/lib/meeting/state";
 import { EASE_QUIET, MOTION } from "@/lib/motion";
 import { smartApostrophes } from "@/lib/typography";
@@ -131,7 +132,10 @@ export function SlotExample({ slot, className }: { slot: DeckSlot; className?: s
 
 // How a slot's drawing sits in its box (lib/drawings): fitted whole or
 // filling it edge to edge, on its own navy or straight on a More's card, a
-// house crop in place of the kind's own, the eave lit or by day.
+// house crop in place of the kind's own, and which eave drawing_eave draws:
+// the lit section (What's in it) or, with "day", the day side's close-up of
+// one eave (Up close: the soffit, the fascia and the slim track under them,
+// on the paper tone, <DeckDrawing kind="drawing_eave" eave="day" />).
 export type DrawingOptions = { fit?: DrawingFit; ground?: DrawingGround; crop?: HouseCropName; eave?: EaveVariant };
 
 // What a slot shows in its box: Keenan's first photo, the rehearsal's
@@ -154,7 +158,18 @@ export function SlotPicture({
   if (view.kind === "photo") return <DeckImage photo={view.photos[0]} alt={alt} fit={fit} className={className} />;
   if (view.kind === "example") return <SlotExample slot={view.slot} className={className} />;
   if (!isDrawingFallback(view.fallback)) return null;
-  return <DeckDrawing kind={view.fallback} warm={warm} cool={cool} {...drawing} className={cn("absolute inset-0 size-full", className)} />;
+  return (
+    <DeckDrawing
+      kind={view.fallback}
+      warm={warm}
+      cool={cool}
+      fit={drawing?.fit}
+      ground={drawing?.ground}
+      crop={drawing?.crop}
+      eave={drawing?.eave}
+      className={cn("absolute inset-0 size-full", className)}
+    />
+  );
 }
 
 export function slotHasPicture(view: SlotView): boolean {
@@ -216,10 +231,22 @@ function LeftPicture({ children }: { children: ReactNode }) {
 // A page or More with no picture: its block centred in the space above the
 // bottom row, at the deck's 64 px left margin with a measure of 880 px, and
 // never higher than the exit's corner (the first spacer keeps 88 px; if the
-// block is taller than the room it starts there).
-function CentredBlock({ children, className, box }: { children: ReactNode; className?: string; box: string }) {
+// block is taller than the room it starts there). A More with a picture
+// centres its words column the same way (`sides` gives the column's own
+// margins), so the words and the picture panel share a centre line.
+function CentredBlock({
+  children,
+  className,
+  box,
+  sides = "pr-16 pl-16",
+}: {
+  children: ReactNode;
+  className?: string;
+  box: string;
+  sides?: string;
+}) {
   return (
-    <div data-deck-box={box} className="flex h-full w-full flex-col overflow-hidden pr-16 pl-16" style={{ paddingBottom: "var(--deck-clear, 78px)" }}>
+    <div data-deck-box={box} className={cn("flex h-full w-full min-w-0 flex-col overflow-hidden", sides)} style={{ paddingBottom: "var(--deck-clear, 78px)" }}>
       <div aria-hidden="true" className="min-h-[88px] flex-1" />
       <div className={cn("flex w-full max-w-[880px] shrink-0 flex-col", className)}>{children}</div>
       <div aria-hidden="true" className="flex-1" />
@@ -346,20 +373,25 @@ function usePresence(open: boolean, outMs: number): { mounted: boolean; shown: b
   return { mounted: open || lingering, shown: open && entered };
 }
 
-// A one-finger sideways swipe on a layer: |dx| over 60 px and well over |dy|.
+// A one-finger sideways swipe on a layer (layerSwipe): over 60 px across,
+// well over the move down, and only from the layer's empty space, never
+// from a control (isControlTarget, the light picker's own test), so a
+// colour slid across to the next one or a drag in the number field never
+// closes it and loses what was chosen or typed.
 export function useSideSwipe(onSwipe: (delta: 1 | -1) => void) {
-  const from = useRef<{ id: number; x: number; y: number } | null>(null);
+  const from = useRef<{ id: number; x: number; y: number; onControl: boolean } | null>(null);
   return {
     onPointerDown: (event: React.PointerEvent) => {
-      from.current = event.isPrimary ? { id: event.pointerId, x: event.clientX, y: event.clientY } : null;
+      from.current = event.isPrimary
+        ? { id: event.pointerId, x: event.clientX, y: event.clientY, onControl: isControlTarget(event.target) }
+        : null;
     },
     onPointerUp: (event: React.PointerEvent) => {
       const start = from.current;
       from.current = null;
       if (!start || start.id !== event.pointerId) return;
-      const dx = event.clientX - start.x;
-      const dy = event.clientY - start.y;
-      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) onSwipe(dx < 0 ? 1 : -1);
+      const delta = layerSwipe({ dx: event.clientX - start.x, dy: event.clientY - start.y, onControl: start.onControl });
+      if (delta) onSwipe(delta);
     },
     onPointerCancel: () => {
       from.current = null;
@@ -376,10 +408,10 @@ export function useSideSwipe(onSwipe: (delta: 1 | -1) => void) {
 //
 // Without `children`, it lays out a More: its picture on the left 56% (one
 // full-height panel, ending above the bottom row) and its label and words
-// on the right; with no picture, the label and words are one block centred
-// above the bottom row at the 64 px margin, the label in the headline's
-// style and the words a step up. With `children`, the caller lays it out
-// (the contact sheet, the colour chooser).
+// on the right, centred on the panel's centre line; with no picture, the
+// label and words are one block centred above the bottom row at the 64 px
+// margin, the label in the headline's style and the words a step up. With
+// `children`, the caller lays it out (the contact sheet, the colour chooser).
 export function MoreLayer({
   open,
   onClose,
@@ -455,11 +487,11 @@ export function MoreLayer({
         picture ? (
           <div className="grid h-full grid-cols-[56%_44%]">
             <LeftPicture>{picture}</LeftPicture>
-            <div data-deck-box="layer" className="flex min-w-0 flex-col gap-6 overflow-hidden pt-16 pr-12 pb-28 pl-10">
+            <CentredBlock box="layer" sides="pr-12 pl-10" className="gap-6">
               <h2 className={DECK_TYPE.moreLabel}>{say(label)}</h2>
               {words(warranty ? DECK_TYPE.warranty : DECK_TYPE.body)}
               {after}
-            </div>
+            </CentredBlock>
           </div>
         ) : (
           <CentredBlock box="layer" className="gap-7">

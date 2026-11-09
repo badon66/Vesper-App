@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { DECK_PAGES, parseDeckWords, parseLooks, type DeckWords } from "@/lib/deck";
+import { CUSTOM_CHOICE } from "@/lib/leads/track-colour";
 import { WARM_WHITE } from "@/lib/lights/looks";
 import {
   bandHeight,
@@ -9,6 +10,7 @@ import {
   bottomRowWidth,
   buildDeckPayload,
   CHECK_TOGETHER,
+  chooserSave,
   companyLines,
   companyOf,
   coverLine,
@@ -30,6 +32,8 @@ import {
   galleryItems,
   installSteps,
   isNear,
+  LAYER_SWIPE_PX,
+  layerSwipe,
   moreWords,
   pageLabel,
   pairView,
@@ -378,6 +382,51 @@ describe("the exit", () => {
     expect(exitHoldMoved({ x: 44, y: 44 }, { x: 54, y: 44 })).toBe(false);
     expect(exitHoldMoved({ x: 44, y: 44 }, { x: 52, y: 52 })).toBe(true);
     expect(exitHoldMoved({ x: 44, y: 44 }, { x: 44, y: 70 })).toBe(true);
+  });
+});
+
+describe("a layer's sideways swipe (round 7 after-review)", () => {
+  it("closes it from the layer's empty space: over 60 px across and well over the move down", () => {
+    expect(LAYER_SWIPE_PX).toBe(60);
+    expect(layerSwipe({ dx: -120, dy: 10, onControl: false })).toBe(1);
+    expect(layerSwipe({ dx: 120, dy: -10, onControl: false })).toBe(-1);
+    expect(layerSwipe({ dx: -60, dy: 0, onControl: false })).toBeNull();
+    expect(layerSwipe({ dx: -120, dy: 90, onControl: false })).toBeNull();
+  });
+
+  it("never from a control: a colour slid across to the next one, or a drag in the number field", () => {
+    expect(layerSwipe({ dx: -300, dy: 0, onControl: true })).toBeNull();
+    expect(layerSwipe({ dx: 300, dy: 4, onControl: true })).toBeNull();
+  });
+});
+
+describe("the meeting's colour chooser: Save waits until there is a new colour (round 7 after-review)", () => {
+  const ralNames = { "7016": "Anthracite grey", "9010": "Pure white" };
+  const onList = { choice: "white", ralCode: null };
+  const onCustom = { choice: CUSTOM_CHOICE, ralCode: "7016" };
+
+  it("opens outlined and off on the colour already chosen, so Back is the next thing", () => {
+    expect(chooserSave({ choice: "white", current: onList, code: "", ralNames })).toEqual({ unchanged: true, ready: false });
+    expect(chooserSave({ choice: CUSTOM_CHOICE, current: onCustom, code: "7016", ralNames })).toEqual({ unchanged: true, ready: false });
+    expect(chooserSave({ choice: CUSTOM_CHOICE, current: onCustom, code: " 7016 ", ralNames })).toEqual({ unchanged: true, ready: false });
+  });
+
+  it("turns gold for another colour on the list", () => {
+    expect(chooserSave({ choice: "brown", current: onList, code: "", ralNames })).toEqual({ unchanged: false, ready: true });
+    expect(chooserSave({ choice: "white", current: onCustom, code: "7016", ralNames })).toEqual({ unchanged: false, ready: true });
+  });
+
+  it("turns gold for Custom only once the number is in the colour book; until then a tap still explains", () => {
+    expect(chooserSave({ choice: CUSTOM_CHOICE, current: onList, code: "", ralNames })).toEqual({ unchanged: false, ready: false });
+    expect(chooserSave({ choice: CUSTOM_CHOICE, current: onList, code: "12", ralNames })).toEqual({ unchanged: false, ready: false });
+    expect(chooserSave({ choice: CUSTOM_CHOICE, current: onList, code: "1234", ralNames })).toEqual({ unchanged: false, ready: false });
+    expect(chooserSave({ choice: CUSTOM_CHOICE, current: onList, code: "9010", ralNames })).toEqual({ unchanged: false, ready: true });
+    expect(chooserSave({ choice: CUSTOM_CHOICE, current: onCustom, code: "9010", ralNames })).toEqual({ unchanged: false, ready: true });
+  });
+
+  it("is never ready with no colour chosen", () => {
+    expect(chooserSave({ choice: null, current: onList, code: "", ralNames }).ready).toBe(false);
+    expect(chooserSave({ choice: null, current: { choice: null, ralCode: null }, code: "", ralNames })).toEqual({ unchanged: true, ready: false });
   });
 });
 

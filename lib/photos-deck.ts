@@ -32,6 +32,9 @@ import { MEETING_PHOTO_MAX_EDGE, shrinkPhoto } from "@/lib/photos";
 //   slotsByWhen(slots?)        the shot list by when to shoot: Daylight,
 //                              Blue hour, After a snowfall, Install day,
 //                              each in deck order
+//   calgarySunset(day), blueHourAfter(sunset)
+//                              today's sunset in Calgary, worked out on the
+//                              device, and blue hour 15 to 30 minutes after
 //   referencesBySlot(refs)     example links per slot, best first
 
 export const DECK_BUCKET = "presentation";
@@ -231,6 +234,48 @@ export function slotsByWhen(slots: DeckSlot[] = DECK_SLOTS): { key: ShotTime; la
   return SHOT_TIMES.map((time) => ({ ...time, slots: slots.filter((slot) => slot.when === time.key) })).filter(
     (group) => group.slots.length > 0,
   );
+}
+
+// ---------------------------------------------------------------- today's sunset
+
+// Calgary, for the shot list's "Sunset in Calgary today" (round 7 review,
+// Keenan): worked out on the device from the date alone, no network.
+export const CALGARY = { lat: 51.0447, lon: -114.0719 } as const;
+
+const toRad = Math.PI / 180;
+const wrap = (value: number, range: number) => ((value % range) + range) % range;
+
+// The moment the sun sets in Calgary on a Calgary date ("2026-11-09"), from
+// the standard almanac formula (the sun's upper edge at the horizon, with
+// refraction), good to a minute or two. Null for a date it can't read.
+export function calgarySunset(day: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (!match) return null;
+  const [year, month, date] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const midnight = Date.UTC(year, month - 1, date);
+  if (!Number.isFinite(midnight) || new Date(midnight).getUTCDate() !== date) return null;
+  const dayOfYear = Math.round((midnight - Date.UTC(year, 0, 1)) / 86_400_000) + 1;
+  const lngHour = CALGARY.lon / 15;
+  const t = dayOfYear + (18 - lngHour) / 24;
+  const meanAnomaly = 0.9856 * t - 3.289;
+  const longitude = wrap(meanAnomaly + 1.916 * Math.sin(meanAnomaly * toRad) + 0.02 * Math.sin(2 * meanAnomaly * toRad) + 282.634, 360);
+  let ascension = wrap(Math.atan(0.91764 * Math.tan(longitude * toRad)) / toRad, 360);
+  ascension = (ascension + Math.floor(longitude / 90) * 90 - Math.floor(ascension / 90) * 90) / 15;
+  const sinDec = 0.39782 * Math.sin(longitude * toRad);
+  const cosDec = Math.cos(Math.asin(sinDec));
+  const cosHour = (Math.cos(90.833 * toRad) - sinDec * Math.sin(CALGARY.lat * toRad)) / (cosDec * Math.cos(CALGARY.lat * toRad));
+  if (cosHour < -1 || cosHour > 1) return null;
+  const localHour = Math.acos(cosHour) / toRad / 15 + ascension - 0.06571 * t - 6.622;
+  // Calgary's sunsets fall between about 22:30 and 04:00 UTC: an hour
+  // before noon UTC is the next UTC day's.
+  let utcHour = wrap(localHour - lngHour, 24);
+  if (utcHour < 12) utcHour += 24;
+  return new Date(midnight + utcHour * 3_600_000);
+}
+
+// Blue hour, as the shot list says it: 15 to 30 minutes after sunset.
+export function blueHourAfter(sunset: Date): { from: Date; to: Date } {
+  return { from: new Date(sunset.getTime() + 15 * 60_000), to: new Date(sunset.getTime() + 30 * 60_000) };
 }
 
 export type ReferenceRow = {

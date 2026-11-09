@@ -32,11 +32,14 @@ import { cn } from "@/lib/utils";
 //   <LitHouse
 //     crop?        "whole" (default) | "medium" | "entry" | "corner" |
 //                  "roofline" | [x, y, w, h]; a view that leaves out a part
-//                  of the house (the upper floor in medium and entry, the
-//                  garage in corner) leaves out its lines and its lights
+//                  of the house (the upper floor's roof, eave and windows in
+//                  medium and entry, whose walls rise out of the top; the
+//                  garage in corner and roofline) leaves out its lines and
+//                  its lights
 //     fit?         "contain" (default) | "cover": as HouseDrawing; the lines
-//                  and the light canvas share one transform and both clip to
-//                  the box, so no line or light shows beyond it
+//                  and the light canvas share one transform (entry held at
+//                  its top) and both clip to the box, so no line or light
+//                  shows beyond it
 //     ground?      "navy" (default) | "none": no ground of its own, for a
 //                  More layer's Night Card
 //     look?        default WARM_WHITE; pass the meeting's own warm white
@@ -50,10 +53,11 @@ import { cn } from "@/lib/utils";
 
 const CROP_WORDS: Record<HouseCropName, string> = {
   whole: "a two-storey house",
-  medium: "the garage and front of a house",
-  entry: "a garage and front entry",
+  medium: "the garage and front of a two-storey house",
+  entry: "the front entry of a house, under its roof edge",
   corner: "the front corner of a house",
-  roofline: "the edge of a roof",
+  roofline: "the upper floor of a house",
+  eave: "the edge of a roof",
 };
 
 export function litHouseLabel(crop: HouseCropName | Crop, look: Pick<Look, "name">): string {
@@ -108,7 +112,8 @@ export function LitHouse({
   const runsKey = runsFor(runs, view.parts).join(",");
   const placement = useMemo(() => housePlacement(runsKey ? (runsKey.split(",") as HouseRun[]) : []), [runsKey]);
   const { x: rx, y: ry, width: rw, height: rh } = view.rect;
-  const transform = useMemo(() => fitView({ x: rx, y: ry, width: rw, height: rh }, box, fit), [rx, ry, rw, rh, box, fit]);
+  const anchor = view.anchor;
+  const transform = useMemo(() => fitView({ x: rx, y: ry, width: rw, height: rh }, box, fit, anchor), [rx, ry, rw, rh, box, fit, anchor]);
   return (
     <div
       ref={boxRef}

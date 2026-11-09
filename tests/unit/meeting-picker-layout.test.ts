@@ -1,17 +1,20 @@
-import { DECK_CLEAR_PX } from "@/lib/meeting/deck-pages";
 import { describe, expect, it } from "vitest";
 
 import {
   BAND_HEIGHT_CSS,
   DOTS,
+  DOTS_RESERVE_CSS,
   LOOK_ROW_AT_MEETING,
   TRAY,
   TRAY_AT_PRO,
   TRAY_CSS,
+  TRAY_HEIGHT_CSS,
   bandHeight,
   controlsBottom,
+  trayContent,
+  trayFloor,
 } from "@/components/meeting/picker/layout";
-import { fluidValue } from "@/lib/meeting/deck-pages";
+import { DECK_ROW, bandHeight as deckBand, fluidValue } from "@/lib/meeting/deck-pages";
 import { LOOK_ROW } from "@/lib/settings/deck-schema";
 
 // The two iPads meeting mode is designed for, landscape.
@@ -28,11 +31,55 @@ describe("the tray", () => {
     expect(BAND_HEIGHT_CSS).toContain("calc(82px + 20%)");
   });
 
-  it("keeps its controls clear of the deck's bottom row (dots and chevrons), even above the home indicator", () => {
-    const dotsTop = bandHeight(AIR.height) - (DOTS.target + Math.max(DOTS.inset, HOME_INDICATOR));
-    expect(dotsTop - controlsBottom()).toBeGreaterThanOrEqual(DOTS.clearance);
-    // The same clear space every picture keeps above the row.
-    expect(DOTS.target + DOTS.clearance + DOTS.inset).toBe(DECK_CLEAR_PX);
+  it("keeps its controls 24 px clear of the deck's bottom row (dots and chevrons) at 1180 x 820, even above the home indicator", () => {
+    // The spec: nothing tappable within 24 px of the dots.
+    expect(DOTS.clearance).toBe(24);
+    // The row's targets: the 44 px dots and chevrons centred in its 56 px.
+    expect(DOTS.target).toBe((DECK_ROW.height + DECK_ROW.dotHeight) / 2);
+    const tray = Math.max(bandHeight(AIR.height), trayFloor(AIR.width, HOME_INDICATOR));
+    const targetsTop = tray - (DOTS.target + Math.max(DOTS.inset, HOME_INDICATOR));
+    expect(targetsTop - controlsBottom()).toBeGreaterThanOrEqual(24);
+    // The tray's reserve is the row's foot + 50 + 24 px: 94 px.
+    expect(DOTS_RESERVE_CSS).toBe("calc(var(--deck-row-bottom, 20px) + 74px)");
+  });
+
+  it("fits row 2 (the headline and the line directly under it) in the effects' height, at both iPads", () => {
+    expect(TRAY.headlineLeading + TRAY.wordsLeading).toBe(TRAY.effectHeight);
+    expect(TRAY_AT_PRO.headlineLeading + TRAY_AT_PRO.wordsLeading).toBe(TRAY_AT_PRO.effectHeight);
+    expect(TRAY.headlineLeading).toBeGreaterThan(TRAY.headlineSize);
+    expect(TRAY_AT_PRO.headlineLeading).toBeGreaterThan(TRAY_AT_PRO.headlineSize);
+    // 12 + 72 + 12 + 56 at 1180; 12 + 80 + 12 + 62 at 1366.
+    expect(controlsBottom()).toBe(152);
+    expect(trayContent(AIR.width)).toBeCloseTo(152, 6);
+    expect(trayContent(PRO.width)).toBeCloseTo(166, 6);
+  });
+
+  it("is exactly the band at 1180 x 820, with no room lost", () => {
+    expect(trayFloor(AIR.width)).toBeCloseTo(246, 6);
+    expect(deckBand(AIR.height)).toBeCloseTo(trayFloor(AIR.width), 6);
+  });
+
+  it("keeps a floor on a shorter deck, so the photo gives way and never the tray's contents", () => {
+    // The installed app's decks and the rehearsal frame.
+    for (const deck of [
+      { width: 1180, height: 796 },
+      { width: 1366, height: 1000 },
+      { width: 1180, height: 764 },
+      AIR,
+      PRO,
+    ]) {
+      const tray = Math.max(deckBand(deck.height), trayFloor(deck.width, HOME_INDICATOR));
+      const targetsTop = tray - (DOTS.target + Math.max(DOTS.inset, HOME_INDICATOR));
+      // The controls, placed as high as they go, still clear the row by 24 px.
+      expect(targetsTop - trayContent(deck.width), JSON.stringify(deck)).toBeGreaterThanOrEqual(24 - 1e-6);
+      // The photo keeps most of the page.
+      expect(deck.height - tray, JSON.stringify(deck)).toBeGreaterThan(deck.height * 0.6);
+    }
+    // At 1180 x 796 the band alone (241 px) would cut 5 px from the controls.
+    expect(deckBand(796)).toBeLessThan(trayFloor(1180));
+    expect(TRAY_HEIGHT_CSS).toMatch(/^max\(var\(--deck-band/);
+    expect(TRAY_HEIGHT_CSS).toContain(DOTS_RESERVE_CSS);
+    expect(TRAY_HEIGHT_CSS).toContain(TRAY_CSS.lookHeight);
   });
 
   it("has the looks at 72 px and the effects at 56 px, 12 px apart", () => {
@@ -63,7 +110,7 @@ describe("the tray", () => {
     expect(TRAY_CSS.lookHeight).toContain("cqw");
     expect(fluidValue(TRAY.lookHeight, TRAY_AT_PRO.lookHeight, AIR.width)).toBeCloseTo(72, 6);
     expect(fluidValue(TRAY.lookHeight, TRAY_AT_PRO.lookHeight, PRO.width)).toBeCloseTo(80, 6);
-    const rowTwo = Math.max(TRAY_AT_PRO.effectHeight, TRAY_AT_PRO.headlineLeading + 4 + TRAY_AT_PRO.wordsLeading);
+    const rowTwo = Math.max(TRAY_AT_PRO.effectHeight, TRAY_AT_PRO.headlineLeading + TRAY_AT_PRO.wordsLeading);
     const content = TRAY.padTop + TRAY_AT_PRO.lookHeight + TRAY.rowGap + rowTwo;
     const reserve = DOTS.target + DOTS.clearance + Math.max(DOTS.inset, HOME_INDICATOR);
     expect(content + reserve).toBeLessThanOrEqual(bandHeight(PRO.height));

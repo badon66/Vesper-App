@@ -11,7 +11,9 @@ import type { Rect, Size, Vec } from "@/lib/lights/place";
 //   traceFrame(bounds, photo, view, margin?, include?)
 //                             the light picker's framing: the trace's bounds
 //                             joined with `include` (the scale handles), plus
-//                             10%, never cropping the roofline
+//                             10%, never cropping the roofline, with the
+//                             whole margin above its top point (the doors
+//                             and ground give way first)
 //   scaleHandles(scale, photo)  a trace's scale handles in the photo's pixels
 //   fitContain(rect, view)    a drawing's crop fitted whole and centred
 //                             (what an SVG viewBox does with xMidYMid meet)
@@ -107,11 +109,16 @@ const grow = (rect: Rect, pad: number): Rect => ({
 // - The target (as far as the photo reaches) is fitted whole, and the photo
 //   fills the rest of the view: the photo always covers the view where it
 //   is big enough, so it never letterboxes for a door or the ground.
-// - Where the photo can't show the whole target at the view's shape, the
-//   top keeps the margin above the roofline's top point (never less than
-//   half of it) and the bottom gives way: first the ground, then the doors.
-//   Where it shows more than the target, the extra goes below (the wall
-//   and ground), never to the sky.
+// - The top keeps the whole margin above the roofline's top point
+//   (as much of it as the photo has): it never slides down to bring in the
+//   doors, because a roof touching the top edge reads as a mistake while a
+//   door cut by the bottom edge reads as a photo crop (round 7 after-review).
+//   Where the photo can't show the whole target at the view's shape, the
+//   bottom gives way: first the ground, then the doors. Only the roofline's
+//   own lowest point outranks the top: it keeps half its margin above the
+//   bottom edge, and when the whole margin above would take that, the top
+//   gives the difference (never below half). Where it shows more than the
+//   target, the extra goes below (the wall and ground), never to the sky.
 // - The roofline is never cropped: if covering the view would bring it
 //   within half its own margin of the edges, the roofline and its whole
 //   margin are fitted instead, and where the photo runs out the box's Night
@@ -153,16 +160,13 @@ export function traceFrame(
     };
   }
 
-  // Top down: the margin above the top point, sliding down by up to half of
-  // it when the bottom of the target would be lost. Where the photo has less
-  // than the whole margin above the roofline (a peak near its top edge), the
-  // slide never takes the roofline closer to the top than half the margin,
-  // or than the photo allows, so the peak's light is never pushed onto the
-  // edge.
-  const shown = view.height / scale;
-  const short = target.height - shown;
-  const room = Math.max(0, bounds.y - target.y - pad / 2);
-  const top = target.y + (short > 0 ? Math.min(pad / 2, short, room) : 0);
+  // Top down from the target's top: the whole margin above the top point,
+  // or as much as the photo has above it. Whatever doesn't fit is lost at
+  // the bottom, but never the roofline's own lowest lights: when the whole
+  // margin above would bring them within half the roofline's margin of the
+  // bottom edge, the top gives just that much (never more than half, since
+  // the check above leaves room for half above and half below).
+  const top = Math.max(target.y, bounds.y + bounds.height + roofPad / 2 - view.height / scale);
   const cx = target.x + target.width / 2;
   return {
     scale,

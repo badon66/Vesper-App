@@ -80,11 +80,13 @@ function bandPicture(view: SlotView, key: string): ReactNode {
 
 // A More's picture, filling the left 56% panel: Keenan's photo, the
 // example, or its drawing straight on the layer's card (no box of its own),
-// centred and sized to fill the panel. Up close (Hidden by day) draws the
-// eave by day, unlit, with Fascia, Track and Soffit; What's in it draws it
-// lit. Null when it falls back to the words alone.
+// centred and sized to fill the panel. What's in it draws the eave in
+// section, lit. Up close (Hidden by day) shows something different (round 7
+// after-review): the day side's close-up of one eave, the soffit, fascia
+// and slim track on the paper tone, filling the panel like a photo.
+// Null when it falls back to the words alone.
 const MORE_DRAWING: Record<string, DrawingOptions> = {
-  "hidden_by_day.more": { ground: "none", eave: "colour" },
+  "hidden_by_day.more": { eave: "day", fit: "cover" },
 };
 
 function morePicture(view: SlotView, key: string): ReactNode | null {

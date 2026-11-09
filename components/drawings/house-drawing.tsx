@@ -1,5 +1,6 @@
 import {
   drawn,
+  EAVE_CLOSE,
   groundFor,
   HOUSE_DOORS,
   HOUSE_EDGES,
@@ -10,6 +11,7 @@ import {
   pathD,
   preserveAspect,
   runsFor,
+  trackOutline,
   trackProfile,
   viewOf,
   type Crop,
@@ -23,9 +25,10 @@ import { cn } from "@/lib/utils";
 // no fills, no text. Night: Night Text on navy, the way every lit drawing
 // sits under the light renderer (LitHouse). Day: navy hairlines on a warm
 // paper ground (Night Text, #f4f1eb, not a white that flares in a dim room)
-// with the track as a slim closed profile under the lit eaves, no lights
-// (Hidden by day's fallback pair). Lines keep their on-screen width at any
-// size.
+// with the track as one quiet slim strip under the lit eaves: white, its
+// top on the roof edge, only its ends and bottom drawn, at 40% navy; no
+// lights (Hidden by day's fallback pair, and Up close by day). Lines keep
+// their on-screen width at any size.
 //
 // CONTRACT
 //   DrawingGround   "navy" (default): the drawing's own ground, Night
@@ -38,25 +41,33 @@ import { cn } from "@/lib/utils";
 //     ground     "navy" (default): its own ground fills the box; "none":
 //                lines only (LitHouse and HouseDayDrawing paint the ground)
 //     crop       a HOUSE_CROPS name or a [x, y, width, height] in drawing units
-//                (default "whole"). A view of the lower floor (medium, entry)
-//                leaves the upper floor's lines out entirely; the corner
-//                leaves out the garage
+//                (default "whole"). A close view of the main floor (medium,
+//                entry) keeps the upper floor's walls, rising out of the top
+//                edge, and leaves out the rest of the upper floor entirely;
+//                the corner leaves out the garage; "eave" (day) draws the
+//                close eave's own lines and the track to scale
 //     fit        "contain" (default): the crop fitted whole and centred;
 //                "cover": the crop fills the box edge to edge, centred on it,
-//                like a photo crop. The SVG clips to its box either way, and
+//                like a photo crop (entry keeps its top and lets the bottom
+//                give way). The SVG clips to its box either way, and
 //                fitView gives the light canvas the same numbers
-//     track      draw the track's slim profile under `runs` (the day drawing)
+//     track      draw the track under `runs` (the day drawing)
 //     runs       which eaves carry the track (default LIT_RUNS, those in view)
 //   <HouseDayDrawing crop? fit? ground? label? decorative? className? />
 //     the day half of Hidden by day: navy on the paper tone with the track,
 //     in its own box. Pair it with <LitHouse /> (the night half) with the
 //     same crop and fit in a box of the same size and the two line up to the
-//     pixel.
+//     pixel. With crop="eave" and fit="cover" it is Up close by day: the
+//     paper fills the box like a photo, one eave across it.
 
 export type DrawingGround = "navy" | "none";
 
 // The day drawing's paper: Night Text, a warm off-white.
 export const DAY_PAPER = "#f4f1eb";
+
+// The track's ends and bottom, by day: navy at 40%, so it reads as one quiet
+// strip under the edge rather than another line.
+const TRACK_LINE = 0.4;
 
 export function HouseDrawing({
   tone = "night",
@@ -79,14 +90,16 @@ export function HouseDrawing({
   decorative?: boolean;
   className?: string;
 }) {
-  const { rect, parts } = viewOf(crop);
+  const { rect, parts, anchor } = viewOf(crop);
   const fine = tone === "day" ? 0.5 : 0.45;
   const keep = (line: Parameters<typeof drawn>[0]) => drawn(line, parts);
   const ground = groundFor(parts);
+  const close = parts.includes("eave_detail");
+  const trackRuns = track && !close ? runsFor(runs, parts) : [];
   return (
     <svg
       viewBox={`${rect.x} ${rect.y} ${rect.width} ${rect.height}`}
-      preserveAspectRatio={preserveAspect(fit)}
+      preserveAspectRatio={preserveAspect(fit, anchor)}
       {...(decorative || !label ? { "aria-hidden": true } : { role: "img", "aria-label": label })}
       className={cn(
         "block size-full overflow-hidden",
@@ -101,26 +114,46 @@ export function HouseDrawing({
       strokeLinejoin="round"
     >
       {ground ? <path d={pathD(ground)} strokeWidth={1} opacity={0.35} vectorEffect="non-scaling-stroke" /> : null}
+      {close ? (
+        // The close eave: the roof's courses, the soffit's seams and the
+        // siding (fine), the fascia's top and the soffit's line on the wall.
+        <>
+          {EAVE_CLOSE.fine.map((line) => (
+            <path key={`close-${pathD(line)}`} d={pathD(line)} strokeWidth={1} opacity={0.35} vectorEffect="non-scaling-stroke" />
+          ))}
+          {EAVE_CLOSE.edges.map((line) => (
+            <path key={`close-${pathD(line)}`} d={pathD(line)} strokeWidth={1.25} vectorEffect="non-scaling-stroke" />
+          ))}
+        </>
+      ) : null}
       {HOUSE_OUTLINE.filter(keep).map((line) => (
         <path key={pathD(line)} d={pathD(line)} strokeWidth={1.25} vectorEffect="non-scaling-stroke" />
       ))}
+      {/* The stock track is white: a solid white strip in front of the wall
+          (so no wall line shows through it), its top on the roof edge, so
+          the edge's own line, drawn over it, is its top. Close up, the track
+          to scale against the fascia's foot. */}
+      {track && close ? <path d={pathD(EAVE_CLOSE.track, true)} fill="#ffffff" stroke="none" /> : null}
+      {track && !close
+        ? trackRuns.map((run) => <path key={`track-${run}`} d={pathD(trackProfile(run), true)} fill="#ffffff" stroke="none" />)
+        : null}
       {HOUSE_RUNS.filter((run) => keep(HOUSE_EDGES[run])).map((run) => (
         <path key={run} d={pathD(HOUSE_EDGES[run])} strokeWidth={1.25} vectorEffect="non-scaling-stroke" />
       ))}
       {[...HOUSE_DOORS, ...HOUSE_WINDOWS].filter(keep).map((line) => (
         <path key={pathD(line)} d={pathD(line)} strokeWidth={1} opacity={fine} vectorEffect="non-scaling-stroke" />
       ))}
-      {track
-        ? runsFor(runs, parts).map((run) => (
-            // The stock track is white: a solid white profile (it sits in
-            // front of the wall, so no wall line shows through it) with a
-            // navy hairline.
+      {/* Its ends and bottom, quietly. */}
+      {track && close ? (
+        <path d={pathD(EAVE_CLOSE.trackOutline)} strokeWidth={1} strokeOpacity={TRACK_LINE} vectorEffect="non-scaling-stroke" />
+      ) : null}
+      {track && !close
+        ? trackRuns.map((run) => (
             <path
-              key={`track-${run}`}
-              d={pathD(trackProfile(run), true)}
-              fill="#ffffff"
+              key={`track-line-${run}`}
+              d={pathD(trackOutline(run))}
               strokeWidth={1}
-              strokeOpacity={0.85}
+              strokeOpacity={TRACK_LINE}
               vectorEffect="non-scaling-stroke"
             />
           ))
@@ -129,11 +162,16 @@ export function HouseDrawing({
   );
 }
 
+const DAY_WORDS: Partial<Record<HouseCropName, string>> = {
+  eave: "A drawing of the edge of a roof by day, close up: the slim white track tucked under the fascia, against the soffit.",
+};
+const DAY_DEFAULT = "A drawing of a house by day, with a slim track tucked under the edge of the roof.";
+
 export function HouseDayDrawing({
   crop = "whole",
   fit = "contain",
   ground = "navy",
-  label = "A drawing of a house by day, with a slim track tucked under the edge of the roof.",
+  label,
   decorative = false,
   className,
 }: {
@@ -144,9 +182,10 @@ export function HouseDayDrawing({
   decorative?: boolean;
   className?: string;
 }) {
+  const words = label ?? (typeof crop === "string" ? DAY_WORDS[crop] : undefined) ?? DAY_DEFAULT;
   return (
     <div
-      {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": label })}
+      {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": words })}
       className={cn("relative overflow-hidden", className)}
       style={ground === "navy" ? { backgroundColor: DAY_PAPER } : undefined}
     >

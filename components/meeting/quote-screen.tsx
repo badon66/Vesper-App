@@ -94,11 +94,16 @@ export function QuoteScreen({
   }
 
   return (
-    // Round 7 review: the top clears the exit (20 px in, 48 px) and the foot
-    // clears the bottom row of dots and chevrons; the page is otherwise as built.
-    <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-6 overflow-y-auto px-6 pt-[88px] pb-[var(--deck-clear,78px)] lg:grid lg:grid-cols-[1fr_380px] lg:gap-10 lg:overflow-hidden lg:px-10">
+    // Round 7 review: the top clears the exit (20 px in, 48 px, so it ends
+    // at 68) and the foot clears the bottom row of dots and chevrons; the
+    // builder's sections sit 16 px apart on the iPad with no padding under
+    // the last, so an empty quote's last row (Financing and Valid until)
+    // shows whole at 1180 x 820 and in the installed app (796 tall); the
+    // bill scrolls on its own if a long breakdown ever needs it. The page is
+    // otherwise as built.
+    <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-6 overflow-y-auto px-6 pt-[88px] pb-[var(--deck-clear,78px)] lg:grid lg:grid-cols-[1fr_380px] lg:gap-10 lg:overflow-hidden lg:px-10 lg:pt-[72px]">
       {/* ------------------------------------------------ the builder */}
-      <div className="flex min-w-0 flex-col gap-5 lg:min-h-0 lg:overflow-y-auto lg:pr-1 lg:pb-4" data-testid="quote-builder">
+      <div className="flex min-w-0 flex-col gap-5 lg:min-h-0 lg:gap-4 lg:overflow-y-auto lg:pr-1" data-testid="quote-builder">
         <h2 className="text-3xl font-bold lg:text-4xl">Your price</h2>
 
         <section className="flex flex-col gap-2" aria-label="Runs">
@@ -343,7 +348,7 @@ export function QuoteScreen({
       {/* ------------------------------------------------ the bill */}
       {/* Pinned high in its column: the iPad's keyboard rises over the
           lower half while Keenan types the feet. */}
-      <div className="flex min-w-0 flex-col gap-4 border-t pt-6 lg:min-h-0 lg:border-t-0 lg:pt-20 lg:pl-2" data-testid="quote-bill">
+      <div className="flex min-w-0 flex-col gap-4 border-t pt-6 lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:pt-20 lg:pl-2" data-testid="quote-bill">
         {priced.totalFeet === 0 ? (
           // No number until something is measured: the first price the
           // customer sees is the real one, never the box on its own.

@@ -5,6 +5,7 @@ import { NotForYourRole } from "@/components/not-for-your-role";
 import { Button } from "@/components/ui/button";
 import { requireProfile } from "@/lib/auth/profile";
 import { parseDeckWords, parseLooks } from "@/lib/deck";
+import { companyLines, companyOf } from "@/lib/meeting/deck-pages";
 import { DECK_BUCKET, type ReferenceRow } from "@/lib/photos-deck";
 import { createClient } from "@/lib/supabase/server";
 import { DeckEditor, type DeckPhotoView } from "./deck-editor";
@@ -25,7 +26,7 @@ export default async function PresentationSettingsPage() {
 
   const supabase = await createClient();
   const [{ data: settings, error }, { data: photoRows }, { data: referenceRows }] = await Promise.all([
-    supabase.from("settings").select("deck, light_looks, warranty_text").eq("id", 1).single(),
+    supabase.from("settings").select("deck, light_looks, warranty_text, company").eq("id", 1).single(),
     supabase
       .from("deck_photos")
       .select("id, slot, path, thumb_path, focus_x, focus_y, caption, sort, created_at")
@@ -88,6 +89,7 @@ export default async function PresentationSettingsPage() {
         words={parseDeckWords(settings.deck)}
         looks={parseLooks(settings.light_looks)}
         warrantyText={settings.warranty_text}
+        companyLines={companyLines(companyOf(settings.company))}
         photos={photos}
         references={(referenceRows ?? []) as ReferenceRow[]}
       />

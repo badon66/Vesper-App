@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { DECK_SLOTS, hasDash, hasExclamation, SHOOTING_STANDARD, SHOT_TIMES, SLOT_BY_KEY, type DeckSlot } from "@/lib/deck";
+import { formatTime } from "@/lib/time";
 import {
   BAND_PHOTO_ASPECT,
+  blueHourAfter,
+  calgarySunset,
   deckPhotoPaths,
   filledSlotCount,
   focusFromPoint,
@@ -178,11 +181,23 @@ describe("crops and the focus point", () => {
 describe("the shot list's text", () => {
   it("lists the shooting standard point by point", () => {
     const { night, day } = standardPoints(SHOOTING_STANDARD);
-    expect(night[0]).toBe("15 to 30 minutes after that day's sunset (in Calgary in November, sunset is about 4:45 pm), sky deep blue, not black");
+    expect(night[0]).toBe("15 to 30 minutes after that day's sunset (in Calgary in November, sunset is about 5:45 pm), sky deep blue, not black");
+    expect(night).toContain("Landscape (phone held sideways). Any iPhone photo is big enough");
     expect(night).toContain("Garage closed and driveway empty");
     expect(night.at(-1)).toMatch(/^The roofline inside the middle 60% of the height/);
     expect(night.every((point) => !point.endsWith(".") && /^[A-Z0-9]/.test(point))).toBe(true);
     expect(day).toBe("Bright overcast or open shade, sun behind the camera.");
+  });
+
+  it("says it in plain words, with the looks' own names", () => {
+    // No pixel counts or exposure values for Keenan to work out.
+    for (const text of [SHOOTING_STANDARD, ...DECK_SLOTS.map((item) => item.scenario), ...SHOT_TIMES.map((time) => time.note)]) {
+      expect(text).not.toMatch(/\b\d+\s?px\b|\bEV\b/);
+    }
+    expect(slot("what_vesper_is.hero").scenario).toMatch(/Landscape \(phone held sideways\)\. Any iPhone photo is big enough\.$/);
+    // Game night is "Red and gold" in the looks, so the shot list says so.
+    expect(slot("gallery.holiday").scenario).toContain("Game night (red and gold)");
+    expect(DECK_SLOTS.some((item) => /amber/i.test(item.scenario))).toBe(false);
   });
 
   it("asks for a white balance step the iPhone's own Camera app can do, or names an app that can", () => {
@@ -231,6 +246,37 @@ describe("the shot list by when to shoot", () => {
     expect(keys("Install day")).toEqual(["install_day.hero", "install_day.more"]);
     expect(keys("Blue hour")).toContain("hidden_by_day.night");
     expect(keys("Blue hour")).toContain("whites_first.warm");
+  });
+
+  it("says when blue hour is in Calgary's own time (Alberta Time, UTC-6 all year)", () => {
+    const blue = SHOT_TIMES.find((time) => time.key === "blue_hour");
+    expect(blue?.note).toBe("Sunset is about 5:45 pm in November, so shoot from about 6:00 to 6:15 while the sky is deep blue.");
+    // November's sunsets, worked out: about 6:10 pm on the 1st, 5:35 pm on the 30th.
+    const clock = (day: string) => formatTime((calgarySunset(day) as Date).toISOString());
+    const minutes = (day: string) => {
+      const sunset = calgarySunset(day) as Date;
+      return ((sunset.getUTCHours() - 6 + 24) % 24) * 60 + sunset.getUTCMinutes();
+    };
+    expect(minutes("2026-11-01")).toBeGreaterThan(17 * 60 + 45);
+    expect(minutes("2026-11-30")).toBeLessThan(17 * 60 + 45);
+    expect(Math.abs(minutes("2026-11-15") - (17 * 60 + 45))).toBeLessThanOrEqual(5);
+    expect(clock("2026-11-15")).toMatch(/^5:4\d p\.m\.$/);
+  });
+
+  it("works out today's sunset on the device, to within a few minutes of the almanac", () => {
+    const at = (day: string) => (calgarySunset(day) as Date).getTime();
+    const near = (day: string, utc: string) => expect(Math.abs(at(day) - Date.parse(utc))).toBeLessThan(4 * 60_000);
+    // Calgary's published sunsets (Alberta Time from 2026-11-01, Mountain before).
+    near("2026-11-09", "2026-11-09T23:55:00Z");
+    near("2026-12-21", "2026-12-21T23:30:00Z");
+    // Summer sunsets fall after midnight UTC: still that Calgary evening.
+    near("2027-06-21", "2027-06-22T03:56:00Z");
+    expect(calgarySunset("2026-02-30")).toBeNull();
+    expect(calgarySunset("today")).toBeNull();
+    const sunset = calgarySunset("2026-11-09") as Date;
+    const blue = blueHourAfter(sunset);
+    expect(blue.from.getTime() - sunset.getTime()).toBe(15 * 60_000);
+    expect(blue.to.getTime() - sunset.getTime()).toBe(30 * 60_000);
   });
 
   it("leaves out a time with no slots", () => {

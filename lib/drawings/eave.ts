@@ -16,9 +16,14 @@ import type { Size, Vec } from "@/lib/lights/place";
 //   EAVE_LABELS                 each label's words, what it points at, and
 //                               the leader line from that point to the
 //                               drawing's right edge, where the HTML label sits
+//   EaveSectionVariant          "lit" | "colour": the section's two variants
+//   EaveVariant                 those, or "day": the eave by day as a close
+//                               elevation (HouseDayDrawing crop "eave"), which
+//                               DeckDrawing draws for Up close
 //   eaveLabelsFor(variant)      "lit": Roof edge, Fascia, Track, Light, Soffit;
 //                               "colour": Fascia, Track, Soffit (no light)
-//   EAVE_LABEL_COLUMN           the labels' column beside the drawing (7.5 rem)
+//   EAVE_LABEL_COLUMN           the labels' column beside the drawing (7.5 rem:
+//                               "Roof edge" at 22 px is 105 px, after 8 px in)
 //   eaveFit(box)                the width that fits the drawing and its labels
 //                               whole inside a box, with a margin all round
 
@@ -137,10 +142,11 @@ export const EAVE_LABELS: EaveLabel[] = [
   },
 ];
 
-export type EaveVariant = "lit" | "colour";
+export type EaveSectionVariant = "lit" | "colour";
+export type EaveVariant = EaveSectionVariant | "day";
 
 // The colour page labels only Soffit, Fascia and Track, with no light.
-export function eaveLabelsFor(variant: EaveVariant): EaveLabel[] {
+export function eaveLabelsFor(variant: EaveSectionVariant): EaveLabel[] {
   if (variant === "lit") return EAVE_LABELS;
   return EAVE_LABELS.filter((label) => label.key === "fascia" || label.key === "track" || label.key === "soffit");
 }

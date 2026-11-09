@@ -18,6 +18,7 @@ import {
   type WordsPageKey,
 } from "@/lib/deck";
 import { SOFFIT_LABELS, type SoffitColour } from "@/lib/leads/status";
+import { CUSTOM_CHOICE, RAL_CODE_PATTERN } from "@/lib/leads/track-colour";
 import type { DeckPayload, DeckPhoto, MeetingPayload } from "@/lib/meeting/state";
 import { galleryPhotos, isGallerySlot, photosInOrder } from "@/lib/photos-deck";
 import { screenTotal } from "@/lib/pricing";
@@ -41,12 +42,15 @@ import type { Json } from "@/types/database";
 //   moreWords(page), seeAllLabel, galleryCounter, installSteps,
 //   warrantyLines, serviceCallLine, companyLines, placeOf, soffitView,
 //   coverLine, COLOUR_LINES, CHOOSER_LINES
+//   chooserSave({ choice, current, code, ralNames })
+//                                           the meeting chooser's Save: waiting
+//                                           (outline) or ready (gold)
 //   fluidPx, fluidValue, BAND_HEIGHT_CSS    the deck's type and band sizes
 //   DECK_ROW, DECK_ROW_BOTTOM_CSS, DECK_CLEAR_CSS
 //                                           the bottom row (the More button,
 //                                           the dots and the chevrons) and
 //                                           where a picture ends above it
-//   stepFor, isNear, entryOf, startIndex, exitHoldMoved
+//   stepFor, isNear, entryOf, startIndex, exitHoldMoved, layerSwipe
 //                                           deck mechanics
 //   buildDeckPayload, deckPhotoPathsToSign, pickerFrom   the payload, from rows
 
@@ -254,6 +258,31 @@ export const CHOOSER_LINES = {
   codeUnknown: "That number isn't in the colour book.",
 } as const;
 
+// The chooser's Save in the meeting (round 7 after-review, the Porch Light
+// Rule): "unchanged" while the choice is the colour it opened on (and, for
+// Custom, the same number), when there is nothing to save and Back is the
+// way out; "ready" (gold) once there is a new colour to save: another
+// colour on the list, or Custom with a number that is in the colour book.
+// Custom with a number that isn't (yet) is neither: Save stays outlined
+// but a tap still says what is wrong, in the book's words.
+export function chooserSave({
+  choice,
+  current,
+  code,
+  ralNames,
+}: {
+  choice: string | null;
+  current: { choice: string | null; ralCode: string | null };
+  code: string;
+  ralNames: Record<string, string>;
+}): { unchanged: boolean; ready: boolean } {
+  const custom = choice === CUSTOM_CHOICE;
+  const typed = code.trim();
+  const unchanged = choice === current.choice && (!custom || typed === (current.ralCode ?? ""));
+  const known = RAL_CODE_PATTERN.test(typed) && Boolean(ralNames[typed]);
+  return { unchanged, ready: choice !== null && !unchanged && (!custom || known) };
+}
+
 // The soffit by name: one colour, or two on their own lines for a split
 // soffit (never joined with "and"; "Off-white or cream" already holds an
 // "or"). Not sure or unanswered reads "We'll check it together.", Other
@@ -384,6 +413,18 @@ export const EXIT_HOLD_SLOP_PX = 10;
 
 export function exitHoldMoved(from: { x: number; y: number }, to: { x: number; y: number }): boolean {
   return Math.hypot(to.x - from.x, to.y - from.y) > EXIT_HOLD_SLOP_PX;
+}
+
+// A layer closes on a one-finger sideways swipe: over 60 px across and well
+// over the move down. Only from the layer's empty space (round 7
+// after-review): a finger that went down on a control (a colour sliding to
+// the next one, a press and drag in the number field) never closes it,
+// however far it moves, so a choice or a typed number is never lost.
+export const LAYER_SWIPE_PX = 60;
+
+export function layerSwipe({ dx, dy, onControl }: { dx: number; dy: number; onControl: boolean }): 1 | -1 | null {
+  if (onControl || !(Math.abs(dx) > LAYER_SWIPE_PX) || !(Math.abs(dx) > Math.abs(dy) * 1.5)) return null;
+  return dx < 0 ? 1 : -1;
 }
 
 // Only the page on screen and its neighbours mount full-size pictures.

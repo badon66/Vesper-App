@@ -173,23 +173,48 @@ describe("the frame brings in the doors and some ground", () => {
     expect(IPAD_AIR_PHOTO_AREA.height - eaveY).toBeGreaterThan(peakY);
   });
 
-  it("on a house that fills the photo, keeps at least half the margin above the peak and lets the ground go first", () => {
-    for (const view of [IPAD_AIR_PHOTO_AREA, IPAD_PRO_PHOTO_AREA]) {
+  it("on a house that fills the photo, keeps the whole margin above the peak and lets the bottom give way", () => {
+    // The installed app's shorter decks too (1180 x 796, 1366 x 1000, and
+    // the rehearsal frame's 1180 x 764): the photo area under the tray.
+    const views: Size[] = [IPAD_AIR_PHOTO_AREA, IPAD_PRO_PHOTO_AREA, { width: 1180, height: 550 }, { width: 1366, height: 718 }, { width: 1180, height: 518 }];
+    for (const view of views) {
       const t = traceFrame(HOUSE_ROOFLINE, HOUSE, view, TRACE_MARGIN, HOUSE_HANDLES);
       expect(insideView(t, HOUSE_ROOFLINE, view)).toBe(true);
       expect(uncovered(t, HOUSE, view)).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
+      // The whole margin above the roofline's top point: it never slides
+      // down to bring in the doors (round 7 after-review).
       const subjectPad = TRACE_MARGIN * Math.max(1760, 1450 - 250);
       const [, peakY] = toScreen(t, [0, HOUSE_ROOFLINE.y]);
-      expect(peakY).toBeGreaterThanOrEqual((subjectPad / 2) * t.scale - 1e-6);
-      // More of the house shows below the garage line than the old frame
-      // (the roofline plus 10%, centred) gave.
+      expect(peakY, JSON.stringify(view)).toBeGreaterThanOrEqual(subjectPad * t.scale - 1e-6);
+      // Never less of the house below the garage line than the roofline
+      // plus 10% alone gives, and on both iPads' full decks clearly more.
       const old = traceFrame(HOUSE_ROOFLINE, HOUSE, view);
       const below = (frame: Transform) => (view.height - frame.y) / frame.scale;
-      expect(below(t)).toBeGreaterThan(below(old) + 100);
+      expect(below(t)).toBeGreaterThanOrEqual(below(old) - 1e-6);
+      if (view === IPAD_AIR_PHOTO_AREA || view === IPAD_PRO_PHOTO_AREA) expect(below(t)).toBeGreaterThan(below(old) + 100);
     }
-    // On the 13-inch iPad the garage door's bottom is in.
+    // On the 13-inch iPad most of the garage door shows: the frame's bottom
+    // edge cuts it within a tenth of the picture's height of its bottom.
     const pro = traceFrame(HOUSE_ROOFLINE, HOUSE, IPAD_PRO_PHOTO_AREA, TRACE_MARGIN, HOUSE_HANDLES);
-    expect(toScreen(pro, HOUSE_HANDLES[0])[1]).toBeLessThanOrEqual(IPAD_PRO_PHOTO_AREA.height);
+    expect(toScreen(pro, HOUSE_HANDLES[0])[1]).toBeLessThanOrEqual(IPAD_PRO_PHOTO_AREA.height * 1.1);
+  });
+
+  it("keeps the margin above the peak on a tall subject, the bottom giving way before the top", () => {
+    // A close front photo: the roofline high, the door's bottom near the
+    // photo's foot, so the view can't hold all of it at the cover scale.
+    for (const view of [IPAD_AIR_PHOTO_AREA, IPAD_PRO_PHOTO_AREA]) {
+      const bounds: Rect = { x: 200, y: 260, width: 1200, height: 360 };
+      const handles: Vec[] = [
+        [500, 1150],
+        [900, 1150],
+      ];
+      const t = traceFrame(bounds, PHOTO, view, TRACE_MARGIN, handles);
+      const pad = TRACE_MARGIN * Math.max(1200, 1150 - 260);
+      const [, peakY] = toScreen(t, [0, bounds.y]);
+      expect(peakY).toBeCloseTo(pad * t.scale, 6);
+      // The handles fall below the bottom edge: the doors give way, not the sky.
+      expect(toScreen(t, handles[0])[1]).toBeGreaterThan(view.height);
+    }
   });
 
   it("keeps what the photo has above a peak near its top edge, never sliding the peak onto the edge", () => {
@@ -235,7 +260,47 @@ describe("the frame brings in the doors and some ground", () => {
       const t = traceFrame(bounds, photo, view, TRACE_MARGIN, handles);
       expect(insideView(t, bounds, view), JSON.stringify({ bounds, handles, photo, view })).toBe(true);
       expect(t.scale).toBeGreaterThan(0);
+      // The roofline's lowest point keeps half its margin above the bottom
+      // edge, or all the photo has below it.
+      const roofPad = TRACE_MARGIN * Math.max(bounds.width, bounds.height);
+      const [, peakY] = toScreen(t, [0, bounds.y]);
+      const [, lowY] = toScreen(t, [0, bounds.y + bounds.height]);
+      const below = photo.height - (bounds.y + bounds.height);
+      const label = JSON.stringify({ bounds, handles, photo, view });
+      expect(view.height - lowY, label).toBeGreaterThanOrEqual(Math.min(roofPad / 2, below) * t.scale - 1e-6);
+      // The roofline's own margin above its top point, or all the photo has
+      // above it: never less to bring in a door. Only the roofline's lowest
+      // point can take some of it, and never more than half.
+      expect(peakY, label).toBeGreaterThanOrEqual(Math.min(roofPad / 2, bounds.y) * t.scale - 1e-6);
+      if (peakY < Math.min(roofPad, bounds.y) * t.scale - 1e-6) {
+        expect(view.height - lowY, label).toBeLessThanOrEqual((roofPad / 2) * t.scale + 1e-6);
+      }
     }
+  });
+
+  it("keeps the roofline's lowest lights half its margin above the bottom edge, the top giving only that", () => {
+    // A roofline about half the photo's height, its lowest eave near the
+    // garage door's bottom: the whole margin above would put the lowest
+    // lights on the tray's edge.
+    const bounds: Rect = { x: 280, y: 480, width: 1300, height: 640 };
+    const handles: Vec[] = [
+      [600, 1180],
+      [1400, 1180],
+    ];
+    for (const view of [IPAD_AIR_PHOTO_AREA, { width: 1180, height: 518 }]) {
+      const t = traceFrame(bounds, PHOTO, view, TRACE_MARGIN, handles);
+      const roofPad = TRACE_MARGIN * 1300;
+      const [, peakY] = toScreen(t, [0, bounds.y]);
+      const [, lowY] = toScreen(t, [0, bounds.y + bounds.height]);
+      expect(view.height - lowY, JSON.stringify(view)).toBeGreaterThanOrEqual((roofPad / 2) * t.scale - 1e-6);
+      expect(peakY, JSON.stringify(view)).toBeGreaterThanOrEqual((roofPad / 2) * t.scale - 1e-6);
+    }
+    // At 1180 x 574 the photo still covers the view, and the top gives only
+    // what the lowest lights need: they sit exactly half the margin up.
+    const t = traceFrame(bounds, PHOTO, IPAD_AIR_PHOTO_AREA, TRACE_MARGIN, handles);
+    expect(uncovered(t, PHOTO, IPAD_AIR_PHOTO_AREA)).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
+    const [, lowY] = toScreen(t, [0, bounds.y + bounds.height]);
+    expect(IPAD_AIR_PHOTO_AREA.height - lowY).toBeCloseTo(65 * t.scale, 6);
   });
 });
 

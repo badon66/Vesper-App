@@ -24,10 +24,12 @@ import { addDays, calgaryDateOf, formatDay, formatTime } from "@/lib/time";
 //   rehearsalChoices(rows, when)    "Rehearse with": upcoming meetings by evening
 //   chosenLead(requested, groups)   the lead to rehearse with, only if offered
 //   firstExamples(rows)             each slot's first example, links made safe
+//   copyNote(why)                   what to copy, from a "Copy the..." note
 //   landingPage(keys, wanted)       the page to open on after a switch
 //   exampleLayout(size)             how much an example's box can hold
 //   scenarioLines(height)           how many lines of the scenario fit
 //   exampleSide(slot)               which part of its box an example uses
+//   exampleFillsBox(slot)           whether it fills its box edge to edge (the pair)
 //   looksLoaded(width, height)      whether a hotlinked image really loaded
 //   exampleClearance(box, row)      where an example's tags start (clear of
 //                                   the deck's exit) and how far its frame's
@@ -138,6 +140,11 @@ export type RehearsalExample = {
   pageUrl: string | null;
   // "From [site]".
   site: string | null;
+  // What to copy from it, when its note begins "Copy the" (an example
+  // that's off the brief on purpose: "Copy the framing, not the sky or the
+  // house number."): the note's first sentence, shown under "From [site]"
+  // so it says what to copy right where Keenan judges it. Null otherwise.
+  note: string | null;
 };
 export type RehearsalExamples = Record<string, RehearsalExample>;
 
@@ -147,6 +154,8 @@ export type ReferenceLinkRow = {
   image_url: string | null;
   page_url: string | null;
   site: string | null;
+  // Why it works, for Keenan (Settings shows it whole).
+  why?: string | null;
 };
 
 // A link the view may load or open: a web address, never javascript: or
@@ -164,6 +173,15 @@ export function safeLink(value: string | null | undefined, { picture = false } =
   }
 }
 
+// An example's note to copy from: the first sentence of its why, only when
+// the why begins "Copy the" (any capital), with runs of spaces made one.
+export function copyNote(why: string | null | undefined): string | null {
+  const text = why?.replace(/\s+/g, " ").trim();
+  if (!text || !/^copy the\b/i.test(text)) return null;
+  const end = text.search(/[.?](\s|$)/);
+  return end === -1 ? text : text.slice(0, end + 1);
+}
+
 // Each slot's first example (the lowest rank), for the deck's slots only.
 export function firstExamples(rows: ReferenceLinkRow[]): RehearsalExamples {
   const out: RehearsalExamples = {};
@@ -174,6 +192,7 @@ export function firstExamples(rows: ReferenceLinkRow[]): RehearsalExamples {
       imageUrl: safeLink(row.image_url, { picture: true }),
       pageUrl: safeLink(row.page_url),
       site: row.site?.trim() || null,
+      note: copyNote(row.why),
     };
   }
   return out;
@@ -250,6 +269,15 @@ export function exampleSide(slot: Pick<DeckSlot, "role">): ExampleSide {
   if (slot.role === "day") return "right";
   if (slot.role === "night") return "left";
   return "whole";
+}
+
+// Half of the warm and cool pair: the deck sizes each half's box to the
+// pair's own shape, on the More's card, so the example fills it edge to
+// edge with no darker ground of its own, as the drawn pair and Keenan's
+// photos do. Every other example sits inset in its box on Night Background,
+// a frame inside the picture's space.
+export function exampleFillsBox(slot: Pick<DeckSlot, "role">): boolean {
+  return slot.role === "warm" || slot.role === "cool";
 }
 
 // The deck's exit (components/meeting/deck-view.tsx): a 48 px disc 20 px in

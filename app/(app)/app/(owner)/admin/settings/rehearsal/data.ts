@@ -47,7 +47,7 @@ export async function loadRehearsal(supabase: Supabase, requested: string | null
       .then(({ data }) => (data ?? []) as unknown as UpcomingRow[]),
     supabase
       .from("presentation_references")
-      .select("slot, rank, image_url, page_url, site")
+      .select("slot, rank, image_url, page_url, site, why")
       .order("slot")
       .order("rank")
       .then(({ data }) => (data ?? []) as ReferenceLinkRow[]),

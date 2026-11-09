@@ -1,3 +1,4 @@
+import type { HouseCropName } from "@/lib/drawings/house";
 import type { Size } from "@/lib/lights/place";
 
 // The warm or cool pair's layout (round 7 review): two drawings of the same
@@ -7,6 +8,15 @@ import type { Size } from "@/lib/lights/place";
 // side would leave them small with the box empty above and below. Pure.
 //
 // CONTRACT
+//   PAIR_CROP   the drawn pair's view of the house: the upper floor standing
+//            on its band ("roofline", about 2.1:1), complete, so one above
+//            the other each drawing can take the panel's width
+//   PAIR_SPACE, PAIR_SPACE_MIN, pairSpace(box)
+//            the drawn pair's margin and gap: 3% of the box's shorter side,
+//            16 px at least (round 7 review: so stacked in a More's picture
+//            panel each drawing takes about 90% of its width)
+//   PAIR_CAPTION   a caption's height under its drawing: 12 px, then a
+//            28 px line (the deck's small size, 20 to 22 px)
 //   PairLayout, pairLayout(box, aspect, { caption, gap, margin })
 //     box      the pair's box in CSS px
 //     aspect   each drawing's width over height (its crop's)
@@ -14,6 +24,15 @@ import type { Size } from "@/lib/lights/place";
 //     gap      between the two figures
 //     margin   at least this much on every side
 //   returns { direction: "row" | "column", drawing: { width, height } }
+
+export const PAIR_CROP = "roofline" satisfies HouseCropName;
+export const PAIR_SPACE = 0.03;
+export const PAIR_SPACE_MIN = 16;
+export const PAIR_CAPTION = { gap: 12, line: 28 } as const;
+
+export function pairSpace(box: Size): number {
+  return Math.max(PAIR_SPACE_MIN, Math.min(box.width, box.height) * PAIR_SPACE);
+}
 
 export type PairLayout = { direction: "row" | "column"; drawing: Size };
 

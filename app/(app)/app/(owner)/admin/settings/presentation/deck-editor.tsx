@@ -17,7 +17,15 @@ import {
   type PageWords as PageWordsValue,
   type WordsPageKey,
 } from "@/lib/deck";
-import { filledSlotCount, referencesBySlot, slotsByWhen, standardPoints, type ReferenceRow } from "@/lib/photos-deck";
+import {
+  blueHourAfter,
+  calgarySunset,
+  filledSlotCount,
+  referencesBySlot,
+  slotsByWhen,
+  standardPoints,
+  type ReferenceRow,
+} from "@/lib/photos-deck";
 import {
   deckFitIssues,
   deckWordIssues,
@@ -35,7 +43,7 @@ import {
   type LookField,
   type WordsField,
 } from "@/lib/settings/deck-schema";
-import { formatTime } from "@/lib/time";
+import { calgaryToday, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { saveDeck } from "./actions";
 import { LooksEditor, lookFieldId } from "./looks-editor";
@@ -64,6 +72,9 @@ type Props = {
   words: DeckWords;
   looks: Look[];
   warrantyText: string;
+  // The warranty page's company and phone lines, as the meeting draws them
+  // under the lines up front (for the split page's fit check).
+  companyLines: string[];
   photos: DeckPhotoView[];
   references: ReferenceRow[];
 };
@@ -98,10 +109,14 @@ export function DeckEditor(props: Props) {
   const blobs = useRef<string[]>([]);
 
   // The counts and copy rules first; then, once Manrope is measured, words
-  // that would run into a band's button or wrap the picker's line.
+  // that would run into a band's button, wrap the picker's line, push a
+  // More button into the dots or overrun a split page beside its photo.
   const wordErrors = useMemo(
-    () => ({ ...(measure ? deckFitIssues(words, measure) : {}), ...deckWordIssues(words, props.warrantyText) }),
-    [words, props.warrantyText, measure],
+    () => ({
+      ...(measure ? deckFitIssues(words, measure, { warrantyText: props.warrantyText, company: props.companyLines }) : {}),
+      ...deckWordIssues(words, props.warrantyText),
+    }),
+    [words, props.warrantyText, props.companyLines, measure],
   );
   const lookIssues = useMemo(() => looksIssues(looks), [looks]);
   const labels = useMemo(() => labelMeasure(measure), [measure]);
@@ -538,6 +553,28 @@ function GroupByToggle({ value, onChange }: { value: GroupBy; onChange: (group: 
   );
 }
 
+// "5:57 pm", as the shot list's notes write times.
+const shotClock = (moment: Date) => formatTime(moment.toISOString()).replace(/\s*([ap])\.m\./i, " $1m");
+
+// Today's sunset in Calgary and blue hour after it, worked out on the device
+// from today's date (no network), above the When to shoot groups. This view
+// only ever draws in the browser (Group by starts on Page), so the device's
+// clock is read once, when it opens.
+function TodaysSunset() {
+  const [today] = useState(() => calgaryToday(new Date()));
+  const sunset = calgarySunset(today);
+  if (!sunset) return null;
+  const blue = blueHourAfter(sunset);
+  const [from, to] = [shotClock(blue.from), shotClock(blue.to)];
+  // "6:13 to 6:28 pm", or "11:50 am to 12:05 pm" across noon.
+  const fromShown = from.slice(-2) === to.slice(-2) ? from.slice(0, -3) : from;
+  return (
+    <p className="rounded-xl border bg-card p-4 text-pretty" data-testid="todays-sunset">
+      <span className="font-semibold">Sunset in Calgary today: {shotClock(sunset)}.</span> Blue hour is about {fromShown} to {to}.
+    </p>
+  );
+}
+
 // The shot list by when to shoot: each time's slots in deck order, one line
 // of the shot each, with its upload. "The full shot" opens the slot's card
 // on its page, with the example to copy.
@@ -554,6 +591,7 @@ function ShotsByWhen({
 }) {
   return (
     <div className="flex flex-col gap-8" data-testid="shots-by-when">
+      <TodaysSunset />
       {slotsByWhen().map((group) => (
         <section key={group.key} id={`when-${group.key}`} aria-labelledby={`when-${group.key}-title`} className="flex scroll-mt-24 flex-col gap-4">
           <div className="flex flex-col gap-1 border-b pb-3">
