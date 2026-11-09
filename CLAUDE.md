@@ -127,7 +127,7 @@ Design each screen for the device it will actually be used on, then make it tole
     - never make a database change by hand in the Supabase dashboard or with ad hoc SQL;
     - never edit a migration that has already been applied; add a new one;
     - prefer additive changes: add columns, enum values and tables rather than replacing or removing them. An unused enum value is fine;
-    - never put destructive SQL text (drop, delete, truncate) in a Supabase connector call, not even quoted inside a read-only query: the connector waits for a human to confirm and times out. If a migration truly has to drop or delete something, stop before applying it and tell Keenan, so he can be at the screen to approve it;
+    - never put destructive SQL text (drop, delete, truncate) in a Supabase connector call, not even quoted inside a read-only query: the connector waits for a human to confirm and times out. Never ask Keenan to approve SQL (Keenan, 2026-11-09): write each migration so the connector needs no approval (plain words, plain `update` statements rather than `do` blocks, smaller migrations). If something truly can't be done additively, say so in the report instead of asking him to approve it;
     - name each file `<version>_<name>.sql` with the version the database recorded for it. The Supabase connector picks the version when it applies a file, so rename the file to match `supabase_migrations.schema_migrations`. A fresh, empty Supabase project then reaches the same schema by running the files in order;
     - regenerate types after schema changes.
 

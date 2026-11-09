@@ -377,13 +377,20 @@ function usePresence(open: boolean, outMs: number): { mounted: boolean; shown: b
 // well over the move down, and only from the layer's empty space, never
 // from a control (isControlTarget, the light picker's own test), so a
 // colour slid across to the next one or a drag in the number field never
-// closes it and loses what was chosen or typed.
+// closes it and loses what was chosen or typed. A control marked
+// data-layer-swipe (the contact sheet's photos, which fill the sheet and
+// hold nothing to lose) still lets a swipe across it close the layer.
+function swipeStartsOnControl(target: EventTarget | null): boolean {
+  if (!isControlTarget(target)) return false;
+  return !(target instanceof Element && target.closest("[data-layer-swipe]"));
+}
+
 export function useSideSwipe(onSwipe: (delta: 1 | -1) => void) {
   const from = useRef<{ id: number; x: number; y: number; onControl: boolean } | null>(null);
   return {
     onPointerDown: (event: React.PointerEvent) => {
       from.current = event.isPrimary
-        ? { id: event.pointerId, x: event.clientX, y: event.clientY, onControl: isControlTarget(event.target) }
+        ? { id: event.pointerId, x: event.clientX, y: event.clientY, onControl: swipeStartsOnControl(event.target) }
         : null;
     },
     onPointerUp: (event: React.PointerEvent) => {

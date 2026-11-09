@@ -336,7 +336,7 @@ function ColourNumberField({
           <p
             id={`${id}-name`}
             aria-live="polite"
-            className={cn(SMALL, "line-clamp-2", known ? "font-semibold" : "text-muted-foreground", error && "hidden")}
+            className={cn(SMALL, "line-clamp-2", known ? "font-semibold" : "text-muted-foreground")}
             data-testid={`${id}-name`}
           >
             {error ? null : smartApostrophes(status)}

@@ -263,7 +263,9 @@ export function ExampleShot({ slot, example }: { slot: DeckSlot; example: Rehear
               }
         }
         className={cn(
-          "pointer-events-none absolute flex flex-col gap-1.5",
+          // Left-aligned words in every plate, even inside the contact
+          // sheet's tile, a button that would centre them.
+          "pointer-events-none absolute flex flex-col gap-1.5 text-left",
           !box && "invisible",
           layout === "tiny"
             ? cn("top-3", side === "right" ? "right-3 max-w-[calc(50%-1.5rem)] items-end" : "items-start")
@@ -292,7 +294,7 @@ export function ExampleShot({ slot, example }: { slot: DeckSlot; example: Rehear
             title={note}
             data-testid="rehearsal-example-note"
           >
-            <span className="line-clamp-4 text-pretty break-words">{note}</span>
+            <span className={cn(box?.inButton ? "line-clamp-2" : "line-clamp-4", "text-pretty break-words")}>{note}</span>
           </span>
         ) : null}
       </div>

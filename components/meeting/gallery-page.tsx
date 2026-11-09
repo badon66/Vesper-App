@@ -123,6 +123,9 @@ function ContactSheet({ items, label }: { items: GalleryItem[]; label: string })
                 type="button"
                 aria-label={itemAlt(item)}
                 onClick={() => setFull(at)}
+                // The photos fill the sheet: a sideways swipe across them
+                // still closes it, like every layer (useSideSwipe).
+                data-layer-swipe=""
                 className="absolute inset-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
               >
                 <ItemPicture item={item} thumb />
