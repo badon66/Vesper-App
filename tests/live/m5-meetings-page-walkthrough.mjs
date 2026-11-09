@@ -220,8 +220,8 @@ try {
   const tonightPrep = tonightItem.getByTestId("prep-line");
   const tonightPrepText = ((await tonightPrep.innerText().catch(() => "")) || "").replace(/\s+/g, " ").trim();
   check(
-    "its prep line says Prepare for the meeting with what's left (the quote and the missing answers; mockup, colour and time are done), and opens the prep list",
-    tonightPrepText === "Prepare for the meeting · 2 left: quote, missing answers" &&
+    "its prep line says Prepare for the meeting with what's left (the quote, the missing answers and the roofline; mockup, colour and time are done), and opens the prep list",
+    tonightPrepText === "Prepare for the meeting · 3 left: quote, missing answers, roofline" &&
       (await tonightPrep.getAttribute("href")) === `/app/meetings/prep/${tonightLead}`,
     tonightPrepText,
   );
@@ -245,7 +245,7 @@ try {
   const soonText = (await soonCard.innerText().catch(() => "")).replace(/\s+/g, " ");
   check(
     "tomorrow's meeting is in the Next few days row, with its time and what's left",
-    soonText.includes(`${TEST_LEAD} Later`) && soonText.includes("11:00 p.m. tomorrow") && soonText.includes("5 left"),
+    soonText.includes(`${TEST_LEAD} Later`) && soonText.includes("11:00 p.m. tomorrow") && soonText.includes("6 left"),
     soonText.slice(0, 160),
   );
   check(
@@ -275,14 +275,14 @@ try {
   await page.getByTestId("prep-list").waitFor({ timeout: 30000 }).catch(() => {});
   const itemKeys = await page.getByTestId("prep-list").locator("> li").evaluateAll((items) => items.map((item) => `${item.getAttribute("data-testid")}:${item.getAttribute("data-done")}`));
   check(
-    "the prep list has the five items in order, none done yet",
+    "the prep list has the six items in order, none done yet (round 7: the roofline is the sixth)",
     JSON.stringify(itemKeys) ===
-      JSON.stringify(["prep-item-mockup:false", "prep-item-track_colour:false", "prep-item-quote:false", "prep-item-confirmed:false", "prep-item-answers:false"]),
+      JSON.stringify(["prep-item-mockup:false", "prep-item-track_colour:false", "prep-item-quote:false", "prep-item-confirmed:false", "prep-item-answers:false", "prep-item-roofline:false"]),
     itemKeys.join(", "),
   );
   check(
     "it says Prepare for the meeting with how many are left, and Start is there",
-    (await page.getByTestId("prep-status").innerText()).trim() === "Prepare for the meeting: 5 left" &&
+    (await page.getByTestId("prep-status").innerText()).trim() === "Prepare for the meeting: 6 left" &&
       (await page.getByTestId("prep-start").getAttribute("href")) === `/meeting/${laterLead}#start` &&
       (await page.getByTestId("prep-when").innerText()).trim() === "11:00 p.m. tomorrow",
   );
@@ -331,10 +331,12 @@ try {
   const homePrep = ((await homeCard.getByTestId("prep-line").innerText().catch(() => "")) || "").replace(/\s+/g, " ").trim();
   check(
     "his Home shows how many items are left, and the tick for a confirmed time",
-    homePrep === "2 left: quote, missing answers" && (await homeCard.getByTestId("confirmed-tick").count()) === 1,
+    homePrep === "3 left: quote, missing answers, roofline" && (await homeCard.getByTestId("confirmed-tick").count()) === 1,
     homePrep,
   );
-  await page.goto(`${base}/app/schedule`);
+  // Tonight's evening by name: on a day with no evening schedule (a Sunday),
+  // Schedule opens on the next evening, where this meeting isn't.
+  await page.goto(`${base}/app/schedule?day=${today}`);
   await settle(page);
   check(
     "Schedule shows the tick on a time Keenan confirmed",
@@ -454,9 +456,16 @@ try {
   );
   await ready.getByRole("link", { name: `Start the meeting with ${TEST_LEAD} Tonight` }).click().catch(() => {});
   await ready.locator('ol[aria-label="Where you are"]').waitFor({ timeout: 30000 }).catch(() => {});
+  // Round 7's deck: the mockup is "Where your lights would go" (its headline
+  // from Settings), and a page's pictures load once it is near the screen,
+  // so go to it first.
+  const mockupLabel = await ready.locator('section[data-page="mockup"]').getAttribute("aria-label").catch(() => null);
+  if (mockupLabel) {
+    await ready.locator('ol[aria-label="Where you are"]').getByRole("button", { name: mockupLabel, exact: true }).click().catch(() => {});
+  }
   const opened = await ready
     .waitForFunction(() => {
-      const img = document.querySelector('section[aria-label="This house"] img');
+      const img = document.querySelector('section[data-page="mockup"] img');
       return Boolean(img && img.complete && img.naturalWidth > 0);
     }, null, { timeout: 20000 })
     .then(() => true)
