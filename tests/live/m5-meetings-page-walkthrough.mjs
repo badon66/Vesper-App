@@ -334,7 +334,9 @@ try {
     homePrep === "2 left: quote, missing answers" && (await homeCard.getByTestId("confirmed-tick").count()) === 1,
     homePrep,
   );
-  await page.goto(`${base}/app/schedule`);
+  // Tonight's evening by name: on a day with no evening schedule (a Sunday),
+  // Schedule opens on the next evening, where this meeting isn't.
+  await page.goto(`${base}/app/schedule?day=${today}`);
   await settle(page);
   check(
     "Schedule shows the tick on a time Keenan confirmed",

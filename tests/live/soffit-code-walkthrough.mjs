@@ -216,7 +216,7 @@ try {
   );
   await page.getByRole("button", { name: /Show the colour book photo larger, Off-white or cream/ }).click();
   check("a tap on the photo shows it large", await page.getByTestId("soffit-book-1-large").isVisible().catch(() => false));
-  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByTestId("soffit-book-1-large").getByRole("button", { name: "Close", exact: true }).click();
   const { data: timeline } = await admin.from("lead_events").select("type, payload").eq("lead_id", leadId).order("created_at");
   // Edits carry field names only; a photo carries its id and slot.
   const editedText = JSON.stringify((timeline ?? []).filter((event) => event.type === "edited").map((event) => event.payload));
