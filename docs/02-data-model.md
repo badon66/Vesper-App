@@ -197,7 +197,7 @@ Rules enforced in the database:
 id uuid pk
 lead_id uuid not null references leads on delete cascade
 storage_path text not null                      -- bucket 'lead-photos', private, signed URLs
-slot photo_slot                                 -- Front, Left corner, Right corner or Soffit close-up; the mockup; the colour book (soffit_book, soffit_book_2); null for More photos
+slot photo_slot                                 -- Front, Left corner, Right corner or Soffit close-up; the mockup; the colour book (soffit_book, soffit_book_2); null for More photos; only the owner fills the mockup slot (guard `lead_photos_mockup_owner_only`, 2026-11-09)
 caption text
 created_by uuid references profiles
 created_at
