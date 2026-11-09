@@ -290,6 +290,12 @@ try {
     .update({ owns_home: true, wants_price: false, soffit_colour: "not_sure", areas_wanted: "full_wrap", install_timing: "new_year" })
     .eq("id", leads.dueToday);
   if (answered.error) throw new Error(`answers: ${answered.error.message}`);
+  // Soffit colour code (2026-11-09): A's own lead and B's lead each carry
+  // one; A changes their own, reads B's.
+  const ownCode = await a.client.from("leads").update({ soffit_ral_code: "9016" }).eq("id", leads.dueToday);
+  if (ownCode.error) throw new Error(`A's soffit code: ${ownCode.error.message}`);
+  const otherCode = await people.b.client.from("leads").update({ soffit_ral_code: "9010" }).eq("id", leads.other);
+  if (otherCode.error) throw new Error(`B's soffit code: ${otherCode.error.message}`);
   for (const slot of ["front", "left_corner", "right_corner"]) {
     const path = `${a.id}/${crypto.randomUUID()}.jpg`;
     const uploaded = await a.client.storage.from(BUCKET).upload(path, jpeg, { contentType: "image/jpeg" });
@@ -730,10 +736,30 @@ try {
         viewed.text.slice(viewed.text.indexOf("Find out"), viewed.text.indexOf("Find out") + 200),
       );
       check("View as never shows the owner's Quote card or the customer's link", (await op.getByTestId("quote-card").count()) === 0 && !(await op.content()).includes("/q/"));
+      // Soffit colour code (2026-11-09): their own lead's code is theirs to
+      // change, with the colour book photo, and Use for the track is Keenan's.
+      check(
+        "View as shows the setter's own soffit colour code to change, its name, the colour book photo buttons, and no Use for the track",
+        (await op.getByTestId("soffit-code").count()) === 1 &&
+          (await op.getByTestId("soffit-code-1-input").inputValue()) === "9016" &&
+          (await op.getByTestId("soffit-code-1-name").innerText()).trim() === "RAL 9016 Traffic white" &&
+          (await op.getByTestId("soffit-book-1-take").count()) === 1 &&
+          (await op.getByTestId("soffit-code-1-use").count()) === 0 &&
+          viewed.text.includes("Soffit colour code"),
+      );
       check("View as gives the setter's lead no track colour controls", !viewed.controls.some((c) => /track colour/i.test(c.label)) && (await op.getByTestId("track-colour-form").count()) === 0);
     }
     if (label === "another setter's lead") {
       check("View as shows another setter's track colour from the list", viewed.text.includes(`Track colour ${firstColour.name}`), firstColour.name);
+      check(
+        "another setter's soffit colour code reads as a name, with no field, no photo buttons and no Use for the track, to the setter and in View as",
+        (await op.getByTestId("soffit-code-1-label").innerText()).trim() === "RAL 9010 Pure white" &&
+          (await page.getByTestId("soffit-code-1-label").innerText()).trim() === "RAL 9010 Pure white" &&
+          (await op.getByTestId("soffit-code-1-input").count()) === 0 &&
+          (await page.getByTestId("soffit-code-1-input").count()) === 0 &&
+          (await op.getByTestId("soffit-book-1-take").count()) === 0 &&
+          (await op.getByTestId("soffit-code-1-use").count()) === 0,
+      );
       const realHtml = await page.content();
       const viewedHtml = await op.content();
       const leaks = [OTHER_PHONE, OTHER_PHONE.slice(2), "555-0188", OTHER_EMAIL].filter((bit) => realHtml.includes(bit) || viewedHtml.includes(bit));
@@ -1036,6 +1062,25 @@ try {
   await op.getByRole("button", { name: "Save status" }).click();
   await op.waitForTimeout(1500);
   check("a status change is refused the same way", (await op.locator("main").getByTestId("view-as-nothing-saved").count()) >= 1 && (await op.locator("main").getByRole("alert").count()) === 0);
+
+  // The soffit colour code (2026-11-09): a new code is refused calmly by the
+  // server and stays in the box; a colour book photo is shown, not saved.
+  await op.goto(`${base}/app/leads/${leads.dueToday}`);
+  await settle(op);
+  await op.getByTestId("soffit-code-1-input").fill("9010");
+  await op.getByTestId("soffit-code-1-save").click();
+  const codeNote = await calm(op.getByTestId("soffit-code"));
+  check(
+    "a soffit colour code saved while viewing is refused calmly, and what was typed stays",
+    codeNote === "View as: nothing was saved." && (await op.getByTestId("soffit-code-1-input").inputValue()) === "9010" && (await op.getByTestId("soffit-code").getByRole("alert").count()) === 0,
+    codeNote,
+  );
+  await op.setInputFiles('[data-testid="soffit-book-1-input"]', fixture);
+  await op.getByTestId("soffit-code").locator("img").first().waitFor({ timeout: 10000 }).catch(() => {});
+  check(
+    "a colour book photo while viewing shows on screen and says nothing was saved",
+    (await op.getByTestId("soffit-book-1").getByTestId("view-as-nothing-saved").count()) === 1 && (await op.getByTestId("soffit-code").locator("img").count()) === 1,
+  );
 
   // Notifications: no permission prompt, nothing saved.
   await op.goto(`${base}/app/notifications`);

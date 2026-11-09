@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
+import { SoffitCode } from "@/components/leads/soffit-code";
 import { TrackColourForm } from "@/components/leads/track-colour-form";
 import { MockupCard } from "@/components/meeting/mockup-card";
 import { ConfirmMeeting, FillAnswers } from "@/components/meetings/prep-actions";
@@ -14,6 +15,7 @@ import { hotButtonsLabel, setterReadLabel } from "@/lib/leads/extras";
 import { LEAD_FIELDS } from "@/lib/leads/fields";
 import { notesFor } from "@/lib/leads/notes";
 import { NOTE_KEYS, NOTE_LABELS } from "@/lib/leads/questions";
+import { soffitCodeBlocks, trackFormKey } from "@/lib/leads/soffit-code";
 import { leadName } from "@/lib/leads/status";
 import { leadTrackColour, needsPowderCoating, sortTrackColours, trackColourText } from "@/lib/leads/track-colour";
 import {
@@ -57,7 +59,7 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
   const now = requestTime();
   const today = calgaryToday();
 
-  const [contact, notes, meetingRows, { data: photoRows }, { data: colourRows }, { data: ralRows }, { data: quoteRows }, { data: settingsRow }, { data: noteEvents }, roofline] =
+  const [contact, notes, meetingRows, { data: photoRows }, { data: colourRows }, { data: ralRows }, { data: quoteRows }, { data: settingsRow }, { data: noteEvents }, roofline, { data: bookRows }] =
     await Promise.all([
       contactFor(supabase, me, leadId),
       notesFor(supabase, me, leadId),
@@ -69,6 +71,8 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
       supabase.from("settings").select("confirm_text").eq("id", 1).maybeSingle(),
       supabase.from("lead_events").select("id, payload, created_at").eq("lead_id", leadId).eq("type", "note").order("created_at", { ascending: false }).limit(20),
       rooflineFor(supabase, leadId),
+      // The colour book held up to the soffit (2026-11-09): one per slot.
+      supabase.from("lead_photos").select("storage_path, slot").eq("lead_id", leadId).in("slot", ["soffit_book", "soffit_book_2"]),
     ]);
   const lead = { ...row, phone: contact.phone };
 
@@ -87,6 +91,20 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
   const colourById = new Map(colours.map((colour) => [colour.id, colour]));
   const ralNames = new Map((ralRows ?? []).map((ral) => [ral.code, ral.name]));
   const trackColour = leadTrackColour(lead, colourById, ralNames);
+
+  // The soffit colour code, beside the track colour: its number, its colour
+  // book photo, and Use for the track.
+  const bookPaths = (bookRows ?? []).map((photo) => photo.storage_path);
+  const { data: bookSigned } =
+    bookPaths.length > 0 ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(bookPaths, 3600) : { data: [] };
+  const bookUrlByPath = new Map((bookSigned ?? []).flatMap((item) => (item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : [])));
+  const bookUrls = Object.fromEntries(
+    (bookRows ?? []).flatMap((photo) => {
+      const signedUrl = bookUrlByPath.get(photo.storage_path);
+      return photo.slot && signedUrl ? [[photo.slot, signedUrl]] : [];
+    }),
+  );
+  const soffitBlocks = soffitCodeBlocks(lead, { isOwner: true, colours, ralNames, photoUrls: bookUrls });
   const trackOptions = colours
     .filter((colour) => colour.active || colour.id === lead.track_colour_id)
     .map((colour) => ({ value: colour.id, label: colour.active ? colour.name : `${colour.name} (retired)` }));
@@ -137,14 +155,20 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
         return <MockupCard leadId={leadId} userId={me.id} mockupUrl={mockupUrl} bare primary={primary} />;
       case "track_colour":
         return (
-          <div className="flex flex-col gap-3 text-sm">
+          <div className="flex flex-col gap-5 text-sm">
+            {/* The item's answer first, right under its name; then the
+                soffit's code with Use for the track; then the form. */}
             {item.done ? (
               <p className="text-base font-semibold" data-testid="prep-track-colour">
                 {trackColourText(trackColour)}
                 {needsPowderCoating(trackColour) ? <span className="font-normal text-muted-foreground"> · needs powder coating</span> : null}
               </p>
             ) : null}
+            <SoffitCode leadId={leadId} userId={me.id} blocks={soffitBlocks} canEdit ralNames={Object.fromEntries(ralNames)} layout="prep" />
             <TrackColourForm
+              // Use for the track can set the colour: start again from what
+              // is saved then, and keep "Saved." after the form's own save.
+              key={trackFormKey(soffitBlocks)}
               leadId={leadId}
               options={trackOptions}
               current={{ choice: lead.track_ral_code ? "custom" : lead.track_colour_id, ralCode: lead.track_ral_code }}

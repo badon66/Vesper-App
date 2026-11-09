@@ -93,6 +93,29 @@ describe("describeEvent", () => {
     ).toBe("Changed the track colour.");
   });
 
+  // Soffit colour code (Keenan, 2026-11-09): the codes and the split
+  // soffit's second colour by name, never their values.
+  it("names the soffit colour codes and the second soffit colour", () => {
+    expect(describeEvent({ ...base, type: "edited", payload: { fields: ["soffit_ral_code"] } })).toBe(
+      "Changed the soffit colour code.",
+    );
+    expect(
+      describeEvent({ ...base, type: "edited", payload: { fields: ["soffit_ral_code", "soffit_ral_code_2"] } }),
+    ).toBe("Changed the soffit colour code and second soffit colour code.");
+    expect(
+      describeEvent({ ...base, type: "edited", payload: { fields: ["soffit_colour", "soffit_colour_2", "soffit_note", "soffit_ral_code_2"] } }),
+    ).toBe("Changed the second soffit colour code. Updated Find out: soffit colour and second soffit colour.");
+  });
+
+  it("names the colour book photos", () => {
+    expect(describeEvent({ ...base, type: "photo_added", payload: { photo_id: "p", slot: "soffit_book" } })).toBe(
+      "Added the colour book photo.",
+    );
+    expect(describeEvent({ ...base, type: "photo_added", payload: { slot: "soffit_book_2" } })).toBe(
+      "Added the second colour book photo.",
+    );
+  });
+
   it("copes with event types from later milestones", () => {
     expect(describeEvent({ ...base, type: "quote_accepted" })).toBe("Quote accepted.");
   });

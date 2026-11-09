@@ -10,7 +10,7 @@ lead_status:     new | follow_up | meeting_booked | met | quoted | sold | instal
 lead_source:     door | referral | neighbour_card | website | other | phone_call   -- phone_call added in round 6 (2026-11-07), for leads Keenan adds from a call
 house_type:      bungalow | bi_level | two_storey | other
 soffit_colour:   white | off_white | black | brown | other | not_sure    -- off_white and not_sure added 2026-11-01; black and brown stay but are unused (the app offers White, Off-white or cream, Other, Not sure)
-photo_slot:      front | left_corner | right_corner | soffit | mockup   -- mockup added in M5: the customer's mockup image, one per lead, owner-uploaded
+photo_slot:      front | left_corner | right_corner | soffit | mockup | soffit_book | soffit_book_2   -- mockup added in M5: the customer's mockup image, one per lead, owner-uploaded; soffit_book and soffit_book_2 added 2026-11-09: the RAL colour book held up to the soffit (to its second colour when split)
 christmas_lights_now: hires | diy | none | hires_and_diy   -- hires_and_diy added in round 6: both answers given together
 roofline_areas:  front | front_and_sides | full_wrap | not_sure   -- no longer asked from round 6; kept with its saved answers
 install_timing:  before_christmas | new_year | no_rush   -- no longer asked from round 6; kept with its saved answers
@@ -140,6 +140,8 @@ position_accuracy_m numeric(6,1)                -- for device positions: how acc
 house_type house_type
 soffit_colour soffit_colour                     -- Find out: White, Off-white or cream, Other (with soffit_note), Not sure
 soffit_note text
+soffit_ral_code text references ral_classic_colours    -- 2026-11-09: the soffit's own RAL Classic code from the colour book (the first colour when split); optional
+soffit_ral_code_2 text references ral_classic_colours  -- 2026-11-09: the split soffit's second colour's code; cleared by a trigger whenever soffit_colour_2 is empty
 owns_home boolean                               -- Find out: Yes true, No false
 wants_price boolean                             -- Find out: Yes true, Not yet false
 christmas_lights_now christmas_lights_now       -- Find out: Hires someone, Does it themselves, None
@@ -184,6 +186,12 @@ Rules enforced in the database:
   - `answer_notes jsonb not null default '{}'` (an object): a short note per required question, keyed `phone`, `owns_home`, `wants_price`, `both_decision_makers`, `christmas_lights_now`, `looked_into_before`, `soffit_colour`. No read grant: read only through `lead_notes`.
   - Notes are private to the lead's own setter and the owner. `notes` loses its read grant (migration `round6_notes_private`, applied once the app read notes only through the view). The view `lead_notes` (security barrier, read only) returns `lead_id, notes, answer_notes, created_by, assigned_to` for every lead to the owner and for their own leads (created or assigned) to a setter, like `lead_contacts`. The app applies the same rule again for View as (`lib/leads/notes.ts`).
   - `areas_wanted`, `install_timing` and `confirm_by` are no longer asked; the columns and their saved answers stay, and saves never write them. The questions counted for "N of 6 collected" are phone, owns home, wants a price, everyone who decides, Christmas lights now and looked into it before.
+- Soffit colour code (Keenan, 2026-11-09; migration `soffit_colour_code`):
+  - `soffit_ral_code` and `soffit_ral_code_2` (text, foreign keys to `ral_classic_colours(code)`, read grant to signed-in people): the soffit's own number from the RAL colour book, one per soffit colour. Optional everywhere: never needed to save or book, never in the six counted questions, never anything to do with pay. They follow the row policies like the other answers: the lead's own setter (created or assigned) and the owner write them, every signed-in member of the sales side reads them.
+  - A trigger (`leads_soffit_code_tidy`, before insert or update of `soffit_colour_2` or `soffit_ral_code_2`) clears `soffit_ral_code_2` whenever `soffit_colour_2` is empty, so a second code only exists beside a second colour.
+  - The `edited` event names `soffit_colour_2`, `soffit_ral_code` and `soffit_ral_code_2` when they change (field names only, never the code).
+  - The photo of the colour book goes in the `soffit_book` slot (`soffit_book_2` for the second colour) under the existing lead photo rules: setters add them to their own leads from their own storage folder, the owner manages all, a new photo takes the slot and the old one stays as an extra, and `photo_added` records the slot.
+  - Use for the track (owner only) is not a database feature: the app sets `track_colour_id` or `track_ral_code` through the existing owner-only track colour path, so the track colour guard is unchanged.
 - Deleting a profile that still owns leads or knock sessions is refused; deactivate people instead.
 
 ### lead_photos
@@ -191,7 +199,7 @@ Rules enforced in the database:
 id uuid pk
 lead_id uuid not null references leads on delete cascade
 storage_path text not null                      -- bucket 'lead-photos', private, signed URLs
-slot photo_slot                                 -- Front, Left corner, Right corner or Soffit close-up; null for More photos
+slot photo_slot                                 -- Front, Left corner, Right corner or Soffit close-up; the mockup; the colour book (soffit_book, soffit_book_2); null for More photos; only the owner fills the mockup slot (guard `lead_photos_mockup_owner_only`, 2026-11-09)
 caption text
 created_by uuid references profiles
 created_at
