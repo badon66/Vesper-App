@@ -259,8 +259,16 @@ export const PHOTO_SLOT_HINT =
 // The booking sheet's one line: the drawings show the angles.
 export const PHOTO_SLOT_HINT_SHORT = "Hold it sideways. At night, hold still.";
 
+// The slots that aren't guided photos: Keenan's mockup (M5) and the colour
+// book held up to the soffit (2026-11-09), one for each soffit colour.
+const OTHER_PHOTO_SLOT_LABELS: Partial<Record<PhotoSlot, string>> = {
+  mockup: "Mockup",
+  soffit_book: "Colour book",
+  soffit_book_2: "Second colour book",
+};
+
 export function photoSlotLabel(slot: PhotoSlot): string {
-  return PHOTO_SLOTS.find((item) => item.slot === slot)?.label ?? slot;
+  return PHOTO_SLOTS.find((item) => item.slot === slot)?.label ?? OTHER_PHOTO_SLOT_LABELS[slot] ?? slot;
 }
 
 // The form field that carries a slot photo's uploaded path.

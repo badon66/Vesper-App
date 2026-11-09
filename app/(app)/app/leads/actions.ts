@@ -310,6 +310,8 @@ export async function attachLeadPhotos(
   if (!id.success) return { ok: false, error: "That lead was not found." };
   const slotChoice = z.enum(Constants.public.Enums.photo_slot).nullable().safeParse(slot);
   if (!slotChoice.success) return { ok: false, error: "That photo slot was not found." };
+  // The customer's mockup is Keenan's alone (2026-11-09); the database refuses it too.
+  if (slotChoice.data === "mockup" && me.role !== "owner") return { ok: false, error: "Only Keenan adds the mockup." };
   if (
     paths.length === 0 ||
     paths.length > (slotChoice.data ? 1 : MAX_PHOTOS_PER_FORM) ||
@@ -329,6 +331,10 @@ export async function attachLeadPhotos(
     };
   }
   revalidatePath(`/app/leads/${id.data}`);
+  // The colour book photos show on Keenan's prep list too (2026-11-09).
+  if (slotChoice.data === "soffit_book" || slotChoice.data === "soffit_book_2") {
+    revalidatePath(`/app/meetings/prep/${id.data}`);
+  }
   return { ok: true };
 }
 
