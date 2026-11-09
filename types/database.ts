@@ -511,6 +511,8 @@ export type Database = {
           soffit_colour: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_colour_2: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_note: string | null
+          soffit_ral_code: string | null
+          soffit_ral_code_2: string | null
           sold_at: string | null
           source: Database["public"]["Enums"]["lead_source"]
           status: Database["public"]["Enums"]["lead_status"]
@@ -570,6 +572,8 @@ export type Database = {
           soffit_colour?: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_colour_2?: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_note?: string | null
+          soffit_ral_code?: string | null
+          soffit_ral_code_2?: string | null
           sold_at?: string | null
           source?: Database["public"]["Enums"]["lead_source"]
           status?: Database["public"]["Enums"]["lead_status"]
@@ -629,6 +633,8 @@ export type Database = {
           soffit_colour?: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_colour_2?: Database["public"]["Enums"]["soffit_colour"] | null
           soffit_note?: string | null
+          soffit_ral_code?: string | null
+          soffit_ral_code_2?: string | null
           sold_at?: string | null
           source?: Database["public"]["Enums"]["lead_source"]
           status?: Database["public"]["Enums"]["lead_status"]
@@ -2245,7 +2251,14 @@ export type Database = {
         | "no_show"
         | "cancelled"
         | "moved"
-      photo_slot: "front" | "left_corner" | "right_corner" | "soffit" | "mockup"
+      photo_slot:
+        | "front"
+        | "left_corner"
+        | "right_corner"
+        | "soffit"
+        | "mockup"
+        | "soffit_book"
+        | "soffit_book_2"
       quote_status: "draft" | "presented" | "accepted" | "declined" | "expired"
       roofline_areas: "front" | "front_and_sides" | "full_wrap" | "not_sure"
       setter_read: "hot" | "warm" | "just_curious"
@@ -2453,7 +2466,15 @@ export const Constants = {
         "cancelled",
         "moved",
       ],
-      photo_slot: ["front", "left_corner", "right_corner", "soffit", "mockup"],
+      photo_slot: [
+        "front",
+        "left_corner",
+        "right_corner",
+        "soffit",
+        "mockup",
+        "soffit_book",
+        "soffit_book_2",
+      ],
       quote_status: ["draft", "presented", "accepted", "declined", "expired"],
       roofline_areas: ["front", "front_and_sides", "full_wrap", "not_sure"],
       setter_read: ["hot", "warm", "just_curious"],

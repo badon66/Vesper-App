@@ -35,6 +35,9 @@ const FIELD_LABELS: Record<string, string> = {
   follow_up_on: "follow-up day",
   track_colour_id: "track colour",
   track_ral_code: "track colour",
+  // The soffit's own code from the RAL colour book (2026-11-09).
+  soffit_ral_code: "soffit colour code",
+  soffit_ral_code_2: "second soffit colour code",
 };
 
 // The Find out questions, named the way the form asks them.
@@ -43,6 +46,8 @@ const FIND_OUT_LABELS: Record<string, string> = {
   wants_price: "wants a price",
   soffit_colour: "soffit colour",
   soffit_note: "soffit colour",
+  // Round 6: a split soffit's second colour.
+  soffit_colour_2: "second soffit colour",
   christmas_lights_now: "Christmas lights now",
   looked_into_before: "looked into it before",
   areas_wanted: "which areas",
@@ -53,7 +58,7 @@ const FIND_OUT_LABELS: Record<string, string> = {
   not_collected: "what wasn't collected",
 };
 
-const PHOTO_SLOT_VALUES: readonly string[] = ["front", "left_corner", "right_corner", "soffit"];
+const PHOTO_SLOT_VALUES: readonly string[] = ["front", "left_corner", "right_corner", "soffit", "soffit_book", "soffit_book_2"];
 
 function payloadObject(payload: Json | null): { [key: string]: Json | undefined } {
   return payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {};

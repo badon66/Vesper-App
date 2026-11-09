@@ -10,6 +10,7 @@ import { NoteForm } from "@/components/leads/note-form";
 import { MeetingCard } from "@/components/schedule/meeting-card";
 import { PhotoPicker } from "@/components/leads/photo-picker";
 import { PhotoSlots } from "@/components/leads/photo-slots";
+import { SoffitCode } from "@/components/leads/soffit-code";
 import { StatusBadge } from "@/components/leads/status-badge";
 import { StatusControl } from "@/components/leads/status-control";
 import { TrackColourForm } from "@/components/leads/track-colour-form";
@@ -46,6 +47,7 @@ import {
   sortTrackColours,
   trackColourText,
 } from "@/lib/leads/track-colour";
+import { soffitCodeBlocks, soffitCodes, trackFormKey } from "@/lib/leads/soffit-code";
 import { describeEvent, isCustomerEvent } from "@/lib/leads/timeline";
 import { formatPhone } from "@/lib/phone";
 import { PHOTO_BUCKET } from "@/lib/photos";
@@ -129,14 +131,16 @@ export default async function LeadPage({
   const canBook = canEdit && (lead.status === "new" || lead.status === "follow_up") && !liveMeeting;
   const justBooked = bookedParam ? meetings.find((meeting) => meeting.id === bookedParam) : undefined;
 
-  // Track colour. The owner gets the whole RAL Classic list, to name a
-  // custom number as he types it; everyone else only the names shown.
+  // Track colour and the soffit colour code. The owner gets the whole RAL
+  // Classic list, to name a custom number as he types it, and so does the
+  // lead's own setter, to name the soffit's code as they type it
+  // (2026-11-09); everyone else only the names shown.
   const colours = sortTrackColours(colourRows ?? []);
   const colourById = new Map(colours.map((colour) => [colour.id, colour]));
   const listColour = lead.track_colour_id ? colourById.get(lead.track_colour_id) : undefined;
-  const ralCodes = [lead.track_ral_code, listColour?.ral_code].filter((code): code is string => Boolean(code));
+  const ralCodes = [lead.track_ral_code, listColour?.ral_code, ...soffitCodes(lead)].filter((code): code is string => Boolean(code));
   const ralQuery = supabase.from("ral_classic_colours").select("code, name");
-  const { data: ralRows } = isOwner
+  const { data: ralRows } = isOwner || canEdit
     ? await ralQuery
     : ralCodes.length > 0
       ? await ralQuery.in("code", ralCodes)
@@ -163,6 +167,11 @@ export default async function LeadPage({
     if (photo.slot) slotUrls[photo.slot] = url;
     else extraUrls.push(url);
   }
+  // The soffit's code and colour book photo, one of each per soffit colour.
+  const soffitBlocks = soffitCodeBlocks(lead, { isOwner, colours, ralNames, photoUrls: slotUrls });
+  // A soffit that is no longer split keeps its second colour book photo,
+  // shown with the extras so it never goes out of sight.
+  if (!lead.soffit_colour_2 && slotUrls.soffit_book_2) extraUrls.push(slotUrls.soffit_book_2);
   const names = await namesById(supabase, [
     lead.created_by,
     lead.assigned_to,
@@ -419,7 +428,7 @@ export default async function LeadPage({
           <CardTitle>Find out</CardTitle>
           <CardDescription>{completenessLabel(lead)}. Not collected doesn&apos;t count.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-5">
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-[auto_1fr]" data-testid="find-out-answers">
             {leadAnswerList(lead).map((item) => (
               <Fragment key={item.key}>
@@ -430,6 +439,15 @@ export default async function LeadPage({
               </Fragment>
             ))}
           </dl>
+          {/* 2026-11-09: the soffit's own code from the RAL colour book, right
+              under its colour. Optional, never counted. */}
+          <SoffitCode
+            leadId={lead.id}
+            userId={me.id}
+            blocks={soffitBlocks}
+            canEdit={canEdit}
+            ralNames={canEdit ? Object.fromEntries(ralNames) : {}}
+          />
         </CardContent>
       </Card>
 
@@ -564,6 +582,10 @@ export default async function LeadPage({
           </div>
           {isOwner ? (
             <TrackColourForm
+              // Use for the track (2026-11-09) can set the colour from the
+              // soffit code: the form starts again from what is saved then,
+              // and keeps its "Saved." after its own save.
+              key={trackFormKey(soffitBlocks)}
               leadId={lead.id}
               options={trackOptions}
               current={{
