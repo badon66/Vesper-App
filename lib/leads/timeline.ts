@@ -2,6 +2,7 @@ import { photoSlotLabel, type PhotoSlot } from "@/lib/leads/door";
 import { formatMeetingTime, MEETING_STATUS_LABELS, type MeetingStatus } from "@/lib/schedule/meetings";
 import { STATUS_LABELS, type LeadStatus } from "@/lib/leads/status";
 import { choiceLabel } from "@/lib/quote-link/view";
+import { cancelWindowWords, isOutcomeReason, plannedInstallLine } from "@/lib/quotes/outcome";
 import { formatDay } from "@/lib/time";
 import type { Database, Json } from "@/types/database";
 
@@ -78,7 +79,10 @@ const instantOf = (value: Json | undefined): string | null =>
 // One plain sentence per timeline entry. Notes are returned as written.
 export function describeEvent(event: TimelineEvent): string {
   const payload = payloadObject(event.payload);
-  switch (event.type) {
+  // Read as text: round 8's quote_cancelled and quote_acceptance_undone are
+  // matched by name, whether or not the generated types have caught up.
+  const type: string = event.type;
+  switch (type) {
     case "created":
       return "Added the lead.";
     case "status_change": {
@@ -122,6 +126,23 @@ export function describeEvent(event: TimelineEvent): string {
       const option = typeof payload.option === "string" && payload.option ? payload.option : null;
       return option ? `Tapped Book my install: ${sentence(choiceLabel(option))}` : "Tapped Book my install.";
     }
+    // A quote's outcome (round 8). Setters read these, so the payload holds
+    // the quote id and fixed-list facts only: a reason from the list,
+    // inside the 10-day window or not, the planned install day. Never an
+    // amount, never a typed note; anything else in a payload is ignored.
+    case "quote_accepted": {
+      const planned = plannedInstallLine(typeof payload.install_on === "string" ? payload.install_on : null);
+      return planned ? `Marked the quote accepted. ${planned}` : "Marked the quote accepted.";
+    }
+    case "quote_declined":
+      return isOutcomeReason(payload.reason) ? `Marked the quote declined: ${payload.reason}.` : "Marked the quote declined.";
+    case "quote_cancelled": {
+      const when = typeof payload.inside_window === "boolean" ? `, ${cancelWindowWords(payload.inside_window)}` : "";
+      if (isOutcomeReason(payload.reason)) return `Cancelled the sale: ${payload.reason}${when}.`;
+      return when ? `Cancelled the sale${when}.` : "Cancelled the sale.";
+    }
+    case "quote_acceptance_undone":
+      return "Undid the quote's acceptance.";
     case "edited": {
       const fields = Array.isArray(payload.fields)
         ? payload.fields.filter((field): field is string => typeof field === "string")
@@ -162,7 +183,7 @@ export function describeEvent(event: TimelineEvent): string {
       return outcome ? `Marked the meeting ${outcome}${reason}.` : "Marked the meeting.";
     }
     default: {
-      const words = event.type.replace(/_/g, " ");
+      const words = type.replace(/_/g, " ");
       return `${words.charAt(0).toUpperCase()}${words.slice(1)}.`;
     }
   }

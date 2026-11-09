@@ -101,6 +101,10 @@ describe("outcome line", () => {
     expect(outcomeLine(lead("sold", { sold_at: "2026-11-05T22:00:00Z" }))).toBe("Sold Thu, Nov 5");
     expect(outcomeLine(lead("installed", { installed_at: "2026-11-06T18:00:00Z" }))).toBe("Installed Fri, Nov 6");
     expect(outcomeLine(lead("lost", { lost_reason: "Price" }))).toBe("Lost: Price");
+    // A quote's outcome (round 8): a decline gives the reason's words, a
+    // yes taken back gives "cancelled, <reason>".
+    expect(outcomeLine(lead("lost", { lost_reason: "price" }))).toBe("Lost: price");
+    expect(outcomeLine(lead("lost", { lost_reason: "cancelled, timing" }))).toBe("Lost: cancelled, timing");
     expect(outcomeLine(lead("lost", { lost_reason: "  " }))).toBe("Lost");
   });
 
