@@ -858,12 +858,28 @@ try {
     return match ? Number(match[1]) * 60 + Number(match[2]) : null;
   };
 
+  // The latest evening in the window that has an open time: the window's
+  // last day can be a Sunday, with no evening. While viewing nothing is held
+  // (the hold is acted out), so an earlier evening is safe too.
+  const tapLatestOpenTime = async () => {
+    const evenings = op.getByRole("group", { name: "Evenings" }).getByRole("button");
+    const count = await evenings.count();
+    for (let at = count - 1; at >= Math.max(0, count - 7); at -= 1) {
+      await evenings.nth(at).click();
+      await op.waitForTimeout(500);
+      const open = op.locator('main [data-testid="time-picker"] [data-state="open"]');
+      if ((await open.count()) > 0) {
+        await open.first().click();
+        return;
+      }
+    }
+    throw new Error("no evening in the window has an open time");
+  };
+
   // The booking sheet, from a tapped time on Schedule.
   await op.goto(`${base}/app/schedule`);
   await settle(op);
-  await op.getByRole("group", { name: "Evenings" }).getByRole("button").last().click();
-  await op.waitForTimeout(500);
-  await op.locator('main [data-testid="time-picker"] [data-state="open"]').first().click();
+  await tapLatestOpenTime();
   await sheetView("who");
   const actedLeft = await leftOnSheet();
   check(
@@ -936,9 +952,7 @@ try {
   // New lead opens with the person, kept in memory only.
   await op.goto(`${base}/app/schedule`);
   await settle(op);
-  await op.getByRole("group", { name: "Evenings" }).getByRole("button").last().click();
-  await op.waitForTimeout(500);
-  await op.locator('main [data-testid="time-picker"] [data-state="open"]').first().click();
+  await tapLatestOpenTime();
   await sheetView("who");
   await op.fill("#sheet-first-name", "View as keep (test)");
   await sheetNext();
