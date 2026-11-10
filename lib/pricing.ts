@@ -4,10 +4,14 @@
 // cents and rounded per line, so the breakdown always adds up to the total.
 //
 // The formula (CLAUDE.md): total = (total feet x price per foot)
-// + (boxes x box price) + adders - discounts, then GST if enabled. A
-// non-stock colour installed this season adds the rush colour fee per foot
-// on every foot; a stocked colour, or a factory order (spring), adds
-// nothing.
+// + (boxes x box price) + upper access + the rush colour fee + adders
+// - discounts, raised to the minimum job, then GST if enabled. A non-stock
+// colour installed this season adds the flat rush colour fee (2026-11-04,
+// replacing a fee per foot); a stocked colour, or a factory order
+// (spring), adds nothing. Upper access (2026-11-04) follows the runs that
+// are on: none without an upper run, the upper gable amount when an upper
+// gable is on, otherwise the upper amount. A quote made before then has no
+// amounts, so neither line.
 //
 // The quote link (2026-11-02) runs the same function on the customer's
 // phone and on the server, over the runs they have switched on: an
@@ -15,7 +19,11 @@
 // upper run is in, and when the total before GST falls below the minimum
 // job total it rises to the minimum with a line saying so.
 
-export type QuoteRun = { name: string; feet: number; level: "lower" | "upper" };
+// The part of the house a run lights (2026-11-04), beside its level, so the
+// house diagram knows what to light and upper access knows an upper gable.
+export const RUN_PARTS = ["eave", "gable", "garage", "porch", "sides", "other"] as const;
+export type RunPart = (typeof RUN_PARTS)[number];
+export type QuoteRun = { name: string; feet: number; level: "lower" | "upper"; part?: RunPart | null };
 export type QuoteLineItem = { label: string; amount: number };
 // Extra work. upperOnly: the line counts only while an upper run is in.
 export type QuoteAdder = QuoteLineItem & { upperOnly?: boolean };
@@ -29,12 +37,20 @@ export type QuoteInputs = {
   adders: QuoteAdder[];
   discounts: QuoteLineItem[];
   colourTiming: ColourTiming | null;
-  // The fee this quote uses when colourTiming is "rush"; ignored otherwise.
-  rushFeePerFt: number | null;
+  // The flat fee this quote uses when colourTiming is "rush"; ignored
+  // otherwise. Null or 0: no line.
+  rushFee: number | null;
+  // The two upper access amounts this quote uses; null on a quote made
+  // before 2026-11-04, which has no upper access line.
+  upperAccessFee?: number | null;
+  upperGableAccessFee?: number | null;
   // The least the job can cost before GST; null or 0 means no minimum.
   minJobTotal?: number | null;
   gstEnabled: boolean;
   gstRate: number;
+  // The track colour's name, for the rush colour line's detail ("Brown
+  // track, powder coated this season"); left out, the detail says less.
+  colourName?: string | null;
 };
 
 export type QuoteLine = {
@@ -52,6 +68,9 @@ export type QuoteTotals = {
   total: number;
   // True when the total was raised to the minimum job total.
   minimumApplied: boolean;
+  // The total before GST and before any rise to the minimum, so a
+  // breakdown can show the lines' own sum above the top-up.
+  beforeMinimum: number;
 };
 
 const toCents = (dollars: number) => Math.round(dollars * 100);
@@ -70,6 +89,51 @@ export function totalFeet(runs: QuoteRun[]): number {
 // Whether any run with feet is on the upper level.
 export function hasUpperRun(runs: QuoteRun[]): boolean {
   return runs.some((run) => run.level === "upper" && cleanFeet(run.feet) > 0);
+}
+
+// A run's part as stored, or a guess from its name for a run saved before
+// parts existed (the quote builder makes the same guess as a starting
+// point, and Keenan can change it).
+export function guessRunPart(name: string): RunPart {
+  const n = name.toLowerCase();
+  if (/porch|veranda|entry|entrance/.test(n)) return "porch";
+  if (/\bsides?\b/.test(n)) return "sides";
+  if (/gable|peak/.test(n)) return "gable";
+  if (/garage/.test(n)) return "garage";
+  if (/eave|front|back|rear|roofline|fascia/.test(n)) return "eave";
+  return "other";
+}
+
+export function runPart(run: QuoteRun): RunPart {
+  return run.part && (RUN_PARTS as readonly string[]).includes(run.part) ? run.part : guessRunPart(run.name);
+}
+
+// The upper access amount for the runs that are on, or null for no line.
+export function upperAccessAmount(
+  runs: QuoteRun[],
+  fees: { upperAccessFee?: number | null; upperGableAccessFee?: number | null },
+): number | null {
+  const upper = runs.filter((run) => run.level === "upper" && cleanFeet(run.feet) > 0);
+  if (upper.length === 0) return null;
+  return usable(upper.some((run) => runPart(run) === "gable") ? fees.upperGableAccessFee : fees.upperAccessFee);
+}
+
+// The breakdown's names for the two lines added on 2026-11-04, settled in
+// the quote link debate (decisions.md): every dollar line says what it is
+// for where it appears, and never says "level", which reads as a basement.
+export const UPPER_ACCESS_LABEL = "Upper roof access";
+export const RUSH_COLOUR_LABEL = "Rush colour fee";
+
+const usable = (amount: number | null | undefined): number | null =>
+  amount !== null && amount !== undefined && Number.isFinite(amount) && amount > 0 ? amount : null;
+
+// "For work up high: $200, or $400 with an upper gable": why the amount is what it is, so a
+// switch that moves it never looks like a trick. Only when both are set.
+export function upperAccessDetail(fees: { upperAccessFee?: number | null; upperGableAccessFee?: number | null }): string | null {
+  const upper = usable(fees.upperAccessFee);
+  const gable = usable(fees.upperGableAccessFee);
+  if (upper === null || gable === null || upper === gable) return null;
+  return `For work up high: ${formatMoney(upper)}, or ${formatMoney(gable)} with an upper gable`;
 }
 
 // The runs a customer has switched on: positions into the quote's runs, in
@@ -97,17 +161,25 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
   if (boxes > 0) {
     lines.push({
       label: boxes === 1 ? "Control box" : `Control boxes (${boxes})`,
-      detail: boxes === 1 ? null : `${boxes} at ${formatMoney(inputs.boxPrice)}`,
+      detail: boxes === 1 ? "Always included" : `${boxes} at ${formatMoney(inputs.boxPrice)}`,
       amount: toDollars(boxCents),
     });
   }
 
+  let accessCents = 0;
+  const access = upperAccessAmount(inputs.runs, inputs);
+  if (access !== null) {
+    accessCents = toCents(access);
+    lines.push({ label: UPPER_ACCESS_LABEL, detail: upperAccessDetail(inputs), amount: toDollars(accessCents) });
+  }
+
   let rushCents = 0;
-  if (inputs.colourTiming === "rush" && inputs.rushFeePerFt !== null && inputs.rushFeePerFt > 0) {
-    rushCents = toCents(inputs.rushFeePerFt) * feet;
+  if (inputs.colourTiming === "rush" && inputs.rushFee !== null && Number.isFinite(inputs.rushFee) && inputs.rushFee > 0) {
+    rushCents = toCents(inputs.rushFee);
+    const colour = inputs.colourName?.trim();
     lines.push({
-      label: "Colour this season",
-      detail: `${feet} ft at ${formatMoney(inputs.rushFeePerFt)}/ft`,
+      label: RUSH_COLOUR_LABEL,
+      detail: colour ? `${colour} track, powder coated this season` : "Powder coated this season",
       amount: toDollars(rushCents),
     });
   }
@@ -131,13 +203,14 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
   }
 
   // A pile of discounts can never make the house owe less than nothing.
-  let subtotalCents = Math.max(0, trackCents + boxCents + rushCents + adderCents - discountCents);
+  let subtotalCents = Math.max(0, trackCents + boxCents + accessCents + rushCents + adderCents - discountCents);
 
   // Below the minimum job total, the total rises to the minimum, and a
   // line says so, so the breakdown still adds up.
   // The line names what the amount is: the top-up to the minimum.
   const minimum = inputs.minJobTotal ?? 0;
   const minCents = Number.isFinite(minimum) && minimum > 0 ? toCents(minimum) : 0;
+  const beforeMinimumCents = subtotalCents;
   const minimumApplied = minCents > subtotalCents;
   if (minimumApplied) {
     lines.push({
@@ -157,6 +230,7 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
     gst: toDollars(gstCents),
     total: toDollars(subtotalCents + gstCents),
     minimumApplied,
+    beforeMinimum: toDollars(beforeMinimumCents),
   };
 }
 
@@ -178,10 +252,10 @@ export function screenTotal(subtotal: number, gstEnabled: boolean): string {
   return gstEnabled ? `${formatMoney(subtotal)} + GST` : formatMoney(subtotal);
 }
 
-// A new quote's valid-until date: quote_valid_days out, as a Calgary
-// calendar date (YYYY-MM-DD).
-export function defaultValidUntil(today: string, validDays: number): string {
+// A new quote's price-held-until date: price_hold_days out (120 since
+// 2026-11-04), as a Calgary calendar date (YYYY-MM-DD).
+export function defaultValidUntil(today: string, holdDays: number): string {
   const [year, month, day] = today.split("-").map(Number);
-  const days = Number.isFinite(validDays) ? Math.min(90, Math.max(1, Math.round(validDays))) : 14;
+  const days = Number.isFinite(holdDays) ? Math.min(365, Math.max(1, Math.round(holdDays))) : 120;
   return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
 }

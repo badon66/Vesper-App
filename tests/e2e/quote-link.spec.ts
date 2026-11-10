@@ -2,13 +2,14 @@ import { expect, test } from "@playwright/test";
 
 // The customer quote link is public (2026-11-02): no login wall, never
 // indexed, no referrer, never cached, and a link that isn't live shows the
-// expired screen with call and text and nothing else.
+// closed screen with call and text and nothing else (links don't expire
+// since 2026-11-04; they close only when Keenan turns them off).
 
-test("a quote link opens with no login, and a made-up one shows the expired screen", async ({ page }) => {
+test("a quote link opens with no login, and a made-up one shows the closed screen", async ({ page }) => {
   const response = await page.goto("/q/AAAAAAAAAAAAAAAAAAAAAAAA");
   expect(response?.status()).toBe(200);
   await expect(page).toHaveURL(/\/q\/AAAAAAAAAAAAAAAAAAAAAAAA$/);
-  await expect(page.getByRole("heading", { name: "This quote has expired" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "This quote link is closed." })).toBeVisible();
   await expect(page.getByRole("link", { name: "Call" })).toHaveAttribute("href", /^tel:\+1\d{10}$/);
   await expect(page.getByRole("link", { name: "Text" })).toHaveAttribute("href", /^sms:\+1\d{10}$/);
   await expect(page.getByText("$")).toHaveCount(0);

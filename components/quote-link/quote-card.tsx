@@ -39,7 +39,9 @@ export type QuoteCardProps = {
   phone: string;
   // The customer's own number, for Call and Text it, when the lead has one.
   customerPhone: string | null;
-  quote: { total: string; feet: number; validUntil: string | null; expired: boolean } | null;
+  // holdPassed: after the price-held-until date the link still works and
+  // tells the customer prices may have changed (2026-11-04).
+  quote: { total: string; feet: number; validUntil: string | null; holdPassed: boolean } | null;
   link: QuoteCardLink | null;
 };
 
@@ -137,12 +139,12 @@ export function QuoteCard({ leadId, firstName, phone, customerPhone, quote, link
             <dd className="tabular-nums">{quote.feet} ft</dd>
             {quote.validUntil ? (
               <>
-                <dt className="text-muted-foreground">Good until</dt>
+                <dt className="text-muted-foreground">Price held until</dt>
                 <dd>
                   {formatLongDay(quote.validUntil)}
-                  {quote.expired ? (
+                  {quote.holdPassed ? (
                     <span className="block font-semibold">
-                      Passed: the link shows the quote as expired. Change the date in meeting mode to bring it back.
+                      Passed: the link still works and says prices may have changed. Change the date in meeting mode to hold them again.
                     </span>
                   ) : null}
                 </dd>
@@ -283,8 +285,8 @@ export function QuoteCard({ leadId, firstName, phone, customerPhone, quote, link
         }
       >
         <p className="text-sm text-pretty">
-          {firstName.trim() || "The customer"} will see that the quote has expired. Send quote link afterwards makes a
-          new link.
+          {firstName.trim() || "The customer"} will see that the link is closed, with your number to call or text. Send
+          quote link afterwards makes a new link.
         </p>
       </DialogPanel>
     </Card>

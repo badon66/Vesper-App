@@ -183,7 +183,7 @@ try {
   const ownerId = ownerRow.id;
   const { data: settings } = await admin
     .from("settings")
-    .select("presentation, warranty_text, price_per_ft, box_price, gst_enabled")
+    .select("presentation, warranty_text, price_per_ft, box_price, gst_enabled, upper_access_fee, upper_gable_access_fee")
     .eq("id", 1)
     .single();
   const { data: colour } = await admin.from("track_colours").select("id, name").eq("active", true).order("sort_order").limit(1).single();
@@ -349,12 +349,44 @@ try {
   );
   const bill = await priceScreen.getByTestId("quote-bill").innerText();
   check("No payment until your install is complete, on the bill", bill.includes("No payment until your install is complete."));
-  check("valid until reads as a written-out date", /Valid until [A-Z][a-z]+ \d{1,2}, \d{4}\./.test(bill));
+  check("price held until reads as a written-out date", /Price held until [A-Z][a-z]+ \d{1,2}, \d{4}\./.test(bill));
   if (!settings.gst_enabled) check("with GST off, the price never mentions GST", !/GST/.test(await priceScreen.innerText()));
   check("no note to Keenan on the customer's screen", !(await priceScreen.innerText()).includes("apply to this quote only"));
   await priceScreen.getByLabel("Run 1 feet").press("ArrowLeft");
   await page.waitForTimeout(500);
   check("arrow keys stay with the field being typed in", (await currentScreen(page)) === "The price");
+  // Run parts and upper access (2026-11-04): the part follows the name, and
+  // upper access follows the runs, from this quote's own two amounts.
+  const part = priceScreen.getByLabel("Run 1 part of the house");
+  check("a run's part of the house is guessed from its name", (await part.inputValue()) === "eave");
+  const upperAmount = Number(settings.upper_access_fee ?? 0);
+  const gableAmount = Number(settings.upper_gable_access_fee ?? 0);
+  const upperField = await priceScreen.locator("#quote-upper").inputValue().catch((e) => `error: ${e.message.slice(0, 80)}`);
+  const gableField = await priceScreen.locator("#quote-upper-gable").inputValue().catch((e) => `error: ${e.message.slice(0, 80)}`);
+  check(
+    "this quote's upper access amounts come from Settings and can be changed here",
+    Number(upperField) === upperAmount && Number(gableField) === gableAmount,
+    `fields ${upperField} and ${gableField}, Settings ${settings.upper_access_fee} and ${settings.upper_gable_access_fee}`,
+  );
+  const billText = async () => (await priceScreen.getByTestId("quote-bill").innerText()).replace(/\s+/g, " ");
+  check("no upper run, no upper access line", !(await billText()).includes("Upper roof access"));
+  await priceScreen.getByRole("button", { name: /^Run 1 level/ }).click();
+  await page.waitForTimeout(300);
+  const withUpper = await billText();
+  await part.selectOption("gable");
+  await page.waitForTimeout(300);
+  const withGable = await billText();
+  check(
+    "an upper run adds upper access, and an upper gable the gable amount instead",
+    (upperAmount > 0 ? withUpper.includes(`Upper roof access`) && withUpper.includes(money(upperAmount)) : true) &&
+      (gableAmount > 0 ? withGable.includes(money(gableAmount)) : true) &&
+      withGable.split("Upper roof access").length === 2,
+    `${withUpper.slice(0, 160)} | ${withGable.slice(0, 160)}`,
+  );
+  await part.selectOption("eave");
+  await priceScreen.getByRole("button", { name: /^Run 1 level/ }).click();
+  await page.waitForTimeout(300);
+  check("back to a lower eave, the line goes and the total is as before", !(await billText()).includes("Upper roof access") && (await priceScreen.getByTestId("quote-total").innerText()).trim() === wanted);
   await page.screenshot({ path: `${out}/m5-price.png` });
 
   // ---------------------------------------------------------------- a reload mid-meeting

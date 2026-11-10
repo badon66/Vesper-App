@@ -47,9 +47,11 @@ export async function saveSelection(value: string, chosen: number[]): Promise<bo
 export type BookResult =
   // preview: a signed-in member (Keenan) tapped it; nothing was saved or sent.
   | { ok: true; option: string; total: string; preview?: boolean }
-  | { ok: false; code: "expired" | "failed"; message: string };
+  | { ok: false; code: "closed" | "failed"; message: string };
 
-const FAILED = "That didn't go through. Check your signal and try again, or call or text us.";
+const CLOSED = "This quote link is closed.";
+
+const FAILED = "That didn’t go through. Check your signal and try again, or call or text us.";
 
 // Book my install: saves the option in words, tells Keenan, and returns
 // the total for the thank-you, worked out here from the stored quote and
@@ -67,7 +69,7 @@ export async function bookInstall(value: string, chosen: number[]): Promise<Book
   // timeline only ever holds what the customer did.
   if (await signedInMember()) {
     const view = parseCustomerQuote((await client.rpc("quote_for_customer", { p_token: t.data })).data);
-    if (view.state !== "live") return { ok: false, code: "expired", message: "This quote has expired." };
+    if (view.state !== "live") return { ok: false, code: "closed", message: CLOSED };
     const chosen = p.data.length === 0 ? null : p.data;
     return { ok: true, option: optionName(view.quote.runs, chosen), total: customerTotal(view.quote, chosen), preview: true };
   }
@@ -83,7 +85,7 @@ export async function bookInstall(value: string, chosen: number[]): Promise<Book
     targets?: { id: string; sealed: string }[];
   };
   if (!booked.ok || !booked.option) {
-    return { ok: false, code: "expired", message: "This quote has expired." };
+    return { ok: false, code: "closed", message: CLOSED };
   }
 
   if (booked.notify && booked.targets && booked.targets.length > 0 && booked.lead_id) {

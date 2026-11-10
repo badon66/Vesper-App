@@ -8,6 +8,8 @@ import { z } from "zod";
 import {
   formatMoney,
   priceQuote,
+  RUN_PARTS,
+  runPart,
   screenTotal,
   selectRuns,
   type ColourTiming,
@@ -22,13 +24,35 @@ export const TOKEN_PATTERN = /^[A-Za-z0-9_-]{24}$/;
 
 export type Company = { name: string; phone: string; email: string; address: string };
 
+// The line icons a product point can have (Settings offers these; anything
+// else shows as a tick).
+export const POINT_ICONS = [
+  "lightbulb",
+  "house",
+  "zap",
+  "smartphone",
+  "plug",
+  "shield-check",
+  "paintbrush",
+  "sun",
+  "snowflake",
+  "wrench",
+  "clock",
+  "check",
+] as const;
+export type PointIcon = (typeof POINT_ICONS)[number];
+export type ProductPoint = { icon: PointIcon; text: string };
+
 export type CustomerQuote = {
   state: "live";
   firstName: string;
   lastName: string | null;
   address: string;
   city: string | null;
+  // The day the quote's prices are held until, and Calgary's date today
+  // from the database, so the page never trusts the phone's clock for it.
   validUntil: string | null;
+  today: string | null;
   quote: {
     runs: QuoteRun[];
     runsFingerprint: string;
@@ -38,12 +62,28 @@ export type CustomerQuote = {
     adders: { label: string; amount: number; upperOnly: boolean }[];
     discounts: { label: string; amount: number }[];
     colourTiming: ColourTiming | null;
-    rushFeePerFt: number | null;
+    // The quote's flat rush colour fee and upper access amounts
+    // (2026-11-04); null on a quote made before then, so no line.
+    rushFee: number | null;
+    upperAccessFee: number | null;
+    upperGableAccessFee: number | null;
     minJobTotal: number | null;
     gstEnabled: boolean;
     gstRate: number;
+    // The track colour the quote was made with, by name; null until set.
+    trackColourName: string | null;
+    trackCustom: boolean;
   };
   warranty: string;
+  // Warranty years 6 to 10 (Settings); null hides its line.
+  serviceCallFee: number | null;
+  // Shown only while Keenan has it on, September 1 to November 30 (the
+  // database decides, by Calgary's date).
+  christmas: { title: string; text: string } | null;
+  productPoints: ProductPoint[];
+  installDay: { title: string; body: string } | null;
+  // The presentation gallery's photo paths: Vesper's own installs.
+  gallery: string[];
   company: Company;
   mockupPath: string | null;
   // Positions of the runs they had switched on; null = the Recommended package.
@@ -52,7 +92,9 @@ export type CustomerQuote = {
   bookedOption: string | null;
 };
 
-export type ExpiredQuote = { state: "expired"; company: Company };
+// A link Keenan turned off, or one that never existed. Links don't expire
+// (2026-11-04): prices are held until a date, and the page still works after.
+export type ClosedQuote = { state: "closed"; company: Company };
 
 // Vesper's contact when Settings has none (only for a blank field).
 export const FALLBACK_COMPANY: Company = {
@@ -81,6 +123,9 @@ const runSchema = z.object({
   name: z.string().catch(""),
   feet: number,
   level: z.enum(["lower", "upper"]).catch("lower"),
+  // The part of the house (2026-11-04); a run saved before then has none,
+  // and its name gives the guess.
+  part: z.enum(RUN_PARTS).nullable().optional().catch(null),
 });
 
 const quoteSchema = z.object({
@@ -94,15 +139,19 @@ const quoteSchema = z.object({
     .catch([]),
   discounts: z.array(z.object({ label: z.string().catch(""), amount: number })).catch([]),
   colour_timing: z.enum(["stock", "factory_order", "rush"]).nullable().catch(null),
-  rush_fee_per_ft: z.coerce.number().nullable().catch(null),
+  rush_fee: z.coerce.number().nullable().optional().catch(null),
+  upper_access_fee: z.coerce.number().nullable().optional().catch(null),
+  upper_gable_access_fee: z.coerce.number().nullable().optional().catch(null),
   min_job_total: z.coerce.number().nullable().catch(null),
   gst_enabled: z.boolean().catch(false),
   gst_rate: number,
+  track_colour_name: z.string().nullable().optional().catch(null),
+  track_custom: z.boolean().optional().catch(false),
 });
 
 function toQuote(q: z.infer<typeof quoteSchema>): CustomerQuote["quote"] {
   return {
-    runs: q.runs,
+    runs: q.runs.map((run) => ({ name: run.name, feet: run.feet, level: run.level, part: runPart(run) })),
     runsFingerprint: q.runs_fingerprint,
     pricePerFt: q.price_per_ft,
     boxPrice: q.box_price,
@@ -110,10 +159,14 @@ function toQuote(q: z.infer<typeof quoteSchema>): CustomerQuote["quote"] {
     adders: q.adders.map((a) => ({ label: a.label, amount: a.amount, upperOnly: a.upper_only === true })),
     discounts: q.discounts,
     colourTiming: q.colour_timing,
-    rushFeePerFt: q.rush_fee_per_ft,
+    rushFee: q.rush_fee ?? null,
+    upperAccessFee: q.upper_access_fee ?? null,
+    upperGableAccessFee: q.upper_gable_access_fee ?? null,
     minJobTotal: q.min_job_total,
     gstEnabled: q.gst_enabled,
     gstRate: q.gst_rate,
+    trackColourName: q.track_colour_name?.trim() || null,
+    trackCustom: q.track_custom === true,
   };
 }
 
@@ -124,6 +177,11 @@ export function quoteFromRow(row: unknown): CustomerQuote["quote"] | null {
   return parsed.success ? toQuote(parsed.data) : null;
 }
 
+const pointSchema = z.object({
+  icon: z.enum(POINT_ICONS).catch("check"),
+  text: z.string().catch(""),
+});
+
 const liveSchema = z.object({
   state: z.literal("live"),
   first_name: z.string(),
@@ -131,8 +189,22 @@ const liveSchema = z.object({
   address: z.string(),
   city: z.string().nullable().catch(null),
   valid_until: z.string().nullable().catch(null),
+  today: z.string().nullable().optional().catch(null),
   quote: quoteSchema,
   warranty: z.string().catch(""),
+  service_call_fee: z.coerce.number().nullable().optional().catch(null),
+  christmas: z
+    .object({ title: z.string().catch(""), text: z.string().catch("") })
+    .nullable()
+    .optional()
+    .catch(null),
+  product_points: z.array(pointSchema.catch({ icon: "check", text: "" })).catch([]),
+  install_day: z
+    .object({ title: z.string().nullable().catch(""), body: z.string().nullable().catch("") })
+    .nullable()
+    .optional()
+    .catch(null),
+  gallery: z.array(z.string()).catch([]),
   company: companySchema,
   mockup_path: z.string().nullable().catch(null),
   selection: z.array(z.number().int()).nullable().catch(null),
@@ -141,16 +213,20 @@ const liveSchema = z.object({
 });
 
 // The database's answer, as the page uses it. Anything that isn't a live
-// quote, however it arrives, is the expired screen.
-export function parseCustomerQuote(data: unknown): CustomerQuote | ExpiredQuote {
+// quote, however it arrives, is the closed screen.
+export function parseCustomerQuote(data: unknown): CustomerQuote | ClosedQuote {
   const live = liveSchema.safeParse(data);
   if (!live.success) {
     const company = companySchema.parse(
       data && typeof data === "object" ? (data as { company?: unknown }).company : undefined,
     );
-    return { state: "expired", company };
+    return { state: "closed", company };
   }
   const v = live.data;
+  const fee = v.service_call_fee ?? null;
+  const christmas = v.christmas && v.christmas.title.trim() ? { title: v.christmas.title.trim(), text: v.christmas.text.trim() } : null;
+  const installTitle = v.install_day?.title?.trim() ?? "";
+  const installBody = v.install_day?.body?.trim() ?? "";
   return {
     state: "live",
     firstName: v.first_name,
@@ -158,14 +234,58 @@ export function parseCustomerQuote(data: unknown): CustomerQuote | ExpiredQuote 
     address: v.address,
     city: v.city,
     validUntil: v.valid_until,
+    today: v.today ?? null,
     quote: toQuote(v.quote),
     warranty: v.warranty,
+    serviceCallFee: fee !== null && Number.isFinite(fee) && fee > 0 ? fee : null,
+    christmas,
+    productPoints: v.product_points
+      .map((point) => ({ icon: point.icon, text: point.text.trim() }))
+      .filter((point) => point.text !== ""),
+    installDay: installBody ? { title: installTitle || "How install day works", body: installBody } : null,
+    gallery: v.gallery.filter((path) => path.trim() !== ""),
     company: v.company,
     mockupPath: v.mockup_path,
     selection: v.selection,
     bookedAt: v.booked_at,
     bookedOption: v.booked_option,
   };
+}
+
+// Whether it is the Christmas season on the page: September 1 to November 30
+// by Calgary's date, the same window the database gives the Christmas
+// banner (Keenan, 2026-11-05). Outside it nothing on the page mentions
+// Christmas. Without a date it counts as outside, so nothing is promised.
+export function christmasSeason(today: string | null): boolean {
+  const month = today ? Number(today.slice(5, 7)) : 0;
+  return month >= 9 && month <= 11;
+}
+
+// The track colour section's line about other colours, in Keenan's words.
+// From September 1 to November 30 the rush colour fee is "to have it before
+// Christmas". From December 1 nothing promises Christmas: the spring option
+// only, colour matching included; a quote Keenan priced for this season
+// still names its fee, "to have it sooner", so the line never contradicts
+// that customer's own breakdown (Keenan, 2026-11-05). A fee that isn't set
+// drops its clause.
+export function otherColoursLine({ season, rushFee, rush }: { season: boolean; rushFee: number | null; rush: boolean }): string {
+  const fee = rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
+  if (season) {
+    return `Any other colour is powder coated: nothing extra if it can wait for spring${
+      fee !== null ? `, or the ${formatMoney(fee)} rush colour fee to have it before Christmas` : ""
+    }.`;
+  }
+  if (rush && fee !== null) {
+    return `Any other colour is powder coated: nothing extra if it can wait for spring, or the ${formatMoney(fee)} rush colour fee to have it sooner.`;
+  }
+  return "Any other colour is powder coated for a spring install, with colour matching included at no extra cost.";
+}
+
+// Whether the price hold has passed: after the valid-until date (Calgary),
+// the page still works and says prices may have changed. Today comes from
+// the database; without it, the hold counts as not passed.
+export function priceHoldPassed(validUntil: string | null, today: string | null): boolean {
+  return validUntil !== null && today !== null && validUntil < today;
 }
 
 // Positions that are on this quote, sorted, without repeats; null when
@@ -189,10 +309,13 @@ export function customerInputs(quote: CustomerQuote["quote"], positions: readonl
     adders: quote.adders.map((a) => ({ label: a.label, amount: a.amount, ...(a.upperOnly ? { upperOnly: true } : {}) })),
     discounts: quote.discounts,
     colourTiming: quote.colourTiming,
-    rushFeePerFt: quote.colourTiming === "rush" ? quote.rushFeePerFt : null,
+    rushFee: quote.colourTiming === "rush" ? quote.rushFee : null,
+    upperAccessFee: quote.upperAccessFee,
+    upperGableAccessFee: quote.upperGableAccessFee,
     minJobTotal: quote.minJobTotal,
     gstEnabled: quote.gstEnabled,
     gstRate: quote.gstRate,
+    colourName: quote.trackColourName,
   };
 }
 
@@ -238,6 +361,17 @@ export function choiceInSentence(option: string): string {
   return option === "Recommended package" ? "the Recommended package" : choiceLabel(option);
 }
 
+// The customer's own words for it (2026-11-04): the page calls everything
+// they were quoted "the full quote"; "Recommended package" stays the name
+// the database and Keenan's card use.
+export function customerChoice(option: string): string {
+  return option === "Recommended package" ? "The full quote" : choiceLabel(option);
+}
+
+export function customerChoiceInSentence(option: string): string {
+  return option === "Recommended package" ? "the full quote" : choiceLabel(option);
+}
+
 // "64 ft, upper level"
 export function runDetail(run: QuoteRun): string {
   return `${Math.max(0, Math.round(run.feet))} ft, ${run.level === "upper" ? "upper" : "lower"} level`;
@@ -262,8 +396,8 @@ export function quoteLinkMessage({
   phone: string;
 }): string {
   const hello = firstName.trim() ? `Hi ${firstName.trim()}, here's your Vesper quote:` : "Here's your Vesper quote:";
-  const good = validUntil ? `It's good until ${formatLongDay(validUntil)}. ` : "";
-  return `${hello}\n${link}\n\n${good}When you're ready, tap Book my install, or call or text me with any questions.\n\nKeenan, Vesper Lighting\n${phone}`;
+  const held = validUntil ? `Your price is held until ${formatLongDay(validUntil)}. ` : "";
+  return `${hello}\n${link}\n\n${held}When you're ready, tap Book my install, or call or text me with any questions.\n\nKeenan, Vesper Lighting\n${phone}`;
 }
 
 // tel: and sms: want the digits; Canadian numbers get the +1.
@@ -273,5 +407,12 @@ export function phoneHref(phone: string, scheme: "tel" | "sms"): string {
   return `${scheme}:${full}`;
 }
 
-// The breakdown's money, as the page shows it: "-$150" for discounts.
-export const lineAmount = (amount: number) => formatMoney(amount);
+// A text to Vesper that starts with a line they can keep or delete
+// (2026-11-04): Keenan can place it whoever sends it. "?&body=" opens with
+// the words on both iPhone and Android.
+export function smsWithBody(phone: string, body: string): string {
+  return `${phoneHref(phone, "sms")}?&body=${encodeURIComponent(body)}`;
+}
+
+// The breakdown's money, as the page shows it: a true minus for discounts.
+export const lineAmount = (amount: number) => (amount < 0 ? `\u2212${formatMoney(-amount)}` : formatMoney(amount));

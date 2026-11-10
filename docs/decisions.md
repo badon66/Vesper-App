@@ -821,6 +821,97 @@ Keenan approved both, merge on green, and contact privacy goes live first becaus
 - **What went wrong on the way (2026-11-04).** The first contact privacy migration (`20261104100612`) took table-wide read access on `leads` away while the deployed app still asked for whole lead rows and for the phone on Schedule's meetings. A worker restart left it that way from 04:06 to 15:12 Calgary: lead pages answered "not found", Tonight, Schedule and My bookings showed no bookings, and phone searches found nothing. The database's request log shows no requests at all in that window, so nobody met it; the first sign-in after it was at 15:13, once it was put back (`20261104211259`, contact privacy paused). From now on the switch is thrown only after the app that no longer needs whole rows is live (`contact-privacy-on`, after this branch), and the privacy tests that need it run then.
 - **A hole found along the way, closed.** Supabase's default privileges had given signed-in people insert, update and delete on every view, and the app's views are simple ones that run with their owner's rights, so a write through `settings_public`, `profiles_public` or `profile_names` (and the new `lead_contacts`) would have reached settings, profiles or leads around their policies: a setter could have changed meeting times or step notes, or renamed or removed people. The app never writes through them, and the request log shows no such write in the four days it keeps. All four are now read only (`20261104211501`, `20261104212002`), with database tests that try each write and expect a refusal.
 
+## 2026-11-04: The quote link rework, settled by debate (Keenan)
+
+Keenan asked for a debate before building, with five separate agents each arguing from one seat: the homeowner who got the link and hasn't decided, a door-to-door closer, a premium brand designer, a mobile UX specialist and a plain-language editor. Keenan's rules in his message were not up for debate. Two rounds ran: positions (each read the brief, DESIGN.md, PRODUCT.md and screenshots of take 1 at 390 and 430), then rebuttals with all five positions in hand. Where the seats split, the majority carried; a tie went to Keenan's own wording or order. No plan went to Keenan, as he asked. The same five review screenshots after the build.
+
+What they found wrong with take 1: the first screen read like a record (full name, address, "Good until") and the total sat about 1,200 px down; the runs were listed twice; switching a run changed nothing in view; Call and Text sat about 2,500 px down under an open warranty.
+
+### Settled
+
+- **Order.** Keenan's eight sections, in his order. Inside them:
+  - Their house: a slim navy band with the wordmark (not sticky); the mockup full width in a 3:2 frame on navy, with an expand button instead of a caption; "[First name], here's your quote"; the total; "Price held until [date]" right under it; then "No payment until your install is complete." and "Financing is available. Just ask." (take 1's spec keeps financing always visible).
+  - Your lights: the compact list, "What do these mean?", then the diagram last, right above the switches, so a switch, the house and the total share one screen at 390. Not pinned (5 to 0): pinned, it and the bar would cover a third of a 660 px screen.
+  - Start smaller: the switch rows, then the breakdown, then the total, then the minimum note.
+  - Tap to open: See our work first once it has photos (5 to 0); until then it is hidden, so Keenan's order shows.
+  - A small footer with the address, phone and email, so a door-knocking company shows it is local.
+- **One live total.** The hero total follows the switches, with "Full quote $4,560" quiet under it when anything is off, so the big number is always what they would book (4 to 1; UX wanted the hero to stay the full quote).
+- **No total in the bottom bar** (4 to 1; UX switched sides in round 2). Call and Text with words, then Book my install in gold with navy text. With words on Call and Text, a price beside the button does not fit at 390, and "$3,450 + GST" never would.
+- **Never "level".** In Calgary "lower level" is the basement. Rows show the name and feet only; "What do these mean?" ends with "Upper is the second storey. Lower is the main floor." (5 to 0).
+- **The diagram.** One two-storey front view for every house, with short side returns at each end so the sides have lines (3 to 2: the designer and the homeowner wanted a bungalow drawing too, picked by whether the quote has an upper run; UX answered that a two-storey quoting only lower runs would then get a bungalow). The photo is the portrait; the drawing is a key. A lit part is a navy track with gold dots tucked under the roof edge (gold on navy reads at 4.9:1; bare gold on white is 2.9:1 and washes out outdoors). A run switched off is a dashed navy line at 40%, so on and off differ in shape, not only colour; never gold, since gold means light. Parts not in the quote are the plain outline. Caption: "Gold marks your lights." "Other" runs are listed, not drawn.
+- **What do these mean?** One column (5 to 0), each row the same small house with one part in gold: Eave, Gable, Garage line, Sides, Porch (Keenan's five). The soffit is named inside Eave, since the product points use the word (the designer's middle way between adding a sixth row and leaving it out).
+- **Line names.** "Upper roof access", with "$200, or $400 with an upper gable" under it, from the quote's own two amounts (3 to 2 over "Second-storey work"); every dollar line says what it is for where it appears, so a switch that moves $400 to $200 never looks like a trick. "Rush colour fee", Keenan's own term from his track colour sentence, with "[Colour] track, powder coated this season" under it (5 to 0; "Colour before Christmas" read like a second charge and a dated promise). The control box says "Always included". Discounts show with a true minus sign, in navy. Meeting mode uses the same names, from `lib/pricing.ts`.
+- **The minimum.** Keenan's two sentences at the total, the first semibold, in a quiet box with a hairline border; the breakdown keeps its "To reach our $2,500 minimum" line so the column adds up. No third line (4 to 1).
+- **Track colour.** "Your colour: White." when the quote names one, then Keenan's own sentence, with the rush fee as a dollar amount inline; with no fee set, the clause after "spring" drops and the sentence still reads.
+- **Product points.** One column, a navy line icon to the left of each line, no cards or grid. Keenan's order (the seats split 2, 2 and 1; it opens with looks and ends on the warranty, and Settings can reorder them). Icons: lightbulb, house (the track, 4 to 1 over a paintbrush), lightning bolt (24V), phone, plug, shield.
+- **Christmas banner.** A cream band across the page with navy text, the question bold on its first line; no icon, no button, no close X (5 to 0).
+- **Book my install.** The confirm step: "Book your install?", "There's nothing to sign or pay today. Keenan will be in touch to set your install date and go through the agreement.", with Back and Yes, book my install. The thank-you keeps take 1's wording from the spec.
+- **Text with a start.** Text opens Messages with "Hi Keenan, a question about the quote for [address]: " so Keenan can place it whoever sends it; "Just ask." opens "Hi Keenan, can you tell me about financing?".
+- **The closed page.** "This quote link is closed." and "Call or text Keenan for an up-to-date quote.", Call and Text, no name, no prices. Never "expired": since 2026-11-04 a link only closes when Keenan turns it off.
+- **Motion.** One easing, cubic-bezier(0.22, 1, 0.36, 1). Totals count to the new value over 450 ms in tabular figures, carry on from where they are if switched again, and land exact; a screen reader hears the new total once. Diagram parts cross-fade in 240 ms; lines that appear or drop off ease height and opacity over 200 ms; Tap to open eases open in 220 ms and closed in 180 ms. Nothing moves on load or on scroll, and there is no first-view light-up (5 to 0). With reduce motion on, nothing counts or slides; values swap with a fade of 100 ms or less (3 to 2; the editor and the closer wanted no fade at all).
+
+### The main disagreements, and why they went the way they did
+
+- **The bar's total.** The closer fought hardest for a live total with "Pay after install" in the bar, as a closer who never leaves. Lost: it does not fit at 390 beside worded Call and Text, a bare price beside the button reads like a checkout, and the live total already sits under the switches and in the hero.
+- **Bungalow drawing.** Lost 3 to 2, above. If Keenan wants it, it is a second drawing and a rule for picking it.
+- **"Not yet" or "Back".** The homeowner wanted take 1's "Not yet" (it says they can come back without being chased); three seats wanted Back, so the button doesn't suggest putting it off.
+- **"Within a day".** Four seats wanted it cut from the thank-you as a promise the business might not keep. It stays: it is Keenan's wording in the spec (take 1), and he decides what he promises. Worth a look from Keenan.
+- **"To have it before Christmas".** The homeowner read it as a promised date. It is Keenan's own sentence, so it stays as written; the breakdown line says "this season" instead.
+- **Prefilled names.** The homeowner wanted "it's Todd" in the text; the address works whoever sends it.
+
+### After the build: the five seats' screenshot review (2026-11-04)
+
+The same five agents reviewed screenshots of the built page at 390 and 430 (all runs on, uppers off, under the minimum, everything opened, the confirm step, after the price hold, a closed link). Changed:
+
+- **The total sits right under the switches** (all five). The first build put the breakdown between the switches and the total, so a flip changed a number about 300 px out of sight, with the hero far above and no total in the bar; the seats who gave up a bar total in round 2 had counted on a total beside the switches. Now the total, and Keenan's minimum box when it applies, follow the last switch; the lines that make it up come after. The walk-through checks the gap (60 px or less).
+- **Switching off takes away the light, not the roof** (designer). Roof edges stay solid in every state; a switched-off part shows a dashed line where the track was, in navy at 60% (over 3:1 on white, the homeowner measured the first version at 2.6:1).
+- **More gold** (designer, homeowner). Nodes 3.2 units across at a 5.5-unit pitch on the 4.5-unit track, so the lights read as gold rather than a dark bead line. The five small drawings are each cropped to their own part and their lines and lights are drawn the same size on screen as the big drawing's, so the porch and the sides are long enough to see (UX).
+- **"Upper & Lower Sides" lights both sides** (editor): a sides run named for both floors lights both returns, whatever level it was saved with.
+- **The hero** (editor, closer, UX). The greeting comes first (the grey street address above it went: the photo shows the house). The no-payment line sits right under "Price held until", semibold, with no rule between, which also brings the Christmas banner onto the first screen at 390. Keenan's minimum sentences show once, in the box at the total, not in the hero, where "That" read as the full quote.
+- **Words.** "For work up high: $200, or $400 with an upper gable" (closer, designer); "The track sits on the soffit, the underside of that edge" (editor); curly apostrophes in the page's own words, so the font no longer mixes the two (designer, editor; Keenan's own texts from Settings stay as he typed them).
+- **Touch.** The footer's phone and email are their own 44 px rows, underlined (UX). The closed page puts Call and Text in the same bottom bar as the quote page, in thumb reach (UX). The expand button on the photo is navy with a white icon, so it no longer outshines the house and the price (designer). The runs list above the drawing reads as a legend, without dividers.
+- **One visit per opening.** The first walk-through counted each visit twice on the development server, which runs a page's start-up twice; the page now records one visit however often that runs.
+
+Not changed:
+
+- **"No extra cost" tags on switched-off rows under the minimum** (closer). True and friendly, but the debate turned down extra minimum copy 4 to 1, and the total staying at $2,500 as parts come back on already shows it.
+- **"Still thinking it over? Text Keenan any question." above the footer** (closer, from the homeowner's round 1). The bar's Text already carries a first line about their quote; left out as a second ask.
+- **A sticky total inside Start smaller** (UX): the total right under the switches does the same job with no motion.
+- **A "both floors" level in meeting mode** (editor): not asked for; the name rule above covers Todd's quote.
+
+### Prices and status that came with the rework (2026-11-04)
+
+- **Settings changed at once** (migration `20261104230300`): $24 a foot, the $2,500 minimum, the $200 service call fee, prices held 120 days. Quotes already made keep their own prices.
+- **Price hold days are a new column.** `settings.quote_valid_days` has a check that allows 1 to 90, so 120 couldn't go in it; changing that check means dropping it, which needs Keenan at the screen (rule 4). The new `price_hold_days` (1 to 365, 120) is what the app uses; `quote_valid_days` was set to 90 and is no longer read. Dropping the old column's check is left for Keenan's go-ahead.
+- **The rush colour fee per foot is no longer used.** No quote ever had one, so nothing needs carrying over; the per-foot columns stay, unused, per the additive rule.
+- **A quote keeps its rush colour fee whatever the colour timing**, so the customer's link can name it in the track colour sentence and switching to this season at the table finds it; the price counts it only for this season.
+- **Todd Dean's quote** (the only quote so far): "Family & Friends Discount", prices held until March 2, 2027 (120 days from November 2, the day it was made, Calgary), and the $2,500 minimum. It was made before upper access existed, so it has no upper access or rush colour line.
+- **The Christmas banner's season is a judgment call.** Keenan said it hides itself after December 24. It shows from September 1 to December 24 (Calgary) while it is on, so "Want them up for Christmas?" never appears in the spring; Keenan can turn it off or change the words in Settings.
+- **Status.** Vercel Pro is in place. Keenan is turning off Vercel Authentication for previews, so the preview link should open on his phone without a Vercel sign-in (the report says if it still asks). Meeting times stay at 5:00 pm with six 35-minute meetings.
+
+### The design critique, before the preview (2026-11-05)
+
+The impeccable skill's critique ran as two isolated agents (a design review, and the detector in a browser) on a staged TEST quote on the production build. Take 1 ended at 30/40 (75%). The rework scored 27/36 (75%, flexibility scored n/a on a sales page), then 30/36 (83%) after its fixes; snapshots are in `.impeccable/critique/`. The detector found one advisory, the hero total's 2.75rem size, which is deliberate (DESIGN.md's type steps are the app's and have no display size).
+
+- **A quick second tap can't book** (P1). The confirm step's Yes sits where Book my install was; a tap on it within half a second of the step opening, timed from the press, is ignored. The walk-through taps twice and checks nothing books.
+- **Each switch has a small drawing of its own part** (P1). With Safari's toolbar showing (about 660 px of a 390 phone), the big drawing sat off screen while the thumb was on the switches; now every row shows its part lit while on and dashed once off. The big drawing stays as the overview.
+- **Focus shows everywhere** (P2): the photo's outline draws (Tailwind's `outline-none` had been cancelling it) and the footer links have the page's ring.
+- **The breakdown adds up downwards** (P2): it closes on a Total row, and under the minimum "Before the minimum" (the lines' own sum, discount taken) sits above the top-up, so the discount visibly still counts. Not "Subtotal", which the PDF will use for the total before GST.
+- **Smaller.** The small drawings drop the windows and are cropped tighter.
+- **For Keenan, not changed.** "Garage Eave" in the run names and "Garage line" in the explainer are two names for one part; "Two Upper Gables" is drawn as one gable; and "Upper & Lower Sides" lights the upper side on the drawing while upper access follows the level it was saved with (lower), so a quote whose only upper work is that run charges no upper access. Setting that run to upper in meeting mode would charge it.
+
+## 2026-11-05: Keenan's answers on the quote link rework
+
+- **The thank-you says "within one business day"** instead of "within a day" (the spec and the page).
+- **The Christmas banner runs September 1 to November 30** (Calgary), not to December 24 (migration `20261105042102`). The install season ends mid-December and custom colours take one to two weeks, so a later banner would promise something Vesper can't deliver. This replaces the September 1 to December 24 judgment call above.
+- **"Upper & Lower Sides" stays as built.** The drawing lights both sides for a sides run named for both floors; Keenan sets the level in meeting mode when he quotes, which decides upper access.
+- **See our work stays hidden** until Keenan adds real install photos to the presentation gallery.
+- **The rush colour fee stays $350** everywhere: Settings, and each new quote's own copy.
+- **The old `quote_valid_days` check is dropped** (Keenan approved; run as `20261105045236` while he was at the screen to confirm it). The column stays, unused.
+- **The track colour line follows the banner's dates.** From September 1 to November 30 it keeps Keenan's words, the rush colour fee "to have it before Christmas". From December 1 nothing on the page mentions Christmas: non-stock colours show the spring option only, "Any other colour is powder coated for a spring install, with colour matching included at no extra cost." The rush colour fee stays available in meeting mode, with no Christmas promise.
+- **A quote priced for this season after November 30 (judgment call).** For a quote Keenan priced with the rush colour fee, the spring-only line would contradict the fee in that customer's own breakdown, so it reads "Any other colour is powder coated: nothing extra if it can wait for spring, or the $350 rush colour fee to have it sooner."
+- **keenancudi@gmail.com** is left as it is: Keenan's answer came through as the blank template twice, so nothing is changed until he picks.
+
 ## 2026-11-05: The Session tab (Keenan)
 
 Keenan approved the scope up front, merge on green, aiming to be live before 3:00 pm Calgary because setters are out that afternoon. Built from main, not from the quote link branch, so nothing from the unreviewed quote page goes live.

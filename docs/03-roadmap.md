@@ -166,7 +166,7 @@ The customer's page, phone first:
 - [x] Start smaller: switch individual runs on or off and watch the total update live; prices, footage and discounts can't be changed; the control box is always included; extra work marked "only with upper runs" drops off when no upper run is on; below the minimum job total (Settings, empty by default) the total rises to the minimum with a line saying so
 - [x] The warranty in the exact wording from Settings
 - [x] A big Book my install button, plus call, text and email buttons for (403) 895-9915 and info@vesperlighting.ca
-- [x] After Book my install, a thank-you screen: Keenan will be in touch within a day to set the date and go through the agreement; no signing, no payment
+- [x] After Book my install, a thank-you screen: Keenan will be in touch within a day (within one business day since 2026-11-05) to set the date and go through the agreement; no signing, no payment
 - [x] After the valid-until date, or once revoked: "This quote has expired" with the call and text buttons and no prices
 
 Keenan's side:
@@ -187,6 +187,17 @@ Rules:
 - [x] Plain, human copy, no em dashes, no invented reviews or stats; the address is 448 Strathcona Drive SW, Calgary, AB T3H 1M3, no unit number
 - [x] Design: an impeccable shape before building, one critique and polish pass before the preview, phone size first, scores in the report
 - [x] The full suite passes, including a live walk-through of the customer's page at phone size; the branch is pushed with a preview link; Keenan reviews it on Todd Dean's real quote and says "push the changes" before it merges
+
+### The rework (Keenan, 2026-11-04; waits for the preview)
+- [x] Prices: $24 a foot, the $2,500 minimum, prices held 120 days, the $200 service call fee, a flat $350 rush colour fee (Settings and each quote), upper access added on its own ($200 with upper runs, $400 with an upper gable, none without an upper run), following the runs that are on in meeting mode, on the link and on the server; quotes already made get no new lines
+- [x] Todd Dean's quote: "Family & Friends Discount", prices held 120 days from the day it was made, and the $2,500 minimum
+- [x] Each run has a part of the house beside its level, guessed from its name in the quote builder, which Keenan can change
+- [x] A debate between five agents (homeowner, closer, designer, mobile UX, plain-language editor) settles the open choices, written into decisions.md; no plan to Keenan
+- [x] The page, top to bottom: their house and price, the Christmas banner (Settings, September 1 to November 30), six product points (Settings), their lights on an original house diagram with "What do these mean?", Start smaller with the total counting, track colour, Warranty, How install day works and See our work behind taps, and a bar with Book my install, Call and Text
+- [x] Keenan's minimum lines at the total; the price held, then "Prices may have changed since [date]" after it, with Book my install still working; links stay live until revoked, and a revoked link shows the closed page with Call and Text
+- [x] Quiet motion that respects reduce motion; tested at 390 and 430; the same agents review the screenshots and their fixes are made
+- [x] Commission recorded: 5% of the lights and control box after discounts, rush colour and upper access left out (built with M5 take 2)
+- [ ] Keenan opens the preview and says "push the changes"
 
 ### Take 2 (after the first links go out, with M5 take 2)
 - [ ] Your documents: Quote, Warranty, What you get, FAQ, Install day and Agreement preview, each a phone page with Download PDF, built once together with M5 take 2's leave-behind folder

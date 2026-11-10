@@ -7,13 +7,12 @@ import type { Database } from "@/types/database";
 // 2026-11-02): an anonymous caller reads no table; a token returns its own
 // quote and nothing else, with customer-safe fields only; unknown and
 // revoked links come back closed with no name and no prices, while a link
-// past its price-held-until date stays live (2026-11-04, live in the
-// database since the quote link rework's migrations; its page waits for
-// Keenan's preview); the
+// past its price-held-until date stays live (2026-11-04); the
 // page's writes change only their own link; Book my install never accepts
 // the quote or pays anyone; push addresses come back sealed, only for the
 // link's maker; and Storage lets a request carrying a live token sign that
-// quote's mockup and nothing else. Signed in as a throwaway setter and an
+// quote's mockup and nothing else, and the presentation gallery's photos
+// and nothing else there. Signed in as a throwaway setter and an
 // account with no profile; leads are named "TEST LEAD (automated)" and
 // everything made here is removed at the end. The service role stands in
 // for the owner, as in the other suites: the tests never sign in as Keenan.
@@ -294,6 +293,43 @@ describe("what a token shows", () => {
     expect((other.data as { address: string }).address).toBe("2 Linktest Street NW");
   });
 
+  it("hands the page Settings' banner, points, install day and service call, and Calgary's date", async () => {
+    const { data } = await anon.rpc("quote_for_customer", { p_token: tokenA });
+    const view = data as {
+      today: string;
+      christmas: { title: string; text: string } | null;
+      product_points: unknown;
+      install_day: { title: string; body: string } | null;
+      service_call_fee: number | string | null;
+      gallery: unknown;
+    };
+    const { data: settings } = await admin
+      .from("settings")
+      .select("christmas_banner_on, christmas_banner_title, christmas_banner_text, product_points, service_call_fee")
+      .eq("id", 1)
+      .single();
+    expect(view.today).toBe(calgaryDay(0));
+    // The banner shows from September 1 to November 30 (Calgary), while on.
+    const [, month] = calgaryDay(0).split("-").map(Number);
+    const inSeason = month >= 9 && month <= 11;
+    expect(view.christmas).toEqual(
+      settings!.christmas_banner_on && inSeason ? { title: settings!.christmas_banner_title, text: settings!.christmas_banner_text } : null,
+    );
+    expect(view.product_points).toEqual(settings!.product_points);
+    expect(Number(view.service_call_fee ?? 0)).toBe(Number(settings!.service_call_fee ?? 0));
+    expect(Array.isArray(view.gallery)).toBe(true);
+    expect(view.install_day === null || typeof view.install_day.title === "string").toBe(true);
+  });
+
+  it("keeps the banner and points in owner-only Settings: a setter and an anonymous caller read nothing there", async () => {
+    const setter = await users.a.client.from("settings").select("christmas_banner_title, product_points");
+    expect(setter.data ?? []).toEqual([]);
+    const stranger = await anon.from("settings").select("christmas_banner_title, product_points");
+    expect(stranger.error !== null || (stranger.data ?? []).length === 0).toBe(true);
+    const change = await users.a.client.from("settings").update({ christmas_banner_title: "Changed" }).eq("id", 1).select("id");
+    expect(change.data ?? []).toEqual([]);
+  });
+
   it("shows unknown and malformed links as closed, with nothing else", async () => {
     // The last one is a real token with its last character changed. Tokens
     // are 24 random base64url characters, so a fixed replacement ("_") was
@@ -451,6 +487,25 @@ describe("the mockup", () => {
     const someoneElse = await withToken(tokenB).storage.from(BUCKET).createSignedUrl(mockupPath, 600);
     expect(someoneElse.error).not.toBeNull();
     const madeUp = await withToken("AAAAAAAAAAAAAAAAAAAAAAAA").storage.from(BUCKET).createSignedUrl(mockupPath, 600);
+    expect(madeUp.error).not.toBeNull();
+  });
+});
+
+describe("the gallery photos", () => {
+  // Settings' gallery is Keenan's own and shows on every live link, a real
+  // customer's included, so these tests never add a photo to it: they prove
+  // nothing else in the bucket can be signed. A gallery photo that can't be
+  // signed is left off the page, so the section hides rather than breaks
+  // (decisions.md, 2026-11-04).
+  it("can't be signed without a live token, and a live token signs nothing outside the gallery", async () => {
+    const path = `pages/not-in-the-gallery-${stamp}.jpg`;
+    const noToken = await anon.storage.from("presentation").createSignedUrl(path, 600);
+    expect(noToken.error).not.toBeNull();
+    const live = await withToken(tokenA).storage.from("presentation").createSignedUrl(path, 600);
+    expect(live.error).not.toBeNull();
+    const listed = await withToken(tokenA).storage.from("presentation").list("");
+    expect(listed.data ?? []).toEqual([]);
+    const madeUp = await withToken("AAAAAAAAAAAAAAAAAAAAAAAA").storage.from("presentation").createSignedUrl(path, 600);
     expect(madeUp.error).not.toBeNull();
   });
 });
