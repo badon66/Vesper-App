@@ -416,35 +416,7 @@ try {
     note("What Vesper is's More was not reached: Settings has no words for it");
   }
 
-  // ---------------------------------------------------------------- the gallery, when Keenan has install photos
-  const galleryLabel = pageLabel("gallery");
-  if (galleryCount > 0) {
-    await goToScreen(page, galleryLabel);
-    const region = page.getByRole("region", { name: galleryLabel });
-    const heroes = Math.min(galleryCount, 6);
-    // The band counts its photos only while they are the whole gallery; with
-    // more, See all N is the only total.
-    const counted = heroes > 1 && galleryCount <= 6;
-    const counter = counted ? await region.getByTestId("gallery-counter").innerText() : "";
-    check(
-      "the gallery shows one photo at a time, counted only while the band holds them all",
-      (await region.locator("img").count()) >= 1 && (counted ? counter === `1 of ${heroes}` : (await region.getByTestId("gallery-counter").count()) === 0),
-      counter,
-    );
-    if (heroes > 1) {
-      const first = await region.locator("img").last().getAttribute("src");
-      await page.keyboard.press("ArrowRight");
-      await page.waitForTimeout(500);
-      check(
-        "the arrow key steps to the next photo before turning the page",
-        (await currentScreen(page)) === galleryLabel &&
-          (counted ? (await region.getByTestId("gallery-counter").innerText()) === `2 of ${heroes}` : (await region.locator("img").last().getAttribute("src")) !== first),
-      );
-    }
-  } else {
-    note("the gallery was not reached: no install photos are uploaded yet, so the deck skips it");
-  }
-
+  // The gallery (Homes we've lit) left the meeting in round 10.
   // ---------------------------------------------------------------- Up once, there all year (their Main mockup)
   await goToScreen(page, MOCKUP);
   const house = page.getByRole("region", { name: MOCKUP });
