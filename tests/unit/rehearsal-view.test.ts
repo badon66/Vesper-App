@@ -223,10 +223,11 @@ describe("staying on the page after a switch", () => {
   });
 
   it("moves to the next page that shows, else the last", () => {
-    expect(landingPage(noLead, "light_picker")).toBe("whites_first");
-    expect(landingPage(noLead, "mockup")).toBe("whites_first");
-    expect(landingPage(noLead, "your_house")).toBe("whites_first");
-    expect(landingPage(noLead, "quote")).toBe("next_steps");
+    // Round 10's order: the picker and the price come after the warranty.
+    const round10 = keys("cover", "warranty", "next_steps");
+    expect(landingPage(round10, "light_picker")).toBe("next_steps");
+    expect(landingPage(round10, "quote")).toBe("next_steps");
+    expect(landingPage(round10, "phone_control")).toBe("warranty");
     expect(landingPage(keys("cover", "what_vesper_is", "warranty"), "hidden_by_day")).toBe("warranty");
   });
 
@@ -247,13 +248,14 @@ describe("staying on the page after a switch", () => {
       signed: new Map(),
       picker: null,
     });
-    // Rehearsal fills the empty gallery with examples; the Customer view skips it.
+    // Round 10: with no lead there are no mockups, so both views show the
+    // cover, the warranty and What happens next.
     const rehearsal = deckPages({ deck, lead: null, fillEmpty: true }).map((page) => page.key);
     const customer = deckPages({ deck, lead: null }).map((page) => page.key);
-    expect(rehearsal).toContain("gallery");
-    expect(customer).not.toContain("gallery");
-    expect(landingPage(customer, "gallery")).toBe("warranty");
-    expect(landingPage(rehearsal, "colour")).toBe("next_steps");
+    expect(rehearsal).toEqual(["cover", "warranty", "next_steps"]);
+    expect(customer).toEqual(rehearsal);
+    expect(landingPage(customer, "what_vesper_is")).toBe("warranty");
+    expect(landingPage(rehearsal, "quote")).toBe("next_steps");
   });
 });
 

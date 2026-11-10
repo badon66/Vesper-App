@@ -33,7 +33,8 @@ import {
   galleryCounter,
   galleryItems,
   houseLine,
-  houseView,
+  mockupJobs,
+  offerMockup,
   installDayGrid,
   installDays,
   isNear,
@@ -60,7 +61,7 @@ import {
   warrantyLines,
   type DeckPhotoRow,
 } from "@/lib/meeting/deck-pages";
-import type { DeckPayload, DeckPhoto } from "@/lib/meeting/state";
+import type { DeckPayload, DeckPhoto, MeetingMockup } from "@/lib/meeting/state";
 import type { QuoteRun } from "@/lib/pricing";
 import { DECK_SEED } from "@/lib/settings/deck-schema";
 
@@ -100,6 +101,7 @@ const deck = (extra: Partial<DeckPayload> = {}): DeckPayload => ({
   picker: null,
   company: { name: "Vesper Lighting, Inc.", place: "Calgary", phone: "(403) 895-9915" },
   warranty: { text: WARRANTY, serviceCallFee: null, gstEnabled: false },
+  talking: {},
   ...extra,
 });
 
@@ -115,95 +117,90 @@ const PICKER = {
 };
 const keys = (pages: { key: string }[]) => pages.map((page) => page.key);
 
-const MOCKUP = "https://abcd.supabase.co/storage/v1/object/sign/lead-photos/u/m.jpg?token=t";
-const FRONT = "https://abcd.supabase.co/storage/v1/object/sign/lead-photos/u/f.jpg?token=t";
-const VESPER = ["cover", "what_vesper_is", "hidden_by_day", "phone_control"];
+const mock = (id: string, jobs: Partial<MeetingMockup> = {}): MeetingMockup => ({
+  id,
+  name: id,
+  url: `https://abcd.supabase.co/storage/v1/object/sign/lead-photos/u/${id}.jpg?token=t`,
+  main: false,
+  day: false,
+  night: false,
+  scene: false,
+  offers: [],
+  ...jobs,
+});
+const MAIN = mock("main", { main: true, name: "Warm white" });
+const DAY = mock("day", { day: true });
+const NIGHT = mock("night", { night: true });
+const XMAS = mock("xmas", { scene: true, name: "Christmas" });
+const LOWER = mock("lower", { offers: ["front_lower"], name: "Front lower" });
+const EVERY = [MAIN, DAY, NIGHT, XMAS, LOWER];
 
-describe("the pages a meeting shows (round 9: the meeting as one story)", () => {
-  it("follows the spec's order: the Vesper pages, then their house, then What happens next", () => {
-    const pages = deckPages({ deck: deck({ picker: PICKER, gallery: [photo("g1")] }), lead: { mockupUrl: MOCKUP, frontPhotoUrl: FRONT, measured: true } });
-    expect(keys(pages)).toEqual([...VESPER, "gallery", "warranty", "your_house", "light_picker", "colour", "quote", "next_steps"]);
+describe("the pages a meeting shows (round 10: mockups per house)", () => {
+  it("follows Keenan's order: cover, the Main, day and night, the phone, the warranty, the picker, the price, What happens next", () => {
+    const pages = deckPages({ deck: deck({ picker: PICKER, gallery: [photo("g1")] }), lead: { mockupUrl: MAIN.url, mockups: EVERY } });
+    expect(keys(pages)).toEqual(["cover", "what_vesper_is", "hidden_by_day", "phone_control", "warranty", "light_picker", "quote", "next_steps"]);
     expect(keys(pages)).toEqual([...STORY_PAGES]);
     expect(pages.length).toBe(MAX_SHOWN_PAGES);
-    expect(MAX_SHOWN_PAGES).toBe(11);
-    // The stand-ins sit straight after the page they stand in for.
-    expect(DECK_PAGES.indexOf("mockup")).toBe(DECK_PAGES.indexOf("your_house") + 1);
-    expect(DECK_PAGES.indexOf("whites_first")).toBe(DECK_PAGES.indexOf("light_picker") + 1);
-  });
-
-  it("with a trace: Your house shows the traced photo by day and the picker follows, with no stand-in", () => {
-    const lead = { mockupUrl: MOCKUP, frontPhotoUrl: FRONT, measured: false };
-    expect(houseView(deck({ picker: PICKER }), lead)).toEqual({ kind: "trace" });
-    const pages = keys(deckPages({ deck: deck({ picker: PICKER }), lead }));
-    expect(pages).toEqual([...VESPER, "warranty", "your_house", "light_picker", "colour", "quote", "next_steps"]);
-  });
-
-  it("no trace but a mockup: the mockup stands in for Your house, the picker is skipped and so is Warm white", () => {
-    const lead = { mockupUrl: MOCKUP, frontPhotoUrl: FRONT, measured: true };
-    expect(houseView(deck(), lead)).toBeNull();
-    const pages = deckPages({ deck: deck(), lead });
-    expect(keys(pages)).toEqual([...VESPER, "warranty", "mockup", "colour", "quote", "next_steps"]);
-    expect(pages.find((page) => page.key === "mockup")?.label).toBe("Your house, lit");
-  });
-
-  it("no trace, no mockup, a Front photo: Your house shows it, then Warm white stands in for the picker", () => {
-    const lead = { mockupUrl: null, frontPhotoUrl: FRONT, measured: false };
-    expect(houseView(deck(), lead)).toEqual({ kind: "photo", url: FRONT });
-    expect(keys(deckPages({ deck: deck(), lead }))).toEqual([...VESPER, "warranty", "your_house", "whites_first", "colour", "quote", "next_steps"]);
-  });
-
-  it("no photo but runs measured: Your house shows our drawing, then Warm white", () => {
-    const lead = { mockupUrl: null, frontPhotoUrl: null, measured: true };
-    expect(houseView(deck(), lead)).toEqual({ kind: "drawing" });
-    expect(keys(deckPages({ deck: deck(), lead }))).toEqual([...VESPER, "warranty", "your_house", "whites_first", "colour", "quote", "next_steps"]);
-  });
-
-  it("none of these: Your house is skipped, Warm white still shows", () => {
-    expect(keys(deckPages({ deck: deck(), lead: { mockupUrl: null } }))).toEqual([...VESPER, "warranty", "whites_first", "colour", "quote", "next_steps"]);
-  });
-
-  it("skips the picker when no look is on, rather than show a house with nothing to pick, and never brings Warm white in for it", () => {
-    const pages = keys(deckPages({ deck: deck({ picker: PICKER, looks: [] }), lead: { mockupUrl: null } }));
-    expect(pages).not.toContain("light_picker");
-    expect(pages).not.toContain("whites_first");
-    expect(pages).toContain("your_house");
-  });
-
-  it("with no lead (the rehearsal), skips Your house, the picker, the mockup, colour and price, and keeps Warm white and What happens next", () => {
-    const pages = keys(deckPages({ deck: deck({ picker: PICKER }), lead: null }));
-    for (const key of ["your_house", "light_picker", "mockup", "colour", "quote"]) expect(pages).not.toContain(key);
-    expect(pages).toEqual([...VESPER, "warranty", "whites_first", "next_steps"]);
-  });
-
-  it("in the rehearsal, shows the gallery from its examples while it has no photos", () => {
-    expect(keys(deckPages({ deck: deck(), lead: null, fillEmpty: true }))).toContain("gallery");
-  });
-
-  it("skips a words page Settings has emptied, and the warranty without its text, but never What happens next", () => {
-    const empty = parseDeckWords({ pages: {} });
-    for (const key of ["what_vesper_is", "hidden_by_day", "phone_control", "whites_first"] as const) {
-      expect(empty.pages[key]).toEqual({ headline: "", words: "", moreLabel: "", moreText: "" });
+    expect(MAX_SHOWN_PAGES).toBe(8);
+    // The round 9 pages keep their keys, after the shown ones, and never show.
+    for (const key of ["gallery", "your_house", "mockup", "whites_first", "colour"] as const) {
+      expect(DECK_PAGES).toContain(key);
+      expect(keys(pages)).not.toContain(key);
     }
-    const pages = keys(deckPages({ deck: deck({ words: empty, warranty: { text: "  ", serviceCallFee: null, gstEnabled: false } }), lead: null }));
-    expect(pages).toEqual(["cover", "next_steps"]);
+  });
+
+  it("skips any page missing its mockup, so a meeting never shows an empty page", () => {
+    expect(keys(deckPages({ deck: deck(), lead: { mockupUrl: null, mockups: [] } }))).toEqual(["cover", "warranty", "quote", "next_steps"]);
+    // Day without Night: no slider.
+    expect(keys(deckPages({ deck: deck(), lead: { mockupUrl: MAIN.url, mockups: [MAIN, DAY] } }))).toEqual(["cover", "what_vesper_is", "warranty", "quote", "next_steps"]);
+    // A scene alone brings the phone page; the Main is not a scene on its own.
+    expect(keys(deckPages({ deck: deck(), lead: { mockupUrl: null, mockups: [XMAS] } }))).toEqual(["cover", "phone_control", "warranty", "quote", "next_steps"]);
+    expect(keys(deckPages({ deck: deck(), lead: { mockupUrl: MAIN.url, mockups: [MAIN] } }))).not.toContain("phone_control");
+  });
+
+  it("shows the picker only when the roofline is traced and a look is on", () => {
+    expect(keys(deckPages({ deck: deck({ picker: PICKER }), lead: { mockupUrl: null } }))).toContain("light_picker");
+    expect(keys(deckPages({ deck: deck({ picker: PICKER, looks: [] }), lead: { mockupUrl: null } }))).not.toContain("light_picker");
+    expect(keys(deckPages({ deck: deck(), lead: { mockupUrl: null } }))).not.toContain("light_picker");
+  });
+
+  it("with no lead (the rehearsal), shows the cover, the warranty and What happens next", () => {
+    expect(keys(deckPages({ deck: deck({ picker: PICKER }), lead: null }))).toEqual(["cover", "warranty", "next_steps"]);
+    expect(keys(deckPages({ deck: deck(), lead: null, fillEmpty: true }))).toEqual(["cover", "warranty", "next_steps"]);
+  });
+
+  it("gives each mockup its jobs: one picture can do several", () => {
+    const both = mock("both", { main: true, scene: true, offers: ["full"] });
+    const jobs = mockupJobs([both, DAY, NIGHT, XMAS]);
+    expect(jobs.main?.id).toBe("both");
+    expect(jobs.day?.id).toBe("day");
+    expect(jobs.night?.id).toBe("night");
+    // The Main leads the phone's scenes, once.
+    expect(jobs.scenes.map((item) => item.id)).toEqual(["both", "xmas"]);
+    expect(mockupJobs([MAIN]).scenes).toEqual([]);
+    expect(mockupJobs(undefined)).toEqual({ main: null, day: null, night: null, scenes: [] });
+  });
+
+  it("shows an offer its own mockup, else the Main, else none", () => {
+    expect(offerMockup(EVERY, "front_lower")?.id).toBe("lower");
+    expect(offerMockup(EVERY, "full")?.id).toBe("main");
+    expect(offerMockup([LOWER], "full")).toBeNull();
+    expect(offerMockup([], null)).toBeNull();
   });
 
   it("names each page by its headline from Settings, the built pages from their lines", () => {
-    const pages = deckPages({ deck: deck({ picker: PICKER }), lead: { mockupUrl: null } });
+    const pages = deckPages({ deck: deck({ picker: PICKER }), lead: { mockupUrl: MAIN.url, mockups: EVERY } });
     expect(pages.map((page) => page.label)).toEqual([
       "Vesper",
       "Up once, there all year",
       "Hidden by day",
       "Run it from your phone",
       "Our 10-year warranty",
-      "Your house",
       "Try it on your house",
-      "Your track colour",
       "Your price",
       "What happens next",
     ]);
     expect(pageLabel("gallery", parseDeckWords({}))).toBe("Homes we've lit");
-    // A stand-in's empty headline never reads "(stand-in)" to a customer.
     const blank = { ...WORDS, pages: { ...WORDS.pages, mockup: { ...WORDS.pages.mockup, headline: " " }, whites_first: { ...WORDS.pages.whites_first, headline: "" } } };
     expect(pageLabel("mockup", blank)).toBe("Your house, lit");
     expect(pageLabel("whites_first", blank)).toBe("Warm white, most nights");
@@ -223,14 +220,14 @@ describe("the pages a meeting shows (round 9: the meeting as one story)", () => 
 });
 
 describe("the Next label (round 9)", () => {
-  const pages = deckPages({ deck: deck({ picker: PICKER }), lead: { mockupUrl: null } });
+  const pages = deckPages({ deck: deck({ picker: PICKER }), lead: { mockupUrl: MAIN.url, mockups: EVERY } });
 
   it("names the next page that actually shows, and nothing on the last", () => {
     expect(nextLabel(pages, 0, DEFAULT_LINES)).toBe("Next: Up once, there all year");
-    // The gallery is skipped while empty: the phone page points at the warranty.
     expect(nextLabel(pages, 3, DEFAULT_LINES)).toBe("Next: Our 10-year warranty");
-    const withGallery = deckPages({ deck: deck({ picker: PICKER, gallery: [photo("g1")] }), lead: { mockupUrl: null } });
-    expect(nextLabel(withGallery, 3, DEFAULT_LINES)).toBe("Next: Homes we've lit");
+    // Without mockups, the cover points straight at the warranty.
+    const bare = deckPages({ deck: deck(), lead: { mockupUrl: null } });
+    expect(nextLabel(bare, 0, DEFAULT_LINES)).toBe("Next: Our 10-year warranty");
     expect(nextLabel(pages, pages.findIndex((page) => page.key === "quote"), DEFAULT_LINES)).toBe("Next: What happens next");
     expect(nextLabel(pages, pages.length - 1, DEFAULT_LINES)).toBeNull();
   });
@@ -613,9 +610,9 @@ describe("deck mechanics", () => {
   });
 
   it("opens #quote on the price page, #start at the cover, and a reload where it was", () => {
-    expect(pages[startIndex(pages, "quote", { index: 2, screenKey: "colour" })].key).toBe("quote");
-    expect(startIndex(pages, "start", { index: 2, screenKey: "colour" })).toBe(0);
-    expect(pages[startIndex(pages, "resume", { index: 2, screenKey: "colour" })].key).toBe("colour");
+    expect(pages[startIndex(pages, "quote", { index: 2, screenKey: "warranty" })].key).toBe("quote");
+    expect(startIndex(pages, "start", { index: 2, screenKey: "warranty" })).toBe(0);
+    expect(pages[startIndex(pages, "resume", { index: 2, screenKey: "light_picker" })].key).toBe("light_picker");
     expect(startIndex(pages, "resume", { index: 2, screenKey: "gallery" })).toBe(2);
     expect(startIndex(pages, "resume", { index: 99, screenKey: null })).toBe(pages.length - 1);
     expect(startIndex([{ key: "cover" }], "quote", { index: 0, screenKey: null })).toBe(0);

@@ -6,7 +6,7 @@
 import type { SoffitColour } from "@/lib/leads/status";
 import type { TrackColour } from "@/lib/leads/track-colour";
 import { defaultValidUntil, guessRunPart, RUN_PARTS, type ColourTiming, type QuoteInputs, type QuoteRun, type RunPart } from "@/lib/pricing";
-import { EFFECTS, type DeckWords, type Effect, type Look, type Trace } from "@/lib/deck";
+import { EFFECTS, type DeckPageKey, type DeckWords, type Effect, type Look, type Trace } from "@/lib/deck";
 import { cleanPositions, offersForSave, parseOffers, type QuoteOffer } from "@/lib/quotes/offers";
 
 // Round 7 (Keenan, 2026-11-08): the deck's own part of the payload. Keenan's
@@ -42,6 +42,9 @@ export type DeckPayload = {
   // settings.warranty_text word for word, and the service call fee for
   // The full warranty (null: not set, so its line is hidden).
   warranty: { text: string; serviceCallFee: number | null; gstEnabled: boolean };
+  // Round 10: Keenan's talking points by page (settings.deck.talking), shown
+  // only while he presses and holds the quiet mark (TalkingPoints).
+  talking: Partial<Record<DeckPageKey, string>>;
 };
 
 // A mockup of their house (round 10): Keenan's own picture, signed for the

@@ -13,39 +13,46 @@ import type { Json } from "@/types/database";
 
 // ---------------------------------------------------------------- pages
 
-// In the order the customer sees them (round 9): the Vesper pages first,
-// then the story turns once to their house and never comes back. A stand-in
-// sits straight after the page it stands in for, and shows only when that
-// page can't: Your house, lit (the mockup) for Your house when the roofline
-// isn't traced, and Warm white for the light picker when there is neither a
-// trace nor a mockup (lib/meeting/deck-pages.ts deckPages). A meeting shows
-// at most MAX_SHOWN_PAGES of them.
+// In the order the customer sees them (round 10, Keenan, 2026-11-10): the
+// cover, then their own house lit (Up once, there all year: the Main
+// mockup), by day and by night (Hidden by day: the Day and Night mockups),
+// their scenes on a phone (Run it from your phone), the warranty, the light
+// picker when the roofline is traced, the price and What happens next. A
+// page missing its mockup is skipped (lib/meeting/deck-pages.ts deckPages).
+//
+// The round 9 pages that left the order (the gallery, Your house, its
+// stand-in, Warm white and the colour page, which folds into the price) keep
+// their keys after these, so words saved for them still parse and nothing
+// saved breaks; deckPages never shows them.
 export const DECK_PAGES = [
   "cover",
   "what_vesper_is",
   "hidden_by_day",
   "phone_control",
-  "gallery",
   "warranty",
-  "your_house",
-  "mockup",
   "light_picker",
-  "whites_first",
-  "colour",
   "quote",
   "next_steps",
+  "gallery",
+  "your_house",
+  "mockup",
+  "whites_first",
+  "colour",
 ] as const;
 export type DeckPageKey = (typeof DECK_PAGES)[number];
 
-// The stand-ins, and the page each one stands in for.
+// The pages that left the order in round 10: kept for what is saved, never shown.
+export const RETIRED_PAGES = ["gallery", "your_house", "mockup", "whites_first", "colour"] as const satisfies readonly DeckPageKey[];
+export const isRetired = (key: DeckPageKey): boolean => (RETIRED_PAGES as readonly string[]).includes(key);
+
+// The round 9 stand-ins, and the page each one stood in for (both retired
+// now; kept so Settings still names them).
 export const STAND_INS = { mockup: "your_house", whites_first: "light_picker" } as const satisfies Partial<Record<DeckPageKey, DeckPageKey>>;
 export type StandInKey = keyof typeof STAND_INS;
 export const isStandIn = (key: DeckPageKey): key is StandInKey => Object.hasOwn(STAND_INS, key);
 
-// The pages in the story's order, stand-ins left out: 11, and the most a
-// meeting ever shows at once (a stand-in only ever takes its page's place,
-// or the picker's when Your house shows its photo by day).
-export const STORY_PAGES: readonly DeckPageKey[] = DECK_PAGES.filter((key) => !isStandIn(key));
+// The pages in the story's order: 8, and the most a meeting ever shows.
+export const STORY_PAGES: readonly DeckPageKey[] = DECK_PAGES.filter((key) => !isStandIn(key) && !isRetired(key));
 export const MAX_SHOWN_PAGES = STORY_PAGES.length;
 
 // The pages whose words live in Settings, in the deck's order.
@@ -234,6 +241,7 @@ export const DECK_LINE_DEFAULTS = {
   step_on_day: "A small crew fits the track and plugs in the control box. We clean up and set up the app with you.",
   step_pay_label: "Paying",
   closing: "We'll text you a link to this quote, with every option.",
+  thanks: "Thank you for having us tonight.",
   // The customer's quote link
   link_mockup_caption: "Our mockup shows every run lit.",
   link_drawing_caption: "Gold marks the lights in {name}.",
@@ -304,6 +312,7 @@ export const LINE_SPECS: Record<DeckLineKey, LineSpec> = {
   step_on_day: { group: "next_steps", label: "Step 3, the line", words: SENTENCE },
   step_pay_label: { group: "next_steps", label: "Step 4 (its line is No payment until your install is complete.)", words: LABEL },
   closing: { group: "next_steps", label: "The closing line", words: 15 },
+  thanks: { group: "next_steps", label: "The thank you, last", words: 12 },
   link_mockup_caption: { group: "link", label: "Under the mockup, when an option leaves runs out", words: 10 },
   link_drawing_caption: { group: "link", label: "Under the drawing", words: 10, fill: ["name"] },
   link_meeting_tag: { group: "link", label: "The tag on the option chosen at the meeting", words: 6 },

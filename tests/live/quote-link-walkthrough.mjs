@@ -255,7 +255,7 @@ try {
   const mockupRows = await admin.from("lead_mockups").insert([
     { lead_id: leadId, storage_path: mockupPath, name: "Main", is_main: true, position: 0, created_by: setter.id },
     { lead_id: leadId, storage_path: frontMockupPath, name: "Front only", offer_ids: ["front"], position: 1, created_by: setter.id },
-  ]);
+  ], { defaultToNull: false });
   if (mockupRows.error) throw new Error(`mockup rows: ${mockupRows.error.message}`);
 
   // The link, made by the throwaway setter: its notices go nowhere near Keenan.

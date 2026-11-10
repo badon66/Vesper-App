@@ -54,7 +54,7 @@ export function RehearsalView({ deck, meeting, examples, choices, leadId }: Rehe
   // the next that still shows.
   const startPage = useMemo(() => {
     const lead = meeting
-      ? { mockupUrl: meeting.mockupUrl, frontPhotoUrl: frontPhotoOf(meeting), measured: runsMeasured(meeting.draft?.runs) }
+      ? { mockupUrl: meeting.mockupUrl, mockups: meeting.mockups, frontPhotoUrl: frontPhotoOf(meeting), measured: runsMeasured(meeting.draft?.runs) }
       : null;
     const keys = deckPages({ deck, lead, fillEmpty }).map((item) => item.key);
     return landingPage(keys, page) ?? undefined;

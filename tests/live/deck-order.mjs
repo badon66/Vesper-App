@@ -94,10 +94,6 @@ export function pageLabel(deck, key) {
   return pageWords(deck, key).headline.trim() || HEADLINE_FALLBACK[key];
 }
 
-const hasWords = (deck, key) => {
-  const page = pageWords(deck, key);
-  return page.headline.trim() !== "" || page.words.trim() !== "";
-};
 
 // The looks a meeting offers (lib/deck.ts parseLooks, activeLooks), counted.
 export function activeLookCount(lightLooks) {
@@ -116,28 +112,25 @@ export function activeLookCount(lightLooks) {
   return Math.min(count, 6);
 }
 
-// The pages a meeting shows for a lead, in order: [{ key, label }].
+// The pages a meeting shows for a lead, in order: [{ key, label }]
+// (round 10, lib/meeting/deck-pages.ts deckPages: a page missing its mockup
+// is skipped).
 //   settings     deck and warranty_text (and light_looks for the picker)
-//   gallery      how many install photos Keenan has uploaded
-//   lead         { traced, mockup, frontPhoto, measured }
-export function deckOrder(settings, { gallery = 0, lead }) {
+//   lead         { traced, main, day, night, scenes }: whether the lead has
+//                a Main mockup, a Day one, a Night one, and how many scene
+//                mockups. mockup is read as main, for older callers.
+export function deckOrder(settings, { lead }) {
   const deck = settings.deck;
   const traced = Boolean(lead.traced);
-  const mockup = Boolean(lead.mockup);
+  const main = Boolean(lead.main ?? lead.mockup);
   const looks = activeLookCount(settings.light_looks);
-  const house = traced || (!mockup && (lead.frontPhoto || lead.measured));
   const shows = {
     cover: true,
-    what_vesper_is: hasWords(deck, "what_vesper_is"),
-    hidden_by_day: hasWords(deck, "hidden_by_day"),
-    phone_control: hasWords(deck, "phone_control"),
-    gallery: gallery > 0,
-    warranty: str(settings.warranty_text).split(/\r?\n/).some((line) => line.trim() !== ""),
-    your_house: house,
-    mockup: mockup && !traced,
+    what_vesper_is: main,
+    hidden_by_day: Boolean(lead.day) && Boolean(lead.night),
+    phone_control: Number(lead.scenes ?? 0) > 0,
+    warranty: true,
     light_picker: traced && looks > 0,
-    whites_first: hasWords(deck, "whites_first") && !traced && !mockup,
-    colour: true,
     quote: true,
     next_steps: true,
   };

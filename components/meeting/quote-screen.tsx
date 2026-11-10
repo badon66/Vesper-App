@@ -4,14 +4,15 @@ import { Check } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { DECK_TYPE, say, useDeck } from "@/components/meeting/deck-parts";
-import { RunsDrawing } from "@/components/meeting/runs-drawing";
+import { InitialsConfirm, type Confirmation } from "@/components/meeting/colour-page";
+import { DeckButton, DeckImage, DECK_TYPE, MoreLayer, say, useDeck } from "@/components/meeting/deck-parts";
 import { hasMeasuredRun, QuoteEditor } from "@/components/quotes/quote-editor/quote-editor";
 import { useQuoteSave } from "@/components/quotes/quote-editor/use-quote-save";
 import { Button } from "@/components/ui/button";
 import { DEFAULT_LINES, deckLine, priceSubLine, type DeckLines } from "@/lib/deck";
 import { breakdownRows, coverageLine, minimumSentence, NO_PAYMENT, screenOptions, type BreakdownRow } from "@/lib/meeting/price-screen";
-import { quoteInputs, quoteOffers, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
+import { colourTimingView, offerMockup } from "@/lib/meeting/deck-pages";
+import { quoteInputs, quoteOffers, quoteRushFee, type MeetingMockup, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
 import { MOTION, transition } from "@/lib/motion";
 import { formatMoney, type QuoteTotals } from "@/lib/pricing";
 import { QUOTE_LOCKED_MEETING, savedLine } from "@/lib/quotes/draft";
@@ -20,15 +21,23 @@ import { cleanOfferName, type PricedOffer } from "@/lib/quotes/offers";
 import { formatFullDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
-// Your price (round 9, the spec 3.5): a presentation, not a form. Every
-// option the customer can have, biggest first in one row, every total the
-// same size, so Keenan walks them down from the full wrap. The option on
-// screen lights its runs on the house (the rest dashed) with its coverage
-// line, and its own breakdown sits on the right with its total and Choose.
-// On screen and picked never look alike (DESIGN.md's Porch Light Rule): on
-// screen is a 2 px Night Text outline; picked is the Night Text fill with a
-// tick and "Your choice". The page the customer watches holds no gold at
-// all: the total is Night Text and Choose is outlined.
+// Your price (round 9, the spec 3.5; round 10, Keenan, 2026-11-10): a
+// presentation, not a form. The option on screen shows its own mockup big
+// on the left (a mockup marked for that offer, else their Main, else no
+// picture and the options take the room); on the right every option the
+// customer can have, biggest first, each with its total and what it covers
+// in words ("Front and garage, upper and lower: 165 ft"); then one colour
+// line (their colour, in stock or made to order, and for made to order the
+// spring or this season choice that sets the quote's colour timing); then
+// the breakdown one tap away (What's in it, a layer) and Choose. No
+// drawing. On screen and picked never look alike (DESIGN.md's Porch Light
+// Rule): on screen is a 2 px Night Text outline; picked is the Night Text
+// fill with a tick. The page the customer watches holds no gold at all.
+//
+// When they say yes (Choose), their initials confirm the colour right here,
+// in a layer near the top so the keyboard never covers it (the colour
+// page's own box and save path), unless they already initialled this
+// colour tonight; then the deck goes to What happens next.
 //
 // Keenan's small outlined Edit, bottom left, opens the quote editor (the
 // same one as the lead page's Edit the quote) as a full-screen layer; the
@@ -76,6 +85,24 @@ export type QuoteScreenProps = {
   lines?: DeckLines;
   edit?: { open: boolean; set: (open: boolean) => void };
   locked?: boolean;
+  // Round 10: their mockups (MeetingPayload.mockups); the offer on screen
+  // shows its own picture, else the Main, else none.
+  mockups?: readonly MeetingMockup[];
+  // Round 10: the initials for the colour, taken here when they say yes
+  // (the colour page's own box and save path); null with no lead.
+  initials?: {
+    draft: string;
+    onDraft: (value: string) => void;
+    onConfirmed: (confirmation: Confirmation) => void;
+    // Already initialled for this colour at this meeting: no need to ask.
+    confirmed: boolean;
+  } | null;
+  // Where a yes goes once the colour is initialled: What happens next.
+  onYes?: () => void;
+  // The deck's layer states for the breakdown and the initials, so the
+  // pager locks while either is open.
+  breakdownLayer?: { open: boolean; set: (open: boolean) => void };
+  initialsLayer?: { open: boolean; set: (open: boolean) => void };
 };
 
 export function QuoteScreen({
@@ -94,13 +121,24 @@ export function QuoteScreen({
   lines = DEFAULT_LINES,
   edit,
   locked = false,
+  mockups = [],
+  initials = null,
+  onYes,
+  breakdownLayer,
+  initialsLayer,
 }: QuoteScreenProps) {
   const inputs = useMemo(() => quoteInputs(state, pricing), [state, pricing]);
   const options = useMemo(() => screenOptions(inputs, quoteOffers(state)), [inputs, state]);
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [ownEdit, setOwnEdit] = useState(false);
+  const [ownBreakdown, setOwnBreakdown] = useState(false);
+  const [ownInitials, setOwnInitials] = useState(false);
   const editOpen = edit ? edit.open : ownEdit;
   const setEditOpen = edit ? edit.set : setOwnEdit;
+  const breakdownOpen = breakdownLayer ? breakdownLayer.open : ownBreakdown;
+  const setBreakdownOpen = breakdownLayer ? breakdownLayer.set : setOwnBreakdown;
+  const initialsOpen = initialsLayer ? initialsLayer.open : ownInitials;
+  const setInitialsOpen = initialsLayer ? initialsLayer.set : setOwnInitials;
 
   const chosen = options.find((option) => option.offer.id === state.chosenOffer) ?? null;
   // On screen: the one Keenan tapped, else the choice, else the biggest.
@@ -109,11 +147,14 @@ export function QuoteScreen({
   // The sub-line counts the options: none until something is measured.
   const sub = options.length > 0 ? priceSubLine(lines, options.length, colour) : "";
   const { save } = useQuoteSave({ leadId, pricing, from: "meeting", readOnly });
+  // The picture for the option on screen: its own, else the Main, else none.
+  const picture = offerMockup(mockups, viewing?.offer.id ?? null);
+  // The one colour line: stock, or made to order with spring or this season.
+  const timing = colourTimingView({ lines, kind: colourKind, text: colourText, timing: state.colourTiming, rushFee: quoteRushFee(state) });
 
   // The pick, the install day and the colour's timing save with the quote,
   // quietly, when there's signal: a moment after they change, and again when the signal comes
   // back. A failure stays on the iPad and shows only in the Edit layer.
-  // The colour's timing, chosen on the colour page, saves the same way.
   const pickKey = `${state.chosenOffer ?? ""}|${state.installOn ?? ""}|${state.colourTiming ?? ""}`;
   const lastPick = useRef(pickKey);
   const [pickWaiting, setPickWaiting] = useState(false);
@@ -136,16 +177,27 @@ export function QuoteScreen({
     return () => window.removeEventListener("online", retry);
   }, [pickWaiting]);
 
+  // A yes: the option becomes their choice; then their initials for the
+  // colour, right here (unless already initialled tonight for this colour),
+  // then What happens next. Tapping their choice again takes it back.
   const choose = (id: string) => {
     setViewingId(id);
-    onChange({ ...state, chosenOffer: state.chosenOffer === id ? null : id });
+    if (state.chosenOffer === id) {
+      onChange({ ...state, chosenOffer: null });
+      return;
+    }
+    onChange({ ...state, chosenOffer: id });
+    if (initials && colour !== null && !initials.confirmed) setInitialsOpen(true);
+    else onYes?.();
   };
   const viewingChosen = viewing !== null && chosen?.offer.id === viewing.offer.id;
+  const setTiming = (next: "factory_order" | "rush") => {
+    if (locked || state.colourTiming === next) return;
+    onChange({ ...state, colourTiming: next });
+  };
 
   return (
     <div className="relative flex h-full w-full flex-col pt-[72px]" style={{ paddingBottom: "var(--deck-clear, 78px)" }} data-testid="price-page">
-      {/* The headline and the sub-line share a line, so the options and
-          their breakdowns keep the height. */}
       <header className="flex flex-wrap items-baseline gap-x-6 gap-y-1 pr-12 pl-16">
         <h2 className={DECK_TYPE.headline}>{say(deckLine(lines, "price_headline"))}</h2>
         {sub ? (
@@ -160,94 +212,110 @@ export function QuoteScreen({
           {say(deckLine(lines, "price_empty"))}
         </p>
       ) : (
-        <>
-          {/* The options: biggest on the left, every total the same size. */}
-          <div className="mt-4 flex shrink-0 gap-3 pr-12 pl-16" role="group" aria-label="Options" data-testid="price-options">
-            {options.map((option) => (
-              <OptionButton
-                key={option.offer.id}
-                option={option}
-                onScreen={option.offer.id === viewing.offer.id}
-                chosen={option.offer.id === chosen?.offer.id}
-                gstEnabled={pricing.gstEnabled}
-                yourChoice={deckLine(lines, "your_choice")}
-                onShow={() => setViewingId(option.offer.id)}
-              />
-            ))}
-          </div>
+        <div className={cn("mt-5 grid min-h-0 flex-1", picture ? "grid-cols-[minmax(0,1fr)_540px]" : "grid-cols-1")}>
+          {/* Left: the option's own mockup, else the Main, big. */}
+          {picture ? (
+            <div className="relative min-h-0 min-w-0 overflow-hidden" data-testid="price-mockup" data-mockup={picture.id}>
+              <DeckImage photo={{ url: picture.url, focus: [0.5, 0.5] }} alt={`Your house: ${cleanOfferName(viewing.offer.name)}`} fit="contain" />
+            </div>
+          ) : null}
 
-          {/* Two even columns: the house needs about 420 px at its fixed
-              height, and the breakdown's column needs the room for the
-              total and Choose side by side, "+ GST" included. */}
-          <div className="mt-6 grid min-h-0 flex-1 grid-cols-2">
-            {/* Left: the house lighting the option on screen, what it
-                covers, and what every option shares. The drawing has a
-                fixed slot and the coverage line always keeps two lines, so
-                a tap on another option changes only the lights. */}
-            <div className="flex min-h-0 min-w-0 flex-col gap-3 pr-10 pl-16" data-testid="price-left">
-              <RunsDrawing runs={state.runs} lit={viewing.offer.runs} dashedRest className="h-[230px] w-full shrink-0" />
-              <p
-                className={cn(DECK_TYPE.small, "line-clamp-2 shrink-0 font-semibold")}
-                style={{ minHeight: "calc(var(--deck-small, 20px) * 2.6)" }}
-                data-testid="price-coverage"
-              >
-                {say(coverageLine(state.runs, viewing.offer))}
-              </p>
-              <div className={cn(DECK_TYPE.small, "flex flex-col gap-1 text-muted-foreground")}>
-                <p>{say(deckLine(lines, "price_includes"))}</p>
-                <p>{NO_PAYMENT}</p>
-                {state.validUntil ? <p>{say(deckLine(lines, "price_held", { date: formatFullDate(state.validUntil) }))}</p> : null}
-                {state.financingOffered ? <p>{say(deckLine(lines, "financing"))}</p> : null}
-              </div>
+          {/* Right (or the whole width, with no picture): the options, each
+              with its total and what it covers, the colour line, then the
+              breakdown one tap away and Choose. */}
+          <div className={cn("flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pr-12", picture ? "pl-8" : "pl-16")} data-testid="price-right">
+            <div
+              className={cn("grid shrink-0 gap-2.5", !picture && options.length > 1 && (options.length >= 4 ? "grid-cols-4" : options.length === 3 ? "grid-cols-3" : "grid-cols-2"))}
+              role="group"
+              aria-label="Options"
+              data-testid="price-options"
+            >
+              {options.map((option) => (
+                <OptionButton
+                  key={option.offer.id}
+                  option={option}
+                  coverage={coverageLine(state.runs, option.offer)}
+                  onScreen={option.offer.id === viewing.offer.id}
+                  chosen={option.offer.id === chosen?.offer.id}
+                  gstEnabled={pricing.gstEnabled}
+                  yourChoice={deckLine(lines, "your_choice")}
+                  onShow={() => setViewingId(option.offer.id)}
+                />
+              ))}
             </div>
 
-            {/* Right: its breakdown, then its total and Choose on one
-                row (Choose drops under the total only when they can't
-                share it). */}
-            <div className="flex min-h-0 min-w-0 flex-col pr-12 pl-10" data-testid="price-breakdown">
-              <p className={cn(DECK_TYPE.body, "shrink-0 font-semibold")}>
-                {say(deckLine(lines, "whats_in", { name: cleanOfferName(viewing.offer.name) }))}
-              </p>
-              {viewing.totals ? <Breakdown totals={viewing.totals} /> : null}
-              {viewing.totals || !locked ? (
-                <div className="mt-2 flex shrink-0 flex-wrap items-end justify-between gap-x-5 gap-y-3 border-t border-foreground/60 pt-3">
-                  {viewing.totals ? (
-                    <p className="flex flex-col gap-1" data-testid="price-total">
-                      <span className={cn(DECK_TYPE.small, "leading-none text-muted-foreground")}>Total</span>
-                      <span className="whitespace-nowrap">
-                        <span className="text-[length:var(--deck-headline)] leading-none font-semibold tabular-nums">
-                          {formatMoney(viewing.totals.subtotal)}
-                        </span>
-                        {pricing.gstEnabled ? <span className="ml-2 text-[22px] text-muted-foreground">+ GST</span> : null}
-                      </span>
-                    </p>
-                  ) : null}
-                  {!locked ? (
-                    <button
-                      type="button"
-                      aria-pressed={viewingChosen}
-                      onClick={() => choose(viewing.offer.id)}
-                      className={cn(
-                        "inline-flex h-14 min-w-fit flex-1 touch-manipulation items-center justify-center gap-2 rounded-md border px-6 text-[22px] font-semibold whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                        viewingChosen ? "border-foreground bg-foreground text-background" : "border-foreground/70 bg-background hover:bg-muted",
-                      )}
-                      data-testid="price-choose"
-                    >
-                      {viewingChosen ? (
-                        <>
-                          <Check aria-hidden="true" className="size-6" />
-                          {say(deckLine(lines, "your_choice"))}
-                        </>
-                      ) : (
-                        say(deckLine(lines, "choose", { name: cleanOfferName(viewing.offer.name) }))
-                      )}
-                    </button>
-                  ) : null}
-                </div>
+            {timing.kind !== "none" ? (
+              <div className="flex shrink-0 flex-col gap-2" data-testid="price-colour">
+                <p className={cn(DECK_TYPE.small, "font-semibold")} data-testid="price-colour-line">
+                  {say(timing.line)}
+                </p>
+                {timing.kind === "made" ? (
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <TimingChoice
+                      label={timing.spring.label}
+                      value={timing.spring.value}
+                      chosen={timing.chosen === "spring"}
+                      disabled={locked}
+                      onChoose={() => setTiming("factory_order")}
+                      testId="price-timing-spring"
+                    />
+                    {timing.season ? (
+                      <TimingChoice
+                        label={timing.season.label}
+                        value={timing.season.value}
+                        chosen={timing.chosen === "season"}
+                        disabled={locked}
+                        onChoose={() => setTiming("rush")}
+                        testId="price-timing-season"
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className={cn("grid shrink-0 gap-3", viewing.totals && !locked ? "grid-cols-2" : "grid-cols-1", !picture && "max-w-[720px]")}>
+              {viewing.totals ? (
+                <DeckButton
+                  onClick={() => setBreakdownOpen(true)}
+                  aria-haspopup="dialog"
+                  aria-expanded={breakdownOpen}
+                  className="min-w-0 px-4"
+                  data-testid="price-breakdown-open"
+                >
+                  <span className="truncate">{say(deckLine(lines, "whats_in", { name: cleanOfferName(viewing.offer.name) }))}</span>
+                </DeckButton>
+              ) : null}
+              {!locked ? (
+                <button
+                  type="button"
+                  aria-pressed={viewingChosen}
+                  onClick={() => choose(viewing.offer.id)}
+                  className={cn(
+                    "inline-flex h-14 min-w-0 touch-manipulation items-center justify-center gap-2 rounded-md border px-4 text-[22px] font-semibold whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                    viewingChosen ? "border-foreground bg-foreground text-background" : "border-foreground/70 bg-background hover:bg-muted",
+                  )}
+                  data-testid="price-choose"
+                >
+                  {viewingChosen ? (
+                    <>
+                      <Check aria-hidden="true" className="size-6 shrink-0" />
+                      <span className="truncate">{say(deckLine(lines, "your_choice"))}</span>
+                    </>
+                  ) : (
+                    <span className="truncate">{say(deckLine(lines, "choose", { name: cleanOfferName(viewing.offer.name) }))}</span>
+                  )}
+                </button>
               ) : null}
             </div>
+
+            <div className={cn(DECK_TYPE.small, "flex shrink-0 flex-col gap-1 text-muted-foreground")}>
+              <p>{NO_PAYMENT}</p>
+              {state.validUntil ? <p>{say(deckLine(lines, "price_held", { date: formatFullDate(state.validUntil) }))}</p> : null}
+              {state.financingOffered ? <p>{say(deckLine(lines, "financing"))}</p> : null}
+            </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* Keenan's own: small, outlined, bottom left, away from Choose and
@@ -264,6 +332,54 @@ export function QuoteScreen({
           Edit
         </button>
       </div>
+
+      {/* The breakdown, one tap away: every line, its total. */}
+      {viewing?.totals ? (
+        <MoreLayer open={breakdownOpen} onClose={() => setBreakdownOpen(false)} label={deckLine(lines, "whats_in", { name: cleanOfferName(viewing.offer.name) })}>
+          <div className="flex h-full w-full flex-col pr-16 pl-16" style={{ paddingTop: 88, paddingBottom: "var(--deck-clear, 78px)" }} data-testid="price-breakdown">
+            <h2 className={DECK_TYPE.moreLabel}>{say(deckLine(lines, "whats_in", { name: cleanOfferName(viewing.offer.name) }))}</h2>
+            <p className={cn(DECK_TYPE.small, "mt-2 text-muted-foreground")} data-testid="price-coverage">
+              {say(coverageLine(state.runs, viewing.offer))}
+            </p>
+            <div className="mt-4 flex min-h-0 max-w-[760px] flex-col">
+              <Breakdown totals={viewing.totals} />
+              <p className="mt-2 flex items-baseline justify-between gap-4 border-t border-foreground/60 pt-3" data-testid="price-total">
+                <span className={cn(DECK_TYPE.small, "text-muted-foreground")}>Total</span>
+                <span className="whitespace-nowrap">
+                  <span className="text-[length:var(--deck-headline)] leading-none font-semibold tabular-nums">{formatMoney(viewing.totals.subtotal)}</span>
+                  {pricing.gstEnabled ? <span className="ml-2 text-[22px] text-muted-foreground">+ GST</span> : null}
+                </span>
+              </p>
+              <p className={cn(DECK_TYPE.small, "mt-3 text-muted-foreground")}>{say(deckLine(lines, "price_includes"))}</p>
+            </div>
+          </div>
+        </MoreLayer>
+      ) : null}
+
+      {/* Their initials for the colour, once they say yes: near the top, so
+          the landscape keyboard never covers the field. */}
+      {initials && colour !== null ? (
+        <MoreLayer open={initialsOpen} onClose={() => setInitialsOpen(false)} label={deckLine(lines, "initials_prompt")}>
+          <div className="flex h-full w-full flex-col gap-5 pr-16 pl-16" style={{ paddingTop: 96 }} data-testid="price-initials">
+            <h2 className={DECK_TYPE.moreLabel}>{say(chosen ? cleanOfferName(chosen.offer.name) : deckLine(lines, "your_choice"))}</h2>
+            <p className={DECK_TYPE.body}>{say(timing.kind === "none" ? colour : timing.kind === "stock" ? timing.line : `${timing.line} ${timing.chosen === "season" && timing.season ? timing.season.label : timing.spring.label}.`)}</p>
+            <InitialsConfirm
+              id="price-initials-field"
+              leadId={leadId}
+              enabled
+              prompt={deckLine(lines, "initials_prompt")}
+              draft={initials.draft}
+              onDraft={initials.onDraft}
+              onConfirmed={(confirmation) => {
+                initials.onConfirmed(confirmation);
+                setInitialsOpen(false);
+                onYes?.();
+              }}
+              readOnly={readOnly}
+            />
+          </div>
+        </MoreLayer>
+      ) : null}
 
       {editOpen ? (
         <EditLayer
@@ -287,10 +403,51 @@ export function QuoteScreen({
   );
 }
 
-// One option: its name and its total, all the same size. On screen: a 2 px
-// Night Text outline. Picked: the Night Text fill, a tick and "Your choice".
+// The colour's timing, one tap: Install in spring (Included) or Install
+// this season (the rush colour fee). Chosen is the Night Text fill, never
+// gold.
+function TimingChoice({
+  label,
+  value,
+  chosen,
+  disabled,
+  onChoose,
+  testId,
+}: {
+  label: string;
+  value: string;
+  chosen: boolean;
+  disabled: boolean;
+  onChoose: () => void;
+  testId: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={chosen}
+      disabled={disabled}
+      data-testid={testId}
+      onClick={onChoose}
+      className={cn(
+        "flex min-h-[60px] min-w-0 touch-manipulation flex-col items-start justify-center rounded-md border px-4 py-1.5 text-left outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+        chosen ? "border-foreground bg-foreground text-background" : "border-input bg-background text-foreground active:bg-secondary",
+      )}
+    >
+      <span className="flex max-w-full items-center text-[20px] leading-6 font-semibold">
+        <span className="min-w-0 truncate">{say(label)}</span>
+        <Check aria-hidden="true" className={cn("ml-2 size-5 shrink-0", !chosen && "invisible")} strokeWidth={2.5} />
+      </span>
+      <span className={cn("max-w-full truncate text-[18px] leading-[22px]", !chosen && "text-muted-foreground")}>{say(value)}</span>
+    </button>
+  );
+}
+
+// One option: its name and total on one line, what it covers under them.
+// On screen: a 2 px Night Text outline. Picked: the Night Text fill, a tick
+// and "Your choice".
 function OptionButton({
   option,
+  coverage,
   onScreen,
   chosen,
   gstEnabled,
@@ -298,6 +455,7 @@ function OptionButton({
   onShow,
 }: {
   option: PricedOffer;
+  coverage: string;
   onScreen: boolean;
   chosen: boolean;
   gstEnabled: boolean;
@@ -315,25 +473,28 @@ function OptionButton({
       data-on-screen={onScreen ? "yes" : "no"}
       data-chosen={chosen ? "yes" : "no"}
       className={cn(
-        "relative flex min-h-[88px] min-w-[250px] flex-1 basis-0 touch-manipulation flex-col justify-center gap-1 rounded-lg border-2 px-5 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        "relative flex min-h-[84px] min-w-0 touch-manipulation flex-col justify-center gap-1 rounded-lg border-2 px-4 py-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         chosen ? "bg-foreground text-background" : "bg-background text-foreground",
         onScreen || chosen ? "border-foreground" : "border-border",
       )}
     >
-      {/* "Your choice" sits on the button's top edge, so marking a pick
-          never changes the row's height, even at four options with GST. */}
       {chosen ? (
-        <span className="absolute -top-4 right-3 rounded-md bg-foreground px-2.5 text-[20px] leading-7 font-semibold text-background" data-testid="price-your-choice">
+        <span className="sr-only" data-testid="price-your-choice">
           {say(yourChoice)}
         </span>
       ) : null}
-      <span className="flex items-start gap-2 text-[24px] leading-tight font-semibold">
-        {chosen ? <Check aria-hidden="true" className="mt-0.5 size-6 shrink-0" /> : null}
-        <span className="line-clamp-2 min-w-0">{say(name)}</span>
+      <span className="flex items-baseline justify-between gap-3">
+        <span className="flex min-w-0 items-start gap-2 text-[23px] leading-tight font-semibold">
+          {chosen ? <Check aria-hidden="true" className="mt-0.5 size-6 shrink-0" /> : null}
+          <span className="truncate">{say(name)}</span>
+        </span>
+        <span className="shrink-0 text-[26px] leading-tight font-semibold tabular-nums">
+          {formatMoney(option.totals?.subtotal ?? 0)}
+          {gstEnabled ? <span className="ml-1.5 text-[18px] font-normal">+ GST</span> : null}
+        </span>
       </span>
-      <span className="text-[28px] leading-tight tabular-nums">
-        {formatMoney(option.totals?.subtotal ?? 0)}
-        {gstEnabled ? <span className="ml-1.5 text-[20px]">+ GST</span> : null}
+      <span className={cn("line-clamp-2 text-[19px] leading-snug", chosen ? "text-background/85" : "text-muted-foreground")} data-testid="price-option-coverage">
+        {say(coverage)}
       </span>
     </button>
   );
