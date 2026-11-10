@@ -23,14 +23,16 @@ export async function prepFor(
   const out = new Map<string, PrepSummary>();
   const ids = [...new Set(leads.map((lead) => lead.id))];
   if (ids.length === 0) return out;
-  const [{ data: colours }, { data: photos }, { data: quotes }, { data: traces }] = await Promise.all([
+  const [{ data: colours }, { data: photos }, { data: quotes }, { data: traces }, { data: mains }] = await Promise.all([
     supabase.from("leads").select("id, track_colour_id, track_ral_code").in("id", ids),
     supabase.from("lead_photos").select("id, lead_id, slot").in("lead_id", ids),
     supabase.from("quotes").select("lead_id, runs, offers").in("lead_id", ids),
     supabase.from("roofline_traces").select("lead_id, photo_id, photo_slot").in("lead_id", ids),
+    // Round 10: the mockup is the house's Main in lead_mockups.
+    supabase.from("lead_mockups").select("lead_id").eq("is_main", true).is("removed_at", null).in("lead_id", ids),
   ]);
   const hasColour = new Set((colours ?? []).filter((row) => row.track_colour_id || row.track_ral_code).map((row) => row.id));
-  const hasMockup = new Set((photos ?? []).filter((row) => row.slot === "mockup").map((row) => row.lead_id));
+  const hasMockup = new Set((mains ?? []).map((row) => row.lead_id));
   // Round 9: a quote counts once an offer covers a measured run.
   const hasQuote = new Set((quotes ?? []).filter((row) => quoteDraftedAhead(row)).map((row) => row.lead_id));
   const roofline = rooflineStates(traces ?? [], photos ?? []);
