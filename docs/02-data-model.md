@@ -82,6 +82,8 @@ christmas_banner_title text not null             -- its bold first line, "Want t
 christmas_banner_text text not null              -- its words, "We install every day the weather allows. Book now to get on the schedule." (up to 300)
 product_points jsonb not null                    -- 2026-11-04: [{icon, text}], up to 8 (the form offers 6), under "What you're getting" on the quote page; icon is one of lightbulb, house, zap, smartphone, plug, shield-check, paintbrush, sun, snowflake, wrench, clock, check
 min_job_total numeric(10,2)                      -- quote link (2026-11-02): the least a job can cost before GST; null = no minimum. Copied onto each quote when it is saved
+black_friday_kind text                           -- round 10 (2026-11-10): 'percent' or 'amount'; null = no deal, and meeting mode shows no Black Friday button
+black_friday_value numeric(10,2)                 -- the deal: more than 0; a percent at most 90. Owner only (settings_public leaves both out)
 faq_text text not null default ''                -- M5: the folder's FAQ (take 2); seeded as a draft
 lost_reasons text[] not null default '{price, other company, not now, could not reach, other}'
 door_guide text not null                        -- the M2.6 Door guide; unused since M3.5, kept per the additive rule
