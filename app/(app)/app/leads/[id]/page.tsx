@@ -15,7 +15,7 @@ import { StatusBadge } from "@/components/leads/status-badge";
 import { StatusControl } from "@/components/leads/status-control";
 import { TrackColourForm } from "@/components/leads/track-colour-form";
 import { BookLeadButton, OpenBookingSheet } from "@/components/booking/book-buttons";
-import { MockupCard } from "@/components/meeting/mockup-card";
+import { MockupsCard } from "@/components/leads/mockups-card";
 import { QuoteCard, type QuoteCardProps } from "@/components/quote-link/quote-card";
 import { QuoteOutcome } from "@/components/quotes/quote-outcome";
 import { QuoteEditorCard } from "@/components/quotes/quote-editor/quote-editor-sheet";
@@ -66,6 +66,7 @@ import { screenTotal, totalFeet } from "@/lib/pricing";
 import { quoteBaseUrl, requestOrigin } from "@/lib/quote-link/server";
 import { loadQuoteOutcome } from "./quote-outcome-data";
 import { loadQuoteEditor } from "@/lib/quotes/editor-data";
+import { loadLeadMockups } from "@/lib/leads/mockups";
 import {
   FALLBACK_COMPANY,
   offerChoice,
@@ -133,13 +134,15 @@ export default async function LeadPage({
   // the owner's only (View as a setter never loads them).
   // Round 9: the quote editor's quote and prices, the same meeting mode
   // opens (the owner's only, never under View as).
-  const [quoteCard, quoteOutcome, quoteEditor] = isOwner
+  // Round 10: the Mockups section, Keenan's alone.
+  const [quoteCard, quoteOutcome, quoteEditor, mockupData] = isOwner
     ? await Promise.all([
         loadQuoteCard(supabase, lead, outcomeSettings?.company ?? null),
         loadQuoteOutcome(supabase, lead),
         loadQuoteEditor(supabase, lead.id),
+        loadLeadMockups(supabase, lead.id),
       ])
-    : [null, null, null];
+    : [null, null, null, null];
   const meetings = meetingRows.map((meeting) => ({ ...meeting, lead }));
   const liveMeeting = meetings.find((meeting) => isLive(meeting.status));
   const canBook = canEdit && (lead.status === "new" || lead.status === "follow_up") && !liveMeeting;
@@ -346,7 +349,7 @@ export default async function LeadPage({
         </section>
       ) : null}
 
-      {isOwner ? <MockupCard leadId={lead.id} userId={me.id} mockupUrl={slotUrls.mockup ?? null} /> : null}
+      {mockupData ? <MockupsCard leadId={lead.id} userId={me.id} {...mockupData} /> : null}
       {quoteEditor ? (
         <QuoteEditorCard
           leadId={lead.id}

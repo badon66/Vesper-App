@@ -10,7 +10,7 @@
 // in quote_offers_clean), meeting mode, the lead page's quote editor, the
 // customer's link and round 8's Accepted sheet.
 
-import { priceQuote, selectRuns, totalFeet, type QuoteInputs, type QuoteRun, type QuoteTotals } from "@/lib/pricing";
+import { priceQuote, runPart, selectRuns, totalFeet, type QuoteInputs, type QuoteRun, type QuoteTotals, type RunPart } from "@/lib/pricing";
 
 // boxes: this offer's control box count, 1 to 9; null uses the quote's
 // box count (the five seats, 2026-11-10).
@@ -28,24 +28,35 @@ export const OFFERS_MAX = 4;
 export const FULL_WRAP_ID = "full";
 export const FULL_WRAP_NAME = "Full wrap";
 
-export type QuickStart = "full" | "lower" | "front" | "blank";
+export type QuickStart = "full" | "front" | "front_lower" | "blank";
 
-// The "+ Offer" choices. label is the button Keenan taps (his words);
-// name is what the offer it makes is called, which customers read: the
-// Lower level quick start names its offer "Main floor", because customers
-// read "lower level" as the basement (the five seats, 2026-11-10; Keenan
-// can rename it). Lower level is offered only when the house has an upper
-// run, since otherwise it would match the full wrap.
+// The "+ Offer" choices (round 10, Keenan, 2026-11-10: Full wrap, Front and
+// Front lower). label is the button Keenan taps; name is what the offer it
+// makes is called, which customers read, and Keenan can rename it. Front
+// covers the runs on the front of the house (a run named front, the garage
+// and the porch), upper and lower; Front lower only their lower runs, and
+// is offered only when the front has an upper run, since otherwise it
+// would match Front.
 export const QUICK_STARTS: readonly { kind: QuickStart; label: string; name: string; hint: string }[] = [
   { kind: "full", label: "Full wrap", name: "Full wrap", hint: "Every run" },
-  { kind: "lower", label: "Lower level", name: "Main floor", hint: "Every lower run" },
-  { kind: "front", label: "Front only", name: "Front only", hint: "Tap the runs it covers." },
+  { kind: "front", label: "Front", name: "Front", hint: "The front runs, upper and lower" },
+  { kind: "front_lower", label: "Front lower", name: "Front lower", hint: "The front's lower runs" },
   { kind: "blank", label: "Blank", name: "", hint: "Name it" },
 ];
 
+// A run on the front of the house: named front (not back, rear or side),
+// or the garage or porch, which face the street.
+export function isFrontRun(run: QuoteRun): boolean {
+  const name = run.name.toLowerCase();
+  if (/\b(back|rear|sides?)\b/.test(name)) return false;
+  if (/\bfront\b/.test(name)) return true;
+  const part = runPart(run);
+  return part === "garage" || part === "porch";
+}
+
 export function quickStartsFor(runs: QuoteRun[]): typeof QUICK_STARTS {
-  const upper = runs.some((run) => run.level === "upper");
-  return QUICK_STARTS.filter((start) => start.kind !== "lower" || upper);
+  const upperFront = runs.some((run) => run.level === "upper" && isFrontRun(run));
+  return QUICK_STARTS.filter((start) => start.kind !== "front_lower" || upperFront);
 }
 
 // A box count as saved: a whole number from 1 to 9, else null (the quote's).
@@ -96,11 +107,12 @@ export function fullWrap(runCount: number): QuoteOffer {
   return { id: FULL_WRAP_ID, name: FULL_WRAP_NAME, runs: Array.from({ length: runCount }, (_, at) => at), boxes: null };
 }
 
-// What a quick start covers: every run, every lower run, or none yet (Keenan
-// picks the front runs himself).
+// What a quick start covers: every run, the front runs, the front's lower
+// runs, or none (Blank). Keenan taps runs on or off afterwards.
 export function quickStartRuns(kind: QuickStart, runs: QuoteRun[]): number[] {
   if (kind === "full") return runs.map((_, at) => at);
-  if (kind === "lower") return runs.flatMap((run, at) => (run.level === "lower" ? [at] : []));
+  if (kind === "front") return runs.flatMap((run, at) => (isFrontRun(run) ? [at] : []));
+  if (kind === "front_lower") return runs.flatMap((run, at) => (isFrontRun(run) && run.level === "lower" ? [at] : []));
   return [];
 }
 
@@ -110,14 +122,41 @@ export function offerRunName(run: QuoteRun, position: number): string {
   return run.name.trim() || `Run ${position + 1}`;
 }
 
-// What an offer covers, built from its runs, never typed: "Front, Front
-// upper, Garage and Left gable, 166 ft". Empty when it covers no run.
+// What an offer covers, in words, built from its runs, never typed (round
+// 10): the parts of the house, then the levels when the house has an upper
+// run, then the feet: "Front and garage, upper and lower: 165 ft". Run
+// names lose their level words ("Upper front" is the front); a run named
+// only by its level takes its part's name. Empty when it covers no run.
+const LEVEL_WORDS = /\b(upper|lower|main|second|top|ground|floor|level|storey|story)\b/gi;
+const PART_WORDS: Record<RunPart, string> = {
+  eave: "eaves",
+  gable: "gable",
+  garage: "garage",
+  porch: "porch",
+  sides: "sides",
+  other: "roofline",
+};
+
+function areaName(run: QuoteRun): string {
+  const bare = run.name.replace(LEVEL_WORDS, " ").replace(/\s+/g, " ").trim().toLowerCase();
+  return bare || PART_WORDS[runPart(run)];
+}
+
+function listWords(words: string[]): string {
+  return words.length === 1 ? words[0] : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
 export function offerCoverage(runs: QuoteRun[], offer: Pick<QuoteOffer, "runs">): string {
   const picked = [...new Set(offer.runs)].filter((p) => p >= 0 && p < runs.length).sort((a, b) => a - b);
   if (picked.length === 0) return "";
-  const names = picked.map((p) => offerRunName(runs[p], p));
-  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  return `${list}, ${totalFeet(selectRuns(runs, picked))} ft`;
+  const areas = [...new Set(picked.map((p) => areaName(runs[p])))];
+  const list = listWords(areas);
+  const twoLevels = runs.some((run) => run.level === "upper");
+  const upper = picked.some((p) => runs[p].level === "upper");
+  const lower = picked.some((p) => runs[p].level === "lower");
+  const levels = !twoLevels ? "" : upper && lower ? ", upper and lower" : upper ? ", upper" : ", lower";
+  const words = `${list}${levels}: ${totalFeet(selectRuns(runs, picked))} ft`;
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 // A new offer's id: short, unique on the quote, never reused.

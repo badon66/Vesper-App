@@ -209,6 +209,27 @@ Rules enforced in the database:
   - Use for the track (owner only) is not a database feature: the app sets `track_colour_id` or `track_ral_code` through the existing owner-only track colour path, so the track colour guard is unchanged.
 - Deleting a profile that still owns leads or knock sessions is refused; deactivate people instead.
 
+### lead_mockups
+
+Round 10 (Keenan, 2026-11-10). Keenan's mockups of a customer's house, as many as he likes, owner only (RLS select, insert and update for the owner; no setter, no View as; nothing anonymous). Files live in the `lead-photos` bucket under the owner's folder, like every photo.
+
+```
+id uuid primary key
+lead_id uuid not null references leads   -- no cascade: a lead with mockups can't be removed until they are
+storage_path text not null unique        -- same path rule as lead_photos
+name text not null default ''            -- "Christmas", "Warm white", at most 40
+is_main boolean                          -- lights on: Up once there all year, Your price's fallback, the link's hero
+is_day boolean                           -- Hidden by day, with is_night
+is_night boolean
+is_scene boolean                         -- a button on the phone page
+offer_ids text[]                         -- the quotes.offers ids this picture shows (Your price, the link's options)
+position integer
+created_by uuid, created_at timestamptz
+removed_at timestamptz                   -- taken off the lead page; rows are kept, never shown
+```
+
+One Main, one Day and one Night per lead among rows not removed (partial unique indexes). Each lead's old mockup (`lead_photos` slot `mockup`) was carried over as its Main; the old row stays and nothing reads it for the deck. The customer's link reads them through `quote_link_mockups(token)` (the Main and the offer pictures only, paths only), and `quote_mockup_signable` signs those paths for a live token.
+
 ### lead_photos
 ```
 id uuid pk

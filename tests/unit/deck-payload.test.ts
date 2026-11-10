@@ -114,6 +114,7 @@ function meetingPayload(): MeetingPayload {
     deck,
     colours: { list: [], ralNames: { "9010": "Pure white" }, choice: null, ralCode: null },
     mockupUrl: leadSigned.get("u1/m1.jpg") ?? null,
+    mockups: [],
     pricing: {
       pricePerFt: 23,
       boxPrice: 500,

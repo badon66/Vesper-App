@@ -94,6 +94,7 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
     { data: colourRows },
     { data: ralRows },
     { data: leadPhotos },
+    { data: mockupList },
     draft,
     { data: trace },
     deckPhotoRows,
@@ -111,6 +112,13 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
       // table is named on the iPad the moment it is typed.
       supabase.from("ral_classic_colours").select("code, name"),
       supabase.from("lead_photos").select("id, slot, storage_path").eq("lead_id", leadId),
+      supabase
+        .from("lead_mockups")
+        .select("id, name, storage_path, is_main, is_day, is_night, is_scene, offer_ids, position, created_at")
+        .eq("lead_id", leadId)
+        .is("removed_at", null)
+        .order("position")
+        .order("created_at"),
       editableQuotes(supabase, leadId),
       supabase.from("roofline_traces").select(TRACE).eq("lead_id", leadId).maybeSingle(),
       deckPhotos(supabase),
@@ -127,14 +135,26 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
   // 9) their Front photo when there is no mockup and no trace, for Your
   // house, signed together. Only these of the lead's photos reach the iPad.
   const photos = leadPhotos ?? [];
-  const mockup = photos.find((photo) => photo.slot === "mockup") ?? null;
+  // Round 10: the mockups live in lead_mockups (the old slot was carried
+  // over as each house's Main); the Main stands where the mockup stood.
+  const mockupRows = mockupList ?? [];
+  const mainRow = mockupRows.find((row) => row.is_main) ?? null;
+  const mockup = mainRow ? { storage_path: mainRow.storage_path } : null;
   const tracePhoto = trace ? photos.find((photo) => photo.id === trace.photo_id) : undefined;
   const front = !mockup && !tracePhoto ? (photos.find((photo) => photo.slot === "front") ?? null) : null;
   const signedLeadPhotos = await signAll(
     supabase,
     PHOTO_BUCKET,
-    [mockup?.storage_path, tracePhoto?.storage_path, front?.storage_path].filter((path): path is string => Boolean(path)),
+    [...mockupRows.map((row) => row.storage_path), tracePhoto?.storage_path, front?.storage_path].filter((path): path is string => Boolean(path)),
   );
+  const mockups = mockupRows
+    .flatMap((row) => {
+      const url = signedLeadPhotos.get(row.storage_path);
+      return url
+        ? [{ id: row.id, name: row.name, url, main: row.is_main, day: row.is_day, night: row.is_night, scene: row.is_scene, offers: row.offer_ids ?? [] }]
+        : [];
+    })
+    .sort((a, b) => Number(b.main) - Number(a.main));
 
   const deck = buildDeckPayload({
     settings,
@@ -165,6 +185,7 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
       ralCode: lead.track_ral_code,
     },
     mockupUrl: mockup ? (signedLeadPhotos.get(mockup.storage_path) ?? null) : null,
+    mockups,
     frontPhotoUrl: front ? (signedLeadPhotos.get(front.storage_path) ?? null) : null,
     pricing: pricingFrom(settings),
     draft,

@@ -65,7 +65,7 @@ export default async function MeetingsPage() {
       ? supabase.from("leads").select("id, updated_at").in("id", leadIds).then(({ data }) => data ?? [])
       : Promise.resolve([]),
     leadIds.length > 0
-      ? supabase.from("lead_photos").select("lead_id, created_at").eq("slot", "mockup").in("lead_id", leadIds).then(({ data }) => data ?? [])
+      ? supabase.from("lead_mockups").select("lead_id, created_at").is("removed_at", null).in("lead_id", leadIds).then(({ data }) => data ?? [])
       : Promise.resolve([]),
     namesById(supabase, booked.map((meeting) => meeting.host_id)),
     supabase.from("settings").select("updated_at").eq("id", 1).maybeSingle().then(({ data }) => data),

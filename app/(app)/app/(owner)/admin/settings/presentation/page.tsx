@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { requireProfile } from "@/lib/auth/profile";
 import { parseDeckWords, parseLooks } from "@/lib/deck";
 import { companyLines, companyOf } from "@/lib/meeting/deck-pages";
+import { parseTalkingPoints } from "@/lib/meeting/talking-points";
 import { DECK_BUCKET, type ReferenceRow } from "@/lib/photos-deck";
 import { createClient } from "@/lib/supabase/server";
 import { DeckEditor, type DeckPhotoView } from "./deck-editor";
@@ -92,6 +93,7 @@ export default async function PresentationSettingsPage() {
         companyLines={companyLines(companyOf(settings.company))}
         photos={photos}
         references={(referenceRows ?? []) as ReferenceRow[]}
+        talking={parseTalkingPoints(settings.deck)}
       />
     </div>
   );

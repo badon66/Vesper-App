@@ -5,7 +5,8 @@ import { notFound } from "next/navigation";
 import { z } from "zod";
 import { SoffitCode } from "@/components/leads/soffit-code";
 import { TrackColourForm } from "@/components/leads/track-colour-form";
-import { MockupCard } from "@/components/meeting/mockup-card";
+import { MockupsCard } from "@/components/leads/mockups-card";
+import { loadLeadMockups } from "@/lib/leads/mockups";
 import { ConfirmMeeting, FillAnswers } from "@/components/meetings/prep-actions";
 import { NotForYourRole } from "@/components/not-for-your-role";
 import { Button } from "@/components/ui/button";
@@ -66,7 +67,8 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
       contactFor(supabase, me, leadId),
       notesFor(supabase, me, leadId),
       meetingsForLead(supabase, leadId),
-      supabase.from("lead_photos").select("storage_path, slot, created_at").eq("lead_id", leadId).eq("slot", "mockup").order("created_at", { ascending: false }).limit(1),
+      // Round 10: the mockup is the house's Main in lead_mockups.
+      supabase.from("lead_mockups").select("storage_path, created_at").eq("lead_id", leadId).eq("is_main", true).is("removed_at", null).limit(1),
       supabase.from("track_colours").select("id, name, ral_code, sort_order, active"),
       supabase.from("ral_classic_colours").select("code, name"),
       supabase.from("quotes").select("id, runs, offers, updated_at").eq("lead_id", leadId).order("updated_at", { ascending: false }),
@@ -85,9 +87,7 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
       .sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))[0] ?? null;
 
   const mockupPath = photoRows?.[0]?.storage_path ?? null;
-  const mockupUrl = mockupPath
-    ? ((await supabase.storage.from(PHOTO_BUCKET).createSignedUrl(mockupPath, 3600)).data?.signedUrl ?? null)
-    : null;
+  const mockupData = await loadLeadMockups(supabase, leadId);
 
   const colours = sortTrackColours(colourRows ?? []);
   const colourById = new Map(colours.map((colour) => [colour.id, colour]));
@@ -155,7 +155,7 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
     const primary = item.key === firstOpen;
     switch (item.key) {
       case "mockup":
-        return <MockupCard leadId={leadId} userId={me.id} mockupUrl={mockupUrl} bare primary={primary} />;
+        return <MockupsCard leadId={leadId} userId={me.id} {...mockupData} bare primary={primary} />;
       case "track_colour":
         return (
           <div className="flex flex-col gap-5 text-sm">

@@ -22,8 +22,9 @@ import {
 } from "@/lib/deck";
 import { SOFFIT_LABELS, type SoffitColour } from "@/lib/leads/status";
 import { CUSTOM_CHOICE, RAL_CODE_PATTERN } from "@/lib/leads/track-colour";
-import type { DeckPayload, DeckPhoto, MeetingPayload } from "@/lib/meeting/state";
+import type { DeckPayload, DeckPhoto, MeetingMockup, MeetingPayload } from "@/lib/meeting/state";
 import { galleryPhotos, isGallerySlot, photosInOrder } from "@/lib/photos-deck";
+import { parseTalkingPoints } from "@/lib/meeting/talking-points";
 import { addDays } from "@/lib/time";
 import { cleanFeet, formatMoney, screenTotal, type QuoteRun } from "@/lib/pricing";
 import type { Json } from "@/types/database";
@@ -39,6 +40,8 @@ import type { Json } from "@/types/database";
 // CONTRACT
 //   deckPages({ deck, lead, fillEmpty? })   the pages to show, in order, with
 //                                           the label their dot and region read
+//   mockupJobs(mockups), offerMockup(mockups, offerId)
+//                                           round 10: which mockup does which job
 //   houseView(deck, lead)                   what Your house shows: the traced
 //                                           photo by day, the Front photo, our
 //                                           drawing, or nothing (skipped)
@@ -73,10 +76,10 @@ import type { Json } from "@/types/database";
 
 export type DeckPage = { key: DeckPageKey; label: string };
 
-// The lead's own part of the deck. frontPhotoUrl: their Front photo, signed,
-// for Your house when the roofline isn't traced; measured: the quote has a
-// run with feet, so Your house can show our drawing of it.
-export type DeckLead = { mockupUrl: string | null; frontPhotoUrl?: string | null; measured?: boolean };
+// The lead's own part of the deck (round 10): their mockups, Main first
+// (MeetingPayload.mockups), and the Main's URL. frontPhotoUrl and measured
+// were round 9's Your house, which left the order.
+export type DeckLead = { mockupUrl: string | null; mockups?: readonly MeetingMockup[]; frontPhotoUrl?: string | null; measured?: boolean };
 
 // The lead's Front photo, signed, when the meeting's payload carries one
 // (lib/meeting/deck-payload.ts): Your house with no trace and no mockup.
@@ -110,8 +113,6 @@ export function pageLabel(key: DeckPageKey, words: DeckWords): string {
   return "Vesper";
 }
 
-const hasWords = (page: PageWords) => page.headline.trim() !== "" || page.words.trim() !== "";
-
 // What Your house shows (round 9, the five seats' table): with a trace, the
 // photo it was traced on by day, in the picker's own crop, so the next page
 // is the reveal; with no trace, the mockup stands in (Your house, lit), so
@@ -127,30 +128,60 @@ export function houseView(deck: Pick<DeckPayload, "picker">, lead: DeckLead | nu
   return lead.measured ? { kind: "drawing" } : null;
 }
 
-// A page with nothing to show is skipped, never shown empty. What happens
-// next is never skipped: every meeting reaches it (and the initials there).
+// The lead's mockups by the job each does (round 10): the Main (lights on),
+// the Day and Night pair, the phone page's scenes (the Main first as a
+// button too, when there is one) and an offer's own picture.
+export type MockupJobs = {
+  main: MeetingMockup | null;
+  day: MeetingMockup | null;
+  night: MeetingMockup | null;
+  scenes: MeetingMockup[];
+};
+
+export function mockupJobs(mockups: readonly MeetingMockup[] | undefined): MockupJobs {
+  const list = mockups ?? [];
+  const main = list.find((item) => item.main) ?? null;
+  const scenes = list.filter((item) => item.scene && !item.main);
+  return {
+    main,
+    day: list.find((item) => item.day) ?? null,
+    night: list.find((item) => item.night) ?? null,
+    scenes: scenes.length > 0 && main ? [main, ...scenes] : scenes,
+  };
+}
+
+// The picture for an offer on Your price: its own (a mockup marked for it),
+// else the Main, else none (the offers take the room).
+export function offerMockup(mockups: readonly MeetingMockup[] | undefined, offerId: string | null): MeetingMockup | null {
+  const list = mockups ?? [];
+  const own = offerId ? list.find((item) => item.offers.includes(offerId)) : undefined;
+  return own ?? list.find((item) => item.main) ?? null;
+}
+
+// A page with nothing to show is skipped, never shown empty (round 10): a
+// page missing its mockup is skipped, so a meeting never shows an empty
+// page. What happens next is never skipped.
 export function deckPages({ deck, lead, fillEmpty = false }: DeckPagesInput): DeckPage[] {
+  void fillEmpty;
   const traced = lead !== null && deck.picker !== null;
-  const mockup = lead !== null && Boolean(lead.mockupUrl);
+  const jobs = mockupJobs(lead?.mockups ?? []);
+  const main = lead !== null && (jobs.main !== null || Boolean(lead.mockupUrl));
   const shows: Record<DeckPageKey, () => boolean> = {
     cover: () => true,
-    what_vesper_is: () => hasWords(deck.words.pages.what_vesper_is),
-    hidden_by_day: () => hasWords(deck.words.pages.hidden_by_day),
-    phone_control: () => hasWords(deck.words.pages.phone_control),
-    // Real installs only: skipped until Keenan has some.
-    gallery: () => galleryItems(deck, fillEmpty).length > 0,
-    warranty: () => warrantyLines(deck.warranty.text).length > 0,
-    your_house: () => houseView(deck, lead) !== null,
-    // Stands in for Your house: a mockup and no trace.
-    mockup: () => mockup && !traced,
+    what_vesper_is: () => main,
+    hidden_by_day: () => jobs.day !== null && jobs.night !== null,
+    phone_control: () => jobs.scenes.length > 0,
+    warranty: () => true,
     // Their own house only: never a drawing or another house in its place.
     light_picker: () => traced && deck.looks.length > 0,
-    // Stands in for the picker when there is neither a trace nor a mockup,
-    // so "most nights, warm white" still lands.
-    whites_first: () => hasWords(deck.words.pages.whites_first) && !traced && !mockup,
-    colour: () => lead !== null,
     quote: () => lead !== null,
     next_steps: () => true,
+    // Left the order in round 10 (lib/deck.ts RETIRED_PAGES).
+    gallery: () => false,
+    your_house: () => false,
+    mockup: () => false,
+    whites_first: () => false,
+    colour: () => false,
   };
   return DECK_PAGES.filter((key) => shows[key]()).map((key) => ({ key, label: pageLabel(key, deck.words) }));
 }
@@ -726,5 +757,6 @@ export function buildDeckPayload({
     picker,
     company: companyOf(settings.company),
     warranty: { text: settings.warranty_text, serviceCallFee: settings.service_call_fee, gstEnabled: settings.gst_enabled === true },
+    talking: parseTalkingPoints(settings.deck),
   };
 }

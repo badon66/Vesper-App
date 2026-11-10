@@ -276,17 +276,27 @@ try {
   const jpeg = await sharp({ create: { width: 1200, height: 800, channels: 3, background: "#1d3445" } }).jpeg().toBuffer();
   const uploaded = await admin.storage.from(BUCKET).upload(mockupPath, jpeg, { contentType: "image/jpeg" });
   if (uploaded.error) throw new Error(`mockup upload: ${uploaded.error.message}`);
-  const mockupRow = await admin.from("lead_photos").insert({ lead_id: leadId, storage_path: mockupPath, slot: "mockup" });
+  // Round 10: the mockup is a lead_mockups row, the house's Main, inserted
+  // by the service role (the lead page's Mockups section is builder A's).
+  const mockupRow = await admin.from("lead_mockups").insert({
+    lead_id: leadId,
+    storage_path: mockupPath,
+    name: "Warm white",
+    is_main: true,
+    position: 0,
+    created_by: ownerId,
+  });
   if (mockupRow.error) throw new Error(`mockup row: ${mockupRow.error.message}`);
 
   // Keenan's gallery photos, if he has uploaded any (never staged here).
-  const { data: galleryRows } = await admin.from("deck_photos").select("slot").like("slot", "gallery.%");
-  const galleryCount = (galleryRows ?? []).length;
-  const order = deckOrder(settings, { gallery: galleryCount, lead: { mockup: true } });
+  const order = deckOrder(settings, { lead: { main: true } });
   const expected = order.map((p) => p.label);
   const pageLabel = (key) => deckPageLabel(settings.deck, key);
-  const MOCKUP = pageLabel("mockup");
-  const COLOUR = pageLabel("colour");
+  // Round 10: the Main mockup is Up once, there all year; the colour page
+  // folded into Your price, so its section below is skipped.
+  const MOCKUP = pageLabel("what_vesper_is");
+  const AFTER_MOCKUP = order[order.findIndex((p) => p.key === "what_vesper_is") + 1]?.label ?? null;
+  const COLOUR = null;
   const PRICE = pageLabel("quote");
   const NEXT = pageLabel("next_steps");
   const before = await ownerFootprint(ownerId);
@@ -317,13 +327,13 @@ try {
   );
   const keys = await page.locator("section[data-page]").evaluateAll((sections) => sections.map((s) => s.getAttribute("data-page")));
   check(
-    "a mockup and no trace: Your house, lit stands in for Your house, and neither the light picker nor Warm white shows",
-    keys.includes("mockup") && !keys.includes("your_house") && !keys.includes("light_picker") && !keys.includes("whites_first") && MOCKUP === "Your house, lit",
+    "a Main mockup and no trace: Up once, there all year shows it, and no page missing its mockup shows (no day and night, no phone, no picker)",
+    keys.includes("what_vesper_is") && !keys.includes("hidden_by_day") && !keys.includes("phone_control") && !keys.includes("light_picker") && !keys.includes("your_house") && !keys.includes("colour"),
     `${keys.join(", ")}; the mockup page reads "${MOCKUP}"`,
   );
   check(
     "the story closes on What happens next, straight after the price",
-    keys.at(-1) === "next_steps" && keys.at(-2) === "quote" && keys.at(-3) === "colour",
+    keys.at(-1) === "next_steps" && keys.at(-2) === "quote" && keys.at(-3) === "warranty",
     keys.slice(-3).join(", "),
   );
   check("meeting mode is full screen, with no tabs and no side rail", (await page.locator('nav[aria-label="Tabs"]').count()) === 0);
@@ -406,42 +416,14 @@ try {
     note("What Vesper is's More was not reached: Settings has no words for it");
   }
 
-  // ---------------------------------------------------------------- the gallery, when Keenan has install photos
-  const galleryLabel = pageLabel("gallery");
-  if (galleryCount > 0) {
-    await goToScreen(page, galleryLabel);
-    const region = page.getByRole("region", { name: galleryLabel });
-    const heroes = Math.min(galleryCount, 6);
-    // The band counts its photos only while they are the whole gallery; with
-    // more, See all N is the only total.
-    const counted = heroes > 1 && galleryCount <= 6;
-    const counter = counted ? await region.getByTestId("gallery-counter").innerText() : "";
-    check(
-      "the gallery shows one photo at a time, counted only while the band holds them all",
-      (await region.locator("img").count()) >= 1 && (counted ? counter === `1 of ${heroes}` : (await region.getByTestId("gallery-counter").count()) === 0),
-      counter,
-    );
-    if (heroes > 1) {
-      const first = await region.locator("img").last().getAttribute("src");
-      await page.keyboard.press("ArrowRight");
-      await page.waitForTimeout(500);
-      check(
-        "the arrow key steps to the next photo before turning the page",
-        (await currentScreen(page)) === galleryLabel &&
-          (counted ? (await region.getByTestId("gallery-counter").innerText()) === `2 of ${heroes}` : (await region.locator("img").last().getAttribute("src")) !== first),
-      );
-    }
-  } else {
-    note("the gallery was not reached: no install photos are uploaded yet, so the deck skips it");
-  }
-
-  // ---------------------------------------------------------------- Your house, lit (the mockup, standing in for Your house)
+  // The gallery (Homes we've lit) left the meeting in round 10.
+  // ---------------------------------------------------------------- Up once, there all year (their Main mockup)
   await goToScreen(page, MOCKUP);
   const house = page.getByRole("region", { name: MOCKUP });
   const mockupLoaded = await house
     .locator("img")
     .evaluate((img) => (img.complete ? img.naturalWidth > 0 : new Promise((done) => img.addEventListener("load", () => done(img.naturalWidth > 0)))));
-  const mockupWords = (settings.deck?.pages?.mockup?.words ?? "").trim();
+  const mockupWords = (settings.deck?.pages?.what_vesper_is?.words ?? "").trim();
   check(
     `${MOCKUP} shows the customer's mockup, with its words from Settings`,
     mockupLoaded && (mockupWords === "" || flat(await house.innerText()).includes(smart(mockupWords))),
@@ -449,9 +431,11 @@ try {
   );
   const hb = await house.boundingBox();
   await touchSwipe(page, cdp, Math.round(hb.x + hb.width * 0.8), Math.round(hb.y + hb.height * 0.6), -700);
-  check("a one-finger swipe on the mockup turns the page, like everywhere else", (await currentScreen(page)) === COLOUR, await currentScreen(page));
+  check("a one-finger swipe on the mockup turns the page, like everywhere else", (await currentScreen(page)) === AFTER_MOCKUP, await currentScreen(page));
   await cdp.detach();
 
+  // ---------------------------------------------------------------- Your track colour (round 9's page; round 10 folds it into Your price)
+  if (COLOUR) {
   // ---------------------------------------------------------------- Your track colour
   await goToScreen(page, COLOUR);
   const colourScreen = page.getByRole("region", { name: COLOUR });
@@ -588,30 +572,28 @@ try {
     (await chooser.count()) === 0 && (await colourScreen.getByTestId("deck-track-colour").innerText()).includes(colour.name) && (await dots(page).count()) === 1,
   );
 
+  } else {
+    note("round 10: the colour page left the deck; its line, timing and initials are on Your price (meeting-story-walkthrough.mjs checks them)");
+  }
+
   // ---------------------------------------------------------------- What happens next (the last page, at every meeting)
   await goToScreen(page, NEXT);
   const nextScreen = page.getByRole("region", { name: NEXT });
   const stepLabels = [];
-  for (const n of [1, 2, 3, 4]) stepLabels.push(flat(await nextScreen.getByTestId(`next-step-${n}`).innerText().catch(() => "")));
+  for (const id of ["next-step-install", "next-step-pay"]) stepLabels.push(flat(await nextScreen.getByTestId(id).innerText().catch(() => "")));
   check(
-    "What happens next: four numbered steps, Your colour, Your install day, On the day and Paying, with No payment until your install is complete. word for word",
+    "What happens next (round 10, a wrap-up): Your install day, then Paying with No payment until your install is complete. word for word, and thanks; no colour book line",
     (await nextScreen.getByTestId("next-steps-page").count()) === 1 &&
-      stepLabels[0].includes(deckLine(settings.deck, "step_colour_label")) &&
-      stepLabels[1].includes(deckLine(settings.deck, "step_day_label")) &&
-      stepLabels[2].includes(deckLine(settings.deck, "step_on_day_label")) &&
-      stepLabels[3].includes(deckLine(settings.deck, "step_pay_label")) &&
-      stepLabels[3].includes("No payment until your install is complete."),
+      stepLabels[0].includes(deckLine(settings.deck, "step_day_label")) &&
+      stepLabels[1].includes(deckLine(settings.deck, "step_pay_label")) &&
+      stepLabels[1].includes("No payment until your install is complete.") &&
+      (await nextScreen.getByTestId("next-steps-thanks").count()) === 1 &&
+      !flat(await nextScreen.innerText()).includes(smart(deckLine(settings.deck, "step_colour_todo"))),
     stepLabels.join(" | ").slice(0, 300),
   );
+  check("with nothing chosen there's no recap", (await nextScreen.getByTestId("next-steps-recap").count()) === 0);
   check(
-    "with nothing chosen there's no recap, and with no initials step 1 asks for them right there (never confirmed here)",
-    (await nextScreen.getByTestId("next-steps-recap").count()) === 0 &&
-      stepLabels[0].includes(smart(deckLine(settings.deck, "step_colour_todo"))) &&
-      (await nextScreen.locator("#next-steps-initials").count()) === 1 &&
-      (await nextScreen.getByTestId("next-step-colour-done").count()) === 0,
-  );
-  check(
-    "step 2 says We pick the day together., with Pick a day always there; the closing line hands over to the link",
+    "the install day says We pick the day together., with Pick a day always there; the closing line hands over to the link",
     flat(await nextScreen.getByTestId("next-step-day").innerText().catch(() => "")) === smart(deckLine(settings.deck, "step_day_none")) &&
       flat(await nextScreen.getByTestId("next-step-pick-day").innerText().catch(() => "")) === deckLine(settings.deck, "step_day_button") &&
       flat(await nextScreen.getByTestId("next-steps-closing").innerText().catch(() => "")) === smart(deckLine(settings.deck, "closing")),
@@ -702,8 +684,17 @@ try {
   await editLayer.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
 
   const option = priceScreen.getByTestId("price-option");
-  const breakdown = async () => flat(await priceScreen.getByTestId("price-breakdown").innerText());
-  const priceTotal = async () => tight(await priceScreen.getByTestId("price-total").innerText().catch(() => ""));
+  // Round 10: the breakdown is one tap away, in a layer; the total is on the option.
+  const breakdown = async () => {
+    await priceScreen.getByTestId("price-breakdown-open").click();
+    const layer = page.getByTestId("price-breakdown");
+    await layer.waitFor({ timeout: 5000 }).catch(() => {});
+    const text = flat(await layer.innerText().catch(() => ""));
+    await page.keyboard.press("Escape");
+    await layer.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+    return text;
+  };
+  const priceTotal = async () => tight(await priceScreen.getByTestId("price-option").first().innerText().catch(() => ""));
   check(
     "Done goes back to the price page: one option, Full wrap, on screen and not chosen, its total from Settings",
     (await option.count()) === 1 &&
@@ -846,7 +837,7 @@ try {
           const nav = document.querySelector('[data-deck-row="nav"]');
           return {
             choose: rect(section?.querySelector('[data-testid="price-choose"]')),
-            total: rect(section?.querySelector('[data-testid="price-total"]')),
+            total: rect(section?.querySelector('[data-testid="price-option"]')),
             edit: rect(section?.querySelector('[data-testid="price-edit"]')),
             row: rect(nav?.querySelector("ol")),
             next: rect(nav?.querySelector('[data-testid="deck-next-label"]')),
@@ -954,7 +945,7 @@ try {
   await goToScreen(signal, MOCKUP);
   await signal
     .waitForFunction(() => {
-      const img = document.querySelector('section[data-page="mockup"] img');
+      const img = document.querySelector('section[data-page="what_vesper_is"] img');
       return Boolean(img && img.complete && img.naturalWidth > 0);
     }, null, { timeout: 30000 })
     .catch(() => {});
@@ -978,7 +969,7 @@ try {
   await dots(signal).waitFor({ timeout: 30000 }).catch(() => {});
   const offlineMockup = await signal
     .waitForFunction(() => {
-      const img = document.querySelector('section[data-page="mockup"] img');
+      const img = document.querySelector('section[data-page="what_vesper_is"] img');
       return Boolean(img && img.complete && img.naturalWidth > 0);
     }, null, { timeout: 20000 })
     .then(() => true)
@@ -1053,6 +1044,8 @@ try {
     const { data: owned } = await admin.from("leads").select("id").eq("created_by", setter.id);
     const leadIds = (owned ?? []).map((row) => row.id);
     if (leadIds.length > 0) await admin.from("quotes").delete().in("lead_id", leadIds);
+    // lead_mockups has no cascade: its rows go before the leads.
+    if (leadIds.length > 0) await admin.from("lead_mockups").delete().in("lead_id", leadIds);
     await admin.from("leads").delete().eq("created_by", setter.id);
     const { data: files } = await admin.storage.from(BUCKET).list(setter.id, { limit: 1000 });
     if (files && files.length > 0) await admin.storage.from(BUCKET).remove(files.map((file) => `${setter.id}/${file.name}`));

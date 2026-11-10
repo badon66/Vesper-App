@@ -76,7 +76,9 @@ describe("the seeded deck words and looks", () => {
     const nextSteps = { headline: "What happens next", words: "", more_label: ROUND7_SEED.install_day.moreLabel, more_text: ROUND7_SEED.install_day.moreText };
     // Every line, word for word, added only where the deck has none.
     const lines = round9.match(/'\{lines\}', \$lines\$([\s\S]*?)\$lines\$::jsonb\)\s+where id = 1\s+and deck -> 'lines' is null;/);
-    expect(JSON.parse(lines?.[1] ?? "{}")).toEqual(DECK_LINE_DEFAULTS);
+    // Round 10's thank you came later: a deck without it reads ours.
+    const round9Lines = Object.fromEntries(Object.entries(DECK_LINE_DEFAULTS).filter(([key]) => key !== "thanks"));
+    expect(JSON.parse(lines?.[1] ?? "{}")).toEqual(round9Lines);
     const pages = Object.fromEntries(Object.entries(after).map(([key, page]) => [key, stored(page)]));
     const seeded = parseDeckWords({
       pages: { ...pages, your_house: JSON.parse(house?.[1] ?? "{}"), next_steps: nextSteps },

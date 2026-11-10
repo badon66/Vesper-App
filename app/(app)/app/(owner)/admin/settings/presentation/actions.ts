@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { NotOwnerError, ReadOnlyError, requireOwnerForAction, type SessionProfile } from "@/lib/auth/profile";
 import { deckWordsToJson, parseDeckWords, SLOT_BY_KEY } from "@/lib/deck";
+import { deckWithTalking, parseTalkingInput } from "@/lib/meeting/talking-points";
 import {
   DECK_BUCKET,
   deckPhotoPaths,
@@ -57,14 +58,18 @@ async function owner(): Promise<{ ok: true; profile: SessionProfile } | Refused>
 
 export type SaveDeckResult =
   | { ok: true; savedAt: string }
-  | { ok: false; error: string; wordErrors?: DeckWordErrors };
+  | { ok: false; error: string; wordErrors?: DeckWordErrors; talkingErrors?: Record<string, string> };
 
-// Saves the deck's words, the looks, or both, in one write. The words are
-// merged over what is stored, so only the fields Settings shows change.
-export async function saveDeck(input: { words?: unknown; looks?: unknown }): Promise<SaveDeckResult> {
+// Saves the deck's words, Keenan's talking points, the looks, or any of
+// them, in one write. The words are merged over what is stored, so only the
+// fields Settings shows change; the talking points (round 10) go into
+// settings.deck.talking beside them.
+export async function saveDeck(input: { words?: unknown; looks?: unknown; talking?: unknown }): Promise<SaveDeckResult> {
   const guard = await owner();
   if (!guard.ok) return guard;
-  if (input.words === undefined && input.looks === undefined) return { ok: true, savedAt: new Date().toISOString() };
+  if (input.words === undefined && input.looks === undefined && input.talking === undefined) {
+    return { ok: true, savedAt: new Date().toISOString() };
+  }
 
   const supabase = await createClient();
   const { data: current, error: readError } = await supabase.from("settings").select("deck, warranty_text").eq("id", 1).single();
@@ -77,6 +82,11 @@ export async function saveDeck(input: { words?: unknown; looks?: unknown }): Pro
     // Over what is stored, keeping whatever this editor doesn't show (round
     // 7's How install day works, which the customer's link still reads).
     update.deck = deckWordsToJson(mergeEditableWords(parseDeckWords(current.deck), parsed.words), current.deck);
+  }
+  if (input.talking !== undefined) {
+    const parsed = parseTalkingInput(input.talking);
+    if (!parsed.ok) return { ok: false, error: parsed.error, talkingErrors: parsed.errors };
+    update.deck = deckWithTalking(update.deck ?? current.deck, parsed.talking) as Json;
   }
   if (input.looks !== undefined) {
     const parsed = parseLooksInput(input.looks);

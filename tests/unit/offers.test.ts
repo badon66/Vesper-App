@@ -76,10 +76,19 @@ describe("offers", () => {
     expect(cleanPositions(3, "0,1")).toEqual([]);
   });
 
-  it("quick starts: Full wrap is every run, Lower level every lower run, Front only none until Keenan picks", () => {
+  it("quick starts: Full wrap is every run, Front the front runs, Front lower their lower runs", () => {
     expect(quickStartRuns("full", RUNS)).toEqual([0, 1, 2, 3]);
-    expect(quickStartRuns("lower", RUNS)).toEqual([0, 1]);
-    expect(quickStartRuns("front", RUNS)).toEqual([]);
+    // Front, Garage and Upper front face the street; Upper gable is not named front.
+    expect(quickStartRuns("front", RUNS)).toEqual([0, 1, 2]);
+    expect(quickStartRuns("front_lower", RUNS)).toEqual([0, 1]);
+    expect(quickStartRuns("blank", RUNS)).toEqual([]);
+    const house: QuoteRun[] = [
+      { name: "Back", feet: 40, level: "lower", part: "eave" },
+      { name: "Left side", feet: 30, level: "lower", part: "sides" },
+      { name: "Front porch", feet: 12, level: "lower", part: "porch" },
+      { name: "Front gable", feet: 18, level: "upper", part: "gable" },
+    ];
+    expect(quickStartRuns("front", house)).toEqual([2, 3]);
   });
 
   it("prices an offer from its own runs: upper access only with its upper runs, the gable amount with an upper gable", () => {
@@ -182,16 +191,25 @@ describe("offers", () => {
     expect(priceOffer(inputs(), { id: "f", name: "Full wrap", runs: [0, 1, 2, 3], boxes: null })!.subtotal).toBe(4200);
   });
 
-  it("says what an offer covers from its runs, never typed", () => {
-    expect(offerCoverage(RUNS, { runs: [0, 2, 1, 3] })).toBe("Front, Garage, Upper front and Upper gable, 150 ft");
-    expect(offerCoverage(RUNS, { runs: [1] })).toBe("Garage, 30 ft");
-    expect(offerCoverage(RUNS, { runs: [0, 1] })).toBe("Front and Garage, 90 ft");
+  it("says what an offer covers in words, from its runs, never typed", () => {
+    expect(offerCoverage(RUNS, { runs: [0, 1, 2] })).toBe("Front and garage, upper and lower: 130 ft");
+    expect(offerCoverage(RUNS, { runs: [0, 2, 1, 3] })).toBe("Front, garage and gable, upper and lower: 150 ft");
+    expect(offerCoverage(RUNS, { runs: [1] })).toBe("Garage, lower: 30 ft");
+    expect(offerCoverage(RUNS, { runs: [0, 1] })).toBe("Front and garage, lower: 90 ft");
     expect(offerCoverage(RUNS, { runs: [] })).toBe("");
+    // A bungalow has one level, so no level words.
+    const bungalow: QuoteRun[] = [
+      { name: "Front", feet: 50, level: "lower", part: "eave" },
+      { name: "Back", feet: 50, level: "lower", part: "eave" },
+    ];
+    expect(offerCoverage(bungalow, { runs: [0, 1] })).toBe("Front and back: 100 ft");
+    // A run named only by its level takes its part's name.
+    expect(offerCoverage([{ name: "Upper", feet: 20, level: "upper", part: "gable" }], { runs: [0] })).toBe("Gable, upper: 20 ft");
   });
 
-  it("offers Lower level only when the house has an upper run, and names its offer Main floor", () => {
-    expect(quickStartsFor(RUNS).map((s) => s.kind)).toEqual(["full", "lower", "front", "blank"]);
+  it("offers Full wrap, Front and Front lower, and Front lower only when the front has an upper run", () => {
+    expect(quickStartsFor(RUNS).map((s) => s.kind)).toEqual(["full", "front", "front_lower", "blank"]);
     expect(quickStartsFor(RUNS.filter((r) => r.level === "lower")).map((s) => s.kind)).toEqual(["full", "front", "blank"]);
-    expect(quickStartsFor(RUNS).find((s) => s.kind === "lower")).toMatchObject({ label: "Lower level", name: "Main floor" });
+    expect(quickStartsFor(RUNS).map((s) => s.name)).toEqual(["Full wrap", "Front", "Front lower", ""]);
   });
 });

@@ -14,25 +14,15 @@ import {
 } from "react";
 
 import { PickerPage } from "@/components/meeting/picker-page";
-import { ColourPage, confirmedTonight, type Confirmation, type DeckColour } from "@/components/meeting/colour-page";
+import { confirmedTonight, type Confirmation, type DeckColour } from "@/components/meeting/colour-page";
 import { DeckContext, type DeckContextValue, type EmptySlotRenderer } from "@/components/meeting/deck-parts";
-import {
-  CoverPage,
-  HiddenByDayPage,
-  MockupPage,
-  PhonePage,
-  WarrantyPage,
-  WhatVesperPage,
-  WhitesPage,
-  type MoreState,
-} from "@/components/meeting/deck-pages";
+import { CoverPage, HiddenByDayPage, PhonePage, WhatVesperPage, type MoreState } from "@/components/meeting/deck-pages";
 import { ExitHold } from "@/components/meeting/exit-hold";
-import { GalleryPage } from "@/components/meeting/gallery-page";
 import { NextStepsPage } from "@/components/meeting/next-steps-page";
 import { QuoteScreen } from "@/components/meeting/quote-screen";
-import { YourHousePage } from "@/components/meeting/your-house-page";
+import { TalkingPoints } from "@/components/meeting/talking-points";
+import { WarrantyPage } from "@/components/meeting/warranty-page";
 import type { DeckPageKey } from "@/lib/deck";
-import { CUSTOM_CHOICE, leadTrackColour, trackColourText } from "@/lib/leads/track-colour";
 import { coolWhiteOf, warmWhiteOf } from "@/lib/lights/looks";
 import {
   bottomRowWidth,
@@ -46,8 +36,8 @@ import {
   frontPhotoOf,
   GALLERY_HERO_COUNT,
   galleryItems,
-  houseView,
   isNear,
+  mockupJobs,
   measuredFeet,
   nextLabelParts,
   recapLine,
@@ -62,7 +52,6 @@ import {
   quoteFingerprint,
   quoteInputs,
   quoteOffers,
-  quoteRushFee,
   startingPoint,
   type DeckPayload,
   type MeetingPayload,
@@ -75,12 +64,16 @@ import { priceOffer } from "@/lib/quotes/offers";
 import { smartApostrophes } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 
-// The deck (round 7, the settled spec; round 9, the meeting as one story):
-// every page in the spec's order, swiped sideways, nothing internal
-// anywhere. Always dark navy, whatever the device's theme. Meeting mode
-// renders it for one lead; the rehearsal view renders the same deck under
-// its own bar. The Vesper pages come first, then their house (Your house,
-// the light picker, the colour, the price) and What happens next. A quiet
+// The deck (round 7, the settled spec; round 9, the meeting as one story;
+// round 10, mockups per house): every page in Keenan's order, swiped
+// sideways, nothing internal anywhere but his talking points, which show
+// only while he presses and holds their mark (top right). Always dark navy,
+// whatever the device's theme. Meeting mode renders it for one lead; the
+// rehearsal view renders the same deck under its own bar. The cover, their
+// Main mockup, their Day and Night mockups, their scenes on a phone, the
+// warranty, the light picker (traced only), Your price (with the colour and
+// its initials) and What happens next; a page missing its mockup is
+// skipped. No drawing of the house anywhere. A quiet
 // "Next: {headline}" sits right of the forward chevron on every page but
 // the last; the turn from Your house to the light picker (and back)
 // cross-fades the band instead of sliding, so their photo stays put.
@@ -199,7 +192,11 @@ export function Deck(props: DeckProps) {
   if (!inBrowser) {
     return (
       <div className={cn(ROOT_CLASS, props.className ?? "relative h-full w-full")} style={ROOT_STYLE}>
-        <CoverPage line={props.meeting ? coverLine(props.meeting.lead) : null} tagline={props.deck.words.lines.cover_line} />
+        <CoverPage
+          name={props.meeting?.lead.name ?? null}
+          line={props.meeting ? coverLine(props.meeting.lead) : null}
+          tagline={props.deck.words.lines.cover_line}
+        />
       </div>
     );
   }
@@ -220,7 +217,7 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
   const [start] = useState(() =>
     meeting ? startingPoint(meeting, persist ? readStored(meeting.lead.id) : null, Date.now(), entry === "start") : null,
   );
-  const [colour, setColour] = useState<DeckColour>(() =>
+  const [colour] = useState<DeckColour>(() =>
     meeting
       ? { kind: meeting.lead.colourKind, text: meeting.lead.colourText, choice: meeting.colours.choice, ralCode: meeting.colours.ralCode }
       : { kind: "none", text: "", choice: null, ralCode: null },
@@ -237,9 +234,10 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
   const frontPhotoUrl = meeting ? frontPhotoOf(meeting) : null;
   const measured = quote !== null && measuredFeet(quote.runs) > 0;
   const lead = useMemo<DeckLead | null>(
-    () => (meeting ? { mockupUrl: meeting.mockupUrl, frontPhotoUrl, measured } : null),
+    () => (meeting ? { mockupUrl: meeting.mockupUrl, mockups: meeting.mockups, frontPhotoUrl, measured } : null),
     [meeting, frontPhotoUrl, measured],
   );
+  const jobs = useMemo(() => mockupJobs(meeting?.mockups ?? []), [meeting]);
   const pages = useMemo<DeckPage[]>(() => deckPages({ deck, lead, fillEmpty }), [deck, lead, fillEmpty]);
   const gallery = useMemo(() => galleryItems(deck, fillEmpty), [deck, fillEmpty]);
   const galleryCount = Math.min(gallery.length, GALLERY_HERO_COUNT);
@@ -441,40 +439,6 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
     settleTimer.current = window.setTimeout(() => setSettled(true), 150);
   }
 
-  // A colour changed at the table: named on the iPad, asks for initials
-  // again, and moves the quote's colour timing to match the one colour rule
-  // (only White is stock; any other colour is spring unless rush was
-  // already chosen). The accepted quote's timing stays as agreed.
-  const onColourSaved = useCallback(
-    (choice: string | null, ralCode: string | null) => {
-      if (!meeting) return;
-      const named = leadTrackColour(
-        {
-          track_colour_id: choice && choice !== CUSTOM_CHOICE ? choice : null,
-          track_ral_code: choice === CUSTOM_CHOICE ? ralCode : null,
-        },
-        new Map(meeting.colours.list.map((item) => [item.id, item])),
-        new Map(Object.entries(meeting.colours.ralNames)),
-      );
-      const text = trackColourText(named);
-      setColour({ kind: named.kind, text, choice, ralCode });
-      setConfirmation(null);
-      if (accepted) return;
-      setQuote((now) => (now ? { ...now, colourTiming: colourTimingFor(named.kind, text, now.colourTiming) } : now));
-    },
-    [meeting, accepted],
-  );
-
-  // The colour page's two timing buttons set the quote's colour timing, so
-  // every option on the price page is already priced with it.
-  const onTiming = useCallback(
-    (timing: "factory_order" | "rush") => {
-      if (accepted) return;
-      setQuote((now) => (now && now.colourTiming !== timing ? { ...now, colourTiming: timing } : now));
-    },
-    [accepted],
-  );
-
   // What happens next reads back the option chosen on the price page, priced
   // as the price page prices it.
   const recap = useMemo(() => {
@@ -500,16 +464,30 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
 
   function renderPage(page: DeckPage, at: number): ReactNode {
     const near = isNear(at, current);
-    const shared = { deck, near, more: moreOf(page.key), fillEmpty };
     switch (page.key) {
       case "cover":
-        return <CoverPage line={meeting ? coverLine(meeting.lead) : null} tagline={deck.words.lines.cover_line} />;
-      case "what_vesper_is":
-        return <WhatVesperPage {...shared} />;
+        return <CoverPage name={meeting?.lead.name ?? null} line={meeting ? coverLine(meeting.lead) : null} tagline={deck.words.lines.cover_line} />;
+      case "what_vesper_is": {
+        const main = jobs.main ?? (meeting?.mockupUrl ? { id: "main", name: "", url: meeting.mockupUrl, main: true, day: false, night: false, scene: false, offers: [] } : null);
+        return main && meeting ? (
+          <WhatVesperPage deck={deck} near={near} more={moreOf(page.key)} main={main} addressLine={meeting.lead.addressLine} onSwipe={turnPage} />
+        ) : null;
+      }
       case "hidden_by_day":
-        return <HiddenByDayPage {...shared} />;
-      case "whites_first":
-        return <WhitesPage {...shared} />;
+        return jobs.day && jobs.night ? <HiddenByDayPage deck={deck} near={near} more={moreOf(page.key)} day={jobs.day} night={jobs.night} /> : null;
+      case "phone_control":
+        return jobs.scenes.length > 0 ? <PhonePage deck={deck} near={near} scenes={jobs.scenes} /> : null;
+      case "warranty":
+        return (
+          <WarrantyPage
+            headline={deck.words.pages.warranty.headline}
+            text={deck.warranty.text}
+            serviceCallFee={deck.warranty.serviceCallFee}
+            gstEnabled={deck.warranty.gstEnabled}
+            more={moreOf(page.key)}
+            moreLabel={deck.words.pages.warranty.moreLabel.trim() || undefined}
+          />
+        );
       case "light_picker":
         return deck.picker && near ? (
           <PickerPage
@@ -522,66 +500,6 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             onStored={setPicker}
             layerOpen={layer !== null}
             onSwipe={turnPage}
-          />
-        ) : null;
-      case "phone_control":
-        return <PhonePage {...shared} />;
-      case "gallery":
-        return (
-          <GalleryPage
-            words={deck.words.pages.gallery}
-            items={gallery}
-            at={galleryAt}
-            near={near}
-            sheetOpen={layer === "gallery"}
-            onSheet={(open) => setLayer(open ? "gallery" : null)}
-          />
-        );
-      case "warranty":
-        return <WarrantyPage {...shared} />;
-      case "your_house": {
-        const view = houseView(deck, lead);
-        return view && quote !== null ? (
-          <YourHousePage
-            deck={deck}
-            view={view}
-            words={deck.words.pages.your_house}
-            lines={deck.words.lines}
-            runs={quote.runs}
-            near={near}
-            more={moreOf("your_house")}
-            onSwipe={turnPage}
-          />
-        ) : null;
-      }
-      case "mockup":
-        return meeting?.mockupUrl ? (
-          <MockupPage
-            words={deck.words.pages.mockup}
-            mockupUrl={meeting.mockupUrl}
-            addressLine={meeting.lead.addressLine}
-            near={near}
-            onSwipe={turnPage}
-          />
-        ) : null;
-      case "colour":
-        return meeting ? (
-          <ColourPage
-            lead={meeting.lead}
-            colour={colour}
-            colours={meeting.colours}
-            confirmation={confirmation}
-            today={meeting.today}
-            initialsDraft={initialsDraft}
-            onInitialsDraft={setInitialsDraft}
-            onConfirmed={setConfirmation}
-            onColourSaved={onColourSaved}
-            lines={deck.words.lines}
-            timing={quote?.colourTiming ?? null}
-            rushFee={quote ? quoteRushFee(quote) : null}
-            onTiming={onTiming}
-            chooser={moreOf("colour")}
-            readOnly={readOnly}
           />
         ) : null;
       case "quote":
@@ -605,7 +523,20 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             readOnly={readOnly}
             lines={deck.words.lines}
             edit={moreOf("quote")}
+            breakdownLayer={moreOf("quote:breakdown")}
+            initialsLayer={moreOf("quote:initials")}
             locked={accepted}
+            mockups={meeting.mockups}
+            initials={{
+              draft: initialsDraft,
+              onDraft: setInitialsDraft,
+              onConfirmed: setConfirmation,
+              confirmed: confirmedTonight(confirmation, meeting.today),
+            }}
+            onYes={() => {
+              const to = pages.findIndex((item) => item.key === "next_steps");
+              if (to >= 0) goTo(to);
+            }}
           />
         ) : null;
       case "next_steps": {
@@ -618,13 +549,6 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             near={near}
             fillEmpty={fillEmpty}
             recap={recap}
-            colour={colour.kind !== "none" ? colour.text : null}
-            confirmed={confirmedTonight(confirmation, today)}
-            initials={
-              meeting
-                ? { leadId: meeting.lead.id, draft: initialsDraft, onDraft: setInitialsDraft, onConfirmed: setConfirmation, readOnly }
-                : null
-            }
             installOn={quote ? shownInstallDay(quote.installOn, today) : null}
             today={today}
             onInstallOn={
@@ -635,6 +559,13 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
           />
         );
       }
+      // Left the order in round 10 (lib/deck.ts RETIRED_PAGES): never shown.
+      case "gallery":
+      case "your_house":
+      case "mockup":
+      case "whites_first":
+      case "colour":
+        return null;
     }
   }
 
@@ -692,6 +623,10 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             </section>
           ))}
         </div>
+
+        {/* Keenan's talking points for the page on screen: a quiet mark he
+            presses and holds; never shown otherwise. */}
+        {currentKey ? <TalkingPoints key={currentKey} text={deck.talking?.[currentKey] ?? null} /> : null}
 
         {/* Layers mount here: over the pages, under the way out and the dots. */}
         <div ref={setOverlay} className="pointer-events-none absolute inset-0 z-30 [&>*]:pointer-events-auto" />

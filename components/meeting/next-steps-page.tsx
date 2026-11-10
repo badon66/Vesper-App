@@ -3,7 +3,6 @@
 import { Check } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 
-import { InitialsConfirm, type Confirmation } from "@/components/meeting/colour-page";
 import {
   BottomCorner,
   CentredBlock,
@@ -23,35 +22,18 @@ import type { DeckPayload } from "@/lib/meeting/state";
 import { formatLongDay } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
-// What happens next (round 9, the meeting as one story; it takes in How
-// install day works): what happens after a yes, in one place after the
-// price, at every meeting. With no pick it reads as "here's how it goes
-// when you're ready". It is never skipped, so the initials fallback below
-// is always reachable. Meeting mode never accepts the quote: there is no
-// Book button, acceptance, commission, setter or notes here.
-//
-// Top to bottom: the headline; once an option is chosen on the price page,
-// "Your choice: Main floor, $3,380 + GST"; four numbered steps, each a
-// short label and one line at 27/30 px:
-//   1 Your colour: "White, confirmed with your initials." with a tick once
-//     initialled at this meeting; otherwise "We confirm it with you from
-//     the colour book." with the initials and Confirm right there (the
-//     colour page's own, saved the same way), reading as done after
-//   2 Your install day: the day picked at the table ("Saturday, November
-//     21") or "We pick the day together.", and Pick a day, always: a layer
-//     with three weeks of days from tomorrow, one tap each, and No day yet.
-//     The day is optional and never written to the lead before Accepted
-//   3 On the day: the crew, the clean up and the app set up (the one place
-//     app set-up is said)
-//   4 Paying: "No payment until your install is complete." in semibold,
-//     set apart, word for word (CLAUDE.md, never in Settings)
-// then the closing line, which hands over to the link Keenan texts. What
-// we'll need is behind its button, with the control box photo slot.
+// What happens next (round 9, the meeting as one story; round 10, Keenan,
+// 2026-11-10: a wrap-up): their choice and total once one is chosen on the
+// price page, the install day (picked at the table, or "We pick the day
+// together.", with Pick a day), "No payment until your install is
+// complete." word for word, the closing line and thanks. The colour and
+// its initials are settled on the price page now, so no colour book line
+// here. It is never skipped. Meeting mode never accepts the quote: there
+// is no Book button, acceptance, commission, setter or notes here. What
+// we'll need is behind its button.
 //
 // With Keenan's install day photo (install_day.hero), the photo sits on the
-// left third and the words on the right: the five seats drew it at the
-// deck's 56%, but four steps at 27 px don't fit beside it in 44% of an iPad
-// Air, so the photo column is narrower here. Until then, the words alone,
+// left third and the words on the right; until then, the words alone,
 // centred at the deck's 64 px margin.
 
 export type NextStepsPageProps = {
@@ -62,20 +44,8 @@ export type NextStepsPageProps = {
   fillEmpty: boolean;
   // "Your choice: Main floor, $3,380 + GST", or null until one is chosen.
   recap: string | null;
-  // Step 1. colour: the track colour's name, or null while none is chosen.
-  colour: string | null;
-  confirmed: boolean;
-  // The initials box, while not confirmed; null with no lead (rehearsal).
-  initials: {
-    leadId: string;
-    draft: string;
-    onDraft: (value: string) => void;
-    onConfirmed: (confirmation: Confirmation) => void;
-    readOnly: boolean;
-  } | null;
-  // Step 2: the day picked at the table (YYYY-MM-DD) or null; onInstallOn
-  // is null with no quote (the rehearsal with no lead), which hides Pick a
-  // day.
+  // The day picked at the table (YYYY-MM-DD) or null; onInstallOn is null
+  // with no quote (the rehearsal with no lead), which hides Pick a day.
   installOn: string | null;
   today: string;
   onInstallOn: ((day: string | null) => void) | null;
@@ -86,39 +56,21 @@ export type NextStepsPageProps = {
 
 const altOf = (key: string) => SLOT_BY_KEY.get(key)?.name ?? "";
 
-function Step({ number, label, children, apart = false }: { number: number; label: string; children: ReactNode; apart?: boolean }) {
+function Row({ label, children, testId }: { label: string; children: ReactNode; testId: string }) {
   return (
-    <li className={cn("flex items-baseline gap-4", apart && "border-t border-border pt-4")} data-testid={`next-step-${number}`}>
-      <span className={cn(DECK_TYPE.body, "w-[1ch] shrink-0 font-semibold text-muted-foreground tabular-nums")}>{number}</span>
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <p className={cn(DECK_TYPE.small, "font-semibold text-muted-foreground")}>{say(label)}</p>
-        {children}
-      </div>
+    <li className="flex flex-col gap-0.5 border-t border-border pt-4" data-testid={testId}>
+      <p className={cn(DECK_TYPE.small, "font-semibold text-muted-foreground")}>{say(label)}</p>
+      {children}
     </li>
   );
 }
 
-export function NextStepsPage({
-  deck,
-  words,
-  lines,
-  near,
-  fillEmpty,
-  recap,
-  colour,
-  confirmed,
-  initials,
-  installOn,
-  today,
-  onInstallOn,
-  more,
-  dayLayer,
-}: NextStepsPageProps) {
+export function NextStepsPage({ deck, words, lines, near, fillEmpty, recap, installOn, today, onInstallOn, more, dayLayer }: NextStepsPageProps) {
   const hero = slotView(deck, "install_day.hero", fillEmpty);
   const withPicture = slotHasPicture(hero);
   const layer = moreWords(words);
   const headline = words.headline.trim();
-  const colourDone = confirmed && colour !== null;
+  const thanks = deckLine(lines, "thanks").trim();
 
   const content = (
     <>
@@ -128,37 +80,8 @@ export function NextStepsPage({
           {say(recap)}
         </p>
       ) : null}
-      <ol className="flex flex-col gap-4" aria-label={headline ? say(headline) : undefined}>
-        <Step number={1} label={lines.step_colour_label}>
-          {colourDone ? (
-            <p className={cn(DECK_TYPE.body, "flex items-baseline gap-2")} data-testid="next-step-colour-done">
-              <span>{say(deckLine(lines, "step_colour_done", { colour }))}</span>
-              <Check aria-hidden="true" className="size-6 shrink-0 translate-y-1" strokeWidth={2.5} />
-            </p>
-          ) : (
-            <>
-              <p id="next-steps-colour-line" className={DECK_TYPE.body}>
-                {say(deckLine(lines, "step_colour_todo"))}
-              </p>
-              {initials && colour !== null ? (
-                <div className="mt-2">
-                  <InitialsConfirm
-                    id="next-steps-initials"
-                    leadId={initials.leadId}
-                    enabled
-                    prompt=""
-                    describedBy="next-steps-colour-line"
-                    draft={initials.draft}
-                    onDraft={initials.onDraft}
-                    onConfirmed={initials.onConfirmed}
-                    readOnly={initials.readOnly}
-                  />
-                </div>
-              ) : null}
-            </>
-          )}
-        </Step>
-        <Step number={2} label={lines.step_day_label}>
+      <ul className="flex flex-col gap-4" aria-label={headline ? say(headline) : undefined}>
+        <Row label={lines.step_day_label} testId="next-step-install">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
             <p className={DECK_TYPE.body} data-testid="next-step-day">
               {installOn ? formatLongDay(installOn) : say(deckLine(lines, "step_day_none"))}
@@ -169,17 +92,19 @@ export function NextStepsPage({
               </DeckButton>
             ) : null}
           </div>
-        </Step>
-        <Step number={3} label={lines.step_on_day_label}>
-          <p className={DECK_TYPE.body}>{say(deckLine(lines, "step_on_day"))}</p>
-        </Step>
-        <Step number={4} label={lines.step_pay_label} apart>
+        </Row>
+        <Row label={lines.step_pay_label} testId="next-step-pay">
           <p className={cn(DECK_TYPE.body, "font-semibold")}>{NO_PAYMENT_LINE}</p>
-        </Step>
-      </ol>
+        </Row>
+      </ul>
       <p className={cn(DECK_TYPE.small, "text-muted-foreground")} data-testid="next-steps-closing">
         {say(deckLine(lines, "closing"))}
       </p>
+      {thanks ? (
+        <p className={cn(DECK_TYPE.body, "font-semibold")} data-testid="next-steps-thanks">
+          {say(thanks)}
+        </p>
+      ) : null}
     </>
   );
 

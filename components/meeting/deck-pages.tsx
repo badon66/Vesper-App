@@ -3,8 +3,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import { CornerPair } from "@/components/drawings/corner-pair";
-import { HouseDayDrawing } from "@/components/drawings/house-drawing";
-import { LitHouse } from "@/components/drawings/lit-house";
 import { useBoxSize } from "@/components/lights/light-canvas";
 import { Wordmark } from "@/components/brand/wordmark";
 import { DayNightSlider } from "@/components/meeting/day-night-slider";
@@ -13,6 +11,7 @@ import {
   DeckButton,
   DeckImage,
   DECK_TYPE,
+  keepHyphens,
   Lines,
   MoreLayer,
   say,
@@ -21,7 +20,6 @@ import {
   SplitPage,
   slotHasPicture,
   useDeck,
-  type DrawingOptions,
 } from "@/components/meeting/deck-parts";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
 import { SLOT_BY_KEY, type Look, type PageWords } from "@/lib/deck";
@@ -36,7 +34,7 @@ import {
   warrantyLines,
   type SlotView,
 } from "@/lib/meeting/deck-pages";
-import type { DeckPayload } from "@/lib/meeting/state";
+import type { DeckPayload, MeetingMockup } from "@/lib/meeting/state";
 import { cn } from "@/lib/utils";
 
 // The deck's pages (round 7, the settled spec's pages[]; round 9, the
@@ -78,22 +76,6 @@ function bandPicture(view: SlotView, key: string): ReactNode {
   return <SlotPicture view={view} alt={altOf(key)} />;
 }
 
-// A More's picture, filling the left 56% panel: Keenan's photo, the
-// example, or its drawing straight on the layer's card (no box of its own),
-// centred and sized to fill the panel. What's in it draws the eave in
-// section, lit. Up close (Hidden by day) shows something different (round 7
-// after-review): the day side's close-up of one eave, the soffit, fascia
-// and slim track on the paper tone, filling the panel like a photo.
-// Null when it falls back to the words alone.
-const MORE_DRAWING: Record<string, DrawingOptions> = {
-  "hidden_by_day.more": { eave: "day", fit: "cover" },
-};
-
-function morePicture(view: SlotView, key: string): ReactNode | null {
-  if (!slotHasPicture(view)) return null;
-  return <SlotPicture view={view} alt={altOf(key)} drawing={MORE_DRAWING[key] ?? { ground: "none" }} />;
-}
-
 export function MoreButton({ more, label }: { more: MoreState; label: string }) {
   return (
     <DeckButton onClick={() => more.set(true)} aria-haspopup="dialog" aria-expanded={more.open}>
@@ -109,21 +91,26 @@ export function bandWords(words: PageWords): ReactNode {
 
 // ---------------------------------------------------------------- cover
 
-// A quiet title card while Keenan says hello: the wordmark, the address and
-// (round 9) one line under it naming what's coming, the price included, so
-// they listen to the product pages instead of waiting for the number. No
-// photo, greeting, name or date. With no lead (rehearsal), the wordmark and
-// the line. The wordmark's letters are centred, its gold dot hanging
-// outside the centring.
-export function CoverPage({ line, tagline }: { line: string | null; tagline?: string | null }) {
+// A brief introduction made for the iPad (round 10): the wordmark, their
+// name large, their address under it, then one line naming what's coming,
+// the price included. No photo, greeting or date. With no lead
+// (rehearsal), the wordmark and the line. The wordmark's letters are
+// centred, its gold dot hanging outside the centring.
+export function CoverPage({ name, line, tagline }: { name?: string | null; line: string | null; tagline?: string | null }) {
+  const shownName = name?.trim() || null;
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-8 px-16 text-center">
+    <div className="flex h-full w-full flex-col items-center justify-center gap-10 px-16 text-center" data-testid="deck-cover">
       <Wordmark hangDot className="text-[length:var(--deck-wordmark)] leading-none" />
-      {line || tagline ? (
-        <div className="flex flex-col items-center gap-4">
+      {shownName || line || tagline ? (
+        <div className="flex max-w-[44em] flex-col items-center gap-3">
+          {shownName ? (
+            <p className={cn(DECK_TYPE.headline, "text-balance")} data-testid="deck-cover-name">
+              {say(shownName)}
+            </p>
+          ) : null}
           {line ? <p className="text-[length:var(--deck-address)] leading-[1.3] text-muted-foreground">{say(line)}</p> : null}
           {tagline ? (
-            <p className={cn(DECK_TYPE.body, "max-w-[34em]")} data-testid="deck-cover-line">
+            <p className={cn(DECK_TYPE.body, "mt-5 max-w-[34em]")} data-testid="deck-cover-line">
               {say(tagline)}
             </p>
           ) : null}
@@ -133,83 +120,66 @@ export function CoverPage({ line, tagline }: { line: string | null; tagline?: st
   );
 }
 
-// ---------------------------------------------------------------- What Vesper is
+// ---------------------------------------------------------------- Up once, there all year
 
-export function WhatVesperPage({ deck, near, more, fillEmpty }: PageProps) {
+// Round 10: their Main mockup (their house, lights on), as big as the page
+// allows, pinch to zoom, with the page's headline and words in the band.
+// Skipped without a Main (deckPages), so it is never empty.
+export function WhatVesperPage({
+  deck,
+  near,
+  more,
+  main,
+  addressLine,
+  onSwipe,
+}: Omit<PageProps, "fillEmpty"> & { main: MeetingMockup; addressLine: string; onSwipe: (delta: number) => void }) {
   const words = deck.words.pages.what_vesper_is;
-  const hero = slotView(deck, "what_vesper_is.hero", fillEmpty);
   const layer = moreWords(words);
   return (
     <>
       <BandPage
-        picture={near ? bandPicture(hero, "what_vesper_is.hero") : null}
+        picture={near ? <PinchZoom src={main.url} alt={`${addressLine}, with the lights on`} onSwipe={onSwipe} /> : null}
         headline={words.headline}
         more={layer ? <MoreButton more={more} label={layer.label} /> : null}
       >
         {bandWords(words)}
       </BandPage>
-      {layer ? (
-        <MoreLayer
-          open={more.open}
-          onClose={() => more.set(false)}
-          label={layer.label}
-          picture={morePicture(slotView(deck, "what_vesper_is.more", fillEmpty), "what_vesper_is.more")}
-          lines={layer.lines}
-        />
-      ) : null}
+      {layer ? <MoreLayer open={more.open} onClose={() => more.set(false)} label={layer.label} lines={layer.lines} /> : null}
     </>
   );
 }
 
 // ---------------------------------------------------------------- Hidden by day
 
-function PairSide({ view, slotKey, focus }: { view: SlotView; slotKey: string; focus?: [number, number] }) {
-  if (view.kind === "photo") return <DeckImage photo={view.photos[0]} alt={altOf(slotKey)} focus={focus} />;
-  if (view.kind === "example") return <SlotExample slot={view.slot} />;
-  return null;
-}
-
-export function HiddenByDayPage({ deck, near, more, fillEmpty }: PageProps) {
-  const { warm } = useDeck();
+// Round 10: their Day and Night mockups with the slider between them, both
+// cropped the same way so the house lines up. Skipped unless both exist.
+export function HiddenByDayPage({ deck, near, more, day, night }: Omit<PageProps, "fillEmpty"> & { day: MeetingMockup; night: MeetingMockup }) {
   const words = deck.words.pages.hidden_by_day;
-  const pair = pairView(deck, "hidden_by_day.day", "hidden_by_day.night", fillEmpty);
   const layer = moreWords(words);
-  // Both photos crop around the day photo's focus point, so they line up.
-  const dayFocus = pair.kind === "pair" && pair.sides[0].kind === "photo" ? pair.sides[0].photos[0].focus : undefined;
-  // The drawn pair: the same medium crop (the garage gable, the lower eave
-  // and the entry) by day and lit at night, both filling the picture, so the
-  // track reads as a slim thing tucked under the soffit.
-  const slider =
-    pair.kind === "pair" ? (
-      <DayNightSlider
-        day={<PairSide view={pair.sides[0]} slotKey="hidden_by_day.day" />}
-        night={<PairSide view={pair.sides[1]} slotKey="hidden_by_day.night" focus={dayFocus} />}
-      />
-    ) : (
-      <DayNightSlider
-        day={<HouseDayDrawing crop="medium" fit="cover" className="absolute inset-0" />}
-        night={<LitHouse crop="medium" fit="cover" look={warm} className="absolute inset-0" />}
-      />
-    );
+  const centre: [number, number] = [0.5, 0.5];
+  const slider = (
+    <DayNightSlider
+      day={<DeckImage photo={{ url: day.url, focus: centre }} alt="Your house by day" />}
+      night={<DeckImage photo={{ url: night.url, focus: centre }} alt="Your house at night" />}
+    />
+  );
   return (
     <>
       <BandPage picture={near ? slider : null} headline={words.headline} more={layer ? <MoreButton more={more} label={layer.label} /> : null}>
         {bandWords(words)}
       </BandPage>
-      {layer ? (
-        <MoreLayer
-          open={more.open}
-          onClose={() => more.set(false)}
-          label={layer.label}
-          picture={morePicture(slotView(deck, "hidden_by_day.more", fillEmpty), "hidden_by_day.more")}
-          lines={layer.lines}
-        />
-      ) : null}
+      {layer ? <MoreLayer open={more.open} onClose={() => more.set(false)} label={layer.label} lines={layer.lines} /> : null}
     </>
   );
 }
 
 // ---------------------------------------------------------------- Warm white, most nights (the stand-in)
+
+function PairSide({ view, slotKey, focus }: { view: SlotView; slotKey: string; focus?: [number, number] }) {
+  if (view.kind === "photo") return <DeckImage photo={view.photos[0]} alt={altOf(slotKey)} focus={focus} />;
+  if (view.kind === "example") return <SlotExample slot={view.slot} />;
+  return null;
+}
 
 // Round 9: stands in for the light picker when there is neither a roofline
 // trace nor a mockup, as built (its words and its Warm or cool layer): with
@@ -308,46 +278,66 @@ export function WhitesPage({ deck, near, more, fillEmpty }: PageProps) {
 
 // ---------------------------------------------------------------- Run it from your phone
 
-// Up to three of Keenan's screenshots side by side, whole, at the phone's
-// own proportion; until then, the words alone.
-function AppScreens({ view }: { view: SlotView }) {
-  if (view.kind === "example") return <SlotExample slot={view.slot} />;
-  if (view.kind !== "photo") return null;
-  return (
-    <div className="absolute inset-x-10 inset-y-10 flex items-center justify-center gap-6">
-      {view.photos.slice(0, 3).map((photo, at) => (
-        <div key={photo.url} className="relative h-full min-w-0 flex-1">
-          <DeckImage photo={photo} alt={`The app, screen ${at + 1}`} fit="contain" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-export function PhonePage({ deck, near, more, fillEmpty }: PageProps) {
+// Round 10: their house on the left, and on the right a phone drawn on
+// screen whose buttons are their scene mockups by name (the Main first,
+// when there is one). Tapping a scene swaps the house picture to it, the
+// way the app changes the lights. Skipped without a scene. The chosen
+// button is the Night Text fill, never gold (the customer's page).
+export function PhonePage({ deck, near, scenes }: { deck: DeckPayload; near: boolean; scenes: MeetingMockup[] }) {
+  const { reduced } = useDeck();
   const words = deck.words.pages.phone_control;
-  const hero = slotView(deck, "phone_control.hero", fillEmpty);
-  const screens = slotView(deck, "phone_control.screens", fillEmpty);
-  const layer = moreWords(words);
+  const [shownId, setShownId] = useState<string | null>(null);
+  const shown = scenes.find((scene) => scene.id === shownId) ?? scenes[0];
+  const headline = words.headline.trim();
   return (
-    <>
-      <BandPage
-        picture={near ? bandPicture(hero, "phone_control.hero") : null}
-        headline={words.headline}
-        more={layer ? <MoreButton more={more} label={layer.label} /> : null}
-      >
-        {bandWords(words)}
-      </BandPage>
-      {layer ? (
-        <MoreLayer
-          open={more.open}
-          onClose={() => more.set(false)}
-          label={layer.label}
-          picture={slotHasPicture(screens) ? <AppScreens view={screens} /> : null}
-          lines={layer.lines}
-        />
-      ) : null}
-    </>
+    <div className="grid h-full w-full grid-cols-[minmax(0,1fr)_400px]" data-testid="phone-page">
+      <div className="relative min-w-0 overflow-hidden" style={{ marginBottom: "var(--deck-clear, 78px)" }} data-testid="phone-house">
+        {near
+          ? scenes.map((scene) => (
+              <DeckImage
+                key={scene.id}
+                photo={{ url: scene.url, focus: [0.5, 0.5] }}
+                alt={scene.id === shown?.id ? `Your house: ${scene.name}` : ""}
+                fit="contain"
+                className={cn(!reduced && "transition-opacity duration-300", scene.id === shown?.id ? "opacity-100" : "opacity-0")}
+              />
+            ))
+          : null}
+      </div>
+      <div className="flex min-h-0 min-w-0 flex-col items-center gap-5 pt-16 pr-12 pl-6" style={{ paddingBottom: "var(--deck-clear, 78px)" }}>
+        {headline ? <h2 className={cn(DECK_TYPE.headline, "self-start")}>{keepHyphens(headline)}</h2> : null}
+        {words.words.trim() ? <p className={cn(DECK_TYPE.small, "self-start text-muted-foreground")}>{say(words.words.trim())}</p> : null}
+        {/* The phone: a slim frame, its speaker slot, and the scenes. */}
+        <div
+          className="flex min-h-0 w-[260px] flex-1 flex-col rounded-[36px] border-[3px] border-foreground/80 bg-card px-4 pt-3 pb-5"
+          style={{ maxHeight: 520 }}
+          role="group"
+          aria-label="Scenes"
+        >
+          <span aria-hidden="true" className="mx-auto mb-4 h-1.5 w-16 shrink-0 rounded-full bg-foreground/40" />
+          <div className="flex min-h-0 flex-col gap-2.5 overflow-y-auto">
+            {scenes.map((scene) => {
+              const on = scene.id === shown?.id;
+              return (
+                <button
+                  key={scene.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setShownId(scene.id)}
+                  data-testid="phone-scene"
+                  className={cn(
+                    "flex min-h-14 w-full touch-manipulation items-center rounded-2xl border px-4 text-left text-[22px] leading-tight font-semibold outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-ring",
+                    on ? "border-foreground bg-foreground text-background" : "border-input bg-background text-foreground active:bg-secondary",
+                  )}
+                >
+                  <span className="line-clamp-2 min-w-0">{say(scene.name)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -28,7 +28,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
 import { chromium } from "playwright";
 import sharp from "sharp";
-import { deckLine, deckOrder, fillLine, pageWords } from "./deck-order.mjs";
+import { deckLine, deckOrder, fillLine } from "./deck-order.mjs";
 import { openOwnerSession } from "./owner-session.mjs";
 
 const base = process.env.BASE ?? "http://localhost:3300";
@@ -271,6 +271,37 @@ try {
   });
   if (trace.error) throw new Error(`trace: ${trace.error.message}`);
 
+  // Round 10: the house's mockups, inserted straight into lead_mockups by
+  // the service role (the lead page's Mockups section is looked at, not
+  // used): a Main, a Day, a Night, two scenes, and one for Front only.
+  const mockupRows = [
+    { name: "Warm white", is_main: true },
+    { name: "By day", is_day: true },
+    { name: "At night", is_night: true },
+    { name: "Christmas", is_scene: true },
+    { name: "Halloween", is_scene: true },
+    { name: "Front only", offer_ids: ["front"] },
+  ];
+  for (const [at, row] of mockupRows.entries()) {
+    const path = `${setter.id}/${crypto.randomUUID()}.jpg`;
+    const uploaded = await admin.storage.from(BUCKET).upload(path, at === 1 ? house : mockup, { contentType: "image/jpeg" });
+    if (uploaded.error) throw new Error(`mockup ${row.name}: ${uploaded.error.message}`);
+    paths.push(path);
+    const inserted = await admin.from("lead_mockups").insert({
+      lead_id: leadId,
+      storage_path: path,
+      name: row.name,
+      is_main: row.is_main === true,
+      is_day: row.is_day === true,
+      is_night: row.is_night === true,
+      is_scene: row.is_scene === true,
+      offer_ids: row.offer_ids ?? [],
+      position: at,
+      created_by: ownerId,
+    });
+    if (inserted.error) throw new Error(`mockup row ${row.name}: ${inserted.error.message}`);
+  }
+
   // The quote: six runs, three options. At $23 a foot with a $500 box and a
   // $150 neighbour discount: Full wrap 226 ft, $5,198 + $500 + $400 (an
   // upper gable) + $150 (extra work only with upper runs) - $150 = $6,098;
@@ -350,13 +381,10 @@ try {
   const quoteUrl = `${base}/q/${token}`;
 
   const before = await ownerFootprint(ownerId);
-  const { data: galleryRows } = await admin.from("deck_photos").select("slot").like("slot", "gallery.%");
-  const order = deckOrder(settings, { gallery: (galleryRows ?? []).length, lead: { traced: true, mockup: true, frontPhoto: true, measured: true } });
+  const order = deckOrder(settings, { lead: { traced: true, main: true, day: true, night: true, scenes: 2 } });
   const expected = order.map((p) => p.label);
   const label = (key) => order.find((p) => p.key === key)?.label ?? null;
-  const HOUSE = label("your_house");
   const PICKER = label("light_picker");
-  const COLOUR = label("colour");
   const PRICE = label("quote");
   const NEXT = label("next_steps");
 
@@ -369,8 +397,8 @@ try {
   await page.waitForTimeout(800);
   const labels = await dots(page).getByRole("button").evaluateAll((buttons) => buttons.map((b) => b.getAttribute("aria-label")));
   check(
-    "traced: the story's order, the Vesper pages, then Your house, Try it on your house, the colour, the price and What happens next, with no stand-in",
-    JSON.stringify(labels) === JSON.stringify(expected) && Boolean(HOUSE) && Boolean(PICKER),
+    "round 10's order: the cover, the Main, day and night, the phone, the warranty, Try it on your house, the price and What happens next",
+    JSON.stringify(labels) === JSON.stringify(expected) && expected.length === 8 && Boolean(PICKER),
     `${labels.join(" | ")}${JSON.stringify(labels) === JSON.stringify(expected) ? "" : ` (expected ${expected.join(" | ")})`}`,
   );
   for (const [at, pageLabel] of labels.entries()) {
@@ -381,36 +409,19 @@ try {
     else await page.waitForTimeout(700);
     await shot(page, `meeting-${slug(pageLabel)}`);
 
-    if (key === "your_house") {
-      const houseText = flat(await region.innerText());
-      check(
-        "Your house shows their traced photo by day, unlit, with \"We measured 226 ft of roofline.\" and no prices",
-        (await region.getByTestId("your-house-page").getAttribute("data-house-view")) === "trace" &&
-          houseText.includes(fillLine(pageWords(settings.deck, "your_house").words, { feet: 226 })) &&
-          !/\$\d/.test(houseText),
-        houseText.slice(0, 160),
-      );
-      const moreLabel = (settings.deck?.pages?.your_house?.more_label ?? "What we measured").trim() || "What we measured";
-      const more = region.getByRole("button", { name: moreLabel });
-      if ((await more.count()) > 0) {
-        await more.click();
-        await page.waitForTimeout(900);
-        const drawing = page.getByTestId("your-house-drawing");
-        const layerText = flat(await page.locator("[data-deck-layer]").innerText().catch(() => ""));
-        check(
-          "What we measured: our drawing of their roofline, every measured run lit and named with its feet, no prices",
-          (await drawing.locator("svg").count()) > 0 &&
-            layerText.includes("Our drawing of your roofline.") &&
-            layerText.includes("Upper is the second storey. Lower is the main floor.") &&
-            !/\$\d/.test(layerText),
-          layerText.slice(0, 200),
-        );
-        await shot(page, `meeting-${slug(pageLabel)}-what-we-measured`);
-        await page.keyboard.press("Escape");
-        await page.waitForTimeout(600);
-      } else {
-        note(`Your house's ${moreLabel} button was not found`);
-      }
+    if (key === "what_vesper_is") {
+      check("Up once, there all year shows their Main mockup", (await region.locator("img").count()) > 0);
+    }
+    if (key === "hidden_by_day") {
+      check("Hidden by day: their Day and Night mockups with the slider", (await region.locator("img").count()) === 2);
+    }
+    if (key === "phone_control") {
+      const scenes = await region.getByTestId("phone-scene").evaluateAll((buttons) => buttons.map((b) => b.textContent.trim()));
+      check("Run it from your phone: the Main first, then the two scenes, as buttons on a drawn phone", JSON.stringify(scenes) === JSON.stringify(["Warm white", "Christmas", "Halloween"]), scenes.join(", "));
+      await region.getByTestId("phone-scene").nth(1).click();
+      await page.waitForTimeout(500);
+      check("tapping a scene swaps the house picture to it", (await region.getByTestId("phone-scene").nth(1).getAttribute("aria-pressed")) === "true");
+      await shot(page, "meeting-phone-christmas");
     }
 
     if (key === "quote") {
@@ -433,18 +444,40 @@ try {
         flat(await region.getByTestId("price-sub").innerText().catch(() => "")),
       );
       check(
-        "the full wrap's breakdown: lights at \"$23 a foot\", upper access with an upper gable, the extra work and the discount, and its coverage line",
-        flat(await region.getByTestId("price-breakdown").innerText()).includes("226 ft at $23 a foot") &&
-          flat(await region.getByTestId("price-breakdown").innerText()).includes("Upper roof access") &&
-          flat(await region.getByTestId("price-coverage").innerText()) === "Front, Garage, Left side, Right side, Front upper and Upper gable, 226 ft",
-        flat(await region.getByTestId("price-coverage").innerText().catch(() => "")),
+        "each option shows what it covers in words, and the full wrap's picture is the Main",
+        flat(await region.locator('[data-testid="price-option"][data-option="full"] [data-testid="price-option-coverage"]').innerText()) ===
+          "Front, garage, left side, right side and gable, upper and lower: 226 ft" &&
+          (await region.getByTestId("price-mockup").count()) === 1,
+        flat(await region.locator('[data-testid="price-option-coverage"]').first().innerText().catch(() => "")),
       );
+      check(
+        "White track: one colour line, in stock",
+        flat(await region.getByTestId("price-colour-line").innerText().catch(() => "")) === flat(deckLine(settings.deck, "colour_stock")),
+      );
+      await region.getByTestId("price-breakdown-open").click();
+      await page.getByTestId("price-breakdown").waitFor({ timeout: 5000 }).catch(() => {});
+      const fullBreakdown = flat(await page.getByTestId("price-breakdown").innerText().catch(() => ""));
+      check(
+        "the full wrap's breakdown, one tap away: lights at \"$23 a foot\", upper access with an upper gable, and its coverage line",
+        fullBreakdown.includes("226 ft at $23 a foot") &&
+          fullBreakdown.includes("Upper roof access") &&
+          flat(await page.getByTestId("price-coverage").innerText().catch(() => "")) === "Front, garage, left side, right side and gable, upper and lower: 226 ft",
+        fullBreakdown.slice(0, 200),
+      );
+      await shot(page, "meeting-price-breakdown");
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(500);
       for (const [id, name] of [["main", "Main floor"], ["front", "Front only"]]) {
         await region.locator(`[data-testid="price-option"][data-option="${id}"]`).click();
         await page.waitForTimeout(700);
         await shot(page, `meeting-${slug(pageLabel)}-${slug(name)}-on-screen`);
       }
-      const frontBreakdown = flat(await region.getByTestId("price-breakdown").innerText());
+      check("Front only shows its own mockup", (await region.getByTestId("price-mockup").getAttribute("data-mockup")) !== null);
+      await region.getByTestId("price-breakdown-open").click();
+      await page.getByTestId("price-breakdown").waitFor({ timeout: 5000 }).catch(() => {});
+      const frontBreakdown = flat(await page.getByTestId("price-breakdown").innerText().catch(() => ""));
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(500);
       check(
         "tapping an option puts it on screen without choosing it: Front only shows the minimum, \"Before the minimum\" and Keenan's sentence",
         (await region.locator('[data-testid="price-option"][data-option="front"]').getAttribute("data-on-screen")) === "yes" &&
@@ -481,10 +514,12 @@ try {
     if (key === "next_steps") {
       const nextText = flat(await region.innerText());
       check(
-        "What happens next: four steps, no recap with nothing chosen, Pick a day, and the closing line",
+        "What happens next: a wrap-up with no recap while nothing is chosen, the install day with Pick a day, no payment until it's done, and thanks; no colour book line",
         (await region.getByTestId("next-steps-recap").count()) === 0 &&
-          (await region.locator('[data-testid="next-step-1"], [data-testid="next-step-2"], [data-testid="next-step-3"], [data-testid="next-step-4"]').count()) === 4 &&
+          (await region.locator('[data-testid="next-step-install"], [data-testid="next-step-pay"]').count()) === 2 &&
           nextText.includes("No payment until your install is complete.") &&
+          (await region.getByTestId("next-steps-thanks").count()) === 1 &&
+          !nextText.includes("colour book") &&
           (await region.getByTestId("next-step-pick-day").count()) === 1,
         nextText.slice(0, 200),
       );
@@ -553,30 +588,30 @@ try {
   check("looking at the chosen state wrote nothing", (await leadFootprint(leadId)) === looked);
   await closeOwner(owner.context);
 
-  // ---------------------------------------------------------------- the colour page, a made-to-order colour (staged)
+  // ---------------------------------------------------------------- a made-to-order colour on Your price (staged)
   if (madeToOrder) {
     await admin.from("leads").update({ track_colour_id: madeToOrder.id }).eq("id", leadId);
     owner = await ownerPage();
     page = owner.page;
     looked = await leadFootprint(leadId);
-    await page.goto(`${base}/meeting/${leadId}#start`);
+    await page.goto(`${base}/meeting/${leadId}#quote`);
     await dots(page).waitFor({ timeout: 30000 });
-    await goToScreen(page, COLOUR);
-    const region = page.getByRole("region", { name: COLOUR, exact: true });
-    const timing = flat(await region.getByTestId("deck-colour-timing").innerText().catch(() => ""));
+    await page.waitForTimeout(1000);
+    const region = page.getByRole("region", { name: PRICE, exact: true });
+    const timing = flat(await region.getByTestId("price-colour").innerText().catch(() => ""));
     check(
-      `${madeToOrder.name} track: made to order, with Install in spring (Included, chosen) and Install this season with the quote's rush fee, never tapped here`,
+      `${madeToOrder.name} track: one line on Your price, made to order, with Install in spring (Included, chosen) and Install this season with the quote's rush fee, never tapped here`,
       timing.startsWith(fillLine(deckLine(settings.deck, "colour_made"), { colour: madeToOrder.name })) &&
-        (await region.getByTestId("deck-colour-spring").getAttribute("aria-pressed")) === "true" &&
-        flat(await region.getByTestId("deck-colour-season").innerText().catch(() => "")).includes("$350"),
+        (await region.getByTestId("price-timing-spring").getAttribute("aria-pressed")) === "true" &&
+        flat(await region.getByTestId("price-timing-season").innerText().catch(() => "")).includes("$350"),
       timing,
     );
-    await shot(page, `meeting-${slug(COLOUR)}-${slug(madeToOrder.name)}-made-to-order`);
+    await shot(page, `meeting-${slug(PRICE)}-${slug(madeToOrder.name)}-made-to-order`);
     check("looking at the made-to-order colour wrote nothing", (await leadFootprint(leadId)) === looked);
     await closeOwner(owner.context);
     await admin.from("leads").update({ track_colour_id: white.id }).eq("id", leadId);
   } else {
-    note("no active track colour other than White, so the made-to-order colour page was not reached");
+    note("no active track colour other than White, so the made-to-order colour line was not reached");
   }
 
   // ---------------------------------------------------------------- the lead page: the Quote card and Edit the quote (looks only)
@@ -755,6 +790,7 @@ try {
       await admin.from("quotes").delete().in("lead_id", ids);
       await admin.from("roofline_traces").delete().in("lead_id", ids);
       await admin.from("lead_photos").delete().in("lead_id", ids);
+      await admin.from("lead_mockups").delete().in("lead_id", ids);
       await admin.from("lead_events").delete().in("lead_id", ids);
     }
     await admin.from("meetings").delete().eq("host_id", setter.id);
