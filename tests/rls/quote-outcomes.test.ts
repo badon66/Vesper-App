@@ -782,6 +782,66 @@ describe("after the review", () => {
   });
 });
 
+// Round 9 (2026-11-10): Accepted chooses an option by its id. The option's
+// own runs and boxes decide the commission; the quote records which option
+// it was, and Undo clears it.
+describe("accepting an option", () => {
+  // Start smaller's runs (Front and Upper gable, 90 ft) as an option with
+  // two boxes: 2,350 x 90 + 50,000 x 2 - 30,026 = 281,474 cents, the same
+  // base as SMALLER_BASE_CENTS because the quote has two boxes too; with
+  // three boxes it is 331,474.
+  const OPTION_THREE_BOXES_CENTS = 331_474;
+  const offers = [
+    { id: "full", name: "Full wrap", runs: [0, 1, 2, 3] },
+    { id: "smaller", name: "Front and gable", runs: [0, 2], boxes: 3 },
+    { id: "empty", name: "Front only", runs: [] },
+  ];
+
+  it("records the option, its runs and boxes, and pays commission on that option's lights and boxes", async () => {
+    const lead = await newLead(users.a);
+    const quote = await newQuote(lead, { offers: offers as unknown as Json, meeting_offer: "smaller", meeting_install_on: calgaryDay(9) });
+    expect(hintOf((await users.a.client.rpc("quote_accept_offer", { p_quote: quote, p_offer: "smaller" })).error)).toBe("not_allowed");
+    expect((await anon.rpc("quote_accept_offer", { p_quote: quote, p_offer: "smaller" })).error).not.toBeNull();
+    expect(hintOf((await admin.rpc("quote_accept_offer", { p_quote: quote, p_offer: "nope" })).error)).toBe("bad_offer");
+    expect(hintOf((await admin.rpc("quote_accept_offer", { p_quote: quote, p_offer: "empty" })).error)).toBe("bad_runs");
+
+    const { data, error } = await admin.rpc("quote_accept_offer", { p_quote: quote, p_offer: "smaller", p_install_on: calgaryDay(9) });
+    expect(error).toBeNull();
+    const amount = amountFor(OPTION_THREE_BOXES_CENTS);
+    expect(data).toEqual({ commission: { profile_id: users.a.id, amount }, reason: null });
+    expect(await quoteRow(quote)).toMatchObject({ status: "accepted", accepted_offer: "smaller", accepted_boxes: 3, accepted_runs: [0, 2] });
+    expect(await commissions(lead)).toMatchObject([{ base_amount: dollars(OPTION_THREE_BOXES_CENTS), amount, status: "pending" }]);
+    expect(await leadRow(lead)).toMatchObject({ status: "sold", install_on: calgaryDay(9) });
+    // The timeline names the option, never an amount.
+    const event = await lastEvent(lead, "quote_accepted");
+    expect(event).toMatchObject({ quote_id: quote, option: "Front and gable" });
+    expect(Object.keys(event as object).sort()).toEqual(["install_on", "option", "quote_id"]);
+    expect(JSON.stringify(event)).not.toContain("$");
+
+    // Undo clears what was accepted.
+    expect((await undo(quote)).error).toBeNull();
+    expect(await quoteRow(quote)).toMatchObject({ status: "draft", accepted_offer: null, accepted_boxes: null, accepted_runs: null });
+  });
+
+  it("the full wrap is every run, and a quote made before offers accepts its implicit full wrap", async () => {
+    const lead = await newLead(users.a);
+    const quote = await newQuote(lead);
+    expect((await admin.rpc("quote_accept_offer", { p_quote: quote, p_offer: "full" })).error).toBeNull();
+    expect(await quoteRow(quote)).toMatchObject({ accepted_offer: "full", accepted_runs: null, accepted_boxes: 2 });
+    expect(await commissions(lead)).toMatchObject([{ base_amount: dollars(FULL_BASE_CENTS), amount: amountFor(FULL_BASE_CENTS) }]);
+  });
+
+  it("the table's pick and day save on a draft, and lock with the accepted quote", async () => {
+    const lead = await newLead(users.a);
+    const quote = await newQuote(lead, { offers: offers as unknown as Json });
+    expect((await admin.from("quotes").update({ meeting_offer: "smaller", meeting_install_on: calgaryDay(5) }).eq("id", quote)).error).toBeNull();
+    // A setter reads no quote at all.
+    expect((await users.a.client.from("quotes").select("meeting_offer").eq("id", quote)).data ?? []).toEqual([]);
+    expect((await admin.rpc("quote_accept_offer", { p_quote: quote, p_offer: "full" })).error).toBeNull();
+    expect(hintOf((await admin.from("quotes").update({ meeting_offer: "full" }).eq("id", quote)).error)).toBe("quote_locked");
+  });
+});
+
 describe("who reads what", () => {
   it("each setter reads only their own earnings; another setter, an account with no profile and anon read none", async () => {
     const mine = await users.a.client.from("earnings").select("profile_id, type").eq("type", "commission");
@@ -841,7 +901,8 @@ describe("who reads what", () => {
     expect(error).toBeNull();
     const outcomeEvents = (events ?? []).filter((event) => event.type !== "status_change");
     expect(outcomeEvents.length).toBeGreaterThan(5);
-    const allowed = new Set(["quote_id", "install_on", "reason", "inside_window", "follow_up_on"]);
+    // option: the accepted option's name (round 9), a name Keenan gave it, never an amount.
+    const allowed = new Set(["quote_id", "install_on", "reason", "inside_window", "follow_up_on", "option"]);
     for (const event of events ?? []) {
       const payload = (event.payload ?? {}) as Record<string, unknown>;
       expect(Object.keys(payload).filter((key) => !allowed.has(key))).toEqual([]);

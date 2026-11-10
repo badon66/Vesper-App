@@ -173,6 +173,7 @@ export function AnswerGroup<T extends string>({
   chosen,
   onTap,
   note,
+  id,
 }: {
   name: string;
   legend: string;
@@ -199,6 +200,10 @@ export function AnswerGroup<T extends string>({
   onTap?: (option: T) => void;
   // Round 6: a Note chip beside Not collected, and the note's box.
   note?: { value: string; onChange: (value: string) => void; name?: string };
+  // Book now, finish later (2026-11-10): the edit page's questions carry an
+  // id (q-<question>), so an item still to finish can jump straight here.
+  // It clears the sticky header, and is marked for a moment on landing.
+  id?: string;
 }) {
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteFocus, setNoteFocus] = useState(false);
@@ -234,9 +239,12 @@ export function AnswerGroup<T extends string>({
   const marked = value === NOT_COLLECTED;
   return (
     <fieldset
+      id={id}
       className={cn(
         "flex flex-col rounded-md",
         notCollected ? "gap-1.5" : "gap-2",
+        id &&
+          "scroll-mt-40 ring-offset-4 ring-offset-background data-landed:ring-2 data-landed:ring-ring",
       )}
       aria-describedby={
         [describedBy, error ? `${name}-error` : null]

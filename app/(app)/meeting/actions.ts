@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { NotOwnerError, ReadOnlyError, requireOwnerForAction, type SessionProfile } from "@/lib/auth/profile";
-import { priceQuote, totalFeet, type QuoteInputs } from "@/lib/pricing";
+import { hasDash, hasExclamation } from "@/lib/deck";
+import { guessRunPart, priceQuote, RUN_PARTS, totalFeet, type QuoteInputs } from "@/lib/pricing";
+import { quoteLockedWords, type QuoteSaveInput } from "@/lib/quotes/draft";
+import { OFFERS_MAX, offersForSave } from "@/lib/quotes/offers";
 import { createClient } from "@/lib/supabase/server";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 
@@ -36,6 +39,9 @@ const quoteDraftSchema = z.object({
         name: z.string().trim().max(60),
         feet: z.number().int().min(0).max(10_000),
         level: z.enum(["lower", "upper"]),
+        // The part of the house (2026-11-04). An iPad still holding a draft
+        // from before parts gets the guess from the run's name.
+        part: z.enum(RUN_PARTS).nullable().optional(),
       }),
     )
     .max(30),
@@ -47,7 +53,12 @@ const quoteDraftSchema = z.object({
     .max(20),
   discounts: z.array(z.object({ label: z.string().trim().max(80), amount: money })).max(20),
   colourTiming: z.enum(["stock", "factory_order", "rush"]).nullable(),
-  rushFeePerFt: money.nullable(),
+  // This quote's flat rush colour fee and upper access amounts (2026-11-04),
+  // copied from Settings and changed at the table if Keenan wants. Null on
+  // a quote made before, which has neither line.
+  rushFee: money.nullable().optional(),
+  upperAccessFee: money.nullable().optional(),
+  upperGableAccessFee: money.nullable().optional(),
   // The minimum job total from Settings when the quote is saved.
   minJobTotal: money.nullable().optional(),
   financingOffered: z.boolean(),
@@ -56,16 +67,42 @@ const quoteDraftSchema = z.object({
   gstEnabled: z.boolean(),
   gstRate: z.number().min(0).max(0.9999),
   gstNumber: z.string().trim().max(30).nullable(),
+  // Round 9 (2026-11-10): where the save came from (meeting mode, or the
+  // lead page's quote editor), for the words when the quote is accepted.
+  from: z.enum(["meeting", "lead"]).optional(),
+  // The offers, each picking runs by position, with its own box count
+  // (null: the quote's); the option chosen at the table; the install day
+  // picked there. An iPad still holding a copy from before round 9 sends
+  // none, and the quote keeps one full wrap.
+  offers: z
+    .array(
+      z.object({
+        id: z.string().trim().min(1).max(40),
+        name: z.string().max(60),
+        runs: z.array(z.number().int().min(0).max(29)).max(30),
+        boxes: z.number().int().min(1).max(9).nullable().optional(),
+      }),
+    )
+    .max(OFFERS_MAX)
+    .optional(),
+  meetingOffer: z.string().trim().min(1).max(40).nullable().optional(),
+  meetingInstallOn: z.iso.date().nullable().optional(),
 });
 
 export type QuoteDraftInput = z.input<typeof quoteDraftSchema>;
+
+// The shared builder's shape (lib/quotes/draft.ts) is what this takes.
+const _sameShape: QuoteDraftInput = {} as QuoteSaveInput;
+void _sameShape;
 export type SaveQuoteResult =
   | { ok: true; quoteId: string; savedAt: string }
   | { ok: false; code: string; message: string };
 
 // Saves (or re-saves) the lead's one draft quote, with every price it used
 // copied onto it. The totals are computed by the same lib/pricing.ts the
-// screen used, so what the customer watched is what is stored.
+// screen used, so what the customer watched is what is stored. Meeting mode
+// and the lead page's quote editor (round 9) both save through here, to the
+// same row: the quote built ahead is the quote the meeting opens with.
 export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteResult> {
   const me = await owner();
   if (refused(me)) return me;
@@ -73,7 +110,20 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
   if (!parsed.success) {
     return { ok: false, code: "bad_input", message: "Something in the quote doesn't look right. Check the numbers." };
   }
-  const draft = parsed.data;
+  const draft = { ...parsed.data, runs: parsed.data.runs.map((run) => ({ ...run, part: run.part ?? guessRunPart(run.name) })) };
+  const locked = { ok: false as const, code: "quote_locked", message: quoteLockedWords(draft.from ?? "meeting") };
+  // An option's name is read by the customer: the deck's word checks.
+  if ((draft.offers ?? []).some((offer) => hasDash(offer.name) || hasExclamation(offer.name))) {
+    return { ok: false, code: "bad_input", message: "An option's name has a dash or an exclamation mark. Take it out and save again." };
+  }
+  // The offers as the database keeps them, and the table's choice only
+  // while it names one of them (an empty list is one full wrap, "full").
+  const offers = offersForSave(
+    (draft.offers ?? []).map((offer) => ({ ...offer, boxes: offer.boxes ?? null })),
+    draft.runs.length,
+  );
+  const offerIds = offers.length > 0 ? offers.map((offer) => offer.id) : draft.runs.length > 0 ? ["full"] : [];
+  const meetingOffer = draft.meetingOffer && offerIds.includes(draft.meetingOffer) ? draft.meetingOffer : null;
 
   const supabase = await createClient();
   const { data: lead } = await supabase
@@ -91,7 +141,9 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     adders: draft.adders,
     discounts: draft.discounts,
     colourTiming: draft.colourTiming,
-    rushFeePerFt: draft.rushFeePerFt,
+    rushFee: draft.rushFee ?? null,
+    upperAccessFee: draft.upperAccessFee ?? null,
+    upperGableAccessFee: draft.upperGableAccessFee ?? null,
     minJobTotal: draft.minJobTotal ?? null,
     gstEnabled: draft.gstEnabled,
     gstRate: draft.gstRate,
@@ -116,7 +168,13 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     })),
     discounts: draft.discounts,
     colour_timing: draft.colourTiming,
-    rush_fee_per_ft: draft.colourTiming === "rush" ? draft.rushFeePerFt : null,
+    // The flat fee is kept whatever the timing, so switching to rush at the
+    // table finds it; the price counts it only for rush. The fee per foot
+    // is no longer used (2026-11-04).
+    rush_fee: draft.rushFee ?? null,
+    rush_fee_per_ft: null,
+    upper_access_fee: draft.upperAccessFee ?? null,
+    upper_gable_access_fee: draft.upperGableAccessFee ?? null,
     gst_enabled: draft.gstEnabled,
     gst_rate: draft.gstRate,
     gst_number: draft.gstNumber,
@@ -130,7 +188,23 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     notes: draft.notes || null,
     valid_until: draft.validUntil,
     min_job_total: draft.minJobTotal ?? null,
+    // Round 9: the offers, the table's choice and the install day picked
+    // there (never written to the lead before Accepted).
+    offers,
+    meeting_offer: meetingOffer,
+    meeting_install_on: draft.meetingInstallOn ?? null,
   };
+
+  // While the lead has an accepted quote, its prices are locked: nothing
+  // saves until the acceptance is undone on the lead page.
+  const { data: accepted } = await supabase
+    .from("quotes")
+    .select("id")
+    .eq("lead_id", draft.leadId)
+    .eq("status", "accepted")
+    .limit(1)
+    .maybeSingle();
+  if (accepted) return locked;
 
   // One draft per lead, reused on every save.
   const { data: existing } = await supabase
@@ -152,6 +226,7 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
       .eq("id", existing.id)
       .select("updated_at")
       .single();
+    if (error?.hint === "quote_locked") return locked;
     if (error || !updated) {
       return { ok: false, code: "save_failed", message: "The draft could not be saved. Check your signal and try again." };
     }
@@ -162,6 +237,9 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
   // The database writes the quote_created timeline event (its id only,
   // never a dollar amount), as it writes every event but notes.
   const { data: created, error } = await supabase.from("quotes").insert(row).select("id, updated_at").single();
+  // Round 8: while a quote on the lead is accepted, no new quote starts
+  // (the database's quotes guard, hint quote_locked).
+  if (error?.hint === "quote_locked") return locked;
   if (error || !created) {
     return { ok: false, code: "save_failed", message: "The draft could not be saved. Check your signal and try again." };
   }

@@ -36,9 +36,19 @@ const valid = {
   company_phone: "",
   company_email: "info@vesperlighting.ca",
   company_address: "",
-  rush_colour_fee_per_ft: "",
+  christmas_banner_on: true,
+  christmas_banner_title: " Want them up for Christmas? ",
+  christmas_banner_text: "We install every day\r\nthe weather allows.",
+  product_points: [
+    { icon: "lightbulb", text: " RGBW lights. " },
+    { icon: "rocket", text: "Unknown icon." },
+    { icon: "plug", text: "   " },
+  ],
+  rush_colour_fee: "350",
+  upper_access_fee: "200",
+  upper_gable_access_fee: "",
   service_call_fee: "95",
-  quote_valid_days: "14",
+  price_hold_days: "120",
   min_job_total: "2500",
   faq_text: "Q.\r\nA.",
   presentation_pages: [
@@ -51,9 +61,18 @@ describe("parseSettingsForm", () => {
   it("accepts the defaults and converts percentages to fractions", () => {
     const result = parseSettingsForm(valid);
     if (result.ok) {
-      expect(result.values.rush_colour_fee_per_ft).toBeNull();
+      expect(result.values.rush_colour_fee).toBe(350);
+      expect(result.values.upper_access_fee).toBe(200);
+      expect(result.values.upper_gable_access_fee).toBeNull();
       expect(result.values.service_call_fee).toBe(95);
-      expect(result.values.quote_valid_days).toBe(14);
+      expect(result.values.price_hold_days).toBe(120);
+      expect(result.values.christmas_banner_title).toBe("Want them up for Christmas?");
+      expect(result.values.christmas_banner_text).toBe("We install every day the weather allows.");
+      // A blank line is left out; an unknown icon becomes a tick.
+      expect(result.values.product_points).toEqual([
+        { icon: "lightbulb", text: "RGBW lights." },
+        { icon: "check", text: "Unknown icon." },
+      ]);
       expect(result.values.min_job_total).toBe(2500);
       expect(result.values.faq_text).toBe("Q.\nA.");
       expect(result.values.presentation_pages[0]).toEqual({
@@ -199,6 +218,8 @@ describe("settingsRowToFormDefaults", () => {
       step_note_after_door: "Photos.",
       step_note_book: "Book it.",
       confirm_text: "Hi {first_name}, see you {day} at {time}.",
+      deck: {},
+      light_looks: [],
       not_qualified_reasons: ["Not the homeowner", "Other"],
       booking_cutoff_minutes: 30,
       hold_grace_minutes: 2,
@@ -212,12 +233,27 @@ describe("settingsRowToFormDefaults", () => {
       distance_warning_km: 10,
       company: { name: "Vesper", phone: "", email: "", address: "" },
       rush_colour_fee_per_ft: null, service_call_fee: 95, quote_valid_days: 14, min_job_total: null, faq_text: "Q and A",
+      rush_colour_fee: 350, upper_access_fee: null, upper_gable_access_fee: 400, price_hold_days: 120,
+      christmas_banner_on: false, christmas_banner_title: "Want them up for Christmas?", christmas_banner_text: "Book now.",
+      product_points: [{ icon: "zap", text: "A 24V system." }, { icon: "rocket", text: "Odd icon." }, "junk", { icon: "plug", text: "" }],
       updated_at: "2026-10-26T00:00:00Z",
     });
     expect(defaults.price_per_ft).toBe("23.00");
-    expect(defaults.rush_colour_fee_per_ft).toBe("");
+    expect(defaults.rush_colour_fee).toBe("350.00");
+    expect(defaults.upper_access_fee).toBe("");
+    expect(defaults.upper_gable_access_fee).toBe("400.00");
     expect(defaults.service_call_fee).toBe("95.00");
-    expect(defaults.quote_valid_days).toBe("14");
+    expect(defaults.price_hold_days).toBe("120");
+    expect([defaults.christmas_banner_on, defaults.christmas_banner_title, defaults.christmas_banner_text]).toEqual([false, "Want them up for Christmas?", "Book now."]);
+    // Always six rows for the form, blank ones filling the rest.
+    expect(defaults.product_points).toEqual([
+      { icon: "zap", text: "A 24V system." },
+      { icon: "check", text: "Odd icon." },
+      { icon: "check", text: "" },
+      { icon: "check", text: "" },
+      { icon: "check", text: "" },
+      { icon: "check", text: "" },
+    ]);
     expect(defaults.min_job_total).toBe("");
     expect(defaults.gst_rate_percent).toBe("5");
     expect(defaults.gst_number).toBe("123456789 RT0001");
@@ -233,9 +269,11 @@ describe("settingsRowToFormDefaults", () => {
   it("survives a company value that is not an object", () => {
     const defaults = settingsRowToFormDefaults({
       id: 1, price_per_ft: 1, box_price: 1, neighbour_discount: 0, referral_credit: 0, gst_rate: 0, gst_enabled: false, gst_number: null,
-      booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], door_guide: "g", step_note_at_door: "a", step_note_after_door: "b", step_note_book: "c", confirm_text: "Hi {first_name}", not_qualified_reasons: ["Other"], booking_cutoff_minutes: 30, hold_grace_minutes: 2, hold_minutes: 5, booking_window_days: 14, meeting_host_id: null, meeting_days: [1],
+      booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], door_guide: "g", step_note_at_door: "a", step_note_after_door: "b", step_note_book: "c", confirm_text: "Hi {first_name}", deck: {}, light_looks: [], not_qualified_reasons: ["Other"], booking_cutoff_minutes: 30, hold_grace_minutes: 2, hold_minutes: 5, booking_window_days: 14, meeting_host_id: null, meeting_days: [1],
       meeting_start: "18:00:00", meeting_slot_minutes: 45, meeting_slot_count: 4, distance_warning_km: 10,
       company: "nonsense", rush_colour_fee_per_ft: null, service_call_fee: null, quote_valid_days: 14, min_job_total: 2500, faq_text: "",
+      rush_colour_fee: null, upper_access_fee: 200, upper_gable_access_fee: 400, price_hold_days: 120,
+      christmas_banner_on: true, christmas_banner_title: "T", christmas_banner_text: "", product_points: [],
       updated_at: "2026-10-26T00:00:00Z",
     });
     expect(defaults.company_name).toBe("");

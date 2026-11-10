@@ -71,7 +71,7 @@ async function signedIn(email: string, password: string): Promise<Client> {
   return client;
 }
 
-// A lead that passes Before you book except for what `extra` changes.
+// A lead with every booking answer in, except for what `extra` changes.
 async function readyLead(user: TestUser, extra: Partial<LeadInsert> = {}): Promise<string> {
   const { data, error } = await user.client
     .from("leads")
@@ -545,22 +545,22 @@ describe("holds: no double booking", () => {
   });
 });
 
-describe("Before you book", () => {
-  it("refuses each missing item, by name", async () => {
+// Book now, finish later (Keenan, 2026-11-10): a No on owns the home is the
+// only answer that rules a booking out. Everything else the old Before you
+// book list asked for is finished later (tests/rls/book-now.test.ts has the
+// rest).
+describe("what rules a booking out", () => {
+  it("refuses only a No on owns the home, by name, and books once it isn't a No", async () => {
     const at = take();
     const lead = await readyLead(users.a, { phone: null, owns_home: false, wants_price: null, soffit_colour: null, lat: null, lng: null });
     const attempt = await book(users.a, { lead, at, everyone: false, skip: null });
     expect(hintOf(attempt.error)).toBe("not_ready");
-    expect((attempt.error?.details ?? "").split(",").sort()).toEqual(
-      ["everyone_deciding_present", "map_position", "owns_home", "phone", "photos", "soffit_colour", "wants_price"].sort(),
-    );
+    expect(attempt.error?.details).toBe("owns_home");
+    // Other still needs its note before the meetings table can store it.
     const other = await book(users.a, { lead, at, skip: "other", note: " " });
-    expect((other.error?.details ?? "").split(",")).toContain("photos_skip_note");
-    await users.a.client
-      .from("leads")
-      .update({ phone: "+14035550143", owns_home: true, wants_price: true, soffit_colour: "not_sure", lat: 51.05, lng: -114.07 })
-      .eq("id", lead);
-    const ok = await book(users.a, { lead, at, skip: "other", note: "Homeowner was in a hurry" });
+    expect((other.error?.details ?? "").split(",").sort()).toEqual(["owns_home", "photos_skip_note"]);
+    await users.a.client.from("leads").update({ owns_home: true }).eq("id", lead);
+    const ok = await book(users.a, { lead, at, everyone: false, skip: "other", note: "Homeowner was in a hurry" });
     expect(ok.error).toBeNull();
     const { data: meeting } = await admin
       .from("meetings")
@@ -576,12 +576,18 @@ describe("Before you book", () => {
     });
   });
 
-  it("needs no skip reason when the three guided photos exist, and stores none", async () => {
+  it("books with photos still to take and no skip reason, and stores no reason once the three guided photos exist", async () => {
     const lead = await readyLead(users.a);
     await uploadSlotPhotos(users.a, lead, ["front", "left_corner"]);
-    expect(hintOf((await book(users.a, { lead, at: pool[0], skip: null })).error)).toBe("not_ready");
+    const at = take();
+    const short = await book(users.a, { lead, at, skip: null });
+    expect(short.error).toBeNull();
+    const { data: first } = await admin.from("meetings").select("photos_skipped").eq("id", short.data as string).single();
+    expect(first?.photos_skipped).toBeNull();
+    expect((await users.a.client.rpc("cancel_meeting", { p_meeting_id: short.data as string })).error).toBeNull();
+
     await uploadSlotPhotos(users.a, lead, ["right_corner"]);
-    const ok = await book(users.a, { lead, at: take(), skip: "homeowner_said_no" });
+    const ok = await book(users.a, { lead, at, skip: "homeowner_said_no" });
     expect(ok.error).toBeNull();
     const { data } = await admin.from("meetings").select("photos_skipped").eq("id", ok.data as string).single();
     expect(data?.photos_skipped).toBeNull();

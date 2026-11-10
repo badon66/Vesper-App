@@ -3,7 +3,7 @@ import { eveningLabel, eveningNote, eveningsOf, initials, isBookable, pickEvenin
 import { distanceWarnings, formatKm, kmBetween, legs, navigateUrl } from "@/lib/schedule/distance";
 import { bookingMessage } from "@/lib/schedule/messages";
 import { formatMeetingTime, hasOutcome, isLive, positionSourceText, sentence } from "@/lib/schedule/meetings";
-import { bookingProblems, leadReadiness, type ReadinessLead } from "@/lib/schedule/readiness";
+import { bookingProblems, bookingSkip } from "@/lib/schedule/readiness";
 
 const slot = (day: string, time: string, state: BoardSlot["state"], extra: Partial<BoardSlot> = {}): BoardSlot => ({
   day,
@@ -150,38 +150,22 @@ describe("distances", () => {
   });
 });
 
-describe("Before you book", () => {
-  const ready: ReadinessLead = { phone: "+14035550100", owns_home: true, wants_price: true, soffit_colour: "not_sure", lat: 51, lng: -114 };
-
-  it("lists each thing a lead still needs, the same way the database does", () => {
-    expect(bookingProblems(ready, 3, { everyone: true, skip: null, skipNote: "" })).toEqual([]);
-    expect(
-      bookingProblems(
-        { phone: null, owns_home: false, wants_price: null, soffit_colour: null, lat: null, lng: null },
-        0,
-        { everyone: false, skip: null, skipNote: "" },
-      ),
-    ).toEqual(["phone", "owns_home", "wants_price", "soffit_colour", "map_position", "photos", "everyone_deciding_present"]);
+// Book now, finish later (Keenan, 2026-11-10): a No on owns the home is the
+// one answer that rules a booking out.
+describe("What rules a booking out", () => {
+  it("is only a No on owns the home, the same way the database does", () => {
+    expect(bookingProblems({ owns_home: true })).toEqual([]);
+    expect(bookingProblems({ owns_home: null })).toEqual([]);
+    expect(bookingProblems({ owns_home: false })).toEqual(["owns_home"]);
   });
 
-  it("takes a skip reason for missing photos, with a note for Other", () => {
-    expect(bookingProblems(ready, 2, { everyone: true, skip: "homeowner_said_no", skipNote: "" })).toEqual([]);
-    expect(bookingProblems(ready, 2, { everyone: true, skip: "other", skipNote: " " })).toEqual(["photos_skip_note"]);
-    expect(bookingProblems(ready, 2, { everyone: true, skip: "other", skipNote: "Dog in the yard" })).toEqual([]);
-  });
-
-  it("shows the lead's own items as a checklist, everyone who decides included", () => {
-    const items = leadReadiness({ ...ready, phone: null, both_decision_makers: true }, 3);
-    expect(items.map((item) => [item.key, item.ok])).toEqual([
-      ["phone", false],
-      ["owns_home", true],
-      ["wants_price", true],
-      ["soffit_colour", true],
-      ["photos", true],
-      ["map_position", true],
-      ["everyone_deciding_present", true],
-    ]);
-    expect(leadReadiness(ready, 3).find((item) => item.key === "everyone_deciding_present")?.ok).toBe(false);
+  it("sends a photo skip only when it's complete, Other with its note", () => {
+    expect(bookingSkip(null, "")).toEqual({ skip: null, note: "" });
+    expect(bookingSkip("homeowner_said_no", " ")).toEqual({ skip: "homeowner_said_no", note: "" });
+    expect(bookingSkip("other", " ")).toEqual({ skip: null, note: "" });
+    expect(bookingSkip("other", " Dog in the yard ")).toEqual({ skip: "other", note: "Dog in the yard" });
+    // A note left over from a skip taken back goes nowhere.
+    expect(bookingSkip(null, "Dog in the yard")).toEqual({ skip: null, note: "" });
   });
 });
 
@@ -190,6 +174,12 @@ describe("booking words", () => {
     expect(bookingMessage({ message: "Zane Salem is booking this time", hint: "slot_held" })).toBe("Zane Salem is booking this time.");
     expect(bookingMessage({ hint: "slot_taken" })).toBe("That time was just taken. Here are the open times now.");
     expect(bookingMessage(null)).toBe("That didn't save. Check your signal and try again.");
+  });
+
+  it("says what still stops a booking, by the database's code", () => {
+    expect(bookingMessage({ hint: "not_ready", details: "owns_home" })).toBe("Only homeowners can be booked.");
+    expect(bookingMessage({ hint: "not_ready", details: "photos_skip_note" })).toBe("Say why the photos were skipped, or leave the reason off.");
+    expect(bookingMessage({ hint: "not_ready", details: "" })).toBe("This lead can't be booked yet.");
   });
 
   it("formats meeting times and statuses", () => {

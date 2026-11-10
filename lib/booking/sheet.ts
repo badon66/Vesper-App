@@ -4,18 +4,22 @@ import type {
   PhotoSlot,
 } from "@/lib/leads/door";
 import type { LeadDraft } from "@/lib/leads/draft";
-import { isQuestionDone, NOT_COLLECTED, type AnswerMap, type AnswerNotes, type CountedQuestion } from "@/lib/leads/questions";
+import { COUNTED_QUESTIONS, isQuestionDone, NOT_COLLECTED, type AnswerMap, type AnswerNotes, type CountedQuestion } from "@/lib/leads/questions";
 import type { HouseType, SoffitColour } from "@/lib/leads/status";
 import type { HotButton, SetterRead } from "@/lib/leads/extras";
-import { bookingProblems, type PhotoSkip, type ReadinessLead } from "@/lib/schedule/readiness";
+import { normalizePhone } from "@/lib/phone";
+import { bookingProblems, type PhotoSkip } from "@/lib/schedule/readiness";
 
 // The booking sheet (Keenan, 2026-11-02; round 2, 2026-11-03; round 3,
 // 2026-11-05): one full-screen sheet whose steps follow the visit. This
 // module is the sheet's logic with no screen in it: which screens each part
 // of the visit has, what each screen still needs, where Next and Back go,
-// and what Book lists before it books. Round 3: answers come out of order
-// at the door, so Next never stops a setter; Book is the only gate. The
-// phone is asked last, on Book.
+// and what Book lists. Round 3: answers come out of order at the door, so
+// Next never stops a setter; Book is the only gate. Book now, finish later
+// (Keenan, 2026-11-10): Book needs only a held time, a first name or the
+// address, and no No on owns the home. Everything else is listed on Book
+// to finish later, and never stops it. The one of the two that's missing is
+// saved as Name to come or Address to come (lib/booking/sheet-lead.ts).
 
 export type SheetScreen = "who" | "door" | "learned" | "address" | "house" | "book";
 export type StepKey = "door" | "after" | "book";
@@ -59,8 +63,8 @@ export function stepOf(screen: SheetScreen): StepKey {
 
 // "Step 3 of 6, 7 to answer": where the setter is, and how many answers are
 // still missing on all the steps (round 3: a step can be passed with answers
-// missing). The same count as Book's button, "7 left to answer", so the two
-// never disagree.
+// missing). A question marked Not collected counts as dealt with here; Book's
+// list of what's still to finish later counts it as missing (2026-11-10).
 export function stepCount(screen: SheetScreen, draft: SheetDraft): { number: number; total: number; left: number } {
   const number = SCREENS.indexOf(screen) + 1;
   return { number, total: SCREENS.length, left: sheetMissing(draft).length };
@@ -215,20 +219,11 @@ export function withAnswer(draft: SheetDraft, question: CountedQuestion, value: 
   }
 }
 
-// The questions a booking needs a real answer to; Not collected, No or Not
-// yet on any of them means the time can't be booked.
-export const BOOKING_QUESTIONS: CountedQuestion[] = ["phone", "owns_home", "wants_price", "both_decision_makers"];
-
-// Which of them, as things stand, rule booking out: answered No or Not
-// yet, or marked Not collected. Blank ones aren't listed: they're still open.
+// The answers that rule booking out as things stand (2026-11-10): only a No
+// on owns the home. Not asked yet and Not collected can be finished later,
+// and a No on wants a price or on everyone who decides is an answer.
 export function bookingBlockers(draft: SheetDraft): CountedQuestion[] {
-  const answers = draftAnswers(draft);
-  return BOOKING_QUESTIONS.filter((question) => {
-    const value = answers[question];
-    if (value === NOT_COLLECTED) return true;
-    if (question === "phone") return false;
-    return value === "no" || value === "not_yet";
-  });
+  return draftAnswers(draft).owns_home === "no" ? ["owns_home"] : [];
 }
 
 // The questions on a screen that still need an answer or Not collected.
@@ -242,27 +237,10 @@ export function markScreenNotCollected(screen: SheetScreen, draft: SheetDraft): 
   return screenOpenQuestions(screen, draft).reduce((current, question) => withAnswer(current, question, NOT_COLLECTED), draft);
 }
 
-export function readinessLead(draft: SheetDraft): ReadinessLead {
-  return {
-    phone: draft.phone.trim() === "" ? null : draft.phone,
-    owns_home: draft.owns_home,
-    wants_price: draft.wants_price,
-    soffit_colour: draft.soffit_colour,
-    lat: draft.lat,
-    lng: draft.lng,
-    both_decision_makers: draft.everyone,
-    not_collected: draft.not_collected,
-  };
-}
-
-// Before you book, worked out from the draft: the same codes the database
-// checks again when booking. Not collected is never an answer here.
+// What the database checks again when booking, worked out from the draft,
+// with its codes: only owns the home, when it's No.
 export function draftProblems(draft: SheetDraft): string[] {
-  return bookingProblems(readinessLead(draft), guidedPhotoCount(draft), {
-    everyone: draft.everyone === true,
-    skip: draft.skip,
-    skipNote: draft.skip_note,
-  });
+  return bookingProblems({ owns_home: draft.owns_home });
 }
 
 // The address is in with a map position.
@@ -310,7 +288,8 @@ export function screenMissing(screen: SheetScreen, draft: SheetDraft): MissingIt
   }
 }
 
-// Everything still missing, in the order of the steps, for Book's list.
+// Everything still missing on the steps, in their order: what the step
+// counter counts and the progress bar marks.
 export function sheetMissing(draft: SheetDraft): MissingItem[] {
   return SCREENS.flatMap((screen) => screenMissing(screen, draft));
 }
@@ -320,11 +299,65 @@ export function isScreenComplete(screen: SheetScreen, draft: SheetDraft): boolea
   return screenMissing(screen, draft).length === 0;
 }
 
-// Book is the only gate (round 3): everything answered (Not collected
-// included), no answer that rules booking out, and the same Before you book
-// rules the database checks again.
+// Book's "To finish later" (2026-11-10): what the lead will still be missing
+// once it's booked, in the order of the steps, each with the step that has
+// it. Everything still open on the steps, and every question marked Not
+// collected too, as the lead page and the reminder on a setter's screens
+// list them. None of it stops Book. A split soffit's note isn't here: it's
+// part of what was typed, which Book checks (typedProblem).
+export function toFinishLater(draft: SheetDraft): MissingItem[] {
+  const answers = draftAnswers(draft);
+  return SCREENS.flatMap((screen) => {
+    const questions = SCREEN_QUESTIONS[screen];
+    if (!questions) return screenMissing(screen, draft).filter((item) => item.key !== "soffit_note");
+    return questions
+      .filter((question) => answers[question] === null || answers[question] === undefined || answers[question] === NOT_COLLECTED)
+      .map((question) => ({ key: question, label: MISSING_NAMES[question], screen }));
+  });
+}
+
+// A first name or the address: what a booking needs to save the person
+// (2026-11-10). The other one goes in as Name to come or Address to come.
+export function canSaveLead(draft: SheetDraft): boolean {
+  return draft.first_name.trim() !== "" || draft.address_line.trim() !== "";
+}
+
+// New lead's own rules, for a save that isn't a booking (Next, and Keep as
+// a lead): a first name and the address, every question answered or marked
+// Not collected, and a phone that is a phone. A lead saved without a booking
+// always has what New lead asks for.
+export function meetsLeadRules(draft: SheetDraft): boolean {
+  const answers = draftAnswers(draft);
+  return (
+    draft.first_name.trim() !== "" &&
+    draft.address_line.trim() !== "" &&
+    COUNTED_QUESTIONS.every((question) => isQuestionDone(answers[question])) &&
+    (draft.not_collected.includes("phone") || normalizePhone(draft.phone).ok)
+  );
+}
+
+// Something typed that can't be saved as it is, which Book points to before
+// it saves: a phone number that isn't one, or a split soffit without the
+// note saying which colour is where (the database needs that note). Fix it
+// or clear it; leaving it blank is fine.
+export type TypedProblem = { key: "phone" | "soffit_note"; text: string; screen: SheetScreen; need: string };
+
+export function typedProblem(draft: SheetDraft): TypedProblem | null {
+  if (!draft.not_collected.includes("phone") && draft.phone.trim() !== "") {
+    const phone = normalizePhone(draft.phone);
+    if (!phone.ok) return { key: "phone", text: phone.error, screen: "book", need: "Check the phone" };
+  }
+  if (draft.soffit_colour !== null && draft.soffit_colour_2 !== null && draft.soffit_note.trim() === "") {
+    return { key: "soffit_note", text: "Say which soffit colour is where, or pick just one.", screen: "address", need: "Check the soffit" };
+  }
+  return null;
+}
+
+// Book is the only gate (round 3), and since 2026-11-10 it asks little: a
+// first name or the address, no No on owns the home, and nothing typed that
+// can't be saved. The held time is the sheet's own check.
 export function canBookDraft(draft: SheetDraft): boolean {
-  return sheetMissing(draft).length === 0 && bookingBlockers(draft).length === 0 && draftProblems(draft).length === 0;
+  return bookNeed(draft) === null;
 }
 
 // Where Next goes. For a lead that was already filled in, every screen that
@@ -349,27 +382,18 @@ export function firstScreenToVisit(draft: SheetDraft): SheetScreen {
   return SCREENS.find((screen) => screen !== "book" && !isScreenComplete(screen, draft)) ?? "book";
 }
 
-// The screen that fixes each Before you book item.
+// The step that fixes what the database refuses a booking for. The sheet
+// never sends Other without its note (bookingSkip), so the second is only
+// a safety net.
 export const PROBLEM_SCREENS: Record<string, SheetScreen> = {
-  phone: "book",
   owns_home: "door",
-  wants_price: "door",
-  everyone_deciding_present: "door",
-  map_position: "address",
-  soffit_colour: "address",
-  photos: "house",
   photos_skip_note: "house",
 };
 
-// The lead can be saved once it has a first name and an address: the
-// database needs both. Until then the sheet keeps everything on the phone.
-export function canSaveLead(draft: SheetDraft): boolean {
-  return draft.first_name.trim() !== "" && draft.address_line.trim() !== "";
-}
-
-// What the lead form's validator reads, built from the draft. Fields the
-// sheet doesn't ask about go in blank; the server writes only the sheet's own
-// columns on an existing lead.
+// What the save's validator reads, built from the draft: New lead's rules
+// for a save on Next, the sheet's own for a save at Book (2026-11-10). Fields
+// the sheet doesn't ask about go in blank; the server writes only the sheet's
+// own columns on an existing lead.
 export function draftToLeadInput(draft: SheetDraft): Record<string, unknown> {
   const answers = draftAnswers(draft);
   const answer = (question: CountedQuestion) => answers[question] ?? "";
@@ -426,16 +450,15 @@ export function savedFingerprint(draft: SheetDraft): string {
   return JSON.stringify({ ...fields, not_collected: [...fields.not_collected].sort(), hot_buttons: [...(fields.hot_buttons ?? [])].sort() });
 }
 
-// What Book says while it can't book. An answer that rules booking out
-// isn't something to fix: the homeowner said it, so Book says it can't book
-// yet, and the screen offers Keep as a lead. Otherwise it says how much is
-// left, listed just above it.
+// What Book says while it can't book (2026-11-10). An answer that rules
+// booking out isn't something to fix: the homeowner said they don't own the
+// home, so Book says it can't book, and the screen offers Keep as a lead.
+// Otherwise it needs a first name or the address, and what was typed to be
+// savable. Everything else is listed above it, to finish later.
 export function bookNeed(draft: SheetDraft): string | null {
-  if (bookingBlockers(draft).length > 0) return "Can't book yet";
-  const missing = sheetMissing(draft).length;
-  if (missing > 0) return `${missing} left to answer`;
-  const problems = draftProblems(draft);
-  return problems.length > 0 ? `Fix ${problems.length} first` : null;
+  if (bookingBlockers(draft).length > 0) return "Can't book";
+  if (!canSaveLead(draft)) return "Add a name or address";
+  return typedProblem(draft)?.need ?? null;
 }
 
 // Hot buttons (round 3): any that apply, or Not sure on its own.

@@ -12,10 +12,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   bookingBlockers,
+  canSaveLead,
   draftAnswers,
   guidedPhotoCount,
   screenOpenQuestions,
-  sheetMissing,
+  toFinishLater,
+  typedProblem,
   type MissingItem,
   type SheetDraft,
   type SheetScreen,
@@ -33,6 +35,7 @@ import { EVERYONE_OPTIONS, NOT_COLLECTED, NOT_COLLECTED_LABEL, QUESTION_LABELS, 
 import type { DuplicateLead } from "@/app/(app)/app/leads/actions";
 import type { PickedAddress } from "@/lib/places";
 import { HOUSE_TYPE_OPTIONS, SOFFIT_OPTIONS, type HouseType, type SoffitColour } from "@/lib/leads/status";
+import { ADDRESS_TO_COME } from "@/lib/leads/to-finish";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/client";
 import { formatPhone, normalizePhone } from "@/lib/phone";
@@ -81,7 +84,8 @@ function BookingNote({
 
 // ---------------------------------------------------------------- At the door: who
 
-// Just the name (round 3): the number comes last, on Book.
+// Just the name (round 3); the phone is the footer's (round 5). A first name
+// or the address is enough to book (2026-11-10), and it says so.
 export function WhoScreen({
   draft,
   onChange,
@@ -134,7 +138,9 @@ export function WhoScreen({
           />
         </div>
       </div>
-      <p className="text-sm text-pretty text-muted-foreground min-[420px]:text-base">The number comes last, on Book.</p>
+      <p className="text-sm text-pretty text-muted-foreground min-[420px]:text-base">
+        A first name or the address is enough to book. The rest can be finished later.
+      </p>
     </div>
   );
 }
@@ -161,25 +167,14 @@ function questionSetup(question: CountedQuestion): { legend: string; options: { 
 // What the answers mean for booking, said the moment it's so, with the way
 // on: Keep as a lead lets the time go at once; a new person carries on in New
 // lead with everything entered, and a saved lead opens on its page, where a
-// follow-up day is set (round 2 polish).
-const SHORT_NAMES: Partial<Record<CountedQuestion, string>> = {
-  owns_home: "owns the home",
-  wants_price: "wants a price",
-  both_decision_makers: "everyone who decides",
-};
-
-export function ruledOutTitle(draft: SheetDraft, withPhone: boolean): string | null {
-  const blockers = bookingBlockers(draft).filter((question) => withPhone || question !== "phone");
-  if (blockers.length === 0) return null;
-  if (draftAnswers(draft).owns_home === "no") return "Only homeowners can be booked.";
-  const names = blockers.filter((question) => question !== "phone").map((question) => SHORT_NAMES[question] ?? QUESTION_LABELS[question]);
-  const listed = names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  const parts = [blockers.includes("phone") ? "a number" : null, names.length > 0 ? `a Yes for ${listed}` : null].filter(Boolean);
-  return `Booking needs ${parts.join(" and ")}.`;
+// follow-up day is set (round 2 polish). Since 2026-11-10 the one answer
+// that rules a booking out is a No on owns the home.
+export function ruledOutTitle(draft: SheetDraft): string | null {
+  return bookingBlockers(draft).length > 0 ? "Only homeowners can be booked." : null;
 }
 
 function DoorNote({ draft, onKeepAsLead }: { draft: SheetDraft; onKeepAsLead: () => void }) {
-  const title = ruledOutTitle(draft, false);
+  const title = ruledOutTitle(draft);
   if (!title) return null;
   return <BookingNote title={title} testId="door-note" onKeepAsLead={onKeepAsLead} />;
 }
@@ -554,10 +549,12 @@ export function PhotosScreen({
 // ---------------------------------------------------------------- Book
 
 
-// Book, round 3 (Keenan, 2026-11-05): the only gate. It lists everything
-// still missing, each with a tap to its step, and says when an answer rules
-// booking out, with Keep as a lead. The phone is the footer's (round 5),
-// right above the Book button; how to confirm and its Not collected are here.
+// Book, round 3 (Keenan, 2026-11-05): the only gate. Since 2026-11-10 (book
+// now, finish later) it needs only a first name or the address, and no No
+// on owns the home. Everything else still missing is listed To finish
+// later, each with a tap to its step, and never stops it; a No on owns the
+// home is said with Keep as a lead. The phone is the footer's (round 5),
+// right above the Book button; its Not collected and note are here.
 export function BookScreen({
   draft,
   name,
@@ -575,18 +572,18 @@ export function BookScreen({
   onChange: Change;
   onAnswer: Answer;
 }) {
-  const missing = sheetMissing(draft);
-  const elsewhere = missing.filter((item) => item.screen !== "book");
-  const ruledOut = ruledOutTitle(draft, true);
-  const photosSkipped = guidedPhotoCount(draft) < 3 && draft.skip !== null && missing.every((item) => item.screen !== "house");
+  const later = toFinishLater(draft);
+  const ruledOut = ruledOutTitle(draft);
+  const typed = typedProblem(draft);
+  const photosSkipped = guidedPhotoCount(draft) < 3 && draft.skip !== null && later.every((item) => item.screen !== "house");
   return (
     <div className="flex flex-col gap-4">
       <div data-testid="sheet-summary" className="flex flex-col gap-0.5">
         {/* The time is in the header, with its countdown, so it isn't said
-            twice: the room goes to the list of what's missing. */}
+            twice: the room goes to the list of what's to finish. */}
         <p className="text-lg font-bold text-balance min-[420px]:text-xl">{name}</p>
         <p className="text-sm text-pretty text-muted-foreground min-[420px]:text-base">
-          {[draft.address_line, draft.neighbourhood].filter(Boolean).join(", ") || "No address yet"}
+          {[draft.address_line, draft.neighbourhood].filter(Boolean).join(", ") || ADDRESS_TO_COME}
         </p>
         {photosSkipped ? (
           <p className="text-sm text-muted-foreground min-[420px]:text-base">
@@ -595,25 +592,47 @@ export function BookScreen({
         ) : null}
       </div>
 
-      <section aria-labelledby="sheet-ready-heading" className="flex flex-col gap-1" data-testid="book-checklist" data-missing={missing.length}>
-        <h3 id="sheet-ready-heading" className="text-sm font-bold min-[420px]:text-base">
-          {elsewhere.length > 0 ? "Still to answer" : "Before you book"}
-        </h3>
-        {elsewhere.length > 0 ? (
+      {ruledOut ? (
+        <BookingNote title={ruledOut} testId="book-ruled-out" onKeepAsLead={onKeepAsLead} />
+      ) : !canSaveLead(draft) ? (
+        // Neither a name nor an address yet: the one thing Book needs. The
+        // list below has a tap to each.
+        <BookingNote title="Add a first name or the address to book." testId="book-needs" />
+      ) : typed ? (
+        // Something typed that can't be saved as it is; Book's button takes
+        // the setter to it.
+        <BookingNote title={typed.text} testId="book-needs" />
+      ) : null}
+
+      {/* Not a gate (2026-11-10): what can be finished after booking, each
+          with a tap to its step. The reminder on the setter's screens and
+          the lead's To be completed list the same things until they're in. */}
+      <section aria-labelledby="sheet-later-heading" className="flex flex-col gap-1" data-testid="book-checklist" data-missing={later.length}>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <h3 id="sheet-later-heading" className="text-sm font-bold min-[420px]:text-base">
+            To finish later
+          </h3>
+          {/* Not said while Book still needs a name or the address: both
+              are on the list, and one of them does stop it. */}
+          {later.length > 0 && !ruledOut && canSaveLead(draft) ? (
+            <p className="text-sm text-muted-foreground min-[420px]:text-base" data-testid="book-later-note">
+              None of it stops the booking.
+            </p>
+          ) : null}
+        </div>
+        {later.length > 0 ? (
           <ul className="flex flex-col" data-testid="readiness">
-            {groupByStep(elsewhere).map((group) => (
+            {groupByStep(later).map((group) => (
               <MissingRow key={group.screen} group={group} onFix={onFix} />
             ))}
           </ul>
         ) : (
           <p className="flex items-center gap-2 text-sm min-[420px]:text-base" data-testid="readiness" data-ok="yes">
             <Check aria-hidden="true" className="size-4 shrink-0" />
-            {missing.length === 0 ? "Everything is answered." : "Everything else is answered."}
+            Nothing. Everything is in.
           </p>
         )}
       </section>
-
-      {ruledOut ? <BookingNote title={ruledOut} testId="book-ruled-out" onKeepAsLead={onKeepAsLead} /> : null}
 
       {warnings.length > 0 ? (
         <div role="status" className="rounded-md border border-foreground/60 px-3 py-2 text-sm" data-testid="distance-warning">
@@ -635,7 +654,8 @@ export function BookScreen({
 // the number can come up at any point at the door, so it sits at the bottom
 // of every step, above Back and Next, and stays put as the steps change. It
 // opens the number pad. Typing a number takes back a Not collected (that
-// toggle, and Call or text, are on Book). Still required to book.
+// toggle is on Book). Not needed to book since 2026-11-10: a booking without
+// one lists it to finish later.
 export function PhoneFooter({ draft, onChange }: { draft: SheetDraft; onChange: Change }) {
   const notCollected = draft.not_collected.includes("phone");
   const valid = !notCollected && draft.phone.trim() !== "" && normalizePhone(draft.phone).ok;
@@ -677,8 +697,9 @@ export function PhoneFooter({ draft, onChange }: { draft: SheetDraft; onChange: 
 
 // On Book (round 5; round 6, Keenan, 2026-11-07): Keenan does the
 // confirming, so Call or text isn't asked any more, just said. The phone's
-// Not collected (which rules booking out, as before) and its Note sit here;
-// the number itself is in the footer below.
+// Not collected (which no longer rules booking out, 2026-11-10; it stays to
+// finish later) and its Note sit here; the number itself is in the footer
+// below.
 function BookConfirm({ draft, onChange, onAnswer }: { draft: SheetDraft; onChange: Change; onAnswer: Answer }) {
   const phoneNotCollected = draft.not_collected.includes("phone");
   const noteText = draft.answer_notes?.phone ?? "";

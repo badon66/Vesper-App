@@ -59,11 +59,12 @@ function openOf(answers: QuestionDefaults, phoneTyped: boolean, phoneMarked: boo
   ];
 }
 
-// Whether the answers so far rule booking out: the phone or a booking
-// question marked Not collected, or answered No or Not yet.
-export function bookingRuledOut(answers: QuestionDefaults, phoneMarked: boolean): boolean {
-  const ruledOut = (value: string | null) => value === NOT_COLLECTED || value === "no" || value === "not_yet";
-  return phoneMarked || ruledOut(answers.owns_home) || ruledOut(answers.wants_price) || ruledOut(answers.both_decision_makers);
+// Whether the answers so far rule booking out. Book now, finish later
+// (Keenan, 2026-11-10): only a No on owns the home does. No phone, Not
+// collected, or a No or Not yet on the other questions no longer stops a
+// booking; what's missing is finished later.
+export function bookingRuledOut(answers: QuestionDefaults): boolean {
+  return answers.owns_home === "no";
 }
 
 // Round 6: the two that can take two answers together.
@@ -82,6 +83,7 @@ export function LeadQuestions({
   markRestRef,
   afterPhone,
   afterQuestions,
+  partial = false,
 }: {
   defaults: QuestionDefaults;
   phone: string;
@@ -101,6 +103,8 @@ export function LeadQuestions({
   // and hot buttons after the questions. Optional, never counted.
   afterPhone?: React.ReactNode;
   afterQuestions?: React.ReactNode;
+  // A saved lead's edit page saves part answers (Keenan, 2026-11-10).
+  partial?: boolean;
 }) {
   const [answers, setAnswers] = useState<QuestionDefaults>(defaults);
   const [phoneMarked, setPhoneMarked] = useState(phoneNotCollected && phone.trim() === "");
@@ -128,7 +132,7 @@ export function LeadQuestions({
     if (next.typed !== undefined) setPhoneTyped(typed);
     if (next.marked !== undefined) setPhoneMarked(marked);
     onOpenChange?.(openOf(nextAnswers, typed, marked));
-    onBookingChange?.(bookingRuledOut(nextAnswers, marked));
+    onBookingChange?.(bookingRuledOut(nextAnswers));
   }
 
   function markPhone(marked: boolean) {
@@ -191,6 +195,8 @@ export function LeadQuestions({
           defaultValue={phone}
           disabled={phoneMarked}
           placeholder={phoneMarked ? NOT_COLLECTED_LABEL : undefined}
+          // Book now, finish later: the phone still to finish jumps here.
+          className="scroll-mt-40"
           onChange={(event) => {
             const typed = event.currentTarget.value.trim() !== "";
             if (typed !== phoneTyped) update({ typed });
@@ -200,11 +206,6 @@ export function LeadQuestions({
           aria-describedby="lead-phone-error"
         />
         {phoneMarked ? <input type="hidden" name="phone_not_collected" value="1" /> : null}
-        {phoneMarked ? (
-          <p className="text-sm font-semibold text-pretty" data-testid="phone-not-collected-note">
-            Without a number, they can&apos;t be booked.
-          </p>
-        ) : null}
         <FieldError id="lead-phone-error" message={phoneMessage} />
         {phoneNoteOpen || (notes.phone ?? "").trim() !== "" ? (
           <NoteField id="phone-note" name="note_phone" label="Phone: note" value={notes.phone ?? ""} onChange={noteOf("phone").onChange} autoFocus={phoneNoteOpen} />
@@ -220,7 +221,9 @@ export function LeadQuestions({
             Find out
           </h2>
           <p className="text-sm text-pretty text-muted-foreground">
-            Answer each one, or mark it Not collected, in any order. Tap an answer again to clear it.
+            {partial
+              ? "Answer what you know now; the rest can be finished later. Tap an answer again to clear it."
+              : "Answer each one, or mark it Not collected, in any order. Tap an answer again to clear it."}
           </p>
         </div>
         {ASKED.map(({ field, legend, options, columns }) => {
@@ -231,6 +234,7 @@ export function LeadQuestions({
           return (
             <div key={field} className="contents">
               <AnswerGroup
+                id={`q-${field}`}
                 name={field}
                 legend={legend}
                 options={options}
@@ -265,6 +269,7 @@ export function LeadQuestions({
         {/* Round 6: a split soffit takes two colours, then a short note
             saying which is where. Not sure stands alone. */}
         <AnswerGroup
+          id="q-soffit_colour"
           name="soffit_colour"
           legend={`${SOFFIT.question} (two for a split soffit)`}
           options={SOFFIT.options}

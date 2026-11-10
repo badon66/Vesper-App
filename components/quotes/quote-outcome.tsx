@@ -21,7 +21,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { STATUS_LABELS, type LeadStatus } from "@/lib/leads/status";
-import { installedWords, notInstalledWords, voidWords } from "@/lib/quotes/outcome-card";
+import {
+  installedWords,
+  notInstalledWords,
+  offerCommissionWords,
+  startingChoice,
+  choiceSources,
+  voidWords,
+  type AcceptOption,
+} from "@/lib/quotes/outcome-card";
 import {
   cancelWindowEndsAt,
   cancelWindowWords,
@@ -50,24 +58,22 @@ import { cn } from "@/lib/utils";
 // commission owed. Every tap goes to one database function that checks it
 // all again; the card only says what each one will do.
 
-// One choice on Accepted: the full quote, or the customer's "Start smaller"
-// choice from Book my install while it still matches the quote.
-export type OutcomeOption = {
-  // 0-based run positions; null is the full quote.
-  positions: number[] | null;
-  label: string;
-  detail: string;
-  // Booked by the customer on their link.
-  booked: boolean;
-  // What accepting this option would pay the setter.
-  commission: CommissionLine;
-};
+// One choice on Accepted: an offer on the quote, biggest first (round 9,
+// Keenan, 2026-11-10), with what it covers, its price and what accepting it
+// would pay the setter. The one the customer booked on their link is
+// marked and chosen to start. Accepting passes the offer's runs (null for
+// every run), so the database's commission uses that offer's lights and
+// boxes.
+export type OutcomeOption = AcceptOption;
 
 export type QuoteOutcomeData = {
   leadId: string;
   leadStatus: LeadStatus;
   // The planned install day (leads.install_on), YYYY-MM-DD.
   installOn: string | null;
+  // The day picked at the table (quotes.meeting_install_on), which
+  // prefills Accepted when no day is set yet.
+  meetingInstallOn: string | null;
   installedAt: string | null;
   quote: {
     id: string;
@@ -109,6 +115,7 @@ export function QuoteOutcome({
   leadId,
   leadStatus,
   installOn,
+  meetingInstallOn,
   installedAt,
   quote,
   options,
@@ -120,7 +127,7 @@ export function QuoteOutcome({
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   // Accepted
-  const [choice, setChoice] = useState(0);
+  const [choice, setChoice] = useState(() => startingChoice(options));
   const [plannedOn, setPlannedOn] = useState("");
   const [trackSaved, setTrackSaved] = useState(false);
   // Declined and Cancelled
@@ -166,8 +173,8 @@ export function QuoteOutcome({
   function open(next: Exclude<Sheet, null>) {
     setMessage(null);
     if (next === "accept") {
-      setChoice(0);
-      setPlannedOn(installOn ?? "");
+      setChoice(startingChoice(options));
+      setPlannedOn(installOn ?? meetingInstallOn ?? "");
       setTrackSaved(false);
     }
     if (next === "decline" || next === "cancel") {
@@ -361,8 +368,9 @@ export function QuoteOutcome({
         ) : null}
       </CardContent>
 
-      {/* Accepted: the track colour first if there is none, the option, the
-          install day if he has one, and what the setter earns. */}
+      {/* Accepted: the track colour first if there is none, the offer they
+          said yes to, the install day if he has one, and what the setter
+          earns. */}
       <DialogPanel
         open={sheet === "accept"}
         onClose={close}
@@ -383,6 +391,7 @@ export function QuoteOutcome({
                   acceptQuote({
                     quoteId: quote.id,
                     leadId,
+                    offerId: chosen.id,
                     runs: chosen.positions,
                     installOn: plannedOn || null,
                   }),
@@ -418,16 +427,24 @@ export function QuoteOutcome({
 
           {options.length > 1 ? (
             <fieldset className="flex flex-col gap-2">
-              <legend className="mb-2 font-semibold">What did they say yes to?</legend>
+              <legend className="mb-2 font-semibold">Which option did they say yes to?</legend>
+              {choiceSources(options).map((line) => (
+                <p key={line} className="text-muted-foreground" data-testid="outcome-choice-source">
+                  {line}
+                </p>
+              ))}
               {options.map((option, index) => (
                 <label
-                  key={option.positions?.join(",") ?? "all"}
+                  key={option.id}
                   className={cn(
                     "group flex min-h-14 cursor-pointer items-start gap-3 rounded-md border border-input bg-background px-4 py-3 transition-colors",
                     "has-[:checked]:border-foreground has-[:checked]:bg-foreground has-[:checked]:text-background",
                     "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
                   )}
                   data-testid="outcome-option"
+                  data-offer={option.id}
+                  data-booked={option.booked ? "yes" : "no"}
+                  data-meeting={option.meeting ? "yes" : "no"}
                 >
                   <input
                     type="radio"
@@ -436,22 +453,21 @@ export function QuoteOutcome({
                     checked={choice === index}
                     onChange={() => setChoice(index)}
                   />
-                  <Check aria-hidden="true" className="mt-0.5 hidden size-4 shrink-0 group-has-[:checked]:block" />
-                  <span className="flex flex-col">
-                    <span className="text-base font-semibold">{option.label}</span>
-                    <span className="opacity-80 tabular-nums">
-                      {option.detail}
-                      {option.booked ? ". They booked this on their link." : ""}
-                    </span>
-                  </span>
+                  <Check aria-hidden="true" className="mt-1 hidden size-4 shrink-0 group-has-[:checked]:block" />
+                  <OfferText option={option} withCommission />
                 </label>
               ))}
             </fieldset>
           ) : chosen ? (
-            <p>
-              <span className="text-muted-foreground">They said yes to: </span>
-              <span className="font-semibold">{chosen.label}</span>, <span className="tabular-nums">{chosen.detail}</span>
-            </p>
+            <div
+              className="flex flex-col gap-1"
+              data-testid="outcome-option-only"
+              data-offer={chosen.id}
+              data-booked={chosen.booked ? "yes" : "no"}
+            >
+              <p className="text-muted-foreground">They said yes to</p>
+              <OfferText option={chosen} />
+            </div>
           ) : null}
 
           <div className="flex flex-col gap-1.5">
@@ -717,6 +733,33 @@ export function QuoteOutcome({
         </div>
       </DialogPanel>
     </Card>
+  );
+}
+
+// An offer on the Accepted sheet: its name and price, what it covers, the
+// commission it would make (in the list; the line under it says who gets
+// it), and whether the customer booked it on their link.
+function OfferText({ option, withCommission = false }: { option: OutcomeOption; withCommission?: boolean }) {
+  return (
+    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <span className="flex items-baseline justify-between gap-3">
+        <span className="text-base font-semibold text-pretty">{option.label}</span>
+        <span className="shrink-0 font-semibold tabular-nums" data-testid="outcome-option-total">
+          {option.total}
+        </span>
+      </span>
+      <span className="opacity-80 tabular-nums text-pretty">{option.detail}</span>
+      {withCommission ? (
+        <span className="opacity-80 tabular-nums" data-testid="outcome-option-commission">
+          {offerCommissionWords(option.commission)}
+        </span>
+      ) : null}
+      {option.booked ? (
+        <span className="font-semibold" data-testid="outcome-option-booked">
+          They booked this on their link
+        </span>
+      ) : null}
+    </span>
   );
 }
 

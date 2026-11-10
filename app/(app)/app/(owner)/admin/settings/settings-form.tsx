@@ -15,8 +15,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { POINT_ICON_NAMES } from "@/components/quote-link/point-icon";
 import { submitKeepingValues } from "@/lib/forms/submit";
-import { PAGE_LABELS, type PresentationKind } from "@/lib/presentation";
+import { POINT_ICONS } from "@/lib/quote-link/view";
 import { formatTime } from "@/lib/time";
 import {
   DAY_OPTIONS,
@@ -24,8 +25,6 @@ import {
   type SettingsFormField,
 } from "@/lib/settings/schema";
 import { updateSettings, type SettingsState } from "./actions";
-
-export type PresentationTextPage = { kind: PresentationKind; title: string; body: string };
 
 const initialState: SettingsState = {};
 
@@ -71,13 +70,9 @@ function formatSavedAt(iso: string) {
   return formatTime(iso);
 }
 
-export function SettingsForm({
-  defaults,
-  presentation,
-}: {
-  defaults: SettingsFormDefaults;
-  presentation: PresentationTextPage[];
-}) {
+// The presentation's words, photos and looks moved to their own page in
+// round 7 (presentation/page.tsx); settings.presentation is no longer edited.
+export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
   const [state, formAction, pending] = useActionState(updateSettings, initialState);
   const errors = state.errors;
 
@@ -151,7 +146,9 @@ export function SettingsForm({
         <CardHeader>
           <CardTitle>Warranty</CardTitle>
           <CardDescription>
-            Printed word for word on every quote and shown in the presentation.
+            Printed word for word on every quote. The presentation shows its
+            first lines up front and every line behind The full warranty, one
+            per line, as written here.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -170,11 +167,17 @@ export function SettingsForm({
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5 sm:grid-cols-2">
-          <Field name="quote_valid_days" label="Quotes valid for (days)" hint="Every new quote gets a valid-until date this many days out. It can be changed on the quote." errors={errors}>
-            {(p) => <Input {...p} type="number" inputMode="numeric" min="1" max="90" defaultValue={defaults.quote_valid_days} />}
+          <Field name="price_hold_days" label="Prices held for (days)" hint="Each new quote holds its prices until this many days out, shown to the customer as Price held until. It can be changed on the quote." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="numeric" min="1" max="365" defaultValue={defaults.price_hold_days} />}
           </Field>
-          <Field name="rush_colour_fee_per_ft" label="Rush colour fee ($ per foot)" hint="Added when a custom colour is powder coated this season instead of the factory order. Blank hides that choice on the quote." errors={errors}>
-            {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.rush_colour_fee_per_ft} />}
+          <Field name="rush_colour_fee" label="Rush colour fee ($ a job)" hint="One flat amount when a colour other than stock is powder coated this season instead of waiting for the spring factory order. Blank hides that choice on the quote and on the customer's link." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.rush_colour_fee} />}
+          </Field>
+          <Field name="upper_access_fee" label="Upper access ($)" hint="Added on its own to a quote with upper runs and no upper gable. Each quote keeps its own copy, and Keenan can change it in the quote builder. Blank: no line." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.upper_access_fee} />}
+          </Field>
+          <Field name="upper_gable_access_fee" label="Upper access with an upper gable ($)" hint="Added instead of the amount above when an upper gable is in the quote. Blank: no line." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.upper_gable_access_fee} />}
           </Field>
           <Field name="service_call_fee" label="Service call fee ($)" hint="The flat fee for a service call in years 6 to 10 of the warranty. Blank means the warranty page names no amount." errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.service_call_fee} />}
@@ -192,64 +195,57 @@ export function SettingsForm({
 
       <Card>
         <CardHeader>
-          <CardTitle>Presentation</CardTitle>
+          <CardTitle>Customer quote page</CardTitle>
           <CardDescription>
-            The six screens of the meeting presentation, in the order they
-            show. The words started as drafts; make them yours. A page with no
-            words or photos is skipped at the meeting, never shown empty.
+            What every customer&apos;s quote link shows besides their own quote.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
-          {presentation.map((page) => (
-            <fieldset key={page.kind} className="flex flex-col gap-3 border-t pt-4 first:border-t-0 first:pt-0">
-              <legend className="sr-only">{PAGE_LABELS[page.kind]}</legend>
-              <p className="text-sm font-semibold text-muted-foreground">{PAGE_LABELS[page.kind]}</p>
-              <input type="hidden" name="presentation_kind" value={page.kind} />
-              <div className="flex flex-col gap-2">
-                <Label htmlFor={`settings-presentation_title_${page.kind}`}>Title on screen</Label>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <Switch id="settings-christmas_banner_on" name="christmas_banner_on" defaultChecked={defaults.christmas_banner_on} />
+              <Label htmlFor="settings-christmas_banner_on">Show the Christmas banner</Label>
+            </div>
+            <p className="-mt-2 text-sm text-muted-foreground">
+              It shows from September 1 to November 30 while this is on, and hides itself after that.
+            </p>
+            <Field name="christmas_banner_title" label="Banner heading" errors={errors}>
+              {(p) => <Input {...p} maxLength={80} defaultValue={defaults.christmas_banner_title} />}
+            </Field>
+            <Field name="christmas_banner_text" label="Banner words" hint="No dates or promises: it reads like an invitation, not a deadline." errors={errors}>
+              {(p) => <Textarea {...p} rows={2} maxLength={300} defaultValue={defaults.christmas_banner_text} />}
+            </Field>
+          </div>
+          <fieldset className="flex flex-col gap-3" aria-describedby="settings-product_points-hint">
+            <legend className="text-sm font-semibold">What you&apos;re getting</legend>
+            <p id="settings-product_points-hint" className="text-sm text-muted-foreground">
+              Six short lines, one each, with a line icon. A blank line is left out.
+            </p>
+            {defaults.product_points.map((point, at) => (
+              <div key={at} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <select
+                  name={`point_icon_${at}`}
+                  aria-label={`Point ${at + 1} icon`}
+                  defaultValue={point.icon}
+                  className="h-11 rounded-md border border-input bg-background px-3 text-sm sm:w-44"
+                >
+                  {POINT_ICONS.map((icon) => (
+                    <option key={icon} value={icon}>
+                      {POINT_ICON_NAMES[icon]}
+                    </option>
+                  ))}
+                </select>
                 <Input
-                  id={`settings-presentation_title_${page.kind}`}
-                  name={`presentation_title_${page.kind}`}
-                  defaultValue={page.title}
-                  maxLength={80}
+                  name={`point_text_${at}`}
+                  aria-label={`Point ${at + 1}`}
+                  maxLength={160}
+                  defaultValue={point.text}
+                  className="min-w-0 flex-1"
                 />
               </div>
-              {page.kind === "warranty" ? (
-                <>
-                  <input type="hidden" name={`presentation_body_${page.kind}`} defaultValue={page.body} />
-                  <p className="text-sm text-muted-foreground">
-                    This page shows the Warranty text above, word for word.
-                  </p>
-                </>
-              ) : page.kind === "gallery" ? (
-                <>
-                  <input type="hidden" name={`presentation_body_${page.kind}`} defaultValue={page.body} />
-                  <p className="text-sm text-muted-foreground">
-                    This page is photos only. Add them under Presentation photos below.
-                  </p>
-                </>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor={`settings-presentation_body_${page.kind}`}>Words on screen</Label>
-                  <Textarea
-                    id={`settings-presentation_body_${page.kind}`}
-                    name={`presentation_body_${page.kind}`}
-                    rows={page.kind === "install_day" ? 7 : 5}
-                    defaultValue={page.body}
-                  />
-                  {page.kind === "hidden_by_day" ? (
-                    <p className="text-sm text-muted-foreground">
-                      Shown over the day and night photos, uploaded below.
-                    </p>
-                  ) : null}
-                  {page.kind === "install_day" ? (
-                    <p className="text-sm text-muted-foreground">One step per line; the screen numbers them.</p>
-                  ) : null}
-                </div>
-              )}
-            </fieldset>
-          ))}
-          <FieldError id="settings-presentation_pages-error" message={errors?.presentation_pages} />
+            ))}
+            <FieldError id="settings-product_points-error" message={errors?.product_points} />
+          </fieldset>
         </CardContent>
       </Card>
 

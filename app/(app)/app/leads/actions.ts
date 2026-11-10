@@ -154,7 +154,9 @@ export async function updateLead(
   const id = z.uuid().safeParse(formData.get("id"));
   if (!id.success) return { error: "That lead was not found." };
 
-  const parsed = parseLeadForm(leadFormDataToInput(formData));
+  // A saved lead's edit page saves what is filled in; the rest can be
+  // finished later (Keenan, 2026-11-10).
+  const parsed = parseLeadForm(leadFormDataToInput(formData), { requireAnswers: false });
   if (!parsed.ok) return { error: "Some fields need a look.", errors: parsed.errors };
 
   const supabase = await createClient();

@@ -63,14 +63,13 @@ import {
   bookNeed,
   canSaveLead,
   DOOR_QUESTIONS,
-  draftAnswers,
-  draftProblems,
   draftToLeadInput,
   emptyDraft,
   firstScreenToVisit,
   leadDraftFromSheet,
   LEARNED_QUESTIONS,
   markScreenNotCollected,
+  meetsLeadRules,
   nextScreen,
   previousScreen,
   PROBLEM_SCREENS,
@@ -80,14 +79,15 @@ import {
   SCREENS,
   screenMissing,
   screenOpenQuestions,
-  sheetMissing,
   stepCount,
   STEPS,
   stepOf,
+  typedProblem,
   withAnswer,
   withDraftDefaults,
   type SheetDraft,
   type SheetScreen,
+  type TypedProblem,
 } from "@/lib/booking/sheet";
 import { bookingSheet, useSheetRequest, type SheetRequest, type SheetTimer } from "@/lib/booking/sheet-store";
 import { getPublicEnv } from "@/lib/env";
@@ -95,8 +95,8 @@ import type { PhotoSlot } from "@/lib/leads/door";
 import { draftKey } from "@/lib/leads/draft";
 import { timed } from "@/lib/answer-within";
 import { handOffToNewLead } from "@/lib/leads/hand-off";
-import { COUNTED_QUESTIONS, isQuestionDone, type CountedQuestion, type NoteKey } from "@/lib/leads/questions";
-import { normalizePhone } from "@/lib/phone";
+import { type CountedQuestion, type NoteKey } from "@/lib/leads/questions";
+import { NAME_TO_COME } from "@/lib/leads/to-finish";
 import type { PickedAddress } from "@/lib/places";
 import { toBoardSlots, type BoardSlot } from "@/lib/schedule/board";
 import { bookButtonLabel, formatMeetingTime, heldTimeLabel, sentence, timePhrase } from "@/lib/schedule/meetings";
@@ -888,13 +888,14 @@ function BookingSheet({
     go(screen);
   }
 
-  // A tap on one of Book's missing things: that step, with Next back to
-  // Book, and the first thing it still needs brought into view and outlined
-  // for a moment, once the step has opened at its top.
+  // A tap on one of Book's things to finish later: that step, with Next back
+  // to Book, and the first thing it still needs brought into view and
+  // outlined for a moment, once the step has opened at its top. Book's own
+  // one is the phone, in the footer.
   function fixFromBook(screen: SheetScreen) {
     keepAddress();
     if (screen === "book") {
-      showMissing("book", draft);
+      showPhone();
       return;
     }
     const current = draft;
@@ -930,14 +931,18 @@ function BookingSheet({
     if (field === "first_name" || field === "last_name") return "who";
     if (field === "phone") return "book";
     if (field.startsWith("address") || field === "lat" || field === "lng") return "address";
-    if (field === "soffit_colour" || field === "soffit_note") return "house";
+    if (field === "soffit_colour" || field === "soffit_colour_2" || field === "soffit_note") return "address";
+    if (field === "photo_paths") return "house";
     const screen = (Object.keys(SCREEN_QUESTIONS) as SheetScreen[]).find((key) =>
       (SCREEN_QUESTIONS[key] ?? []).includes(field as CountedQuestion),
     );
     return screen ?? null;
   }
 
-  async function save(current: SheetDraft): Promise<SheetDraft | null> {
+  // booking: the save at Book, which takes a first name or the address and
+  // leaves the rest to finish later (2026-11-10). Every other save keeps to
+  // New lead's rules.
+  async function save(current: SheetDraft, booking = false): Promise<SheetDraft | null> {
     if (viewingAs) return current;
     // A new person's first save carries a save key made once on this phone
     // (2026-11-04). It goes into the draft as the request leaves, so every
@@ -966,7 +971,7 @@ function BookingSheet({
     let result: Awaited<ReturnType<typeof saveSheetLead>>;
     saveError.current = null;
     try {
-      result = await timed(saveSheetLead(keyed.leadId, draftToLeadInput(keyed)));
+      result = await timed(saveSheetLead(keyed.leadId, draftToLeadInput(keyed), { booking }));
     } catch {
       saveError.current = { text: SLOW, fix: null };
       setError(saveError.current);
@@ -998,10 +1003,45 @@ function BookingSheet({
   }
 
   // What Next says. Round 3: answers come out of order at the door, so on
-  // every step but Book, Next always moves on; Book says what it still
-  // needs, listed just above it.
+  // every step but Book, Next always moves on. Book says what stops it, if
+  // anything (2026-11-10: a No on owns the home, or no name and no address).
   function needs(screen: SheetScreen, current: SheetDraft): string | null {
     return screen === "book" ? bookNeed(current) : null;
+  }
+
+  // The phone in the footer, outlined for a moment and focused, so the
+  // number pad comes up.
+  function showPhone() {
+    const whole = dialogRef.current;
+    const block = whole?.querySelector<HTMLElement>('[data-testid="sheet-phone-block"]');
+    whole?.querySelector<HTMLElement>("#sheet-phone")?.focus();
+    if (block) {
+      block.classList.add(...ATTENTION);
+      window.setTimeout(() => block.classList.remove(...ATTENTION), 1500);
+    }
+  }
+
+  // Something typed that can't be saved as it is: what's wrong, said once,
+  // and its field, outlined and focused. The soffit's note is on the house's
+  // step, with Next back to Book.
+  function showTyped(typed: TypedProblem) {
+    if (typed.screen === "book") {
+      setError({ text: typed.text, fix: null });
+      showPhone();
+      return;
+    }
+    keepAddress();
+    go(typed.screen);
+    setFromBook(true);
+    setError({ text: typed.text, fix: null });
+    window.setTimeout(() => {
+      const field = dialogRef.current?.querySelector<HTMLElement>("#sheet-soffit-note");
+      if (!field) return;
+      field.scrollIntoView({ block: "center" });
+      field.focus({ preventScroll: true });
+      field.classList.add(...ATTENTION);
+      window.setTimeout(() => field.classList.remove(...ATTENTION), 1500);
+    }, 80);
   }
 
   // Next while a screen isn't done: the first thing it still needs comes
@@ -1027,24 +1067,18 @@ function BookingSheet({
       marked = root.querySelector('[aria-label="Guided photos"]');
       target = root.querySelector('[data-slot="front"] button');
     } else if (screen === "book") {
-      // Book that isn't ready: the phone when it's the one thing left on
-      // this screen, otherwise the list of what's still missing.
-      const elsewhere = sheetMissing(current).filter((item) => item.screen !== "book");
-      const whole = dialogRef.current ?? root;
-      if (bookingBlockers(current).length > 0 && elsewhere.length === 0) {
-        // An answer rules booking out: the note that says so, and its Keep
-        // as a lead.
+      // Book that can't book (2026-11-10): a No on owns the home, said with
+      // its Keep as a lead; or neither a first name nor the address, which
+      // the name step takes. Nothing else stops it.
+      if (bookingBlockers(current).length > 0) {
         marked = root.querySelector('[data-testid="book-ruled-out"]');
         target = marked?.querySelector<HTMLElement>('[data-testid="keep-as-lead"]') ?? null;
-      } else if (elsewhere.length === 0 && screenMissing("book", current).length > 0) {
-        target = whole.querySelector("#sheet-phone");
-        marked = whole.querySelector('[data-testid="sheet-phone-block"]');
-      } else if (elsewhere.length > 0) {
-        marked = root.querySelector('[data-testid="book-checklist"]');
-        target = marked?.querySelector<HTMLElement>("button") ?? null;
+      } else if (!canSaveLead(current)) {
+        fixFromBook("who");
+        return;
       } else {
-        const first = draftProblems(current)[0];
-        if (first) go(PROBLEM_SCREENS[first] ?? "who");
+        const typed = typedProblem(current);
+        if (typed) showTyped(typed);
         return;
       }
     }
@@ -1082,16 +1116,13 @@ function BookingSheet({
     setBusy(true);
     try {
       const destination = fromBook ? "book" : nextScreen(view, current, skipDone);
-      // A lead is saved once every question has an answer or Not collected,
-      // and a new person once they have an address too. With the phone
-      // asked last, that's usually Book.
-      const answers = draftAnswers(current);
-      const allAnswered = COUNTED_QUESTIONS.every((question) => isQuestionDone(answers[question]));
-      const phoneOk = current.not_collected.includes("phone") || normalizePhone(current.phone).ok;
+      // Next saves only what New lead could save: a first name and the
+      // address, every question answered or Not collected, and a phone that
+      // is one; a new person once they're past the address. Anything less
+      // waits on the phone for Book, which books with less (2026-11-10).
       const needsSave =
-        allAnswered &&
-        phoneOk &&
-        ((!current.leadId && canSaveLead(current) && SCREENS.indexOf(destination) > SCREENS.indexOf("address")) ||
+        meetsLeadRules(current) &&
+        ((!current.leadId && SCREENS.indexOf(destination) > SCREENS.indexOf("address")) ||
           (current.leadId !== null && savedFingerprint(current) !== savedPrint));
       let notSaved: SheetError | null = null;
       if (needsSave) {
@@ -1130,17 +1161,11 @@ function BookingSheet({
 
   async function book(current: SheetDraft) {
     if (!heldAt) return;
-    // Book is the only gate (round 3): everything answered, the phone a real
-    // number (or Not collected, which rules booking out anyway).
-    if (!current.not_collected.includes("phone") && current.phone.trim() !== "") {
-      const phone = normalizePhone(current.phone);
-      if (!phone.ok) {
-        setError({ text: phone.error, fix: null });
-        dialogRef.current?.querySelector<HTMLElement>("#sheet-phone")?.focus();
-        return;
-      }
-    }
-    if (sheetMissing(current).length > 0 || bookingBlockers(current).length > 0) {
+    // Book is the only gate (round 3). Since 2026-11-10 it needs only a
+    // first name or the address and no No on owns the home, and what was
+    // typed savable: a phone that is a phone, a split soffit with its note.
+    // The rest is listed to finish later.
+    if (bookNeed(current) !== null) {
       showMissing("book", current);
       return;
     }
@@ -1148,12 +1173,8 @@ function BookingSheet({
       setError({ text: VIEW_AS_NOTHING_SAVED, fix: null });
       return;
     }
-    if (!current.leadId && !canSaveLead(current)) {
-      setError({ text: "Add their first name and the address first, so they can be saved.", fix: current.first_name.trim() ? "address" : "who" });
-      return;
-    }
     if (!current.leadId || savedFingerprint(current) !== savedPrint) {
-      const saved = await save(current);
+      const saved = await save(current, true);
       if (!saved) return;
       current = saved;
     }
@@ -1201,8 +1222,8 @@ function BookingSheet({
         setClock(null);
         void explainLost(heldAt, false);
       } else {
-        // The database's own Before you book check: point at the step that
-        // fixes the first thing it found, so a refusal is never a dead end.
+        // The database's own check (a No on owns the home): point at the
+        // step that fixes it, so a refusal is never a dead end.
         const first = "problems" in result ? result.problems?.[0] : undefined;
         const fix = first ? (PROBLEM_SCREENS[first] ?? null) : null;
         setError({ text: result.message, fix: fix === "book" ? null : fix });
@@ -1367,24 +1388,21 @@ function BookingSheet({
     setMenuOpen(false);
     setError(null);
     let current = currentDraft();
-    if (current.leadId) {
-      const answers = draftAnswers(current);
-      const allAnswered = COUNTED_QUESTIONS.every((question) => isQuestionDone(answers[question]));
-      if (!allAnswered) {
-        // A lead from before round 2 with questions still open: its changes
-        // wait in Unfinished, as when the time is let go.
+    if (current.leadId && savedFingerprint(current) !== savedPrint) {
+      if (!meetsLeadRules(current)) {
+        // Changes New lead couldn't save (a question still open, a name or
+        // an address still to come): they wait in Unfinished, as when the
+        // time is let go, and the lead opens on its page.
         await letGo("open-lead");
         return;
       }
-      if (savedFingerprint(current) !== savedPrint) {
-        setBusy(true);
-        try {
-          const saved = await save(current);
-          if (!saved) return;
-          current = saved;
-        } finally {
-          setBusy(false);
-        }
+      setBusy(true);
+      try {
+        const saved = await save(current);
+        if (!saved) return;
+        current = saved;
+      } finally {
+        setBusy(false);
       }
     }
     if (heldAt && held && !viewingAs) {
@@ -1456,15 +1474,15 @@ function BookingSheet({
 
   // ------------------------------------------------------------ drawing it
   const when = heldAt ? timePhrase(heldAt) : null;
-  const problems = draftProblems(draft);
   const place: SheetScreen | null = isScreen(view) ? view : (view === "times" || view === "existing") && returnTo ? returnTo : null;
   const step = place ? stepOf(place) : null;
   const note = step && context ? context.notes[step] : null;
   const partLabel = isScreen(view) ? STEPS.find((item) => item.key === stepOf(view))?.label : null;
-  const personName = [draft.first_name, draft.last_name].filter((part) => part.trim()).join(" ") || name || "this person";
+  // A person booked without a name reads as they'll be saved: Name to come.
+  const personName = [draft.first_name, draft.last_name].filter((part) => part.trim()).join(" ") || name || NAME_TO_COME;
   const need = isScreen(view) ? needs(view, draft) : null;
-  // An answer rules booking out: Keep as a lead is the gold button where it
-  // shows (the phone, the door, Book), and Next steps back there.
+  // A No on owns the home rules booking out: Keep as a lead is the gold
+  // button where it shows (the door, Book), and Next steps back there.
   const ruledOut = bookingBlockers(draft).length > 0;
   const stepBack = ruledOut && (view === "door" || view === "book");
   const title =
@@ -1669,7 +1687,7 @@ function BookingSheet({
               ) : null}
               {view === "times" && !heldAt && !isMove && ruledOut ? (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="times-ruled-out">
-                  <p className="text-sm text-pretty min-[420px]:text-base">Their answers rule booking out for now.</p>
+                  <p className="text-sm text-pretty min-[420px]:text-base">They said they don&apos;t own the home. Only homeowners can be booked.</p>
                   <Button type="button" variant="outline" size="sm" onClick={() => void keepAsLead()} data-testid="keep-as-lead-times">
                     Keep as a lead instead
                   </Button>
@@ -1878,7 +1896,7 @@ function BookingSheet({
               backToBook={fromBook}
               held={held}
               stepBack={stepBack}
-              canBook={problems.length === 0 && held}
+              canBook={held}
               bookLabel={heldAt ? bookButtonLabel(heldAt) : "Book"}
               onBack={back}
               onLetGo={() => (held ? setLetGoOpen(true) : void letGo())}

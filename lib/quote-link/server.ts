@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import { getExtrasEnv, getPublicEnv } from "@/lib/env";
 import { PHOTO_BUCKET } from "@/lib/photos";
-import { parseCustomerQuote, TOKEN_PATTERN, type CustomerQuote, type ExpiredQuote } from "@/lib/quote-link/view";
+import { parseCustomerQuote, TOKEN_PATTERN, type ClosedQuote, type CustomerQuote } from "@/lib/quote-link/view";
 import type { Database } from "@/types/database";
 
 // The customer quote link's server side (2026-11-02). The customer's page
@@ -26,10 +26,14 @@ export function anonymousClient(token?: string) {
   });
 }
 
-export type LoadedQuote = (CustomerQuote & { mockupUrl: string | null }) | ExpiredQuote;
+// The presentation bucket holds Keenan's own photos; a live token signs the
+// gallery's, and nothing else there (storage policy, 2026-11-04).
+const PRESENTATION_BUCKET = "presentation";
+
+export type LoadedQuote = (CustomerQuote & { mockupUrl: string | null; galleryUrls: string[] }) | ClosedQuote;
 
 // What the page shows for a token. Throws only when the database can't be
-// reached; every other kind of bad link is the expired screen.
+// reached; every other kind of bad link is the closed screen.
 export async function loadCustomerQuote(token: string): Promise<LoadedQuote> {
   const { data, error } = await anonymousClient().rpc("quote_for_customer", {
     p_token: TOKEN_PATTERN.test(token) ? token : "",
@@ -38,12 +42,15 @@ export async function loadCustomerQuote(token: string): Promise<LoadedQuote> {
   const view = parseCustomerQuote(data);
   if (view.state !== "live") return view;
 
-  let mockupUrl: string | null = null;
-  if (view.mockupPath) {
-    const signed = await anonymousClient(token).storage.from(PHOTO_BUCKET).createSignedUrl(view.mockupPath, MOCKUP_SECONDS);
-    mockupUrl = signed.data?.signedUrl ?? null;
-  }
-  return { ...view, mockupUrl };
+  const storage = anonymousClient(token).storage;
+  const [mockup, gallery] = await Promise.all([
+    view.mockupPath ? storage.from(PHOTO_BUCKET).createSignedUrl(view.mockupPath, MOCKUP_SECONDS) : null,
+    view.gallery.length > 0 ? storage.from(PRESENTATION_BUCKET).createSignedUrls(view.gallery, MOCKUP_SECONDS) : null,
+  ]);
+  const mockupUrl = mockup?.data?.signedUrl ?? null;
+  // A photo that can't be signed is left out rather than shown broken.
+  const galleryUrls = (gallery?.data ?? []).flatMap((item) => (item.signedUrl ? [item.signedUrl] : []));
+  return { ...view, mockupUrl, galleryUrls };
 }
 
 // The address links start with: QUOTE_BASE_URL when it is set (later

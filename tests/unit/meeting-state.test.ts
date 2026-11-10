@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { parseDeckWords } from "@/lib/deck";
+import { COOL_WHITE, WARM_WHITE } from "@/lib/lights/looks";
 import {
   RESUME_MS,
   defaultQuoteState,
+  pickEditableQuote,
+  pickerFromStored,
+  quoteMinimum,
+  storedQuote,
   quoteFingerprint,
   quoteInputs,
   quoteStateFromDraft,
@@ -20,16 +26,22 @@ const payload = (draft: MeetingPayload["draft"] = null): MeetingPayload => ({
     addressLine: "1 Test Street NW",
     neighbourhood: null,
     soffitColour: null,
-    soffitNote: null,
+    soffitColour2: null,
     colourKind: "list",
     colourText: "White",
     initials: null,
     initialledAt: null,
   },
-  pages: [],
+  deck: {
+    words: parseDeckWords({}),
+    photos: {},
+    gallery: [],
+    looks: [WARM_WHITE, COOL_WHITE],
+    picker: null,
+    company: { name: "", place: null, phone: "" },
+    warranty: { text: "", serviceCallFee: null, gstEnabled: false },
+  },
   colours: { list: [], ralNames: {}, choice: null, ralCode: null },
-  warrantyText: "",
-  serviceCallFee: null,
   mockupUrl: null,
   pricing: {
     pricePerFt: 23,
@@ -38,8 +50,10 @@ const payload = (draft: MeetingPayload["draft"] = null): MeetingPayload => ({
     gstEnabled: false,
     gstRate: 0.05,
     gstNumber: null,
-    rushFeePerFt: null,
-    quoteValidDays: 14,
+    rushFee: 350,
+    upperAccessFee: 200,
+    upperGableAccessFee: 400,
+    priceHoldDays: 120,
     minJobTotal: null,
   },
   draft,
@@ -55,8 +69,14 @@ const serverDraft = (updatedAt: string): NonNullable<MeetingPayload["draft"]> =>
   adders: [],
   discounts: [{ label: "Neighbour discount", amount: 150 }],
   colourTiming: "stock",
+  rushFee: null,
+  upperAccessFee: null,
+  upperGableAccessFee: null,
   financingOffered: false,
   validUntil: "2026-11-17",
+  offers: [],
+  meetingOffer: null,
+  meetingInstallOn: null,
   updatedAt,
 });
 
@@ -114,7 +134,7 @@ describe("a saved draft back on screen", () => {
       { ...serverDraft("2026-11-03T01:00:00+00:00"), runs: "nope", adders: [null, 4, { amount: 5 }], discounts: {} },
       payload(),
     );
-    expect(state.runs).toEqual([{ name: "Front", feet: 0, level: "lower" }]);
+    expect(state.runs).toEqual([{ name: "Front", feet: 0, level: "lower", part: "eave" }]);
     expect(state.adders).toEqual([]);
     expect(state.neighbourOn).toBe(false);
   });
@@ -163,7 +183,8 @@ describe("where a meeting starts", () => {
     expect(start.quoteId).toBeNull();
     expect(start.savedQuote).toBeNull();
     expect(start.index).toBe(0);
-    expect(start.quote.validUntil).toBe("2026-11-17");
+    // Prices held 120 days from today (2026-11-03 in this payload).
+    expect(start.quote.validUntil).toBe("2027-03-03");
   });
 
   it("the server draft when the iPad has no copy, counted as saved", () => {
@@ -238,5 +259,104 @@ describe("where a meeting starts", () => {
   it("keeps initials typed but not yet confirmed", () => {
     const local = defaultQuoteState(payload());
     expect(startingPoint(payload(), stored(local, { initialsDraft: "MB" }), now).initialsDraft).toBe("MB");
+  });
+});
+
+describe("the page and the light picker, picked up again", () => {
+  const now = Date.parse("2026-11-03T02:00:00Z");
+  const local = defaultQuoteState(payload());
+  const lit = { look: "cool_white", effect: "chase" as const, played: true };
+
+  it("finds the page by its key, so pages added before it don't move it", () => {
+    const start = startingPoint(payload(), stored(local, { screen: { index: 7, at: now - 60_000, key: "colour" } }), now);
+    expect(start.screenKey).toBe("colour");
+    expect(startingPoint(payload(), stored(local, { screen: { index: 7, at: now - 60_000 } }), now).screenKey).toBeNull();
+    expect(startingPoint(payload(), stored(local, { screen: { index: 7, at: now - 60_000, key: "colour" } }), now, true).screenKey).toBeNull();
+  });
+
+  it("keeps the look, effect and played light-up through a reload or auto-lock mid-meeting", () => {
+    const within = stored(local, { screen: { index: 4, at: now - 60_000 }, picker: lit });
+    expect(startingPoint(payload(), within, now).picker).toEqual(lit);
+  });
+
+  it("opened fresh, opens the picker on Warm white, Steady, with the light-up to play, even an hour after a check", () => {
+    // Keenan pressed Start from prep at 5:30 to check the picker, left it on
+    // Cool white chasing, and opens the meeting fresh at the table an hour later.
+    const checked = stored(local, { screen: { index: 4, at: now - 60 * 60_000, key: "light_picker" }, picker: lit });
+    const start = startingPoint(payload(), checked, now, true);
+    expect(start.picker).toBeNull();
+    expect(start.index).toBe(0);
+    // The quote is still kept: only the screen and the picker start over.
+    expect(start.quote).toEqual(local);
+  });
+
+  it("starts a later meeting on the first look, Steady, with the light-up to play", () => {
+    const later = stored(local, { screen: { index: 4, at: now - RESUME_MS - 1 }, picker: lit });
+    expect(startingPoint(payload(), later, now).picker).toBeNull();
+    expect(startingPoint(payload(), stored(local, { picker: lit }), now).picker).toBeNull();
+  });
+
+  it("drops a stored look no longer on offer, or an effect the control doesn't have", () => {
+    const looks = [WARM_WHITE];
+    expect(pickerFromStored(lit, looks)).toBeNull();
+    expect(pickerFromStored({ look: "warm_white", effect: "strobe", played: true }, looks)).toBeNull();
+    expect(pickerFromStored({ look: "warm_white", effect: "off" }, looks)).toEqual({ look: "warm_white", effect: "off", played: false });
+    expect(pickerFromStored("warm_white", looks)).toBeNull();
+    expect(pickerFromStored(null, looks)).toBeNull();
+  });
+});
+
+// Round 9 (2026-11-10): the quote the meeting and the lead page's editor
+// open, an accepted quote read only, and the quote's own minimum.
+describe("the quote both screens open", () => {
+  const now = Date.parse("2026-11-03T02:00:00Z");
+
+  it("is the accepted quote while there is one, otherwise the newest draft", () => {
+    const rows = [
+      { id: "new-draft", status: "draft" },
+      { id: "declined", status: "declined" },
+      { id: "accepted", status: "accepted" },
+    ];
+    expect(pickEditableQuote(rows)?.id).toBe("accepted");
+    expect(pickEditableQuote(rows.filter((row) => row.status !== "accepted"))?.id).toBe("new-draft");
+    expect(pickEditableQuote([{ id: "x", status: "cancelled" }])).toBeNull();
+  });
+
+  it("opens an accepted quote from the server, whatever the iPad holds, with the option they said yes to", () => {
+    const draft = {
+      ...serverDraft("2026-11-03T01:00:00+00:00"),
+      offers: [{ id: "full", name: "Full wrap", runs: [0] }],
+      meetingOffer: "full",
+      accepted: true,
+      acceptedOffer: "full",
+    };
+    const iPad = withFeet(defaultQuoteState(payload()), 140);
+    const start = startingPoint(payload(draft), stored(iPad, { savedAt: "2026-11-03T01:30:00Z" }), now);
+    expect(start.quote.runs[0].feet).toBe(100);
+    expect(start.quote.chosenOffer).toBe("full");
+    expect(start.savedQuote).toBe(quoteFingerprint(start.quote));
+  });
+
+  it("reads an iPad copy from before round 9 as one full wrap with no choice", () => {
+    const old = { ...defaultQuoteState(payload()) } as Partial<QuoteUIState>;
+    delete old.offers;
+    delete old.chosenOffer;
+    delete old.installOn;
+    const read = storedQuote(old as QuoteUIState);
+    expect(read.offers).toEqual([]);
+    expect(read.chosenOffer).toBeNull();
+    expect(read.installOn).toBeNull();
+  });
+
+  it("keeps the quote's own minimum once saved, so a later change in Settings never alters it", () => {
+    const draft = { ...serverDraft("2026-11-03T01:00:00+00:00"), minJobTotal: null };
+    const state = quoteStateFromDraft(draft, payload(draft));
+    expect(state.minJobTotal).toBe("");
+    expect(quoteMinimum(state, { minJobTotal: 2500 })).toBeNull();
+    // A draft read without the column, and a new quote, use Settings'.
+    expect(quoteMinimum(quoteStateFromDraft(serverDraft("2026-11-03T01:00:00+00:00"), payload()), { minJobTotal: 2500 })).toBe(2500);
+    expect(quoteMinimum(defaultQuoteState(payload()), { minJobTotal: 2500 })).toBe(2500);
+    const own = quoteStateFromDraft({ ...draft, minJobTotal: 1800 }, payload());
+    expect(priceQuote(quoteInputs(withFeet(own, 10), { ...payload().pricing, minJobTotal: 2500 })).subtotal).toBe(1800);
   });
 });

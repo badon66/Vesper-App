@@ -1,13 +1,16 @@
 // The customer quote link (2026-11-02), kept pure: what the database's
-// quote_for_customer answer means, the prices for whatever runs the
-// customer has switched on, the option named in words, the link itself
-// and the text Keenan sends. No React and no network, so it is unit tested
-// like the pricing it feeds, and the page and the server share it.
+// quote_for_customer answer means, each option's price (round 9, the
+// options Keenan made in place of Start smaller), which option the page
+// opens on, the next steps in the meeting's words, the link itself and the
+// text Keenan sends. No React and no network, so it is unit tested like the
+// pricing it feeds, and the page and the server share it.
 
 import { z } from "zod";
 import {
   formatMoney,
   priceQuote,
+  RUN_PARTS,
+  runPart,
   screenTotal,
   selectRuns,
   type ColourTiming,
@@ -15,6 +18,14 @@ import {
   type QuoteRun,
   type QuoteTotals,
 } from "@/lib/pricing";
+import { fillLine, NO_PAYMENT_LINE, parseDeckLines, type DeckLines } from "@/lib/deck";
+import {
+  parseOffers,
+  priceOffer,
+  shownOffers,
+  type PricedOffer,
+  type QuoteOffer,
+} from "@/lib/quotes/offers";
 import { formatLongDay } from "@/lib/time";
 
 // The token's shape, as the database makes it: 24 base64url characters.
@@ -22,13 +33,35 @@ export const TOKEN_PATTERN = /^[A-Za-z0-9_-]{24}$/;
 
 export type Company = { name: string; phone: string; email: string; address: string };
 
+// The line icons a product point can have (Settings offers these; anything
+// else shows as a tick).
+export const POINT_ICONS = [
+  "lightbulb",
+  "house",
+  "zap",
+  "smartphone",
+  "plug",
+  "shield-check",
+  "paintbrush",
+  "sun",
+  "snowflake",
+  "wrench",
+  "clock",
+  "check",
+] as const;
+export type PointIcon = (typeof POINT_ICONS)[number];
+export type ProductPoint = { icon: PointIcon; text: string };
+
 export type CustomerQuote = {
   state: "live";
   firstName: string;
   lastName: string | null;
   address: string;
   city: string | null;
+  // The day the quote's prices are held until, and Calgary's date today
+  // from the database, so the page never trusts the phone's clock for it.
   validUntil: string | null;
+  today: string | null;
   quote: {
     runs: QuoteRun[];
     runsFingerprint: string;
@@ -38,21 +71,63 @@ export type CustomerQuote = {
     adders: { label: string; amount: number; upperOnly: boolean }[];
     discounts: { label: string; amount: number }[];
     colourTiming: ColourTiming | null;
-    rushFeePerFt: number | null;
+    // The quote's flat rush colour fee and upper access amounts
+    // (2026-11-04); null on a quote made before then, so no line.
+    rushFee: number | null;
+    upperAccessFee: number | null;
+    upperGableAccessFee: number | null;
     minJobTotal: number | null;
     gstEnabled: boolean;
     gstRate: number;
+    // The track colour the quote was made with, by name; null until set.
+    trackColourName: string | null;
+    trackCustom: boolean;
+    // The options (round 9), cleaned the way the database cleans them; a
+    // quote made before them reads as one Full wrap covering every run.
+    offers: QuoteOffer[];
+    // "Financing is available. Just ask." shows only while this is on.
+    financingOffered: boolean;
+    // The option chosen at the table (an offer id), if any.
+    meetingOffer: string | null;
+    // Once Keenan marks the quote accepted: the page shows only what was
+    // agreed, and acceptedOffer names the option (null on a quote accepted
+    // before options).
+    accepted: boolean;
+    acceptedOffer: string | null;
   };
   warranty: string;
+  // Warranty years 6 to 10 (Settings); null hides its line.
+  serviceCallFee: number | null;
+  // Shown only while Keenan has it on, September 1 to November 30 (the
+  // database decides, by Calgary's date).
+  christmas: { title: string; text: string } | null;
+  productPoints: ProductPoint[];
+  // What happens next: whether the colour was initialled at the meeting,
+  // the planned install day (the lead's, else the one picked at the table),
+  // and What we'll need, in the meeting's own words.
+  nextSteps: NextStepsData;
+  // The presentation gallery's photo paths: Vesper's own installs.
+  gallery: string[];
   company: Company;
   mockupPath: string | null;
-  // Positions of the runs they had switched on; null = the Recommended package.
+  // Positions of the runs they last looked at; null = every run. Kept for
+  // Keenan's card on links from before options.
   selection: number[] | null;
+  // The option they last looked at, and the one they booked (offer ids).
+  selectionOffer: string | null;
+  bookedOffer: string | null;
   bookedAt: string | null;
+  // The booked option's name as it was when they booked.
   bookedOption: string | null;
+  // The page's words, the meeting's own where they are shared.
+  words: LinkWords;
 };
 
-export type ExpiredQuote = { state: "expired"; company: Company };
+export type NextStepsData = { colourConfirmed: boolean; installOn: string | null; whatWeNeed: string | null };
+
+// A link Keenan turned off, or one that never existed. Links don't expire
+// (2026-11-04): prices are held until a date, and the page still works after.
+export type ClosedQuote = { state: "closed"; company: Company };
 
 // Vesper's contact when Settings has none (only for a blank field).
 export const FALLBACK_COMPANY: Company = {
@@ -81,6 +156,9 @@ const runSchema = z.object({
   name: z.string().catch(""),
   feet: number,
   level: z.enum(["lower", "upper"]).catch("lower"),
+  // The part of the house (2026-11-04); a run saved before then has none,
+  // and its name gives the guess.
+  part: z.enum(RUN_PARTS).nullable().optional().catch(null),
 });
 
 const quoteSchema = z.object({
@@ -94,15 +172,29 @@ const quoteSchema = z.object({
     .catch([]),
   discounts: z.array(z.object({ label: z.string().catch(""), amount: number })).catch([]),
   colour_timing: z.enum(["stock", "factory_order", "rush"]).nullable().catch(null),
-  rush_fee_per_ft: z.coerce.number().nullable().catch(null),
+  rush_fee: z.coerce.number().nullable().optional().catch(null),
+  upper_access_fee: z.coerce.number().nullable().optional().catch(null),
+  upper_gable_access_fee: z.coerce.number().nullable().optional().catch(null),
   min_job_total: z.coerce.number().nullable().catch(null),
   gst_enabled: z.boolean().catch(false),
   gst_rate: number,
+  track_colour_name: z.string().nullable().optional().catch(null),
+  track_custom: z.boolean().optional().catch(false),
+  offers: z.unknown().optional(),
+  financing_offered: z.boolean().optional().catch(false),
+  meeting_offer: z.string().nullable().optional().catch(null),
+  accepted: z.boolean().optional().catch(false),
+  accepted_offer: z.string().nullable().optional().catch(null),
 });
 
 function toQuote(q: z.infer<typeof quoteSchema>): CustomerQuote["quote"] {
   return {
-    runs: q.runs,
+    offers: parseOffers(q.offers, q.runs.length),
+    financingOffered: q.financing_offered === true,
+    meetingOffer: q.meeting_offer?.trim() || null,
+    accepted: q.accepted === true,
+    acceptedOffer: q.accepted === true ? q.accepted_offer?.trim() || null : null,
+    runs: q.runs.map((run) => ({ name: run.name, feet: run.feet, level: run.level, part: runPart(run) })),
     runsFingerprint: q.runs_fingerprint,
     pricePerFt: q.price_per_ft,
     boxPrice: q.box_price,
@@ -110,10 +202,14 @@ function toQuote(q: z.infer<typeof quoteSchema>): CustomerQuote["quote"] {
     adders: q.adders.map((a) => ({ label: a.label, amount: a.amount, upperOnly: a.upper_only === true })),
     discounts: q.discounts,
     colourTiming: q.colour_timing,
-    rushFeePerFt: q.rush_fee_per_ft,
+    rushFee: q.rush_fee ?? null,
+    upperAccessFee: q.upper_access_fee ?? null,
+    upperGableAccessFee: q.upper_gable_access_fee ?? null,
     minJobTotal: q.min_job_total,
     gstEnabled: q.gst_enabled,
     gstRate: q.gst_rate,
+    trackColourName: q.track_colour_name?.trim() || null,
+    trackCustom: q.track_custom === true,
   };
 }
 
@@ -124,6 +220,11 @@ export function quoteFromRow(row: unknown): CustomerQuote["quote"] | null {
   return parsed.success ? toQuote(parsed.data) : null;
 }
 
+const pointSchema = z.object({
+  icon: z.enum(POINT_ICONS).catch("check"),
+  text: z.string().catch(""),
+});
+
 const liveSchema = z.object({
   state: z.literal("live"),
   first_name: z.string(),
@@ -131,26 +232,51 @@ const liveSchema = z.object({
   address: z.string(),
   city: z.string().nullable().catch(null),
   valid_until: z.string().nullable().catch(null),
+  today: z.string().nullable().optional().catch(null),
   quote: quoteSchema,
   warranty: z.string().catch(""),
+  service_call_fee: z.coerce.number().nullable().optional().catch(null),
+  christmas: z
+    .object({ title: z.string().catch(""), text: z.string().catch("") })
+    .nullable()
+    .optional()
+    .catch(null),
+  product_points: z.array(pointSchema.catch({ icon: "check", text: "" })).catch([]),
+  next_steps: z
+    .object({
+      colour_confirmed: z.boolean().catch(false),
+      install_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().catch(null),
+      what_we_need: z.string().nullable().catch(null),
+    })
+    .nullable()
+    .optional()
+    .catch(null),
+  gallery: z.array(z.string()).catch([]),
   company: companySchema,
   mockup_path: z.string().nullable().catch(null),
   selection: z.array(z.number().int()).nullable().catch(null),
+  selection_offer: text,
+  booked_offer: text,
   booked_at: z.string().nullable().catch(null),
   booked_option: z.string().nullable().catch(null),
+  // The meeting's words from settings.deck.lines, when the database hands
+  // them over; otherwise the defaults below, which are the same words.
+  lines: z.record(z.string(), z.unknown()).nullable().optional().catch(null),
 });
 
 // The database's answer, as the page uses it. Anything that isn't a live
-// quote, however it arrives, is the expired screen.
-export function parseCustomerQuote(data: unknown): CustomerQuote | ExpiredQuote {
+// quote, however it arrives, is the closed screen.
+export function parseCustomerQuote(data: unknown): CustomerQuote | ClosedQuote {
   const live = liveSchema.safeParse(data);
   if (!live.success) {
     const company = companySchema.parse(
       data && typeof data === "object" ? (data as { company?: unknown }).company : undefined,
     );
-    return { state: "expired", company };
+    return { state: "closed", company };
   }
   const v = live.data;
+  const fee = v.service_call_fee ?? null;
+  const christmas = v.christmas && v.christmas.title.trim() ? { title: v.christmas.title.trim(), text: v.christmas.text.trim() } : null;
   return {
     state: "live",
     firstName: v.first_name,
@@ -158,14 +284,76 @@ export function parseCustomerQuote(data: unknown): CustomerQuote | ExpiredQuote 
     address: v.address,
     city: v.city,
     validUntil: v.valid_until,
+    today: v.today ?? null,
     quote: toQuote(v.quote),
     warranty: v.warranty,
+    serviceCallFee: fee !== null && Number.isFinite(fee) && fee > 0 ? fee : null,
+    christmas,
+    productPoints: v.product_points
+      .map((point) => ({ icon: point.icon, text: point.text.trim() }))
+      .filter((point) => point.text !== ""),
+    nextSteps: {
+      colourConfirmed: v.next_steps?.colour_confirmed === true,
+      installOn: v.next_steps?.install_on ?? null,
+      whatWeNeed: v.next_steps?.what_we_need?.trim() || null,
+    },
+    gallery: v.gallery.filter((path) => path.trim() !== ""),
     company: v.company,
     mockupPath: v.mockup_path,
     selection: v.selection,
+    selectionOffer: v.selection_offer?.trim() || null,
+    bookedOffer: v.booked_offer?.trim() || null,
     bookedAt: v.booked_at,
     bookedOption: v.booked_option,
+    words: parseDeckLines(v.lines),
   };
+}
+
+// ---------------------------------------------------------------- the words
+
+// The page's words (round 9): settings.deck.lines, the same map and the
+// same defaults as meeting mode (lib/deck.ts), so the four steps, the
+// shared price lines and the stock colour line read the same on the iPad
+// and the link, and the link's own lines (link_*) are Keenan's to edit in
+// Settings too. Until the database hands the map over, the defaults are
+// the words.
+export type LinkWords = DeckLines;
+
+// Whether it is the Christmas season on the page: September 1 to November 30
+// by Calgary's date, the same window the database gives the Christmas
+// banner (Keenan, 2026-11-05). Outside it nothing on the page mentions
+// Christmas. Without a date it counts as outside, so nothing is promised.
+export function christmasSeason(today: string | null): boolean {
+  const month = today ? Number(today.slice(5, 7)) : 0;
+  return month >= 9 && month <= 11;
+}
+
+// The track colour section's line about other colours: one colour rule,
+// the same as the iPad's colour page (round 9). White is in stock; every
+// other colour is made to order, included for spring or the rush colour
+// fee this season. From September 1 to November 30 the fee is "to have it
+// this season". From December 1 the spring option only, at no extra cost;
+// a quote Keenan priced for this season still names its fee, "to have it
+// sooner", so the line never contradicts that customer's own breakdown
+// (Keenan, 2026-11-05). A fee that isn't set drops its clause.
+export function otherColoursLine({ season, rushFee, rush }: { season: boolean; rushFee: number | null; rush: boolean }): string {
+  const fee = rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
+  if (season) {
+    return `Any other colour is made to order: nothing extra if it can wait for spring${
+      fee !== null ? `, or the ${formatMoney(fee)} rush colour fee to have it this season` : ""
+    }.`;
+  }
+  if (rush && fee !== null) {
+    return `Any other colour is made to order: nothing extra if it can wait for spring, or the ${formatMoney(fee)} rush colour fee to have it sooner.`;
+  }
+  return "Any other colour is made to order for a spring install, at no extra cost.";
+}
+
+// Whether the price hold has passed: after the valid-until date (Calgary),
+// the page still works and says prices may have changed. Today comes from
+// the database; without it, the hold counts as not passed.
+export function priceHoldPassed(validUntil: string | null, today: string | null): boolean {
+  return validUntil !== null && today !== null && validUntil < today;
 }
 
 // Positions that are on this quote, sorted, without repeats; null when
@@ -189,10 +377,13 @@ export function customerInputs(quote: CustomerQuote["quote"], positions: readonl
     adders: quote.adders.map((a) => ({ label: a.label, amount: a.amount, ...(a.upperOnly ? { upperOnly: true } : {}) })),
     discounts: quote.discounts,
     colourTiming: quote.colourTiming,
-    rushFeePerFt: quote.colourTiming === "rush" ? quote.rushFeePerFt : null,
+    rushFee: quote.colourTiming === "rush" ? quote.rushFee : null,
+    upperAccessFee: quote.upperAccessFee,
+    upperGableAccessFee: quote.upperGableAccessFee,
     minJobTotal: quote.minJobTotal,
     gstEnabled: quote.gstEnabled,
     gstRate: quote.gstRate,
+    colourName: quote.trackColourName,
   };
 }
 
@@ -203,6 +394,80 @@ export function priceSelection(quote: CustomerQuote["quote"], positions: readonl
 // The total as a customer reads it: "$3,450 + GST" while GST is on.
 export function customerTotal(quote: CustomerQuote["quote"], positions: readonly number[] | null): string {
   return screenTotal(priceSelection(quote, positions).subtotal, quote.gstEnabled);
+}
+
+// ---------------------------------------------------------------- the options
+
+// The options a customer sees (round 9): those covering at least one run,
+// each priced with the quote's own prices and its own box count, biggest
+// first, the same order as the iPad (lib/quotes/offers.ts).
+export function linkOffers(quote: CustomerQuote["quote"]): PricedOffer[] {
+  return shownOffers(customerInputs(quote, null), quote.offers);
+}
+
+// One option by id, named and priced the way the customer reads it. Null
+// when the quote has no such option or it covers no run. Book my install's
+// total on the server comes from here, from the stored quote, never from
+// the browser.
+export function offerChoice(
+  quote: CustomerQuote["quote"],
+  offerId: string | null,
+): { id: string; name: string; total: string; totals: QuoteTotals; offer: QuoteOffer } | null {
+  if (!offerId) return null;
+  const offer = quote.offers.find((candidate) => candidate.id === offerId);
+  const totals = offer ? priceOffer(customerInputs(quote, null), offer) : null;
+  if (!offer || !totals) return null;
+  return { id: offer.id, name: offer.name, total: screenTotal(totals.subtotal, quote.gstEnabled), totals, offer };
+}
+
+// Which option the page opens on: the one they booked, else the one chosen
+// at the meeting, else the biggest. Null when no option covers a run.
+export function openingOffer(
+  shown: readonly PricedOffer[],
+  { booked, meeting }: { booked: string | null; meeting: string | null },
+): string | null {
+  for (const id of [booked, meeting]) {
+    if (id && shown.some((priced) => priced.offer.id === id)) return id;
+  }
+  return shown[0]?.offer.id ?? null;
+}
+
+// ---------------------------------------------------------------- what happens next
+
+export type NextStep = { key: "colour" | "day" | "on_day" | "pay"; label: string; text: string; done: boolean };
+
+// The meeting's four steps in the same words (round 9, section 4): the
+// colour, read back from the initials taken at the meeting; the install
+// day if one is planned; the day itself; and paying.
+export function nextStepsFor(view: Pick<CustomerQuote, "nextSteps" | "words"> & { quote: Pick<CustomerQuote["quote"], "trackColourName"> }): NextStep[] {
+  const w = view.words;
+  const { colourConfirmed, installOn } = view.nextSteps;
+  return [
+    {
+      key: "colour",
+      label: w.step_colour_label,
+      text: colourConfirmed ? fillLine(w.link_colour_done, { colour: view.quote.trackColourName ?? "Your track colour" }) : w.step_colour_todo,
+      done: colourConfirmed,
+    },
+    { key: "day", label: w.step_day_label, text: installOn ? formatLongDay(installOn) : w.step_day_none, done: installOn !== null },
+    { key: "on_day", label: w.step_on_day_label, text: w.step_on_day, done: false },
+    { key: "pay", label: w.step_pay_label, text: NO_PAYMENT_LINE, done: false },
+  ];
+}
+
+// What Keenan gets in touch about once they ask to book: with an install
+// day already planned (What happens next shows it), confirming that day;
+// otherwise setting one (the critique, 2026-11-10).
+export function inTouchAbout(installOn: string | null): string {
+  return installOn ? "to confirm your install day" : "to set your install date";
+}
+
+// The mockup shows every run lit, so its caption shows only when the
+// option on screen leaves a run out. No option, no caption.
+export function leavesRunsOut(runCount: number, positions: readonly number[] | null | undefined): boolean {
+  if (!positions || runCount <= 0) return false;
+  const covered = new Set(positions.filter((at) => Number.isInteger(at) && at >= 0 && at < runCount));
+  return covered.size < runCount;
 }
 
 // A run's name, never blank.
@@ -218,11 +483,13 @@ export function optionName(runs: QuoteRun[], positions: readonly number[] | null
   return `Start smaller: ${kept.map((p) => runName(runs[p], p)).join(", ")}`;
 }
 
-// The option the way people say it: "Recommended package", "Garage only",
-// "Front and Garage", "Front, Front upper and Garage". The database keeps
-// the plain form ("Start smaller: Front, Garage"); this is for reading.
+// The option the way people say it. Since round 9 a booking names one of
+// Keenan's options ("Main floor"), which reads as it is. A link booked
+// before then named the runs: "Recommended package", "Garage only",
+// "Front and Garage", "Front, Front upper and Garage" (the database kept
+// the plain form, "Start smaller: Front, Garage"); this is for reading.
 export function choiceLabel(option: string): string {
-  if (option === "Recommended package") return option;
+  if (option === "Recommended package" || !/^Start smaller:/.test(option)) return option;
   const names = option
     .replace(/^Start smaller:\s*/, "")
     .split(/,\s*/)
@@ -236,6 +503,17 @@ export function choiceLabel(option: string): string {
 // The same inside a sentence: "the Recommended package", or the parts.
 export function choiceInSentence(option: string): string {
   return option === "Recommended package" ? "the Recommended package" : choiceLabel(option);
+}
+
+// The customer's own words for it (2026-11-04): the page calls everything
+// they were quoted "the full quote"; "Recommended package" stays the name
+// the database and Keenan's card use.
+export function customerChoice(option: string): string {
+  return option === "Recommended package" ? "The full quote" : choiceLabel(option);
+}
+
+export function customerChoiceInSentence(option: string): string {
+  return option === "Recommended package" ? "the full quote" : choiceLabel(option);
 }
 
 // "64 ft, upper level"
@@ -262,8 +540,8 @@ export function quoteLinkMessage({
   phone: string;
 }): string {
   const hello = firstName.trim() ? `Hi ${firstName.trim()}, here's your Vesper quote:` : "Here's your Vesper quote:";
-  const good = validUntil ? `It's good until ${formatLongDay(validUntil)}. ` : "";
-  return `${hello}\n${link}\n\n${good}When you're ready, tap Book my install, or call or text me with any questions.\n\nKeenan, Vesper Lighting\n${phone}`;
+  const held = validUntil ? `Your price is held until ${formatLongDay(validUntil)}. ` : "";
+  return `${hello}\n${link}\n\n${held}When you're ready, tap Book my install, or call or text me with any questions.\n\nKeenan, Vesper Lighting\n${phone}`;
 }
 
 // tel: and sms: want the digits; Canadian numbers get the +1.
@@ -273,5 +551,12 @@ export function phoneHref(phone: string, scheme: "tel" | "sms"): string {
   return `${scheme}:${full}`;
 }
 
-// The breakdown's money, as the page shows it: "-$150" for discounts.
-export const lineAmount = (amount: number) => formatMoney(amount);
+// A text to Vesper that starts with a line they can keep or delete
+// (2026-11-04): Keenan can place it whoever sends it. "?&body=" opens with
+// the words on both iPhone and Android.
+export function smsWithBody(phone: string, body: string): string {
+  return `${phoneHref(phone, "sms")}?&body=${encodeURIComponent(body)}`;
+}
+
+// The breakdown's money, as the page shows it: a true minus for discounts.
+export const lineAmount = (amount: number) => (amount < 0 ? `\u2212${formatMoney(-amount)}` : formatMoney(amount));

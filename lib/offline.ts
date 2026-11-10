@@ -20,6 +20,11 @@ export function imageCacheKey(url: string): string {
 // leads to tonight's saved meetings. Must match MEETINGS_PAGE in sw.js.
 export const MEETINGS_PAGE = "/app/meetings";
 
+// The rehearsal view (Settings, round 7) is never kept for no signal: its
+// example shots live on other sites and must never reach a meeting. Must
+// match REHEARSAL_PAGE in sw.js, whose rules skip it.
+export const REHEARSAL_PAGE = "/app/admin/settings/rehearsal";
+
 export function meetingPageUrl(origin: string, leadId: string): string {
   return `${origin}/meeting/${leadId}`;
 }

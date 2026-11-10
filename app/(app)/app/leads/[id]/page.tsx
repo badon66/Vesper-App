@@ -1,4 +1,4 @@
-import { Check, ChevronLeft } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -18,7 +18,9 @@ import { BookLeadButton, OpenBookingSheet } from "@/components/booking/book-butt
 import { MockupCard } from "@/components/meeting/mockup-card";
 import { QuoteCard, type QuoteCardProps } from "@/components/quote-link/quote-card";
 import { QuoteOutcome } from "@/components/quotes/quote-outcome";
+import { QuoteEditorCard } from "@/components/quotes/quote-editor/quote-editor-sheet";
 import { ScrollToHash } from "@/components/scroll-to-hash";
+import { ToBeCompleted } from "@/components/to-finish/to-be-completed";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth/profile";
@@ -26,7 +28,6 @@ import { leadAnswerList, type PhotoSlot } from "@/lib/leads/door";
 import { completenessLabel, NOTE_KEYS, NOTE_LABELS } from "@/lib/leads/questions";
 import { lostReasons, namesById } from "@/lib/leads/queries";
 import { formatMeetingTime, isLive, positionSourceText, sentence, timePhrase } from "@/lib/schedule/meetings";
-import { leadReadiness, READINESS_NAMES, readinessNow } from "@/lib/schedule/readiness";
 import { meetingsForLead } from "@/lib/schedule/queries";
 import {
   HOT_BUTTONS_LABEL,
@@ -59,12 +60,15 @@ import { maySeeContact, NO_CONTACT } from "@/lib/leads/contact-rules";
 import { contactFor } from "@/lib/leads/contacts";
 import { NO_NOTES, notesFor } from "@/lib/leads/notes";
 import { LEAD_FIELDS } from "@/lib/leads/fields";
+import { guidedPhotoCount, toFinish } from "@/lib/leads/to-finish";
 import { calgaryToday, formatDate, formatDateTime, requestTime } from "@/lib/time";
 import { screenTotal, totalFeet } from "@/lib/pricing";
 import { quoteBaseUrl, requestOrigin } from "@/lib/quote-link/server";
 import { loadQuoteOutcome } from "./quote-outcome-data";
+import { loadQuoteEditor } from "@/lib/quotes/editor-data";
 import {
   FALLBACK_COMPANY,
+  offerChoice,
   optionName,
   parseCustomerQuote,
   priceSelection,
@@ -127,12 +131,15 @@ export default async function LeadPage({
   const timelineNotes = events.filter((event) => event.type === "note");
   // The quote and its customer link, and the quote's outcome (round 8):
   // the owner's only (View as a setter never loads them).
-  const [quoteCard, quoteOutcome] = isOwner
+  // Round 9: the quote editor's quote and prices, the same meeting mode
+  // opens (the owner's only, never under View as).
+  const [quoteCard, quoteOutcome, quoteEditor] = isOwner
     ? await Promise.all([
         loadQuoteCard(supabase, lead, outcomeSettings?.company ?? null),
         loadQuoteOutcome(supabase, lead),
+        loadQuoteEditor(supabase, lead.id),
       ])
-    : [null, null];
+    : [null, null, null];
   const meetings = meetingRows.map((meeting) => ({ ...meeting, lead }));
   const liveMeeting = meetings.find((meeting) => isLive(meeting.status));
   const canBook = canEdit && (lead.status === "new" || lead.status === "follow_up") && !liveMeeting;
@@ -205,10 +212,20 @@ export default async function LeadPage({
     choices.length === 0 && !["new", "follow_up", "meeting_booked", "lost"].includes(lead.status)
       ? `This lead is at ${STATUS_LABELS[lead.status]}. Keenan takes it from here.`
       : null;
-  // Before you book, listed on the lead (the booking sheet asks the rest).
-  const guidedPhotos = (["front", "left_corner", "right_corner"] as const).filter((slot) => slotUrls[slot]).length;
-  const readiness = canBook ? leadReadiness(lead, guidedPhotos) : [];
-  const missing = readiness.filter((item) => !item.ok).length;
+  // Book now, finish later (Keenan, 2026-11-10): what's still missing on
+  // the lead, for whoever can edit it, each item a tap from its field. The
+  // photos are done with all three guided photos, or once a booking says
+  // why they were skipped. Never the phone itself: phone_saved answers.
+  const stillToDo = canEdit
+    ? toFinish(
+        lead,
+        {
+          guided: guidedPhotoCount((photoRows ?? []).map((photo) => photo.slot)),
+          skipped: meetings.some((meeting) => meeting.photos_skipped !== null),
+        },
+        "lead",
+      )
+    : [];
 
   return (
     <div className="flex flex-col gap-5">
@@ -220,9 +237,20 @@ export default async function LeadPage({
           <ChevronLeft aria-hidden="true" className="size-4" />
           Leads
         </Link>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold">{leadName(lead)}</h1>
-          <StatusBadge status={lead.status} />
+        {/* The address sits right under the name (Keenan, 2026-11-10), the
+            neighbourhood quietly after it. A name or an address still to
+            come reads as itself, a step quieter. */}
+        <div className="flex flex-col gap-0.5">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className={lead.name_to_come ? "text-2xl font-bold text-muted-foreground" : "text-2xl font-bold"}>
+              {leadName(lead)}
+            </h1>
+            <StatusBadge status={lead.status} />
+          </div>
+          <p className="text-base text-pretty" data-testid="lead-address-top">
+            <span className={lead.address_to_come ? "text-muted-foreground" : "font-semibold"}>{lead.address_line}</span>
+            {lead.neighbourhood ? <span className="text-muted-foreground">, {lead.neighbourhood}</span> : null}
+          </p>
         </div>
         <p className="text-sm text-muted-foreground">
           Added by {lead.created_by === me.id ? "you" : owner} on {formatDate(lead.created_at)}
@@ -295,51 +323,10 @@ export default async function LeadPage({
         ) : null}
       </div>
 
-      {canBook ? (
-        <Card data-testid="before-you-book">
-          <CardHeader>
-            <CardTitle>Before you book</CardTitle>
-            <CardDescription className="text-pretty">
-              {missing === 0
-                ? "Ready to book. In the booking sheet you'll also confirm everyone who decides will be there."
-                : `${missing === 1 ? "One thing" : `${missing} things`} to sort out. You can do them in the booking sheet too.`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul className="flex flex-col gap-2" data-testid="readiness">
-              {readiness.map((item) => (
-                <li key={item.key} className="flex items-start gap-2 text-sm" data-ok={item.ok ? "yes" : "no"}>
-                  {item.ok ? (
-                    <Check role="img" aria-label="Done" className="mt-0.5 size-4 shrink-0" />
-                  ) : (
-                    <span role="img" aria-label="Missing" className="mt-0.5 size-4 shrink-0 rounded-full border-2 border-muted-foreground" />
-                  )}
-                  {item.ok ? (
-                    <span>{item.label}</span>
-                  ) : (
-                    <span className="flex flex-1 flex-wrap items-start justify-between gap-x-3">
-                      <span className="flex flex-col">
-                        <span className="font-semibold">{READINESS_NAMES[item.key]}</span>
-                        <span className="text-pretty text-muted-foreground">{readinessNow(item, lead, guidedPhotos)}</span>
-                      </span>
-                      <Link
-                        href={item.key === "photos" ? "#photos" : `/app/leads/${lead.id}/edit`}
-                        aria-label={`Fix: ${READINESS_NAMES[item.key]}`}
-                        className="inline-flex min-h-11 min-w-11 items-center justify-center font-semibold underline underline-offset-4"
-                      >
-                        Fix
-                      </Link>
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      ) : null}
+      {stillToDo.length > 0 ? <ToBeCompleted items={stillToDo} /> : null}
 
       {meetings.length > 0 ? (
-        <section id="meetings" data-testid="lead-meetings" aria-labelledby="lead-meetings-heading" className="flex scroll-mt-24 flex-col gap-3">
+        <section id="meetings" data-testid="lead-meetings" aria-labelledby="lead-meetings-heading" className="flex scroll-mt-36 flex-col gap-3">
           <h2 id="lead-meetings-heading" className="text-lg font-bold">
             Meetings
           </h2>
@@ -360,6 +347,18 @@ export default async function LeadPage({
       ) : null}
 
       {isOwner ? <MockupCard leadId={lead.id} userId={me.id} mockupUrl={slotUrls.mockup ?? null} /> : null}
+      {quoteEditor ? (
+        <QuoteEditorCard
+          leadId={lead.id}
+          leadName={leadName(lead)}
+          context={{
+            pricing: quoteEditor.pricing,
+            today: quoteEditor.today,
+            lead: { colourKind: trackColour.kind, colourText: trackColourText(trackColour) },
+          }}
+          draft={quoteEditor.draft}
+        />
+      ) : null}
       {quoteCard ? <QuoteCard {...quoteCard} /> : null}
       {quoteOutcome ? (
         <QuoteOutcome
@@ -429,18 +428,21 @@ export default async function LeadPage({
           <CardTitle>{lead.email ? "Address and email" : "Address"}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2 text-sm">
-          <p className="text-base font-semibold">{lead.address_line}</p>
+          <p className={lead.address_to_come ? "text-base text-muted-foreground" : "text-base font-semibold"}>{lead.address_line}</p>
           <p className="text-muted-foreground">
             {[lead.neighbourhood, lead.city, lead.postal_code].filter(Boolean).join(", ")}
           </p>
-          <a
-            href={mapsLink(lead)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex min-h-11 w-fit items-center font-semibold underline underline-offset-4"
-          >
-            Open in Google Maps
-          </a>
+          {/* A placeholder address has nothing to find on a map. */}
+          {lead.address_to_come && lead.lat === null ? null : (
+            <a
+              href={mapsLink(lead)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-11 w-fit items-center font-semibold underline underline-offset-4"
+            >
+              Open in Google Maps
+            </a>
+          )}
           {lead.lat === null ? (
             <p className="text-pretty text-muted-foreground">
               No map position yet.
@@ -468,7 +470,7 @@ export default async function LeadPage({
         </CardContent>
       </Card>
 
-      <Card id="find-out" className="scroll-mt-24">
+      <Card id="find-out" className="scroll-mt-36">
         <CardHeader>
           <CardTitle>Find out</CardTitle>
           <CardDescription>{completenessLabel(lead)}. Not collected doesn&apos;t count.</CardDescription>
@@ -500,7 +502,7 @@ export default async function LeadPage({
           for Keenan to read before the meeting: the setter's notes, a note
           on each answer, and the notes added on the timeline. Only the
           lead's own setter and Keenan see them. */}
-      <Card id="notes" className="scroll-mt-24" data-testid="lead-notes">
+      <Card id="notes" className="scroll-mt-36" data-testid="lead-notes">
         <CardHeader>
           <CardTitle>Notes</CardTitle>
         </CardHeader>
@@ -550,7 +552,7 @@ export default async function LeadPage({
         </CardContent>
       </Card>
 
-      <Card id="photos" className="scroll-mt-24">
+      <Card id="photos" className="scroll-mt-36">
         <CardHeader>
           <CardTitle>Photos</CardTitle>
         </CardHeader>
@@ -573,6 +575,17 @@ export default async function LeadPage({
           ) : null}
           {canEdit ? (
             <PhotoPicker userId={me.id} mode="attach" leadId={lead.id} buttonLabel="More photos" />
+          ) : null}
+          {/* Round 7: the roofline for meeting mode's light picker, traced
+              on these photos. Keenan's only, never in View as. */}
+          {isOwner ? (
+            <Link
+              href={`/app/meetings/prep/${lead.id}/roofline?from=lead`}
+              className="inline-flex min-h-11 w-fit items-center text-sm font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              data-testid="lead-roofline-link"
+            >
+              Trace the roofline for the light picker
+            </Link>
           ) : null}
         </CardContent>
       </Card>
@@ -608,7 +621,7 @@ export default async function LeadPage({
         </CardContent>
       </Card>
 
-      <Card id="track-colour" className="scroll-mt-24">
+      <Card id="track-colour" className="scroll-mt-36">
         <CardHeader>
           <CardTitle>Track colour</CardTitle>
         </CardHeader>
@@ -684,7 +697,7 @@ async function loadQuoteCard(
     supabase
       .from("quotes")
       .select(
-        "runs, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee_per_ft, min_job_total, gst_enabled, gst_rate, valid_until",
+        "runs, offers, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, min_job_total, gst_enabled, gst_rate, valid_until",
       )
       .eq("lead_id", lead.id)
       .in("status", ["draft", "presented", "accepted"])
@@ -693,7 +706,7 @@ async function loadQuoteCard(
       .maybeSingle(),
     supabase
       .from("quote_links")
-      .select("token, created_at, revoked_at, view_count, last_viewed_at, booked_at, booked_option, booked_selection")
+      .select("token, created_at, revoked_at, view_count, last_viewed_at, booked_at, booked_option, booked_selection, selection_offer, booked_offer")
       .eq("lead_id", lead.id)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -719,25 +732,46 @@ async function loadQuoteCard(
     total: screenTotal(whole.subtotal, quote.gstEnabled),
     feet: totalFeet(quote.runs),
     validUntil: quoteRow.valid_until,
-    expired: quoteRow.valid_until !== null && quoteRow.valid_until < calgaryToday(),
+    holdPassed: quoteRow.valid_until !== null && quoteRow.valid_until < calgaryToday(),
   };
   if (!linkRow) return card;
 
   const live = linkRow.revoked_at === null;
   // What they are looking at now, as the customer's page would open: the
-  // database drops a choice made before the runs changed.
-  let looking: { option: string; total: string } | null = null;
+  // database drops a choice made before the runs changed. Round 9: an
+  // option by its offer id, named and priced exactly as the customer sees
+  // it (its own runs and boxes); a link from before offers, by its runs.
+  let looking: { option: string; total: string; offer: string | null } | null = null;
   if (live) {
     const view = parseCustomerQuote((await supabase.rpc("quote_for_customer", { p_token: linkRow.token })).data);
-    if (view.state === "live" && view.selection) {
-      looking = {
-        option: optionName(quote.runs, view.selection),
-        total: screenTotal(priceSelection(quote, view.selection).subtotal, quote.gstEnabled),
-      };
+    if (view.state === "live") {
+      const choice = offerChoice(quote, view.selectionOffer);
+      if (choice) {
+        looking = { option: choice.name, total: choice.total, offer: choice.id };
+      } else if (!view.selectionOffer && view.selection) {
+        looking = {
+          option: optionName(quote.runs, view.selection),
+          total: screenTotal(priceSelection(quote, view.selection).subtotal, quote.gstEnabled),
+          offer: null,
+        };
+      }
     }
   }
+  // What they booked: the option by its id, named by the offer and priced
+  // from the stored quote; the name they booked under if that option has
+  // since gone (no total then). A link booked before offers, by its runs.
+  const bookedChoice = offerChoice(quote, linkRow.booked_offer);
   const bookedAll = linkRow.booked_option === "Recommended package";
   const bookedPositions = bookedAll ? null : (linkRow.booked_selection ?? null);
+  const bookedName = bookedChoice?.name ?? linkRow.booked_option;
+  const bookedTotal = linkRow.booked_offer
+    ? (bookedChoice?.total ?? null)
+    : bookedAll || (bookedPositions && bookedPositions.every((p) => p < quote.runs.length))
+      ? screenTotal(priceSelection(quote, bookedPositions).subtotal, quote.gstEnabled)
+      : null;
+  const sameAsBooked =
+    looking !== null &&
+    (looking.offer !== null && linkRow.booked_offer ? looking.offer === linkRow.booked_offer : looking.option === bookedName);
   card.link = {
     live,
     link: quoteLinkUrl(await quoteBaseUrl(), linkRow.token),
@@ -746,16 +780,13 @@ async function loadQuoteCard(
     revokedAt: linkRow.revoked_at,
     views: linkRow.view_count,
     lastViewedAt: linkRow.last_viewed_at,
-    looking: looking && looking.option !== linkRow.booked_option ? looking : null,
+    looking: looking && !sameAsBooked ? { option: looking.option, total: looking.total } : null,
     booked:
-      linkRow.booked_at && linkRow.booked_option
+      linkRow.booked_at && bookedName
         ? {
             at: linkRow.booked_at,
-            option: linkRow.booked_option,
-            total:
-              bookedAll || (bookedPositions && bookedPositions.every((p) => p < quote.runs.length))
-                ? screenTotal(priceSelection(quote, bookedPositions).subtotal, quote.gstEnabled)
-                : null,
+            option: bookedName,
+            total: bookedTotal,
           }
         : null,
   };

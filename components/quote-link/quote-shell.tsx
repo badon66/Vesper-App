@@ -3,16 +3,16 @@ import { Wordmark } from "@/components/brand/wordmark";
 import { phoneHref, type Company } from "@/lib/quote-link/view";
 import { cn } from "@/lib/utils";
 
-// The customer quote page's frame (2026-11-02): always white with a navy
-// header band and the Vesper name, whatever theme the phone uses, like
-// the documents. No app chrome: no tabs, no account, nothing internal.
+// The customer quote page's frame (2026-11-02; slimmed 2026-11-04): always
+// white with a slim navy band and the Vesper name, whatever theme the phone
+// uses, like the documents. It scrolls away with the page. No app chrome:
+// no tabs, no account, nothing internal.
 export function QuoteShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="quote-light min-h-dvh bg-background text-foreground selection:bg-accent selection:text-foreground">
       <header className="bg-navy pt-[env(safe-area-inset-top)] text-white">
-        <div className="mx-auto flex h-14 max-w-xl items-center justify-between gap-4 px-4">
+        <div className="mx-auto flex h-12 max-w-xl items-center px-5">
           <Wordmark className="text-lg" />
-          <span className="text-sm font-semibold text-white/80">Your quote</span>
         </div>
       </header>
       {children}
@@ -56,19 +56,31 @@ export function ContactButtons({
   );
 }
 
-// After the valid-until date, or once Keenan turns the link off: no
-// name, no prices, just the way to ask for a new one.
-export function ExpiredQuote({ company }: { company: Company }) {
+// Once Keenan turns the link off (links don’t expire, 2026-11-04): no
+// name, no prices, just the way to ask for an up-to-date quote, with Call
+// and Text in the same bar along the bottom as the quote page, in thumb
+// reach.
+export function ClosedQuote({ company }: { company: Company }) {
   return (
-    <main className="mx-auto flex max-w-xl flex-col gap-6 px-4 pt-10 pb-16" data-testid="quote-expired">
-      <div className="flex flex-col gap-3">
-        <h1 className="text-3xl font-bold text-balance">This quote has expired</h1>
-        <p className="text-lg text-pretty text-muted-foreground">
-          Call or text Keenan for a new quote.
-        </p>
-      </div>
-      <ContactButtons company={company} email={false} />
-    </main>
+    <>
+      <main className="mx-auto flex max-w-xl flex-col gap-3 px-5 pt-10 pb-32" data-testid="quote-closed">
+        <h1 className="text-3xl font-bold text-balance">This quote link is closed.</h1>
+        <p className="text-lg text-pretty text-muted-foreground">Call or text Keenan for an up&#8209;to&#8209;date quote.</p>
+        <p className="text-base text-muted-foreground tabular-nums">{company.phone}</p>
+      </main>
+      <aside aria-label="Call or text us" className="fixed inset-x-0 bottom-0 z-20 border-t bg-background pb-[env(safe-area-inset-bottom)]">
+        <div className="mx-auto flex max-w-xl gap-2 px-4 py-2.5">
+          <a href={phoneHref(company.phone, "tel")} className={contactButton}>
+            <Phone aria-hidden="true" className="size-5" />
+            Call
+          </a>
+          <a href={phoneHref(company.phone, "sms")} className={contactButton}>
+            <MessageSquare aria-hidden="true" className="size-5" />
+            Text
+          </a>
+        </div>
+      </aside>
+    </>
   );
 }
 
@@ -77,9 +89,9 @@ export function QuoteUnavailable({ company }: { company: Company }) {
   return (
     <main className="mx-auto flex max-w-xl flex-col gap-6 px-4 pt-10 pb-16" data-testid="quote-unavailable">
       <div className="flex flex-col gap-3">
-        <h1 className="text-3xl font-bold text-balance">Your quote didn&apos;t load</h1>
+        <h1 className="text-3xl font-bold text-balance">Your quote didn’t load</h1>
         <p className="text-lg text-pretty text-muted-foreground">
-          Check your signal and open the link again in a minute. If it still doesn&apos;t load, call or text Keenan.
+          Check your signal and open the link again in a minute. If it still doesn’t load, call or text Keenan.
         </p>
       </div>
       <ContactButtons company={company} email={false} />

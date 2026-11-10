@@ -248,6 +248,45 @@ export type Database = {
           },
         ]
       }
+      deck_photos: {
+        Row: {
+          caption: string | null
+          created_at: string
+          created_by: string | null
+          focus_x: number
+          focus_y: number
+          id: string
+          path: string
+          slot: string
+          sort: number
+          thumb_path: string | null
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          focus_x?: number
+          focus_y?: number
+          id?: string
+          path: string
+          slot: string
+          sort?: number
+          thumb_path?: string | null
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          focus_x?: number
+          focus_y?: number
+          id?: string
+          path?: string
+          slot?: string
+          sort?: number
+          thumb_path?: string | null
+        }
+        Relationships: []
+      }
       knock_sessions: {
         Row: {
           conversations: number
@@ -467,6 +506,7 @@ export type Database = {
       leads: {
         Row: {
           address_line: string
+          address_to_come: boolean
           answer_notes: Json
           areas_wanted: Database["public"]["Enums"]["roofline_areas"] | null
           assigned_to: string | null
@@ -498,6 +538,7 @@ export type Database = {
             | null
           lost_at: string | null
           lost_reason: string | null
+          name_to_come: boolean
           neighbourhood: string | null
           not_collected: string[]
           notes: string | null
@@ -529,6 +570,7 @@ export type Database = {
         }
         Insert: {
           address_line: string
+          address_to_come?: boolean
           answer_notes?: Json
           areas_wanted?: Database["public"]["Enums"]["roofline_areas"] | null
           assigned_to?: string | null
@@ -560,6 +602,7 @@ export type Database = {
             | null
           lost_at?: string | null
           lost_reason?: string | null
+          name_to_come?: boolean
           neighbourhood?: string | null
           not_collected?: string[]
           notes?: string | null
@@ -591,6 +634,7 @@ export type Database = {
         }
         Update: {
           address_line?: string
+          address_to_come?: boolean
           answer_notes?: Json
           areas_wanted?: Database["public"]["Enums"]["roofline_areas"] | null
           assigned_to?: string | null
@@ -622,6 +666,7 @@ export type Database = {
             | null
           lost_at?: string | null
           lost_reason?: string | null
+          name_to_come?: boolean
           neighbourhood?: string | null
           not_collected?: string[]
           notes?: string | null
@@ -896,6 +941,42 @@ export type Database = {
           },
         ]
       }
+      presentation_references: {
+        Row: {
+          created_at: string
+          id: string
+          image_url: string | null
+          page_url: string
+          rank: number
+          shot: string
+          site: string
+          slot: string
+          why: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          page_url: string
+          rank?: number
+          shot: string
+          site: string
+          slot: string
+          why: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          page_url?: string
+          rank?: number
+          shot?: string
+          site?: string
+          slot?: string
+          why?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           active: boolean
@@ -993,6 +1074,7 @@ export type Database = {
       quote_links: {
         Row: {
           booked_at: string | null
+          booked_offer: string | null
           booked_option: string | null
           booked_selection: number[] | null
           created_at: string
@@ -1006,6 +1088,7 @@ export type Database = {
           revoked_by: string | null
           selection: number[] | null
           selection_at: string | null
+          selection_offer: string | null
           selection_runs: string | null
           token: string
           updated_at: string
@@ -1013,6 +1096,7 @@ export type Database = {
         }
         Insert: {
           booked_at?: string | null
+          booked_offer?: string | null
           booked_option?: string | null
           booked_selection?: number[] | null
           created_at?: string
@@ -1026,6 +1110,7 @@ export type Database = {
           revoked_by?: string | null
           selection?: number[] | null
           selection_at?: string | null
+          selection_offer?: string | null
           selection_runs?: string | null
           token: string
           updated_at?: string
@@ -1033,6 +1118,7 @@ export type Database = {
         }
         Update: {
           booked_at?: string | null
+          booked_offer?: string | null
           booked_option?: string | null
           booked_selection?: number[] | null
           created_at?: string
@@ -1046,6 +1132,7 @@ export type Database = {
           revoked_by?: string | null
           selection?: number[] | null
           selection_at?: string | null
+          selection_offer?: string | null
           selection_runs?: string | null
           token?: string
           updated_at?: string
@@ -1121,6 +1208,8 @@ export type Database = {
         Row: {
           accepted_at: string | null
           accepted_by: string | null
+          accepted_boxes: number | null
+          accepted_offer: string | null
           accepted_runs: number[] | null
           adders: Json
           box_count: number
@@ -1141,13 +1230,17 @@ export type Database = {
           id: string
           lead_id: string
           lead_status_before: Database["public"]["Enums"]["lead_status"] | null
+          meeting_install_on: string | null
+          meeting_offer: string | null
           min_job_total: number | null
           notes: string | null
+          offers: Json
           outcome_note: string | null
           pdf_path: string | null
           presented_at: string | null
           price_per_ft: number
           runs: Json
+          rush_fee: number | null
           rush_fee_per_ft: number | null
           status: Database["public"]["Enums"]["quote_status"]
           subtotal: number
@@ -1157,11 +1250,15 @@ export type Database = {
           track_custom: boolean
           track_ral_code: string | null
           updated_at: string
+          upper_access_fee: number | null
+          upper_gable_access_fee: number | null
           valid_until: string | null
         }
         Insert: {
           accepted_at?: string | null
           accepted_by?: string | null
+          accepted_boxes?: number | null
+          accepted_offer?: string | null
           accepted_runs?: number[] | null
           adders?: Json
           box_count?: number
@@ -1182,13 +1279,17 @@ export type Database = {
           id?: string
           lead_id: string
           lead_status_before?: Database["public"]["Enums"]["lead_status"] | null
+          meeting_install_on?: string | null
+          meeting_offer?: string | null
           min_job_total?: number | null
           notes?: string | null
+          offers?: Json
           outcome_note?: string | null
           pdf_path?: string | null
           presented_at?: string | null
           price_per_ft: number
           runs?: Json
+          rush_fee?: number | null
           rush_fee_per_ft?: number | null
           status?: Database["public"]["Enums"]["quote_status"]
           subtotal?: number
@@ -1198,11 +1299,15 @@ export type Database = {
           track_custom?: boolean
           track_ral_code?: string | null
           updated_at?: string
+          upper_access_fee?: number | null
+          upper_gable_access_fee?: number | null
           valid_until?: string | null
         }
         Update: {
           accepted_at?: string | null
           accepted_by?: string | null
+          accepted_boxes?: number | null
+          accepted_offer?: string | null
           accepted_runs?: number[] | null
           adders?: Json
           box_count?: number
@@ -1223,13 +1328,17 @@ export type Database = {
           id?: string
           lead_id?: string
           lead_status_before?: Database["public"]["Enums"]["lead_status"] | null
+          meeting_install_on?: string | null
+          meeting_offer?: string | null
           min_job_total?: number | null
           notes?: string | null
+          offers?: Json
           outcome_note?: string | null
           pdf_path?: string | null
           presented_at?: string | null
           price_per_ft?: number
           runs?: Json
+          rush_fee?: number | null
           rush_fee_per_ft?: number | null
           status?: Database["public"]["Enums"]["quote_status"]
           subtotal?: number
@@ -1239,6 +1348,8 @@ export type Database = {
           track_custom?: boolean
           track_ral_code?: string | null
           updated_at?: string
+          upper_access_fee?: number | null
+          upper_gable_access_fee?: number | null
           valid_until?: string | null
         }
         Relationships: [
@@ -1315,13 +1426,60 @@ export type Database = {
         }
         Relationships: []
       }
+      roofline_traces: {
+        Row: {
+          dusk_brightness: number
+          lead_id: string
+          light_count: number
+          line_feet: Json
+          lines: Json
+          luminance: number | null
+          photo_id: string
+          photo_slot: Database["public"]["Enums"]["photo_slot"] | null
+          scale: Json
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          dusk_brightness: number
+          lead_id: string
+          light_count: number
+          line_feet?: Json
+          lines: Json
+          luminance?: number | null
+          photo_id: string
+          photo_slot?: Database["public"]["Enums"]["photo_slot"] | null
+          scale: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          dusk_brightness?: number
+          lead_id?: string
+          light_count?: number
+          line_feet?: Json
+          lines?: Json
+          luminance?: number | null
+          photo_id?: string
+          photo_slot?: Database["public"]["Enums"]["photo_slot"] | null
+          scale?: Json
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       settings: {
         Row: {
+          deck: Json
+          light_looks: Json
           confirm_text: string
           booking_cutoff_minutes: number
           booking_pay: number
           booking_window_days: number
           box_price: number
+          christmas_banner_on: boolean
+          christmas_banner_text: string
+          christmas_banner_title: string
           commission_rate: number
           company: Json
           distance_warning_km: number
@@ -1343,23 +1501,33 @@ export type Database = {
           neighbour_discount: number
           not_qualified_reasons: string[]
           presentation: Json
+          price_hold_days: number
           price_per_ft: number
+          product_points: Json
           quote_valid_days: number
           referral_credit: number
+          rush_colour_fee: number | null
           rush_colour_fee_per_ft: number | null
           service_call_fee: number | null
           step_note_after_door: string
           step_note_at_door: string
           step_note_book: string
           updated_at: string
+          upper_access_fee: number | null
+          upper_gable_access_fee: number | null
           warranty_text: string
         }
         Insert: {
+          deck?: Json
+          light_looks?: Json
           confirm_text?: string
           booking_cutoff_minutes?: number
           booking_pay?: number
           booking_window_days?: number
           box_price?: number
+          christmas_banner_on?: boolean
+          christmas_banner_text?: string
+          christmas_banner_title?: string
           commission_rate?: number
           company: Json
           distance_warning_km?: number
@@ -1381,23 +1549,33 @@ export type Database = {
           neighbour_discount?: number
           not_qualified_reasons?: string[]
           presentation: Json
+          price_hold_days?: number
           price_per_ft?: number
+          product_points?: Json
           quote_valid_days?: number
           referral_credit?: number
+          rush_colour_fee?: number | null
           rush_colour_fee_per_ft?: number | null
           service_call_fee?: number | null
           step_note_after_door?: string
           step_note_at_door?: string
           step_note_book?: string
           updated_at?: string
+          upper_access_fee?: number | null
+          upper_gable_access_fee?: number | null
           warranty_text: string
         }
         Update: {
+          deck?: Json
+          light_looks?: Json
           confirm_text?: string
           booking_cutoff_minutes?: number
           booking_pay?: number
           booking_window_days?: number
           box_price?: number
+          christmas_banner_on?: boolean
+          christmas_banner_text?: string
+          christmas_banner_title?: string
           commission_rate?: number
           company?: Json
           distance_warning_km?: number
@@ -1419,15 +1597,20 @@ export type Database = {
           neighbour_discount?: number
           not_qualified_reasons?: string[]
           presentation?: Json
+          price_hold_days?: number
           price_per_ft?: number
+          product_points?: Json
           quote_valid_days?: number
           referral_credit?: number
+          rush_colour_fee?: number | null
           rush_colour_fee_per_ft?: number | null
           service_call_fee?: number | null
           step_note_after_door?: string
           step_note_at_door?: string
           step_note_book?: string
           updated_at?: string
+          upper_access_fee?: number | null
+          upper_gable_access_fee?: number | null
           warranty_text?: string
         }
         Relationships: [
@@ -2067,6 +2250,10 @@ export type Database = {
           sealed: string
         }[]
       }
+      quote_accept_offer: {
+        Args: { p_install_on?: string; p_offer: string; p_quote: string }
+        Returns: Json
+      }
       quote_accept: {
         Args: { p_install_on?: string; p_quote: string; p_runs?: number[] }
         Returns: Json
@@ -2179,10 +2366,12 @@ export type Database = {
         Args: { p_position: number; p_run: Json }
         Returns: string
       }
+      quote_link_book_offer: { Args: { p_offer: string; p_token: string }; Returns: Json }
       quote_link_select: {
         Args: { p_positions: number[]; p_token: string }
         Returns: boolean
       }
+      quote_link_select_offer: { Args: { p_offer: string; p_token: string }; Returns: boolean }
       quote_link_visit: { Args: { p_token: string }; Returns: boolean }
       quote_mockup_signable: { Args: { p_name: string }; Returns: boolean }
       quote_undo_acceptance: {

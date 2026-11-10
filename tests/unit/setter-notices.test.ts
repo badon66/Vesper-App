@@ -198,35 +198,3 @@ describe("who gets a notice", () => {
     expect(notice.body).not.toMatch(/\b12\b/);
   });
 });
-
-// Before you book on a lead's page says what the lead says now, never the
-// needed answer as if it were given (2026-11-03).
-describe("Before you book on a lead", async () => {
-  const { leadReadiness, readinessNow, READINESS_NAMES } = await import("@/lib/schedule/readiness");
-  const lead = { phone: null, owns_home: false, wants_price: null, soffit_colour: null, lat: null, lng: null };
-  const items = leadReadiness(lead, 2);
-  const now = (key: string) => readinessNow(items.find((item) => item.key === key)!, lead, 2);
-
-  it("names each missing item and what it says now", () => {
-    expect(now("phone")).toBe("No phone number yet.");
-    expect(now("owns_home")).toBe("They said they don't own it. Booking needs Yes.");
-    expect(now("wants_price")).toBe("Not asked yet. Booking needs Yes.");
-    expect(now("photos")).toBe("2 of 3 taken. Or say why when you book.");
-    expect(READINESS_NAMES.wants_price).toBe("Wants a price");
-    expect(Object.values(READINESS_NAMES).join(" ")).not.toMatch(/: Yes/);
-  });
-
-  it("says Not collected plainly, and what booking needs instead (round 2)", () => {
-    const marked = { ...lead, owns_home: null, not_collected: ["phone", "owns_home", "both_decision_makers"] };
-    const markedItems = leadReadiness(marked, 3);
-    const said = (key: string) => readinessNow(markedItems.find((item) => item.key === key)!, marked, 3);
-    expect(said("phone")).toBe("Not collected. Booking needs a number.");
-    expect(said("owns_home")).toBe("Not collected. Booking needs Yes.");
-    expect(said("everyone_deciding_present")).toBe("Not collected. Booking needs Yes.");
-    expect(said("wants_price")).toBe("Not asked yet. Booking needs Yes.");
-    const no = { ...lead, both_decision_makers: false };
-    expect(readinessNow(leadReadiness(no, 3).find((item) => item.key === "everyone_deciding_present")!, no, 3)).toBe(
-      "They said no. Booking needs everyone who decides there.",
-    );
-  });
-});

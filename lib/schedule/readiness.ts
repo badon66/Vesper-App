@@ -1,33 +1,13 @@
-// Before you book (Keenan, 2026-10-31 and 2026-11-01). The database checks
-// all of it again when booking (booking_problems); this is the same list,
-// worked out for the screen so each missing item can be shown with a way to
-// fix it.
+// What rules a booking out (Keenan, 2026-11-10: book now, finish later). A
+// booking needs only a time and a name or an address; everything the old
+// Before you book list asked for (the phone, the door questions, the soffit
+// colour, the photos, the map position) can be finished after booking. The
+// one answer that still rules a booking out is a No on owns the home. The
+// database checks it again when booking (booking_problems); this is the same
+// check, worked out for the screen. What a lead is still missing is
+// lib/leads/to-finish.ts.
 
-export type ReadinessLead = {
-  phone: string | null;
-  // A number saved on a lead whose phone isn't shown here (2026-11-04).
-  phone_saved?: boolean | null;
-  owns_home: boolean | null;
-  wants_price: boolean | null;
-  soffit_colour: string | null;
-  lat: number | null;
-  lng: number | null;
-  // Round 2: "Everyone who decides will be there", asked at the door, and
-  // what was marked Not collected (never an answer here).
-  both_decision_makers?: boolean | null;
-  not_collected?: string[] | null;
-};
-
-export type ReadinessKey =
-  | "phone"
-  | "owns_home"
-  | "wants_price"
-  | "soffit_colour"
-  | "photos"
-  | "map_position"
-  | "everyone_deciding_present";
-
-export type ReadinessItem = { key: ReadinessKey; label: string; ok: boolean; fix: string };
+export type ReadinessLead = { owns_home: boolean | null };
 
 export const PHOTO_SKIP_OPTIONS = [
   { value: "homeowner_said_no", label: "Homeowner said no" },
@@ -35,110 +15,19 @@ export const PHOTO_SKIP_OPTIONS = [
 ] as const;
 export type PhotoSkip = (typeof PHOTO_SKIP_OPTIONS)[number]["value"];
 
-// What the lead itself needs. guidedPhotos counts the Front, Left corner and
-// Right corner photos it has.
-export function leadReadiness(lead: ReadinessLead, guidedPhotos: number): ReadinessItem[] {
-  return [
-    { key: "phone", label: "Phone number saved", ok: lead.phone !== null || lead.phone_saved === true, fix: "Add the phone number." },
-    { key: "owns_home", label: "Owns the home: Yes", ok: lead.owns_home === true, fix: "They must own the home." },
-    { key: "wants_price", label: "Wants a price: Yes", ok: lead.wants_price === true, fix: "They must want a price." },
-    {
-      key: "soffit_colour",
-      label: "Soffit colour answered",
-      ok: lead.soffit_colour !== null,
-      fix: "Answer the soffit colour. Not sure is fine.",
-    },
-    {
-      key: "photos",
-      label: "Front, Left corner and Right corner photos",
-      ok: guidedPhotos >= 3,
-      fix: "Take them, or say why they were skipped.",
-    },
-    {
-      key: "map_position",
-      label: "Map position",
-      ok: lead.lat !== null && lead.lng !== null,
-      fix: "Pick the address from the suggestions, or use where you're standing at the door.",
-    },
-    {
-      key: "everyone_deciding_present",
-      label: "Everyone who decides will be there: Yes",
-      ok: lead.both_decision_makers === true,
-      fix: "Everyone who decides on the house must be at the meeting.",
-    },
-  ];
+// The database's rule (booking_problems), with its code. Not asked yet and
+// Not collected both pass: only a No rules the booking out. The database's
+// one other code, photos_skip_note, never comes from the app, which sends
+// Other only with its note (bookingSkip).
+export function bookingProblems(lead: ReadinessLead): string[] {
+  return lead.owns_home === false ? ["owns_home"] : [];
 }
 
-export type BookingChoices = { everyone: boolean; skip: PhotoSkip | null; skipNote: string };
-
-// The same codes the database uses (booking_problems), in the same order.
-export function bookingProblems(lead: ReadinessLead, guidedPhotos: number, choices: BookingChoices): string[] {
-  // The photos and everyone-who-decides come from the booking itself.
-  const problems = leadReadiness(lead, guidedPhotos)
-    .filter((item) => !item.ok && item.key !== "photos" && item.key !== "everyone_deciding_present")
-    .map((item) => item.key as string);
-  if (guidedPhotos < 3) {
-    if (!choices.skip) problems.push("photos");
-    else if (choices.skip === "other" && choices.skipNote.trim() === "") problems.push("photos_skip_note");
-  }
-  if (!choices.everyone) problems.push("everyone_deciding_present");
-  return problems;
-}
-
-export const PROBLEM_LABELS: Record<string, string> = {
-  phone: "A phone number",
-  owns_home: "Owns the home: Yes",
-  wants_price: "Wants a price: Yes",
-  soffit_colour: "The soffit colour",
-  photos: "The Front, Left corner and Right corner photos, or a reason they were skipped",
-  photos_skip_note: "A note saying why the photos were skipped",
-  map_position: "A map position",
-  everyone_deciding_present: "Confirm everyone who decides will be at the meeting",
-};
-
-// The same list on a lead's own page (2026-11-03): an item that isn't met
-// says what the lead says now and what booking needs, never the needed
-// answer as if it were given.
-export const READINESS_NAMES: Record<ReadinessKey, string> = {
-  phone: "Phone number",
-  owns_home: "Owns the home",
-  wants_price: "Wants a price",
-  soffit_colour: "Soffit colour",
-  photos: "Front, Left corner and Right corner photos",
-  map_position: "Map position",
-  everyone_deciding_present: "Everyone who decides",
-};
-
-export function readinessNow(item: ReadinessItem, lead: ReadinessLead, guidedPhotos: number): string {
-  const notCollected = (lead.not_collected ?? []).includes(item.key === "everyone_deciding_present" ? "both_decision_makers" : item.key);
-  switch (item.key) {
-    case "phone":
-      return notCollected ? "Not collected. Booking needs a number." : "No phone number yet.";
-    case "owns_home":
-      return lead.owns_home === false
-        ? "They said they don't own it. Booking needs Yes."
-        : notCollected
-          ? "Not collected. Booking needs Yes."
-          : "Not asked yet. Booking needs Yes.";
-    case "wants_price":
-      return lead.wants_price === false
-        ? "They said not yet. Booking needs Yes."
-        : notCollected
-          ? "Not collected. Booking needs Yes."
-          : "Not asked yet. Booking needs Yes.";
-    case "everyone_deciding_present":
-      return lead.both_decision_makers === false
-        ? "They said no. Booking needs everyone who decides there."
-        : notCollected
-          ? "Not collected. Booking needs Yes."
-          : "Not asked yet. Booking needs Yes.";
-    case "soffit_colour":
-      return "Not answered yet. Not sure is fine.";
-    case "photos":
-      return `${Math.min(guidedPhotos, 3)} of 3 taken. Or say why when you book.`;
-    case "map_position":
-      return "None yet. Pick the address from the suggestions, or use where you're standing at the door.";
-    default:
-      return item.fix;
-  }
+// The photo skip a booking sends. Other needs its note, as the meetings
+// table does, so an Other with no note goes as no skip at all, and the
+// photos stay on the list of what's still to finish.
+export function bookingSkip(skip: PhotoSkip | null, note: string): { skip: PhotoSkip | null; note: string } {
+  const text = note.trim();
+  if (skip === "other" && text === "") return { skip: null, note: "" };
+  return { skip, note: skip ? text : "" };
 }

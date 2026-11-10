@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { CustomerQuoteView } from "@/components/quote-link/customer-quote";
-import { ExpiredQuote, QuoteShell, QuoteUnavailable } from "@/components/quote-link/quote-shell";
+import { ClosedQuote, QuoteShell, QuoteUnavailable } from "@/components/quote-link/quote-shell";
 import { loadCustomerQuote, type LoadedQuote } from "@/lib/quote-link/server";
 import { FALLBACK_COMPANY } from "@/lib/quote-link/view";
 
@@ -34,8 +34,8 @@ export default async function QuotePage({ params }: { params: Promise<{ token: s
     <QuoteShell>
       {view === null ? (
         <QuoteUnavailable company={FALLBACK_COMPANY} />
-      ) : view.state === "expired" ? (
-        <ExpiredQuote company={view.company} />
+      ) : view.state === "closed" ? (
+        <ClosedQuote company={view.company} />
       ) : (
         <CustomerQuoteView token={token} view={view} />
       )}

@@ -1,21 +1,34 @@
 import { describe, expect, it } from "vitest";
+import { commissionFor, commissionQuoteFromRow } from "@/lib/pay/commission";
+import { priceQuote } from "@/lib/pricing";
+import { priceSelection, quoteFromRow } from "@/lib/quote-link/view";
 import {
-  bookedStartSmaller,
+  acceptedOption,
+  acceptOptions,
+  bookedOfferId,
   currentCommission,
   installedWords,
   notInstalledWords,
+  offerCommissionWords,
   optionWords,
   pickOutcomeQuote,
   previewCommission,
+  quoteInputsFromRow,
   runsFromJson,
   standingCommission,
+  startingChoice,
+  choiceSources,
   voidWords,
+  type BookedLink,
   type CommissionRow,
+  type OfferQuoteRow,
 } from "@/lib/quotes/outcome-card";
-import { commissionLine } from "@/lib/quotes/outcome";
+import { parseOffers } from "@/lib/quotes/offers";
+import { commissionLine, type CommissionLine } from "@/lib/quotes/outcome";
 
 // Keenan's outcome card on the lead page (round 8, 2026-11-09): which quote
-// it is about, the options Accepted offers, and the commission line.
+// it is about, the offers Accepted lists (round 9, 2026-11-10), and the
+// commission line.
 
 const runs = runsFromJson([
   { name: "Front", feet: 100, level: "lower" },
@@ -62,43 +75,232 @@ describe("runs as stored", () => {
     expect(runsFromJson(null)).toEqual([]);
     expect(runsFromJson({ runs: [] })).toEqual([]);
   });
-});
 
-describe("the customer's Start smaller choice", () => {
-  const booked = (option: string, selection: number[] | null) => ({
-    booked_at: "2026-11-09T21:00:00Z",
-    booked_option: option,
-    booked_selection: selection,
-  });
-
-  it("is offered while it still matches the quote", () => {
-    expect(bookedStartSmaller(runs, booked("Start smaller: Front, Garage", [0, 1]))).toEqual([0, 1]);
-    expect(bookedStartSmaller(runs, booked("Start smaller: Garage", [1]))).toEqual([1]);
-  });
-
-  it("is not offered for the Recommended package, no booking, or a quote that moved on", () => {
-    expect(bookedStartSmaller(runs, booked("Recommended package", null))).toBeNull();
-    expect(bookedStartSmaller(runs, null)).toBeNull();
-    expect(bookedStartSmaller(runs, { booked_at: null, booked_option: null, booked_selection: null })).toBeNull();
-    // A run renamed since they booked.
-    expect(bookedStartSmaller(runs, booked("Start smaller: Garage door", [1]))).toBeNull();
-    // A run taken off since.
-    expect(bookedStartSmaller(runs, booked("Start smaller: Deck", [5]))).toBeNull();
-    // Every run is the full quote, not a smaller option.
-    expect(bookedStartSmaller(runs, booked("Start smaller: Front, Garage, Front upper", [0, 1, 2]))).toBeNull();
-    expect(bookedStartSmaller(runs, booked("Start smaller: Garage", [1, 1]))).toBeNull();
+  it("keeps a run's part when it is one of the parts, so an upper gable is priced as one", () => {
+    expect(
+      runsFromJson([
+        { name: "Peak", feet: 20, level: "upper", part: "gable" },
+        { name: "Roof", feet: 10, level: "upper", part: "roof" },
+      ]),
+    ).toEqual([
+      { name: "Peak", feet: 20, level: "upper", part: "gable" },
+      { name: "Roof", feet: 10, level: "upper" },
+    ]);
   });
 });
 
-describe("the option in words", () => {
-  it("names the full quote and a smaller option with their feet", () => {
+describe("the runs in words", () => {
+  it("names the full quote and fewer runs with how many runs and the feet, never a price", () => {
     expect(optionWords(runs, null)).toEqual({ label: "Full quote", detail: "3 runs, 200 ft" });
     expect(optionWords(runs, [0, 1, 2])).toEqual({ label: "Full quote", detail: "3 runs, 200 ft" });
-    expect(optionWords(runs, [1])).toEqual({ label: "Garage only", detail: "Start smaller, 60 ft" });
-    expect(optionWords(runs, [0, 1])).toEqual({ label: "Front and Garage", detail: "Start smaller, 160 ft" });
+    expect(optionWords(runs, [1])).toEqual({ label: "Garage only", detail: "1 run, 60 ft" });
+    expect(optionWords(runs, [0, 1])).toEqual({ label: "Front and Garage", detail: "2 runs, 160 ft" });
+    // Runs no longer on the quote read as the full quote, as round 8 did.
+    expect(optionWords(runs, [2, 5])).toEqual({ label: "Full quote", detail: "3 runs, 200 ft" });
     expect(optionWords(runsFromJson([{ name: "Front", feet: 90 }]), null)).toEqual({
       label: "Full quote",
       detail: "1 run, 90 ft",
+    });
+  });
+});
+
+// A quote with offers, priced like tests/unit/offers.test.ts: the full wrap
+// is $4,200; Lower level and Garage both rise to the $2,500 minimum, Lower
+// level with more feet; Front only has no runs yet, so it isn't listed.
+const offerQuote: OfferQuoteRow = {
+  runs: [
+    { name: "Front", feet: 60, level: "lower", part: "eave" },
+    { name: "Garage", feet: 30, level: "lower", part: "garage" },
+    { name: "Upper front", feet: 40, level: "upper", part: "eave" },
+    { name: "Upper gable", feet: 20, level: "upper", part: "gable" },
+  ],
+  offers: [
+    { id: "front", name: "Front only", runs: [] },
+    { id: "lower", name: "Lower level", runs: [0, 1] },
+    { id: "full", name: "Full wrap", runs: [0, 1, 2, 3] },
+    { id: "garage", name: "Garage", runs: [1] },
+  ],
+  box_count: 1,
+  price_per_ft: 23,
+  box_price: 500,
+  adders: [],
+  discounts: [{ label: "Neighbour discount", amount: 150 }],
+  colour_timing: null,
+  rush_fee: 350,
+  upper_access_fee: 200,
+  upper_gable_access_fee: 400,
+  min_job_total: 2500,
+  gst_enabled: false,
+  gst_rate: 0.05,
+};
+
+const bookedOn = (over: Partial<BookedLink>): BookedLink => ({
+  booked_at: "2026-11-10T21:00:00Z",
+  booked_option: null,
+  booked_offer: null,
+  booked_selection: null,
+  ...over,
+});
+
+describe("the quote's own prices", () => {
+  it("are read the way the customer's link reads them, so the sheet and the link agree", () => {
+    for (const row of [
+      offerQuote,
+      { ...offerQuote, colour_timing: "rush", gst_enabled: true },
+      {
+        ...offerQuote,
+        adders: [
+          { label: "Extra outlet", amount: 150 },
+          { label: "Ladder work", amount: 250, upper_only: true },
+        ],
+        discounts: [{ label: "Referral credit", amount: "75" }],
+        min_job_total: null,
+        upper_access_fee: null,
+        upper_gable_access_fee: null,
+      },
+    ] as OfferQuoteRow[]) {
+      const link = quoteFromRow(row)!;
+      expect(priceQuote(quoteInputsFromRow(row))).toEqual(priceSelection(link, null));
+    }
+  });
+
+  it("charge the rush colour fee only on a rush quote, and keep an upper-only line upper-only", () => {
+    expect(quoteInputsFromRow(offerQuote).rushFee).toBeNull();
+    expect(quoteInputsFromRow({ ...offerQuote, colour_timing: "rush" }).rushFee).toBe(350);
+    expect(quoteInputsFromRow({ ...offerQuote, colour_timing: "someday" }).colourTiming).toBeNull();
+    expect(
+      quoteInputsFromRow({ ...offerQuote, adders: [{ label: "Ladder work", amount: 250, upper_only: true }, "junk"] }).adders,
+    ).toEqual([{ label: "Ladder work", amount: 250, upperOnly: true }]);
+  });
+});
+
+describe("the offer they booked on their link", () => {
+  const offers = parseOffers(offerQuote.offers, 4);
+
+  it("is the one they booked by its id while it is on the quote with runs", () => {
+    expect(bookedOfferId(offers, 4, bookedOn({ booked_offer: "lower", booked_option: "Lower level", booked_selection: [0, 1] }))).toBe(
+      "lower",
+    );
+  });
+
+  it("is otherwise the offer with exactly the runs they booked", () => {
+    // An offer taken off since: its runs still name one.
+    expect(bookedOfferId(offers, 4, bookedOn({ booked_offer: "gone", booked_selection: [1] }))).toBe("garage");
+    // A booking from before offers: every run is the full wrap.
+    expect(bookedOfferId(offers, 4, bookedOn({ booked_option: "Recommended package", booked_selection: [0, 1, 2, 3] }))).toBe("full");
+    expect(bookedOfferId(parseOffers([], 4), 4, bookedOn({ booked_selection: [0, 1, 2, 3] }))).toBe("full");
+    expect(bookedOfferId(offers, 4, bookedOn({ booked_selection: [1, 0] }))).toBe("lower");
+  });
+
+  it("is none with no booking, runs from an older quote, or runs no offer has", () => {
+    expect(bookedOfferId(offers, 4, null)).toBeNull();
+    expect(bookedOfferId(offers, 4, bookedOn({ booked_at: null, booked_offer: "lower", booked_selection: [0, 1] }))).toBeNull();
+    expect(bookedOfferId(offers, 4, bookedOn({ booked_selection: [1, 7] }))).toBeNull();
+    expect(bookedOfferId(offers, 4, bookedOn({ booked_selection: [1, 1] }))).toBeNull();
+    expect(bookedOfferId(offers, 4, bookedOn({ booked_selection: [0, 2] }))).toBeNull();
+    // An offer with no runs yet can't have been booked.
+    expect(bookedOfferId(offers, 4, bookedOn({ booked_offer: "front", booked_selection: [] }))).toBeNull();
+  });
+});
+
+describe("the offers Accepted lists", () => {
+  const preview = (positions: number[] | null, boxes: number | null) =>
+    previewCommission({ receiver: zane, existing: null, quote: offerQuote, positions, boxes, rate: 0.05 });
+  const earningOf = (amount: number): CommissionLine => ({
+    kind: "earning",
+    amount,
+    setterName: "Zane",
+    status: "pending",
+    payableAt: null,
+    paidAt: null,
+  });
+
+  it("are biggest first, each with what it covers, its price and the commission on its own lights and boxes", () => {
+    const options = acceptOptions({ quote: offerQuote, link: null, commission: preview });
+    expect(options).toEqual([
+      // 150 ft x $23 + $500 - $150 = $3,800; 5% is $190. Upper access and
+      // the minimum never count.
+      { id: "full", positions: null, boxes: null, label: "Full wrap", detail: "Front, Garage, Upper front and Upper gable, 150 ft", total: "$4,200", booked: false, meeting: false, commission: earningOf(190) },
+      // 90 ft x $23 + $500 - $150 = $2,420; 5% is $121.
+      { id: "lower", positions: [0, 1], boxes: null, label: "Lower level", detail: "Front and Garage, 90 ft", total: "$2,500", booked: false, meeting: false, commission: earningOf(121) },
+      // 30 ft x $23 + $500 - $150 = $1,040; 5% is $52.
+      { id: "garage", positions: [1], boxes: null, label: "Garage", detail: "Garage, 30 ft", total: "$2,500", booked: false, meeting: false, commission: earningOf(52) },
+    ]);
+    // The database's way: the same runs give the same amount.
+    expect(commissionFor(commissionQuoteFromRow(offerQuote, [0, 1]), 0.05).amount).toBe(121);
+    expect(startingChoice(options)).toBe(0);
+  });
+
+  it("count an offer's own control boxes, in its price and its commission", () => {
+    const options = acceptOptions({
+      quote: { ...offerQuote, offers: [{ id: "full", name: "Full wrap", runs: [0, 1, 2, 3], boxes: 2 }] },
+      link: null,
+      commission: preview,
+    });
+    // 150 ft x $23 + 2 x $500 + $400 - $150 = $4,700; the commission's
+    // base is 150 ft x $23 + 2 x $500 - $150 = $4,300; 5% is $215.
+    expect(options).toMatchObject([{ id: "full", positions: null, boxes: 2, total: "$4,700", commission: earningOf(215) }]);
+    expect(commissionFor(commissionQuoteFromRow({ ...offerQuote, box_count: 2 }, null), 0.05).amount).toBe(215);
+  });
+
+  it("mark the one they booked and start on it", () => {
+    const options = acceptOptions({
+      quote: offerQuote,
+      link: bookedOn({ booked_offer: "lower", booked_option: "Lower level", booked_selection: [0, 1] }),
+      commission: preview,
+    });
+    expect(options.map((option) => [option.id, option.booked])).toEqual([
+      ["full", false],
+      ["lower", true],
+      ["garage", false],
+    ]);
+    expect(startingChoice(options)).toBe(1);
+  });
+
+  it("show the total with + GST while GST is on, and no commission on Keenan's own lead", () => {
+    const options = acceptOptions({
+      quote: { ...offerQuote, gst_enabled: true },
+      link: null,
+      commission: (positions, boxes) =>
+        previewCommission({ receiver: { name: "Keenan", role: "owner" }, existing: null, quote: offerQuote, positions, boxes, rate: 0.05 }),
+    });
+    expect(options[0].total).toBe("$4,200 + GST");
+    expect(options.map((option) => offerCommissionWords(option.commission))).toEqual(["No commission", "No commission", "No commission"]);
+    expect(offerCommissionWords(earningOf(121))).toBe("$121 commission");
+  });
+
+  it("read a quote made before offers as one full wrap", () => {
+    const options = acceptOptions({ quote: { ...offerQuote, offers: [] }, link: null, commission: preview });
+    expect(options).toEqual([
+      { id: "full", positions: null, boxes: null, label: "Full wrap", detail: "Front, Garage, Upper front and Upper gable, 150 ft", total: "$4,200", booked: false, meeting: false, commission: earningOf(190) },
+    ]);
+  });
+
+  it("offer the full quote while no offer covers a run yet, so Accepted is never stuck", () => {
+    const options = acceptOptions({
+      quote: { ...offerQuote, offers: [{ id: "front", name: "Front only", runs: [] }] },
+      link: null,
+      commission: preview,
+    });
+    expect(options).toEqual([
+      { id: "full", positions: null, boxes: null, label: "Full quote", detail: "4 runs, 150 ft", total: "$4,200", booked: false, meeting: false, commission: earningOf(190) },
+    ]);
+  });
+});
+
+describe("what they said yes to, on the card", () => {
+  it("is the offer whose runs they accepted, by its name", () => {
+    expect(acceptedOption(offerQuote, [0, 1])).toEqual({ label: "Lower level", detail: "Front and Garage, 90 ft" });
+    expect(acceptedOption(offerQuote, null)).toEqual({ label: "Full wrap", detail: "Front, Garage, Upper front and Upper gable, 150 ft" });
+    expect(acceptedOption({ ...offerQuote, offers: [] }, null)).toEqual({ label: "Full wrap", detail: "Front, Garage, Upper front and Upper gable, 150 ft" });
+  });
+
+  it("falls back to the runs in words when no offer matches", () => {
+    expect(acceptedOption(offerQuote, [0, 2])).toEqual({ label: "Front and Upper front", detail: "2 runs, 100 ft" });
+    expect(acceptedOption(offerQuote, [2])).toEqual({ label: "Upper front only", detail: "1 run, 40 ft" });
+    expect(acceptedOption({ ...offerQuote, offers: [{ id: "lower", name: "Lower level", runs: [0, 1] }] }, null)).toEqual({
+      label: "Full quote",
+      detail: "4 runs, 150 ft",
     });
   });
 });
@@ -144,7 +346,7 @@ describe("the Accepted sheet's preview", () => {
     expect(commissionLine(line)).toBe("$201.50 to Zane, coming once installed.");
   });
 
-  it("counts only the runs of a Start smaller option", () => {
+  it("counts only the runs of a smaller offer", () => {
     // 60 ft x $23 + $500 - $150 = $1,730; 5% is $86.50.
     const line = previewCommission({ ...base, receiver: zane, positions: [1] });
     expect(line.kind === "earning" && line.amount).toBe(86.5);
@@ -217,5 +419,26 @@ describe("what a tap does to the commission", () => {
     );
     expect(notInstalledWords(line({ status: "void" }))).toBeNull();
     expect(notInstalledWords({ kind: "none", reason: "owner_lead" })).toBeNull();
+  });
+});
+
+describe("where Accepted starts", () => {
+  const option = (label: string, booked: boolean, meeting: boolean) => ({ label, booked, meeting });
+  it("starts on the option chosen at the table, else the one booked on the link, else the biggest", () => {
+    expect(startingChoice([option("Full wrap", false, false), option("Main floor", true, false), option("Front only", false, true)])).toBe(2);
+    expect(startingChoice([option("Full wrap", false, false), option("Main floor", true, false)])).toBe(1);
+    expect(startingChoice([option("Full wrap", false, false), option("Main floor", false, false)])).toBe(0);
+  });
+
+  it("says where the choice came from, both when they differ", () => {
+    expect(choiceSources([option("Full wrap", false, false), option("Main floor", true, true)])).toEqual([
+      "Chosen at the meeting: Main floor",
+      "Booked on their link: Main floor",
+    ]);
+    expect(choiceSources([option("Full wrap", true, false), option("Main floor", false, true)])).toEqual([
+      "Chosen at the meeting: Main floor",
+      "Booked on their link: Full wrap",
+    ]);
+    expect(choiceSources([option("Full wrap", false, false)])).toEqual([]);
   });
 });

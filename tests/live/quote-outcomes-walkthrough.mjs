@@ -3,7 +3,14 @@
 // Qualified meeting and a quote; the service role stands in for Keenan's
 // taps (Accepted with a planned install day, then Installed, then Mark
 // paid), and for a quote Declined for price and a sale Accepted and then
-// Cancelled for timing. After each step the setter's Home ("How mine went")
+// Cancelled for timing. Round 9: the sale's quote has two options, Full
+// wrap and Main floor; the customer chose Main floor at the meeting and
+// booked Full wrap on their link, so Keenan's Accepted sheet (opened and
+// looked at only) asks "Which option did they say yes to?", lists both
+// biggest first with their totals and commission, says where each choice
+// came from, and starts on the meeting's choice with the meeting's install
+// day; accepting (quote_accept_offer, the service role standing in) pays
+// commission on that option's own lights and boxes. After each step the setter's Home ("How mine went")
 // and My pay show the commission where it stands, in Keenan's words, and
 // the lead cards read Sold, Installed, "Lost: price" and "Lost: cancelled,
 // timing". A second throwaway setter sees the outcomes on the team's leads
@@ -16,6 +23,7 @@
 // are named "TEST LEAD (automated)" and everything made here is removed at
 // the end, earnings before quotes.
 import { createClient } from "@supabase/supabase-js";
+import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { chromium } from "playwright";
 import { openOwnerSession } from "./owner-session.mjs";
@@ -314,11 +322,14 @@ try {
   const { data: afterMeeting } = await admin.from("leads").select("status").eq("id", soldLead).single();
   if (afterMeeting?.status !== "met") await admin.from("leads").update({ status: "met" }).eq("id", soldLead);
 
-  // The sale's quote: 150 ft at $23 and one $500 control box, less a $150
-  // neighbour discount, is $3,800 of lights and boxes. The extra work lines,
-  // the rush colour, upper access and a minimum above the total are all on
-  // it too, and all left out of the commission.
-  const SOLD_BASE_CENTS = (60 + 40 + 50) * 2300 + 50000 - 15000;
+  // The sale's quote: two options, Full wrap (all three runs, 150 ft) and
+  // Main floor (Front and Garage, 100 ft). They say yes to Main floor: 100
+  // ft at $23 and one $500 control box, less a $150 neighbour discount, is
+  // $2,650 of lights and boxes. The extra work lines, the rush colour, upper
+  // access and a minimum above the total are all on it too, and all left
+  // out of the commission.
+  const SOLD_BASE_CENTS = (60 + 40) * 2300 + 50000 - 15000;
+  const FULL_BASE_CENTS = (60 + 40 + 50) * 2300 + 50000 - 15000;
   const soldCommission = commissionOn(SOLD_BASE_CENTS);
   const soldQuote = await insertQuote(soldLead, a.id, {
     runs: [
@@ -337,7 +348,30 @@ try {
     min_job_total: 9000,
     subtotal: 9000,
     total: 9000,
+    offers: [
+      { id: "main", name: "Main floor", runs: [0, 1] },
+      { id: "full", name: "Full wrap", runs: [0, 1, 2] },
+    ],
+    // Chosen at the table, with a day: what the Accepted sheet starts from.
+    meeting_offer: "main",
+    meeting_install_on: installOn,
   });
+  // The customer booked Full wrap on their link (a link made by the
+  // throwaway setter, booked here by the service role).
+  const bookedLink = await admin
+    .from("quote_links")
+    .insert({
+      lead_id: soldLead,
+      token: randomBytes(18).toString("base64url"),
+      created_by: a.id,
+      booked_at: new Date().toISOString(),
+      booked_option: "Full wrap",
+      booked_offer: "full",
+      booked_selection: [0, 1, 2],
+    })
+    .select("id")
+    .single();
+  if (bookedLink.error) note(`the booked link could not be staged (${bookedLink.error.message}), so the sheet's "Booked on their link" line is not reached`);
   // The rush colour and upper access fees as the quote-link rework stores
   // them, where this database has those columns.
   const fees = await admin.from("quotes").update({ rush_fee: 350, upper_access_fee: 200 }).eq("id", soldQuote);
@@ -385,16 +419,65 @@ try {
         (await statusMenu(op).locator('input[value="lost"]').count()) === 1,
     );
     await card.screenshot({ path: `${out}/outcome-owner-open-1180.png` }).catch(() => {});
-    check("looking at the card wrote nothing", (await testFootprint(leadIds)) === looked);
+
+    // The Accepted sheet, opened and looked at only (never Mark accepted).
+    await op.getByTestId("outcome-accept").click();
+    const sheet = op.getByTestId("outcome-accept-sheet");
+    await sheet.waitFor({ timeout: 10000 }).catch(() => {});
+    const optionRows = await sheet.getByTestId("outcome-option").evaluateAll((rows) =>
+      rows.map((row) => ({
+        offer: row.getAttribute("data-offer"),
+        booked: row.getAttribute("data-booked"),
+        meeting: row.getAttribute("data-meeting"),
+        checked: Boolean(row.querySelector("input")?.checked),
+        total: (row.querySelector('[data-testid="outcome-option-total"]')?.textContent ?? "").trim(),
+        commission: (row.querySelector('[data-testid="outcome-option-commission"]')?.textContent ?? "").trim(),
+      })),
+    );
+    const sources = (await sheet.getByTestId("outcome-choice-source").allInnerTexts()).map(squash);
+    const sheetText = await textOf(sheet);
+    check(
+      "the Accepted sheet asks \"Which option did they say yes to?\" and lists the quote's options biggest first, each with its total and the commission it would make",
+      sheetText.includes("Which option did they say yes to?") &&
+        JSON.stringify(optionRows.map((row) => row.offer)) === JSON.stringify(["full", "main"]) &&
+        optionRows.every((row) => /^\$[\d,]+/.test(row.total)) &&
+        optionRows[0]?.commission === `${money(commissionOn(FULL_BASE_CENTS))} commission` &&
+        optionRows[1]?.commission === `${money(commissionOn(SOLD_BASE_CENTS))} commission`,
+      JSON.stringify(optionRows),
+    );
+    check(
+      "it says where each choice came from, and starts on the meeting's choice (Main floor) over the one booked on the link (Full wrap)",
+      JSON.stringify(sources) === JSON.stringify(["Chosen at the meeting: Main floor", "Booked on their link: Full wrap"]) &&
+        optionRows.find((row) => row.meeting === "yes")?.offer === "main" &&
+        optionRows.find((row) => row.booked === "yes")?.offer === "full" &&
+        optionRows.find((row) => row.checked)?.offer === "main",
+      `${sources.join(" | ")} ${JSON.stringify(optionRows.map((row) => [row.offer, row.checked]))}`,
+    );
+    check(
+      "the install day starts from the day picked at the table, and the commission line names the chosen option's amount",
+      (await op.getByTestId("outcome-planned-on").inputValue()) === installOn &&
+        (await textOf(op.getByTestId("outcome-accept-commission"))).includes(money(commissionOn(SOLD_BASE_CENTS))),
+      `${await op.getByTestId("outcome-planned-on").inputValue()} | ${await textOf(op.getByTestId("outcome-accept-commission"))}`,
+    );
+    await sheet.screenshot({ path: `${out}/outcome-owner-accept-sheet-1180.png` }).catch(() => {});
+    await sheet.getByRole("button", { name: "Back" }).click();
+    await sheet.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+    check("looking at the card and the Accepted sheet wrote nothing", (await testFootprint(leadIds)) === looked);
   }
 
   // ---------------------------------------------------------------- Keenan's taps, the service role standing in
-  const accepted = await admin.rpc("quote_accept", { p_quote: soldQuote, p_runs: null, p_install_on: installOn });
+  const accepted = await admin.rpc("quote_accept_offer", { p_quote: soldQuote, p_offer: "main", p_install_on: installOn });
   if (accepted.error) throw new Error(`accept: ${accepted.error.message}`);
   check(
-    "Accepted makes the setter's commission at the rate of the lights and boxes after discounts, and says so to Keenan's screen",
+    "Accepted on Main floor makes the setter's commission at the rate of that option's lights and boxes after discounts, and says so to Keenan's screen",
     accepted.data?.commission?.profile_id === a.id && Number(accepted.data?.commission?.amount) === soldCommission && accepted.data?.reason === null,
     JSON.stringify(accepted.data),
+  );
+  const { data: soldQuoteAfter } = await admin.from("quotes").select("accepted_offer, accepted_runs, accepted_boxes").eq("id", soldQuote).single();
+  check(
+    "the quote records the option said yes to, its runs and its control boxes",
+    soldQuoteAfter?.accepted_offer === "main" && JSON.stringify(soldQuoteAfter?.accepted_runs) === "[0,1]" && soldQuoteAfter?.accepted_boxes === 1,
+    JSON.stringify(soldQuoteAfter),
   );
   const { data: soldEarnings } = await admin
     .from("earnings")
@@ -403,7 +486,7 @@ try {
     .eq("type", "commission");
   const commissionRow = soldEarnings?.[0] ?? null;
   check(
-    "one pending commission, to the lead's setter, coming once installed: extra work, rush colour, upper access and the minimum left out",
+    "one pending commission, to the lead's setter, coming once installed, on Main floor's lights and box: extra work, rush colour, upper access and the minimum left out",
     soldEarnings?.length === 1 &&
       commissionRow.profile_id === a.id &&
       commissionRow.quote_id === soldQuote &&
@@ -420,7 +503,8 @@ try {
 
   const declined = await admin.rpc("quote_decline", { p_quote: declinedQuote, p_reason: "price", p_note: null });
   if (declined.error) throw new Error(`decline: ${declined.error.message}`);
-  const acceptedToCancel = await admin.rpc("quote_accept", { p_quote: cancelledQuote, p_runs: null, p_install_on: null });
+  // A quote saved with no options is one Full wrap ("full") of every run.
+  const acceptedToCancel = await admin.rpc("quote_accept_offer", { p_quote: cancelledQuote, p_offer: "full", p_install_on: null });
   if (acceptedToCancel.error) throw new Error(`accept the sale to cancel: ${acceptedToCancel.error.message}`);
   const cancelled = await admin.rpc("quote_cancel", { p_quote: cancelledQuote, p_reason: "timing", p_note: null });
   if (cancelled.error) throw new Error(`cancel: ${cancelled.error.message}`);
@@ -583,6 +667,11 @@ try {
         (await textOf(op.getByTestId("quote-outcome-install-on"))).includes(formatDay(installOn)) &&
         (await textOf(op.getByTestId("quote-outcome-commission"))) === `${money(soldCommission)} to ${a.name}, coming once installed.`,
       `${await textOf(op.getByTestId("quote-outcome-title"))} | ${await textOf(op.getByTestId("quote-outcome-commission"))}`,
+    );
+    check(
+      "and the option they said yes to, by name, with what it covers",
+      (await textOf(op.getByTestId("quote-outcome-option"))).startsWith("Main floor") && (await textOf(op.getByTestId("quote-outcome-option"))).includes("100 ft"),
+      await textOf(op.getByTestId("quote-outcome-option")),
     );
     check(
       "its buttons: Installed, Cancelled and Undo acceptance, and no Accepted or Declined",
