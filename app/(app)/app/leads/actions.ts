@@ -246,6 +246,24 @@ export async function changeLeadStatus(
       error: "That status isn't yours to set. Booking sets Meeting booked, and Keenan sets the rest.",
     };
   }
+  // Round 8 (2026-11-10): a Sold or Installed lead with an accepted quote
+  // takes its status from the quote's outcome card, so the setter's
+  // commission always follows the quote. The page hides the menu; this
+  // catches a page opened before the sale.
+  if (lead.status === "sold" || lead.status === "installed") {
+    const { data: accepted } = await supabase
+      .from("quotes")
+      .select("id")
+      .eq("lead_id", id)
+      .eq("status", "accepted")
+      .limit(1)
+      .maybeSingle();
+    if (accepted) {
+      return {
+        error: "This lead's status now comes from its quote. Refresh the page and use the Outcome card.",
+      };
+    }
+  }
 
   let lostReason: string | null = null;
   if (status === "lost") {

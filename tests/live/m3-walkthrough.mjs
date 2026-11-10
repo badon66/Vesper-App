@@ -1375,7 +1375,8 @@ try {
   await pageA.waitForURL("**/app/pay", { timeout: 20000 });
   await settle(pageA);
   const totals = (await pageA.getByTestId("pay-totals").innerText()).replace(/\s+/g, " ");
-  check("My pay shows owed now, pending install and paid", totals.includes(`Owed now $${fee}`) && totals.includes("Pending install $0.00") && totals.includes("Paid, all time $0.00"), totals);
+  // Round 8: "Pending install" is now "Coming once installed" (commission).
+  check("My pay shows owed now, coming once installed and paid", totals.includes(`Owed now $${fee}`) && totals.includes("Coming once installed $0.00") && totals.includes("Paid, all time $0.00"), totals);
   const lines = (await pageA.getByTestId("pay-lines").innerText()).replace(/\s+/g, " ");
   check("each booking shows how it went and its fee", lines.includes(`Qualified $${fee} owed`) && lines.includes("Cancelled No fee") && lines.includes("Upcoming Fee if Qualified"), lines.slice(0, 200));
   check("My pay never shows anyone else's bookings", !lines.includes("9 Far Test Way"));

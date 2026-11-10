@@ -141,7 +141,7 @@ export function SettingsForm({
           <Field name="booking_pay" label="Booking pay per qualified booking ($)" errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.booking_pay} />}
           </Field>
-          <Field name="commission_rate_percent" label="Commission (% of the accepted quote before GST)" errors={errors}>
+          <Field name="commission_rate_percent" label="Commission (% of the lights and control boxes after discounts)" errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" max="99.99" defaultValue={defaults.commission_rate_percent} />}
           </Field>
         </CardContent>

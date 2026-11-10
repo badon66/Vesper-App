@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeEvent } from "@/lib/leads/timeline";
+import { describeEvent, type TimelineEvent } from "@/lib/leads/timeline";
 
 const base = { from_status: null, to_status: null, payload: null };
 
@@ -107,6 +107,13 @@ describe("describeEvent", () => {
     ).toBe("Changed the second soffit colour code. Updated Find out: soffit colour and second soffit colour.");
   });
 
+  // Round 8: the planned install day by name, never the day itself.
+  it("names the planned install day", () => {
+    expect(describeEvent({ ...base, type: "edited", payload: { fields: ["install_on"] } })).toBe(
+      "Changed the planned install day.",
+    );
+  });
+
   it("names the colour book photos", () => {
     expect(describeEvent({ ...base, type: "photo_added", payload: { photo_id: "p", slot: "soffit_book" } })).toBe(
       "Added the colour book photo.",
@@ -117,7 +124,78 @@ describe("describeEvent", () => {
   });
 
   it("copes with event types from later milestones", () => {
-    expect(describeEvent({ ...base, type: "quote_accepted" })).toBe("Quote accepted.");
+    expect(describeEvent({ ...base, type: "quote_presented" })).toBe("Quote presented.");
+  });
+
+  // A quote's outcome (round 8, Keenan, 2026-11-09). Setters read these, so
+  // only fixed-list facts are told: never an amount, never a typed note.
+  // Round 8's two new event types are named as text so this compiles
+  // whether or not the generated types have them yet.
+  const cancelled = "quote_cancelled" as TimelineEvent["type"];
+  const undone = "quote_acceptance_undone" as TimelineEvent["type"];
+
+  it("tells an acceptance, with the planned install day when there is one", () => {
+    expect(describeEvent({ ...base, type: "quote_accepted", payload: { quote_id: "q", install_on: null } })).toBe(
+      "Marked the quote accepted.",
+    );
+    expect(describeEvent({ ...base, type: "quote_accepted", payload: { quote_id: "q", install_on: "2026-11-20" } })).toBe(
+      "Marked the quote accepted. Install planned for Fri, Nov 20.",
+    );
+    expect(describeEvent({ ...base, type: "quote_accepted" })).toBe("Marked the quote accepted.");
+  });
+
+  it("tells a decline with its reason from the list", () => {
+    expect(describeEvent({ ...base, type: "quote_declined", payload: { quote_id: "q", reason: "price" } })).toBe(
+      "Marked the quote declined: price.",
+    );
+    expect(describeEvent({ ...base, type: "quote_declined", payload: { quote_id: "q", reason: "partner said no" } })).toBe(
+      "Marked the quote declined: partner said no.",
+    );
+    expect(describeEvent({ ...base, type: "quote_declined" })).toBe("Marked the quote declined.");
+  });
+
+  it("tells a cancelled sale with its reason and whether it came inside the 10-day window", () => {
+    expect(
+      describeEvent({ ...base, type: cancelled, payload: { quote_id: "q", reason: "timing", inside_window: true } }),
+    ).toBe("Cancelled the sale: timing, inside the 10-day window.");
+    expect(
+      describeEvent({ ...base, type: cancelled, payload: { quote_id: "q", reason: "went with someone else", inside_window: false } }),
+    ).toBe("Cancelled the sale: went with someone else, after the 10-day window.");
+    expect(describeEvent({ ...base, type: cancelled, payload: { quote_id: "q", reason: "timing" } })).toBe(
+      "Cancelled the sale: timing.",
+    );
+    expect(describeEvent({ ...base, type: cancelled, payload: { inside_window: false } })).toBe(
+      "Cancelled the sale, after the 10-day window.",
+    );
+    expect(describeEvent({ ...base, type: cancelled })).toBe("Cancelled the sale.");
+  });
+
+  it("tells an undone acceptance", () => {
+    expect(describeEvent({ ...base, type: undone, payload: { quote_id: "q" } })).toBe("Undid the quote's acceptance.");
+  });
+
+  it("never tells an amount, a typed note or a reason off the list", () => {
+    const leaky = { quote_id: "q", reason: "Wife hates the colour", note: "Call back in May", amount: 142, total: 3450 };
+    expect(describeEvent({ ...base, type: "quote_declined", payload: leaky })).toBe("Marked the quote declined.");
+    expect(describeEvent({ ...base, type: cancelled, payload: { ...leaky, inside_window: true } })).toBe(
+      "Cancelled the sale, inside the 10-day window.",
+    );
+    expect(describeEvent({ ...base, type: "quote_accepted", payload: { ...leaky, install_on: "soon" } })).toBe(
+      "Marked the quote accepted.",
+    );
+    expect(describeEvent({ ...base, type: undone, payload: leaky })).toBe("Undid the quote's acceptance.");
+  });
+
+  it("reads well when a cancelled sale moves the lead to Lost", () => {
+    expect(
+      describeEvent({
+        ...base,
+        type: "status_change",
+        from_status: "sold",
+        to_status: "lost",
+        payload: { reason: "cancelled, timing" },
+      }),
+    ).toBe("Moved from Sold to Lost. Reason: cancelled, timing.");
   });
 
   it("tells the meeting-mode events plainly, never with an amount", () => {

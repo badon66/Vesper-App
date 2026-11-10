@@ -17,6 +17,7 @@ import { TrackColourForm } from "@/components/leads/track-colour-form";
 import { BookLeadButton, OpenBookingSheet } from "@/components/booking/book-buttons";
 import { MockupCard } from "@/components/meeting/mockup-card";
 import { QuoteCard, type QuoteCardProps } from "@/components/quote-link/quote-card";
+import { QuoteOutcome } from "@/components/quotes/quote-outcome";
 import { ScrollToHash } from "@/components/scroll-to-hash";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,6 +62,7 @@ import { LEAD_FIELDS } from "@/lib/leads/fields";
 import { calgaryToday, formatDate, formatDateTime, requestTime } from "@/lib/time";
 import { screenTotal, totalFeet } from "@/lib/pricing";
 import { quoteBaseUrl, requestOrigin } from "@/lib/quote-link/server";
+import { loadQuoteOutcome } from "./quote-outcome-data";
 import {
   FALLBACK_COMPANY,
   optionName,
@@ -123,9 +125,14 @@ export default async function LeadPage({
   // session, drops them here for the person viewed.
   const events = (eventRows ?? []).filter((event) => contactShown || event.type !== "note");
   const timelineNotes = events.filter((event) => event.type === "note");
-  // The quote and its customer link: the owner's only (View as a setter
-  // never loads them).
-  const quoteCard = isOwner ? await loadQuoteCard(supabase, lead, outcomeSettings?.company ?? null) : null;
+  // The quote and its customer link, and the quote's outcome (round 8):
+  // the owner's only (View as a setter never loads them).
+  const [quoteCard, quoteOutcome] = isOwner
+    ? await Promise.all([
+        loadQuoteCard(supabase, lead, outcomeSettings?.company ?? null),
+        loadQuoteOutcome(supabase, lead),
+      ])
+    : [null, null];
   const meetings = meetingRows.map((meeting) => ({ ...meeting, lead }));
   const liveMeeting = meetings.find((meeting) => isLive(meeting.status));
   const canBook = canEdit && (lead.status === "new" || lead.status === "follow_up") && !liveMeeting;
@@ -180,6 +187,13 @@ export default async function LeadPage({
   ]);
   const owner = names.get(lead.created_by) ?? "someone";
   const choices = canEdit ? statusChoices(me.role, lead.status) : [];
+  // Round 8 (2026-11-09): on a Sold or Installed lead with an accepted
+  // quote, the status comes from the quote's outcome card, so the status
+  // menu gives way to a pointer to it.
+  const statusFromOutcome =
+    quoteOutcome !== null &&
+    quoteOutcome.quote.status === "accepted" &&
+    (lead.status === "sold" || lead.status === "installed");
   const session = sessionResult.data;
   const today = calgaryToday();
   const followUp = lead.status === "follow_up" && lead.follow_up_on ? lead.follow_up_on : null;
@@ -347,9 +361,40 @@ export default async function LeadPage({
 
       {isOwner ? <MockupCard leadId={lead.id} userId={me.id} mockupUrl={slotUrls.mockup ?? null} /> : null}
       {quoteCard ? <QuoteCard {...quoteCard} /> : null}
+      {quoteOutcome ? (
+        <QuoteOutcome
+          {...quoteOutcome}
+          track={{
+            set: trackColour.kind !== "none",
+            text: trackColourText(trackColour),
+            options: trackOptions,
+            current: { choice: lead.track_ral_code ? "custom" : lead.track_colour_id, ralCode: lead.track_ral_code },
+            ralNames: Object.fromEntries(ralNames),
+          }}
+          today={today}
+        />
+      ) : null}
       <ScrollToHash />
 
-      {canEdit && choices.length > 0 ? (
+      {statusFromOutcome ? (
+        <Card data-testid="status-from-outcome">
+          <CardHeader>
+            <CardTitle>Status</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-1 text-sm">
+            <p className="text-pretty">
+              {STATUS_LABELS[lead.status]}. The quote&apos;s outcome sets this lead&apos;s status from here
+              {lead.status === "sold" ? ": Installed, Cancelled and Undo acceptance are on its card." : "."}
+            </p>
+            <a
+              href="#quote-outcome"
+              className="inline-flex min-h-11 w-fit items-center font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Go to the outcome
+            </a>
+          </CardContent>
+        </Card>
+      ) : canEdit && choices.length > 0 ? (
         <Card>
           <CardHeader>
             <CardTitle>Status</CardTitle>

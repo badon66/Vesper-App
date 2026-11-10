@@ -5,7 +5,7 @@ import { NotForYourRole } from "@/components/not-for-your-role";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth/profile";
 import { leadName } from "@/lib/leads/status";
-import { formatMoney, payTotals } from "@/lib/pay/earnings";
+import { commissionStage, commissionStatusText, formatMoney, payTotals } from "@/lib/pay/earnings";
 import { formatMeetingTime, MEETING_STATUS_LABELS } from "@/lib/schedule/meetings";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, requestTime } from "@/lib/time";
@@ -15,10 +15,11 @@ export const metadata: Metadata = {
   title: "My pay",
 };
 
-// A setter's own pay (CLAUDE.md, Setter pay): owed now, pending install and
-// paid, then every booking on their leads with how it went and its fee.
-// Nothing about anyone else. Every query names this person, so View as
-// shows exactly what they would see.
+// A setter's own pay (CLAUDE.md, Setter pay): owed now, coming once
+// installed and paid, then every booking on their leads with how it went and
+// its fee, then their commission on each sale (round 8). Nothing about
+// anyone else. Every query names this person, so View as shows exactly what
+// they would see.
 export default async function MyPayPage() {
   const me = await requireProfile();
   if (me.role !== "sales") {
@@ -28,7 +29,9 @@ export default async function MyPayPage() {
   const [{ data: earnings }, { data: meetings }] = await Promise.all([
     supabase
       .from("earnings")
-      .select("id, meeting_id, type, amount, status, payable_at, paid_at, note, created_at")
+      .select(
+        "id, meeting_id, type, amount, status, payable_at, paid_at, note, created_at, lead:leads!earnings_lead_id_fkey(id, first_name, last_name, address_line)",
+      )
       .eq("profile_id", me.id)
       .order("created_at", { ascending: false }),
     supabase
@@ -39,7 +42,11 @@ export default async function MyPayPage() {
       .order("starts_at", { ascending: false })
       .limit(200),
   ]);
-  const lines = (earnings ?? []).map((row) => ({ ...row, amount: Number(row.amount) }));
+  const lines = (earnings ?? []).map((row) => ({
+    ...row,
+    amount: Number(row.amount),
+    lead: row.lead as unknown as { id: string; first_name: string; last_name: string | null; address_line: string } | null,
+  }));
   const totals = payTotals(lines);
   const feeByMeeting = new Map(lines.filter((row) => row.meeting_id).map((row) => [row.meeting_id as string, row]));
   const commissions = lines.filter((row) => row.type === "commission");
@@ -58,8 +65,18 @@ export default async function MyPayPage() {
           each says what it counts (2026-11-03). Owed now leads. */}
       <dl className="flex flex-col divide-y rounded-md border" data-testid="pay-totals">
         {[
-          { label: "Owed now", amount: totals.owedNow, note: "Fees for meetings Keenan marked Qualified, not paid yet.", lead: true },
-          { label: "Pending install", amount: totals.pendingInstall, note: "Commission on sales waiting for the install.", lead: false },
+          {
+            label: "Owed now",
+            amount: totals.owedNow,
+            note: "Fees for meetings Keenan marked Qualified, and commission on jobs he marked installed, not paid yet.",
+            lead: true,
+          },
+          {
+            label: "Coming once installed",
+            amount: totals.pendingInstall,
+            note: "Commission on your sales. It's owed once Keenan marks the job installed.",
+            lead: false,
+          },
           { label: "Paid, all time", amount: totals.paid, note: "Everything Keenan has marked paid since you started.", lead: false },
         ].map((row) => (
           <div key={row.label} className="grid grid-cols-[1fr_auto] items-baseline gap-x-4 px-4 py-3">
@@ -126,25 +143,45 @@ export default async function MyPayPage() {
         </CardContent>
       </Card>
 
-      {commissions.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Commission</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="flex flex-col divide-y border-y">
-              {commissions.map((line) => (
-                <li key={line.id} className="flex justify-between px-1 py-3 text-sm">
-                  <span>{formatDate(line.created_at)}</span>
-                  <span className="font-semibold">
-                    {formatMoney(line.amount)} {line.status === "paid" ? "paid" : line.payable_at ? "owed" : "pending install"}
-                  </span>
-                </li>
-              ))}
+      <Card>
+        <CardHeader>
+          <CardTitle>Commission</CardTitle>
+          <CardDescription>Your commission on each sale, newest first. It&apos;s owed once the job is installed.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {commissions.length === 0 ? (
+            <p className="text-sm text-pretty text-muted-foreground">
+              No commission yet. When Keenan marks a quote on one of your leads accepted, its commission shows here.
+            </p>
+          ) : (
+            <ul className="flex flex-col divide-y border-y" aria-label="Commission" data-testid="pay-commissions">
+              {commissions.map((line) => {
+                const stage = commissionStage(line);
+                return (
+                  <li key={line.id} className="flex flex-col gap-0.5 px-1 py-3 text-sm" data-testid="pay-commission">
+                    <span className={cn("font-semibold tabular-nums", stage === "void" && "text-muted-foreground line-through")}>
+                      {formatMoney(line.amount)}
+                    </span>
+                    {line.lead ? (
+                      <Link href={`/app/leads/${line.lead.id}`} className="inline-flex min-h-11 w-fit items-center underline underline-offset-4">
+                        {leadName(line.lead)}, {line.lead.address_line}
+                      </Link>
+                    ) : null}
+                    <span
+                      className={
+                        stage === "owed" || stage === "paid" ? "flex items-center gap-1.5 font-semibold" : "text-muted-foreground"
+                      }
+                    >
+                      {stage === "owed" || stage === "paid" ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
+                      {commissionStatusText(line)}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
-          </CardContent>
-        </Card>
-      ) : null}
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

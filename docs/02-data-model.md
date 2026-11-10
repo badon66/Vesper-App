@@ -17,8 +17,8 @@ install_timing:  before_christmas | new_year | no_rush   -- no longer asked from
 looked_into_before: got_quotes | thought_about_it | new_to_them | quotes_and_thought   -- added in M3.5; quotes_and_thought (both together) in round 6
 meeting_status:  booked | confirmed | qualified | not_qualified | no_show | cancelled | moved   -- qualified and not_qualified both mean the meeting was held; moved means it was replaced by a meeting at another time; confirmed is unused for now
 map_position_source: picked | device               -- picked from the address suggestions, or the phone's own position at the door
-quote_status:    draft | presented | accepted | declined | expired   -- take 1 writes drafts only
-event_type:      created | note | status_change | call | text | meeting_booked | meeting_outcome | quote_created | quote_presented | quote_accepted | quote_declined | photo_added | edited | meeting_moved | meeting_cancelled | colour_confirmed | quote_link_created | quote_link_opened | quote_link_revoked | install_requested   -- meeting_moved and meeting_cancelled added in M3; colour_confirmed added in M5 (the customer initialled the track colour; payload holds the initials and the colour by name, never a price); the four quote link events added 2026-11-02 (payloads hold the link id, or the option they picked in words and the run names, never a price)
+quote_status:    draft | presented | accepted | declined | expired | cancelled   -- take 1 writes drafts only; round 8 (2026-11-09) adds cancelled (a yes taken back later) and writes accepted, declined and cancelled through the outcome functions only
+event_type:      created | note | status_change | call | text | meeting_booked | meeting_outcome | quote_created | quote_presented | quote_accepted | quote_declined | photo_added | edited | meeting_moved | meeting_cancelled | colour_confirmed | quote_link_created | quote_link_opened | quote_link_revoked | install_requested | quote_cancelled | quote_acceptance_undone   -- meeting_moved and meeting_cancelled added in M3; colour_confirmed added in M5 (the customer initialled the track colour; payload holds the initials and the colour by name, never a price); the four quote link events added 2026-11-02 (payloads hold the link id, or the option they picked in words and the run names, never a price); round 8 (2026-11-09) adds quote_cancelled and quote_acceptance_undone and writes quote_accepted and quote_declined (see `lead_events`)
 run_level:       lower | upper
 earning_type:    booking | commission
 earning_status:  pending | paid | void
@@ -67,7 +67,7 @@ presentation jsonb not null          -- M5: six pages in order, [{kind, title, b
                                      -- hidden_by_day image_paths = [day, night]; gallery holds many; other pages are text
                                      -- paths point into the 'presentation' bucket; a page with no content is skipped on the iPad
 booking_pay numeric(10,2) not null default 20.00      -- flat pay per qualified booking
-commission_rate numeric(5,4) not null default 0.0500  -- share of the accepted quote total before GST
+commission_rate numeric(5,4) not null default 0.0500  -- share of the lights and control boxes after discounts on the accepted quote (round 8, 2026-11-09)
 rush_colour_fee_per_ft numeric(10,2)             -- M5: per foot, for a non-stock colour installed this season; null = not set, the line is hidden
 service_call_fee numeric(10,2)                   -- M5: warranty years 6 to 10; null = not set, no amount shows
 quote_valid_days int not null default 14         -- M5: a new quote's valid-until date is this many days out
@@ -163,7 +163,8 @@ lost_reason text
 lost_at timestamptz
 follow_up_on date                               -- the day to come back; required while status is follow_up, cleared when it leaves
 sold_at timestamptz
-installed_at timestamptz
+installed_at timestamptz                        -- round 8: the day Keenan marks the job Installed, at noon Calgary time
+install_on date                                 -- round 8 (2026-11-09): the planned install day, asked when the quote is accepted; read grant to signed-in people; owner only to set
 created_at, updated_at
 ```
 Indexes: `(assigned_to, status)`, `(status, created_at)`, `(lat, lng)`, `place_id`, `knock_session_id`, `(created_by, created_at)`, `follow_up_on` where status is `follow_up`, and a unique index on `save_key` where it is set.
@@ -171,7 +172,11 @@ Indexes: `(assigned_to, status)`, `(status, created_at)`, `(lat, lng)`, `place_i
 Rules enforced in the database:
 - `created_by` is always the signed-in user, and `assigned_to` defaults to it. A lead can only link to a knock session of the person who created it.
 - A setter may change status only when both the old and new status are `new`, `follow_up` or `lost`. Setters can never change `created_by` or `assigned_to`. M3's booking sets `meeting_booked` inside a database function the guard trusts; the owner can set any status.
-- `lost` requires `lost_reason`, from `settings.lost_reasons`. `lost_at`, `sold_at` and `installed_at` are stamped automatically, and reopening a lost lead clears `lost_at` and `lost_reason`.
+- `lost` requires `lost_reason`: from `settings.lost_reasons` when set by hand, or written by a quote's outcome (round 8): the reason's words for a declined quote ("price") and "cancelled, <reason>" for a cancelled sale ("cancelled, timing"), never the note. `lost_at`, `sold_at` and `installed_at` are stamped automatically, and reopening a lost lead clears `lost_at` and `lost_reason`.
+- Round 8 (Keenan, 2026-11-09):
+  - Only the owner sets `install_on`, `sold_at` and `installed_at`: a trigger (`leads_owner_dates`) refuses a signed-in non-owner's change to any of them, compared after `leads_guard` has stamped its own dates, so a setter's own New, Follow up and Lost moves still work.
+  - Sold and Installed come from the quote's outcome: `quote_accept` sets Sold, `lead_mark_installed` sets Installed. The app no longer offers either in the owner's status menu.
+  - A safety net (`leads_commission_sync`, after a status change) keeps the commission in step whatever path changes the status: leaving Sold or Installed for anything else voids every pending, unpaid commission of the lead ("The lead left Sold", `quote_id` cleared); becoming Installed makes pending commission payable; going from Installed back to Sold makes it not payable again.
 - `follow_up` requires `follow_up_on`. Leaving `follow_up` clears it. A signed-in person cannot set a follow-up date earlier than today in Calgary; moving the date on a lead that stays in `follow_up` is an edit. The status change into `follow_up` records the date in its event payload, and a date change alone logs an `edited` event naming the field.
 - `lat` and `lng` are both set or both empty, and `position_source` is set exactly when they are. A typed address with no map position is allowed to save; booking requires one. For a brand-new street Google doesn't have yet, the phone's own position at the door counts, stored as `device` with its accuracy, which must be 50 m or better and inside the Calgary area. A position saved without a source is taken as picked.
 - `phone` is stored in E.164 or not at all.
@@ -209,6 +214,8 @@ One photo per slot per lead (a partial unique index on `(lead_id, slot)`). A pho
 
 ### lead_events
 Append only for everyone, the owner included: no updates, no deletes. The lead's timeline and the raw material for the dashboard. Database triggers write `created`, `status_change` (with from and to, plus the reason for `lost` or the date for `follow_up` in the payload), `edited` (with the names of the changed fields, never their values) and `photo_added`, with the signed-in user as actor. From M5 they also write `quote_created` when a quote is added (payload: the quote's id, never an amount) and `colour_confirmed` each time the customer's initials are recorded (payload: the initials and the colour by name at that moment). People write only `note` events by hand.
+
+Round 8 (2026-11-09): the quote outcome functions write `quote_accepted` (`{quote_id, install_on}`), `quote_declined` (`{quote_id, reason}`), `quote_cancelled` (`{quote_id, reason, inside_window}`, whether the cancel came within 10 days of `accepted_at`) and `quote_acceptance_undone` (`{quote_id}`); Installed is logged by the `status_change` it makes. Every setter reads these, so a payload holds the quote id and fixed-list facts only: a reason from the five, inside the window or not, the planned install day. Never an amount, never a typed note. The timeline reads them as "Marked the quote accepted. Install planned for Fri, Nov 20.", "Marked the quote declined: price.", "Cancelled the sale: timing, inside the 10-day window." and "Undid the quote's acceptance." A change to the planned install day on its own is an `edited` event naming `install_on` ("Changed the planned install day."; review, 2026-11-10); a status change that sets or clears it in the same update doesn't add one.
 ```
 id uuid pk
 lead_id uuid not null references leads on delete cascade
@@ -359,9 +366,28 @@ pdf_path text                                    -- bucket 'quotes', private
 valid_until date
 min_job_total numeric(10,2)                      -- 2026-11-02: copied from settings when the quote is saved; null = no minimum
 presented_at, accepted_at, declined_at timestamptz
+accepted_runs int[]                              -- round 8: the accepted option, as 0-based positions into runs; null = every run (the full quote)
+accepted_by uuid references profiles             -- round 8: who marked it accepted
+lead_status_before lead_status                   -- round 8: the lead's status before Accepted (never sold, installed or lost, else met), where Undo puts it back
+decline_reason text                              -- round 8: one of price | timing | partner said no | went with someone else | other
+cancel_reason text                               -- round 8: the same five, for a yes taken back
+cancelled_at timestamptz                         -- round 8
+outcome_note text                                -- round 8: the note with Other, at most 300 characters; owner only like every quote column, never copied anywhere setters read
 created_at, updated_at
 ```
-A quote can't be marked ready until the lead's track colour is set; the quote stores the colour name and RAL code it used, prints them, and shows a Custom colour as needing powder coating. Totals are computed in one pure function in `lib/pricing.ts`, used by the UI and the server action, and covered by unit tests. The database stores the result so history is stable if prices change later. `subtotal` is the total before GST and is the base for commission. Every price on a quote belongs to that quote: `price_per_ft`, `box_price`, each adder and discount amount, and custom lines in `adders` and `discounts`. Settings supplies the defaults when the quote is created; later changes to settings never alter an existing quote. Accepting a quote creates a `commission` earning (see `earnings`). Take 1 (M5) writes drafts only, one draft per lead reused; presented, accepted, declined, the ready rule and the PDF arrive in take 2. The rush line is `total_feet` times `rush_fee_per_ft` when `colour_timing` is 'rush'; a stocked colour and a factory order add nothing.
+A quote can't be marked ready until the lead's track colour is set; the quote stores the colour name and RAL code it used, prints them, and shows a Custom colour as needing powder coating. Totals are computed in one pure function in `lib/pricing.ts`, used by the UI and the server action, and covered by unit tests. The database stores the result so history is stable if prices change later. `subtotal` is the total before GST. It is not the commission base (round 8): the commission counts only the lights and control boxes after discounts (see `earnings`). Every price on a quote belongs to that quote: `price_per_ft`, `box_price`, each adder and discount amount, and custom lines in `adders` and `discounts`. Settings supplies the defaults when the quote is created; later changes to settings never alter an existing quote. Accepting a quote creates a `commission` earning (see `earnings`). Take 1 (M5) writes drafts only, one draft per lead reused; presented, the ready rule and the PDF arrive in take 2. Accepted, declined and cancelled arrive in round 8, on the lead page, through the outcome functions below. The rush line is `total_feet` times `rush_fee_per_ft` when `colour_timing` is 'rush'; a stocked colour and a factory order add nothing.
+
+Round 8 (Keenan, 2026-11-09): a quote's outcome.
+- Only the database moves a quote to `accepted`, `declined` or `cancelled`. A guard (`quotes_outcome_guard`, before insert or update) refuses a row entering or leaving any of the three, or inserted with one, unless the outcome functions are running (hint `outcome_only`). While a quote stays accepted, its numbers are locked: any change outside its outcome fields, `notes`, `pdf_path`, `presented_at` and `updated_at` is refused (hint `quote_locked`). The guard compares the whole row as JSON, so it never names a column that only some databases have. It also refuses a new quote on a lead whose quote is accepted (hint `quote_locked`; review, 2026-11-10), so a later draft never stands in for the sale. To change an accepted quote, Keenan undoes the acceptance.
+- The outcome functions are SECURITY DEFINER and owner only (`acts_as_owner()`, so the test suite's service role may call them too; anyone else gets `42501`, hint `not_allowed`); a refusal raises `P0001` with a stable hint the app turns into words (`lib/quotes/outcome.ts`; a quote that isn't found gets the same hint as one in the wrong status):
+  - `quote_accept(quote, runs int[] default null, install_on date default null) returns jsonb`: from draft, presented, declined or cancelled (`not_open`); no other accepted quote on the lead (`already_accepted`); the lead needs a track colour (`track_colour_needed`); `runs` distinct, inside the quote's runs and not empty, null for every run (`bad_runs`). Sets the quote accepted with `accepted_at`, `accepted_by`, `accepted_runs`, `lead_status_before` and the lead's track colour copied on; the lead to Sold with `install_on`; creates the commission (see `earnings`); writes `quote_accepted`. Returns `{commission: {profile_id, amount} | null, reason: 'owner_lead' | 'already_paid' | null}` for Keenan's own screen.
+  - `quote_decline(quote, reason, note default null)`: from draft or presented (`not_open`); never while another quote on the lead is accepted, since the sale stands on that one (`already_accepted`); a reason from the five (`bad_reason`); a note only with Other, trimmed, at most 300 characters (`bad_note`). The quote becomes declined with `declined_at`, the reason and the note; the lead goes to Lost with the reason's words and no planned install day; writes `quote_declined`; turns the lead's live link off (`revoke_quote_link`, which writes `quote_link_revoked`).
+  - `quote_cancel(quote, reason, note default null)`: an accepted quote only (`not_accepted`). The quote becomes cancelled with `cancelled_at`, the reason and the note; pending unpaid commission on the lead is voided ("Cancelled: <reason>"); the lead goes to Lost with "cancelled, <reason>" and no planned install day; writes `quote_cancelled` with whether it came inside 10 days of `accepted_at`; turns the lead's live link off. Works on a Sold or Installed lead. The window is never stored.
+  - `quote_undo_acceptance(quote)`: an accepted quote on a Sold lead (`not_undoable`), so never after Installed. Pending unpaid commission is voided ("Acceptance undone"); the quote goes back to `draft` with its accepted fields cleared, so meeting mode opens it again; the lead goes back to `lead_status_before` (or Met) with `install_on` cleared, and a lead going back to Follow up comes due tomorrow, as after a cancelled booking; a lead going back to Meeting booked with no booked or confirmed meeting left goes to Met instead; writes `quote_acceptance_undone`.
+  - `lead_mark_installed(lead, on date)`: a Sold lead with an accepted quote (`not_sold`); the day set and not after today in Calgary (`bad_date`). The lead goes to Installed with `installed_at` at noon Calgary time on that day; the safety net makes the commission payable.
+  - `lead_undo_installed(lead)` (review, 2026-11-10): Not installed yet, for a wrong tap or day. An Installed lead with an accepted quote (`not_installed`) goes back to Sold; `leads_guard` clears `installed_at` and the safety net makes an unpaid commission wait for the install again; a paid one stays paid. The status change logs itself.
+  - `quote_commission_base(quote, runs int[])`: the commission base (see `earnings`), for the functions above only; nobody may call it directly.
+- Declining or cancelling a quote takes it out of `quote_link_current_quote` (draft, presented or accepted) and turns the live link off, so the customer's link shows the closed page with call and text even if an older open quote is on the lead, and the lead page's Quote card shows the next quote, if any. An accepted quote keeps the link working.
 
 ### quote_links
 The customer quote link (2026-11-02). Owner only; anonymous callers and sales users read nothing here. The public page reaches it only through the token functions below.
@@ -416,10 +442,11 @@ id uuid pk
 profile_id uuid not null references profiles      -- the setter who earned it: the lead's assigned setter
 lead_id uuid not null references leads
 meeting_id uuid references meetings               -- set for type 'booking'
-quote_id uuid references quotes                   -- set for type 'commission'
+quote_id uuid                                     -- set for type 'commission'; no foreign key (never added); cleared when a commission is voided by Undo, Cancel or the lead leaving Sold, so the quote can be accepted again
+source_quote_id uuid                              -- round 8: the quote a commission came from, kept after quote_id is cleared
 type earning_type not null
 rate numeric(10,4) not null                       -- booking_pay in dollars, or commission_rate as a fraction, at creation
-base_amount numeric(10,2)                         -- commission: the quote subtotal (before GST); null for booking
+base_amount numeric(10,2)                         -- commission: the lights and control boxes after discounts on the accepted option (round 8); null for booking
 amount numeric(10,2) not null                     -- booking: rate; commission: round(base_amount x rate, 2)
 status earning_status not null default 'pending'
 payable_at timestamptz                            -- booking: set at creation; commission: set when the lead is marked installed
@@ -433,17 +460,19 @@ unique (quote_id) where type = 'commission'
 Rules:
 - A booking earning is created when the owner marks a meeting `qualified`, for `meetings.setter_id` (the lead's assigned setter when it was booked, whoever picked the time), at `settings.booking_pay`, with `payable_at = now()`, unless the lead already has a booking earning. Not qualified, no-show and cancelled earn nothing.
 - An outcome can be corrected until the booking earning is paid: moving away from Qualified voids an unpaid booking earning (`status = 'void'`, reason in `note`), and moving back to Qualified restores it.
-- A commission earning is created when a quote is accepted, for `leads.assigned_to` at that moment, at `settings.commission_rate` on `quotes.subtotal` (the total as actually priced, before GST), with `payable_at` null. Earlier no-shows on the lead do not change it. Marking the lead `installed` sets `payable_at`. Marking the lead `lost` while the commission is unpaid sets `status = 'void'` with the reason in `note`.
+- Round 8 (Keenan, 2026-11-09): a commission earning is created by `quote_accept`, for the lead's setter (`coalesce(leads.assigned_to, leads.created_by)` at that moment, the same person the booking fee goes to unless the lead was reassigned since it was booked), at `settings.commission_rate`, with `payable_at` null, unless that person's role isn't `sales` or the lead already has a pending or paid commission. Earlier no-shows on the lead do not change it.
+- The base is worked out in the database from the stored quote (`quote_commission_base`), never from a number a browser sends: feet = the sum over the accepted runs of `least(10000, greatest(0, round(feet)))`, numeric values only; track = `round(price_per_ft x 100) x feet` cents; boxes = `round(box_price x 100) x greatest(box_count, 0)` cents, whatever runs were picked; discounts = the sum of `round(greatest(0, amount) x 100)` cents over `quotes.discounts`, numeric values only; base = `greatest(0, track + boxes - discounts) / 100`; amount = `round(base x rate, 2)`. It never reads `adders`, `colour_timing`, the rush fees, the upper access fees or `min_job_total`, so the rush colour fee, upper access, every extra work line and the minimum top-up are left out by construction. `lib/pay/commission.ts` mirrors it in whole cents and basis points, for previews and unit tests.
+- Marking the job Installed sets `payable_at` (the safety net on `leads`). Undo acceptance, Cancel, or the lead leaving Sold or Installed any other way voids a pending unpaid commission (`status = 'void'`, the reason in `note`: "Acceptance undone", "Cancelled: <reason>" or "The lead left Sold") and clears its `quote_id`, keeping `source_quote_id`; that is what lets the quote be accepted again, at its new numbers, under the one-commission-per-quote index. A paid commission is never touched: Undo and Cancel leave it paid, and the lead gets no second commission while one is pending or paid.
 - No earning is created when the profile that would receive it has role `owner`: leads assigned to the owner earn nothing.
-- "Owed now" everywhere means `status = 'pending' and payable_at is not null`. "Pending install" means `status = 'pending' and payable_at is null`.
-- Marking paid is a batch: `status = 'paid'`, `paid_at = now()`, `paid_by` = the owner, on the selected rows. Paid rows are never edited again, and the amount, rate, type, setter and lead of any earning never change.
+- "Owed now" everywhere means `status = 'pending' and payable_at is not null`. "Coming once installed" (called pending install before round 8) means `status = 'pending' and payable_at is null`, which only a commission can be.
+- Marking paid is a batch: `status = 'paid'`, `paid_at = now()`, `paid_by` = the owner, on the selected rows. Paid rows are never edited again, and the amount, rate, type, setter and lead of any earning never change. The guard (`earnings_guard`) allows one exception from round 8: an unpaid commission's `quote_id` may be cleared as it is voided.
 
 ## Planned for V2 (not created in V1)
 `jobs` (lead_id, install_date, crew lead, status, materials jsonb, box_location, zones jsonb, photos, checklist, completed_at), `job_assignments` (job_id, profile_id, role), `timesheets` (profile_id, job_id, clock_in, clock_out, minutes, approved), `crew_profiles` (pay_rate, height_authorized, driver_authorized, test_passed_at), `warranty_records`. Leave the `crew` role and `lead_status.installed` in place so these slot in without migrations to existing columns.
 
 ## RLS summary
 
-Sales users collaborate, so they can read the team's leads, meetings and knock sessions. They can write only their own. Because of that, no dollar amount is ever stored in `leads`, `lead_events`, `meetings` or `knock_sessions`. Prices live in `quotes` and `earnings` only, and `lead_events.payload` for quote events holds the quote id and nothing else.
+Sales users collaborate, so they can read the team's leads, meetings and knock sessions. They can write only their own. Because of that, no dollar amount is ever stored in `leads`, `lead_events`, `meetings` or `knock_sessions`. Prices live in `quotes` and `earnings` only, and `lead_events.payload` for quote events holds the quote id and, from round 8, fixed-list facts only (a reason from the list, inside the 10-day window or not, the planned install day), never an amount or a typed note.
 
 | Table | owner | sales |
 |---|---|---|
@@ -460,10 +489,10 @@ Sales users collaborate, so they can read the team's leads, meetings and knock s
 | day_schedules | select; writes only through `set_day_schedule` | select |
 | slot_holds | select; writes only through the booking functions | select all; writes only through the booking functions |
 | meetings | select; writes only through the booking functions | select all; book, move and cancel their own leads' meetings through the booking functions |
-| quotes | all | none |
+| quotes | all, except that accepted, declined and cancelled come only through the outcome functions, and an accepted quote's numbers are locked (round 8) | none |
 | quote_links | all, through `issue_quote_link` and `revoke_quote_link` for writes | none |
 | push_subscriptions | their own rows | their own rows |
-| earnings | select; writes only through the booking functions | select where `profile_id = auth.uid()`; no writes |
+| earnings | select; writes only through the booking functions and, from round 8, the quote outcome functions and the lead status safety net | select where `profile_id = auth.uid()`; no writes |
 
 Views on Supabase run with the privileges of the view's owner and bypass RLS, which is what lets sales read `settings_public`, `profiles_public` and `profile_names`. All three views return rows only when the caller has an active profile, so a signed-in account without a profile sees nothing. That is safe only while each view exposes nothing but the safe columns. Never add a column to a public view without checking this table. Supabase's security advisor reports these views as a finding; that is expected and accepted.
 

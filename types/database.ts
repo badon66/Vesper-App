@@ -132,6 +132,7 @@ export type Database = {
           profile_id: string
           quote_id: string | null
           rate: number
+          source_quote_id: string | null
           status: Database["public"]["Enums"]["earning_status"]
           type: Database["public"]["Enums"]["earning_type"]
           updated_at: string
@@ -150,6 +151,7 @@ export type Database = {
           profile_id: string
           quote_id?: string | null
           rate: number
+          source_quote_id?: string | null
           status?: Database["public"]["Enums"]["earning_status"]
           type: Database["public"]["Enums"]["earning_type"]
           updated_at?: string
@@ -168,6 +170,7 @@ export type Database = {
           profile_id?: string
           quote_id?: string | null
           rate?: number
+          source_quote_id?: string | null
           status?: Database["public"]["Enums"]["earning_status"]
           type?: Database["public"]["Enums"]["earning_type"]
           updated_at?: string
@@ -483,6 +486,7 @@ export type Database = {
           hot_buttons: Database["public"]["Enums"]["hot_button"][]
           house_type: Database["public"]["Enums"]["house_type"] | null
           id: string
+          install_on: string | null
           install_timing: Database["public"]["Enums"]["install_timing"] | null
           installed_at: string | null
           knock_session_id: string | null
@@ -544,6 +548,7 @@ export type Database = {
           hot_buttons?: Database["public"]["Enums"]["hot_button"][]
           house_type?: Database["public"]["Enums"]["house_type"] | null
           id?: string
+          install_on?: string | null
           install_timing?: Database["public"]["Enums"]["install_timing"] | null
           installed_at?: string | null
           knock_session_id?: string | null
@@ -605,6 +610,7 @@ export type Database = {
           hot_buttons?: Database["public"]["Enums"]["hot_button"][]
           house_type?: Database["public"]["Enums"]["house_type"] | null
           id?: string
+          install_on?: string | null
           install_timing?: Database["public"]["Enums"]["install_timing"] | null
           installed_at?: string | null
           knock_session_id?: string | null
@@ -1114,12 +1120,17 @@ export type Database = {
       quotes: {
         Row: {
           accepted_at: string | null
+          accepted_by: string | null
+          accepted_runs: number[] | null
           adders: Json
           box_count: number
           box_price: number
+          cancel_reason: string | null
+          cancelled_at: string | null
           colour_timing: string | null
           created_at: string
           created_by: string
+          decline_reason: string | null
           declined_at: string | null
           discounts: Json
           financing_offered: boolean
@@ -1129,8 +1140,10 @@ export type Database = {
           gst_rate: number
           id: string
           lead_id: string
+          lead_status_before: Database["public"]["Enums"]["lead_status"] | null
           min_job_total: number | null
           notes: string | null
+          outcome_note: string | null
           pdf_path: string | null
           presented_at: string | null
           price_per_ft: number
@@ -1148,12 +1161,17 @@ export type Database = {
         }
         Insert: {
           accepted_at?: string | null
+          accepted_by?: string | null
+          accepted_runs?: number[] | null
           adders?: Json
           box_count?: number
           box_price: number
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           colour_timing?: string | null
           created_at?: string
           created_by: string
+          decline_reason?: string | null
           declined_at?: string | null
           discounts?: Json
           financing_offered?: boolean
@@ -1163,8 +1181,10 @@ export type Database = {
           gst_rate: number
           id?: string
           lead_id: string
+          lead_status_before?: Database["public"]["Enums"]["lead_status"] | null
           min_job_total?: number | null
           notes?: string | null
+          outcome_note?: string | null
           pdf_path?: string | null
           presented_at?: string | null
           price_per_ft: number
@@ -1182,12 +1202,17 @@ export type Database = {
         }
         Update: {
           accepted_at?: string | null
+          accepted_by?: string | null
+          accepted_runs?: number[] | null
           adders?: Json
           box_count?: number
           box_price?: number
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           colour_timing?: string | null
           created_at?: string
           created_by?: string
+          decline_reason?: string | null
           declined_at?: string | null
           discounts?: Json
           financing_offered?: boolean
@@ -1197,8 +1222,10 @@ export type Database = {
           gst_rate?: number
           id?: string
           lead_id?: string
+          lead_status_before?: Database["public"]["Enums"]["lead_status"] | null
           min_job_total?: number | null
           notes?: string | null
+          outcome_note?: string | null
           pdf_path?: string | null
           presented_at?: string | null
           price_per_ft?: number
@@ -1215,6 +1242,27 @@ export type Database = {
           valid_until?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "quotes_accepted_by_fkey"
+            columns: ["accepted_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_accepted_by_fkey"
+            columns: ["accepted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_accepted_by_fkey"
+            columns: ["accepted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "quotes_created_by_fkey"
             columns: ["created_by"]
@@ -1985,6 +2033,11 @@ export type Database = {
         | { Args: { p_starts_at: string }; Returns: boolean }
         | { Args: { p_host: string; p_starts_at: string }; Returns: boolean }
       issue_quote_link: { Args: { p_lead_id: string }; Returns: string }
+      lead_mark_installed: {
+        Args: { p_lead: string; p_on: string }
+        Returns: undefined
+      }
+      lead_undo_installed: { Args: { p_lead: string }; Returns: undefined }
       lock_evening: {
         Args: { p_at: string; p_host: string }
         Returns: undefined
@@ -2014,6 +2067,22 @@ export type Database = {
           sealed: string
         }[]
       }
+      quote_accept: {
+        Args: { p_install_on?: string; p_quote: string; p_runs?: number[] }
+        Returns: Json
+      }
+      quote_cancel: {
+        Args: { p_note?: string; p_quote: string; p_reason: string }
+        Returns: undefined
+      }
+      quote_commission_base: {
+        Args: { p_quote: string; p_runs: number[] }
+        Returns: number
+      }
+      quote_decline: {
+        Args: { p_note?: string; p_quote: string; p_reason: string }
+        Returns: undefined
+      }
       quote_for_customer: { Args: { p_token: string }; Returns: Json }
       quote_gallery_signable: { Args: { p_name: string }; Returns: boolean }
       quote_link_book: {
@@ -2024,12 +2093,17 @@ export type Database = {
         Args: { p_lead_id: string }
         Returns: {
           accepted_at: string | null
+          accepted_by: string | null
+          accepted_runs: number[] | null
           adders: Json
           box_count: number
           box_price: number
+          cancel_reason: string | null
+          cancelled_at: string | null
           colour_timing: string | null
           created_at: string
           created_by: string
+          decline_reason: string | null
           declined_at: string | null
           discounts: Json
           financing_offered: boolean
@@ -2039,8 +2113,10 @@ export type Database = {
           gst_rate: number
           id: string
           lead_id: string
+          lead_status_before: Database["public"]["Enums"]["lead_status"] | null
           min_job_total: number | null
           notes: string | null
+          outcome_note: string | null
           pdf_path: string | null
           presented_at: string | null
           price_per_ft: number
@@ -2109,6 +2185,10 @@ export type Database = {
       }
       quote_link_visit: { Args: { p_token: string }; Returns: boolean }
       quote_mockup_signable: { Args: { p_name: string }; Returns: boolean }
+      quote_undo_acceptance: {
+        Args: { p_quote: string }
+        Returns: undefined
+      }
       release_hold: { Args: never; Returns: undefined }
       release_lapsed_holds: {
         Args: { p_host: string; p_starts_at: string }
@@ -2213,6 +2293,8 @@ export type Database = {
         | "quote_link_opened"
         | "quote_link_revoked"
         | "install_requested"
+        | "quote_cancelled"
+        | "quote_acceptance_undone"
       hot_button:
         | "no_ladders"
         | "up_for_christmas"
@@ -2259,7 +2341,13 @@ export type Database = {
         | "mockup"
         | "soffit_book"
         | "soffit_book_2"
-      quote_status: "draft" | "presented" | "accepted" | "declined" | "expired"
+      quote_status:
+        | "draft"
+        | "presented"
+        | "accepted"
+        | "declined"
+        | "expired"
+        | "cancelled"
       roofline_areas: "front" | "front_and_sides" | "full_wrap" | "not_sure"
       setter_read: "hot" | "warm" | "just_curious"
       soffit_colour:
@@ -2422,6 +2510,8 @@ export const Constants = {
         "quote_link_opened",
         "quote_link_revoked",
         "install_requested",
+        "quote_cancelled",
+        "quote_acceptance_undone",
       ],
       hot_button: [
         "no_ladders",
@@ -2475,7 +2565,14 @@ export const Constants = {
         "soffit_book",
         "soffit_book_2",
       ],
-      quote_status: ["draft", "presented", "accepted", "declined", "expired"],
+      quote_status: [
+        "draft",
+        "presented",
+        "accepted",
+        "declined",
+        "expired",
+        "cancelled",
+      ],
       roofline_areas: ["front", "front_and_sides", "full_wrap", "not_sure"],
       setter_read: ["hot", "warm", "just_curious"],
       soffit_colour: [

@@ -74,10 +74,16 @@ export function labelFor<T extends string>(
   return options.find((option) => option.value === value)?.label ?? "";
 }
 
+// Round 8 (Keenan, 2026-11-09): Sold and Installed come from the quote's
+// outcome card on the lead page (Accepted, then Installed), never from the
+// status menu, so the setter's commission always follows the quote.
+export const OUTCOME_STATUSES: readonly LeadStatus[] = ["sold", "installed"];
+
 // The statuses a person can pick for a lead in this status. Empty means the
-// status is not theirs to change.
+// status is not theirs to change. The owner's list keeps the lead's own
+// status even when it is Sold or Installed, so the menu shows where it is.
 export function statusChoices(role: UserRole, current: LeadStatus): LeadStatus[] {
-  if (role === "owner") return [...STATUS_ORDER];
+  if (role === "owner") return STATUS_ORDER.filter((status) => !OUTCOME_STATUSES.includes(status) || status === current);
   if (role === "sales" && SETTER_STATUSES.includes(current)) return [...SETTER_STATUSES];
   return [];
 }
