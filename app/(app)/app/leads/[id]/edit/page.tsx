@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { QuestionDefaults } from "@/components/leads/find-out-fields";
 import { LeadForm } from "@/components/leads/lead-form";
 import { NotForYourRole } from "@/components/not-for-your-role";
+import { ScrollToHash } from "@/components/scroll-to-hash";
 import { requireProfile } from "@/lib/auth/profile";
 import { getPublicEnv } from "@/lib/env";
 import { answersOf } from "@/lib/leads/questions";
@@ -51,6 +52,10 @@ export default async function EditLeadPage({ params }: { params: Promise<{ id: s
   return (
     <div className="flex flex-col gap-5">
       <h1 className="text-2xl font-bold">Edit lead</h1>
+      {/* Book now, finish later (2026-11-10): an item still to finish links
+          here with the field's id (#lead-phone, #q-owns_home and so on), and
+          lands on that field, mid-screen, with the focus. */}
+      <ScrollToHash block="center" focus />
       <LeadForm
         mode="edit"
         action={updateLead}
@@ -75,6 +80,8 @@ export default async function EditLeadPage({ params }: { params: Promise<{ id: s
           answer_notes: leadNotes.answerNotes,
           notes: leadNotes.notes ?? "",
           source: lead.source,
+          name_to_come: lead.name_to_come,
+          address_to_come: lead.address_to_come,
           address: {
             addressLine: lead.address_line,
             city: lead.city,

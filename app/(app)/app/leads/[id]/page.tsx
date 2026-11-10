@@ -1,4 +1,4 @@
-import { Check, ChevronLeft } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -19,6 +19,7 @@ import { MockupCard } from "@/components/meeting/mockup-card";
 import { QuoteCard, type QuoteCardProps } from "@/components/quote-link/quote-card";
 import { QuoteOutcome } from "@/components/quotes/quote-outcome";
 import { ScrollToHash } from "@/components/scroll-to-hash";
+import { ToBeCompleted } from "@/components/to-finish/to-be-completed";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth/profile";
@@ -26,7 +27,6 @@ import { leadAnswerList, type PhotoSlot } from "@/lib/leads/door";
 import { completenessLabel, NOTE_KEYS, NOTE_LABELS } from "@/lib/leads/questions";
 import { lostReasons, namesById } from "@/lib/leads/queries";
 import { formatMeetingTime, isLive, positionSourceText, sentence, timePhrase } from "@/lib/schedule/meetings";
-import { leadReadiness, READINESS_NAMES, readinessNow } from "@/lib/schedule/readiness";
 import { meetingsForLead } from "@/lib/schedule/queries";
 import {
   HOT_BUTTONS_LABEL,
@@ -59,6 +59,7 @@ import { maySeeContact, NO_CONTACT } from "@/lib/leads/contact-rules";
 import { contactFor } from "@/lib/leads/contacts";
 import { NO_NOTES, notesFor } from "@/lib/leads/notes";
 import { LEAD_FIELDS } from "@/lib/leads/fields";
+import { guidedPhotoCount, toFinish } from "@/lib/leads/to-finish";
 import { calgaryToday, formatDate, formatDateTime, requestTime } from "@/lib/time";
 import { screenTotal, totalFeet } from "@/lib/pricing";
 import { quoteBaseUrl, requestOrigin } from "@/lib/quote-link/server";
@@ -205,10 +206,20 @@ export default async function LeadPage({
     choices.length === 0 && !["new", "follow_up", "meeting_booked", "lost"].includes(lead.status)
       ? `This lead is at ${STATUS_LABELS[lead.status]}. Keenan takes it from here.`
       : null;
-  // Before you book, listed on the lead (the booking sheet asks the rest).
-  const guidedPhotos = (["front", "left_corner", "right_corner"] as const).filter((slot) => slotUrls[slot]).length;
-  const readiness = canBook ? leadReadiness(lead, guidedPhotos) : [];
-  const missing = readiness.filter((item) => !item.ok).length;
+  // Book now, finish later (Keenan, 2026-11-10): what's still missing on
+  // the lead, for whoever can edit it, each item a tap from its field. The
+  // photos are done with all three guided photos, or once a booking says
+  // why they were skipped. Never the phone itself: phone_saved answers.
+  const stillToDo = canEdit
+    ? toFinish(
+        lead,
+        {
+          guided: guidedPhotoCount((photoRows ?? []).map((photo) => photo.slot)),
+          skipped: meetings.some((meeting) => meeting.photos_skipped !== null),
+        },
+        "lead",
+      )
+    : [];
 
   return (
     <div className="flex flex-col gap-5">
@@ -220,9 +231,20 @@ export default async function LeadPage({
           <ChevronLeft aria-hidden="true" className="size-4" />
           Leads
         </Link>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold">{leadName(lead)}</h1>
-          <StatusBadge status={lead.status} />
+        {/* The address sits right under the name (Keenan, 2026-11-10), the
+            neighbourhood quietly after it. A name or an address still to
+            come reads as itself, a step quieter. */}
+        <div className="flex flex-col gap-0.5">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className={lead.name_to_come ? "text-2xl font-bold text-muted-foreground" : "text-2xl font-bold"}>
+              {leadName(lead)}
+            </h1>
+            <StatusBadge status={lead.status} />
+          </div>
+          <p className="text-base text-pretty" data-testid="lead-address-top">
+            <span className={lead.address_to_come ? "text-muted-foreground" : "font-semibold"}>{lead.address_line}</span>
+            {lead.neighbourhood ? <span className="text-muted-foreground">, {lead.neighbourhood}</span> : null}
+          </p>
         </div>
         <p className="text-sm text-muted-foreground">
           Added by {lead.created_by === me.id ? "you" : owner} on {formatDate(lead.created_at)}
@@ -295,51 +317,10 @@ export default async function LeadPage({
         ) : null}
       </div>
 
-      {canBook ? (
-        <Card data-testid="before-you-book">
-          <CardHeader>
-            <CardTitle>Before you book</CardTitle>
-            <CardDescription className="text-pretty">
-              {missing === 0
-                ? "Ready to book. In the booking sheet you'll also confirm everyone who decides will be there."
-                : `${missing === 1 ? "One thing" : `${missing} things`} to sort out. You can do them in the booking sheet too.`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul className="flex flex-col gap-2" data-testid="readiness">
-              {readiness.map((item) => (
-                <li key={item.key} className="flex items-start gap-2 text-sm" data-ok={item.ok ? "yes" : "no"}>
-                  {item.ok ? (
-                    <Check role="img" aria-label="Done" className="mt-0.5 size-4 shrink-0" />
-                  ) : (
-                    <span role="img" aria-label="Missing" className="mt-0.5 size-4 shrink-0 rounded-full border-2 border-muted-foreground" />
-                  )}
-                  {item.ok ? (
-                    <span>{item.label}</span>
-                  ) : (
-                    <span className="flex flex-1 flex-wrap items-start justify-between gap-x-3">
-                      <span className="flex flex-col">
-                        <span className="font-semibold">{READINESS_NAMES[item.key]}</span>
-                        <span className="text-pretty text-muted-foreground">{readinessNow(item, lead, guidedPhotos)}</span>
-                      </span>
-                      <Link
-                        href={item.key === "photos" ? "#photos" : `/app/leads/${lead.id}/edit`}
-                        aria-label={`Fix: ${READINESS_NAMES[item.key]}`}
-                        className="inline-flex min-h-11 min-w-11 items-center justify-center font-semibold underline underline-offset-4"
-                      >
-                        Fix
-                      </Link>
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      ) : null}
+      {stillToDo.length > 0 ? <ToBeCompleted items={stillToDo} /> : null}
 
       {meetings.length > 0 ? (
-        <section id="meetings" data-testid="lead-meetings" aria-labelledby="lead-meetings-heading" className="flex scroll-mt-24 flex-col gap-3">
+        <section id="meetings" data-testid="lead-meetings" aria-labelledby="lead-meetings-heading" className="flex scroll-mt-36 flex-col gap-3">
           <h2 id="lead-meetings-heading" className="text-lg font-bold">
             Meetings
           </h2>
@@ -429,18 +410,21 @@ export default async function LeadPage({
           <CardTitle>{lead.email ? "Address and email" : "Address"}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-2 text-sm">
-          <p className="text-base font-semibold">{lead.address_line}</p>
+          <p className={lead.address_to_come ? "text-base text-muted-foreground" : "text-base font-semibold"}>{lead.address_line}</p>
           <p className="text-muted-foreground">
             {[lead.neighbourhood, lead.city, lead.postal_code].filter(Boolean).join(", ")}
           </p>
-          <a
-            href={mapsLink(lead)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex min-h-11 w-fit items-center font-semibold underline underline-offset-4"
-          >
-            Open in Google Maps
-          </a>
+          {/* A placeholder address has nothing to find on a map. */}
+          {lead.address_to_come && lead.lat === null ? null : (
+            <a
+              href={mapsLink(lead)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-h-11 w-fit items-center font-semibold underline underline-offset-4"
+            >
+              Open in Google Maps
+            </a>
+          )}
           {lead.lat === null ? (
             <p className="text-pretty text-muted-foreground">
               No map position yet.
@@ -468,7 +452,7 @@ export default async function LeadPage({
         </CardContent>
       </Card>
 
-      <Card id="find-out" className="scroll-mt-24">
+      <Card id="find-out" className="scroll-mt-36">
         <CardHeader>
           <CardTitle>Find out</CardTitle>
           <CardDescription>{completenessLabel(lead)}. Not collected doesn&apos;t count.</CardDescription>
@@ -500,7 +484,7 @@ export default async function LeadPage({
           for Keenan to read before the meeting: the setter's notes, a note
           on each answer, and the notes added on the timeline. Only the
           lead's own setter and Keenan see them. */}
-      <Card id="notes" className="scroll-mt-24" data-testid="lead-notes">
+      <Card id="notes" className="scroll-mt-36" data-testid="lead-notes">
         <CardHeader>
           <CardTitle>Notes</CardTitle>
         </CardHeader>
@@ -550,7 +534,7 @@ export default async function LeadPage({
         </CardContent>
       </Card>
 
-      <Card id="photos" className="scroll-mt-24">
+      <Card id="photos" className="scroll-mt-36">
         <CardHeader>
           <CardTitle>Photos</CardTitle>
         </CardHeader>
@@ -608,7 +592,7 @@ export default async function LeadPage({
         </CardContent>
       </Card>
 
-      <Card id="track-colour" className="scroll-mt-24">
+      <Card id="track-colour" className="scroll-mt-36">
         <CardHeader>
           <CardTitle>Track colour</CardTitle>
         </CardHeader>

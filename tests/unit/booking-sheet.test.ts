@@ -15,6 +15,7 @@ import {
   leadDraftFromSheet,
   LEARNED_QUESTIONS,
   markScreenNotCollected,
+  meetsLeadRules,
   nextScreen,
   previousScreen,
   PROBLEM_SCREENS,
@@ -28,11 +29,14 @@ import {
   stepCount,
   stepOf,
   STEPS,
+  toFinishLater,
   toggleHotButton,
+  typedProblem,
   withAnswer,
   withDraftDefaults,
   type SheetDraft,
 } from "@/lib/booking/sheet";
+import { addressToCome, nameToCome, NAME_OR_ADDRESS, parseSheetLead } from "@/lib/booking/sheet-lead";
 import { defaultsFromDraft, readDraft } from "@/lib/leads/draft";
 import { handOffToNewLead, takeHandOff } from "@/lib/leads/hand-off";
 import { NOT_COLLECTED } from "@/lib/leads/questions";
@@ -40,7 +44,7 @@ import { parseLeadForm } from "@/lib/leads/schema";
 import { sentence, timePhrase } from "@/lib/schedule/meetings";
 import { calgaryInstant } from "@/lib/time";
 
-// A lead ready to book: every Before you book item is met.
+// A lead with everything in: nothing left to finish later.
 function ready(): SheetDraft {
   return {
     ...emptyDraft(),
@@ -79,11 +83,14 @@ describe("The booking sheet's steps", () => {
     expect(LEARNED_QUESTIONS).toEqual(["christmas_lights_now", "looked_into_before"]);
   });
 
-  it("counts the answers still missing on every step, the same count as Book's button (round 3)", () => {
+  it("counts the answers still missing on every step (round 3)", () => {
     const empty = emptyDraft();
     expect(stepCount("who", empty)).toEqual({ number: 1, total: 6, left: sheetMissing(empty).length });
     expect(stepCount("learned", empty)).toEqual({ number: 3, total: 6, left: sheetMissing(empty).length });
-    expect(bookNeed(empty)).toBe(`${sheetMissing(empty).length} left to answer`);
+    // Not collected is dealt with on the steps, though it's still to finish later.
+    const marked = withAnswer(ready(), "christmas_lights_now", NOT_COLLECTED);
+    expect(stepCount("book", marked).left).toBe(0);
+    expect(toFinishLater(marked).map((item) => item.key)).toEqual(["christmas_lights_now"]);
     expect(stepCount("book", ready())).toEqual({ number: 6, total: 6, left: 0 });
     // An answer missing on a step already passed still counts.
     expect(stepCount("book", { ...ready(), christmas_lights_now: null })).toEqual({ number: 6, total: 6, left: 1 });
@@ -179,54 +186,133 @@ describe("When a screen is done", () => {
     expect(isScreenComplete("house", { ...draft, skip: "other", skip_note: "Dog in the yard" })).toBe(true);
   });
 
-  it("says at once which booking questions rule this time out: Not collected, No or Not yet", () => {
+  it("says at once when an answer rules this time out: only a No on owns the home (2026-11-10)", () => {
     expect(bookingBlockers(ready())).toEqual([]);
     expect(bookingBlockers(emptyDraft())).toEqual([]);
-    const marked = markScreenNotCollected("door", { ...ready(), owns_home: true, wants_price: null, everyone: null });
-    expect(bookingBlockers(marked)).toEqual(["wants_price", "both_decision_makers"]);
-    expect(bookingBlockers({ ...ready(), owns_home: false, wants_price: false })).toEqual(["owns_home", "wants_price"]);
-    expect(bookingBlockers(withAnswer(ready(), "phone", NOT_COLLECTED))).toEqual(["phone"]);
+    expect(bookingBlockers({ ...ready(), owns_home: false })).toEqual(["owns_home"]);
+    // Not collected, and a No on wants a price or on everyone who decides, are finished later or are answers.
+    const marked = markScreenNotCollected("door", { ...ready(), owns_home: null, wants_price: null, everyone: null });
+    expect(bookingBlockers(marked)).toEqual([]);
+    expect(bookingBlockers({ ...ready(), wants_price: false, everyone: false })).toEqual([]);
+    expect(bookingBlockers(withAnswer(ready(), "phone", NOT_COLLECTED))).toEqual([]);
   });
 });
 
-describe("Before you book in the sheet", () => {
-  it("is met by a ready lead, with nothing missing", () => {
-    expect(draftProblems(ready())).toEqual([]);
-    expect(isScreenComplete("book", ready())).toBe(true);
+// Book now, finish later (Keenan, 2026-11-10): Book needs a held time, a
+// first name or the address, and no No on owns the home.
+describe("What Book needs", () => {
+  it("books a person with only a name, or only an address, and nothing else", () => {
+    const nameOnly = { ...emptyDraft(), first_name: "Sarah" };
+    const addressOnly = { ...emptyDraft(), address_line: "305 Brand New Way NW" };
+    expect(canBookDraft(nameOnly)).toBe(true);
+    expect(canBookDraft(addressOnly)).toBe(true);
+    expect(bookNeed(nameOnly)).toBeNull();
+    expect(canBookDraft(emptyDraft())).toBe(false);
+    expect(bookNeed(emptyDraft())).toBe("Add a name or address");
+    // A last name alone isn't the first name the database needs.
+    expect(canBookDraft({ ...emptyDraft(), last_name: "Chen" })).toBe(false);
   });
 
-  it("names every missing item with the database's codes, and each has a screen that fixes it", () => {
-    const problems = draftProblems(emptyDraft());
-    expect(problems).toEqual(["phone", "owns_home", "wants_price", "soffit_colour", "map_position", "photos", "everyone_deciding_present"]);
-    expect(draftProblems({ ...ready(), photo_slots: [], skip: "other" })).toEqual(["photos_skip_note"]);
-    for (const code of [...problems, "photos_skip_note"]) expect(PROBLEM_SCREENS[code]).toBeDefined();
-    expect(PROBLEM_SCREENS.map_position).toBe("address");
-    expect(PROBLEM_SCREENS.everyone_deciding_present).toBe("door");
-    expect(PROBLEM_SCREENS.soffit_colour).toBe("address");
-    expect(PROBLEM_SCREENS.photos).toBe("house");
+  it("can't book a No on owns the home, and says so before anything else", () => {
+    expect(bookNeed({ ...ready(), owns_home: false })).toBe("Can't book");
+    expect(bookNeed({ ...emptyDraft(), owns_home: false })).toBe("Can't book");
+    expect(canBookDraft({ ...ready(), owns_home: false })).toBe(false);
+    expect(draftProblems({ ...ready(), owns_home: false })).toEqual(["owns_home"]);
+    expect(draftProblems({ ...emptyDraft(), owns_home: null })).toEqual([]);
   });
 
-  it("treats No and Not yet as missing, the same as the database", () => {
-    expect(draftProblems({ ...ready(), owns_home: false, wants_price: false })).toEqual(["owns_home", "wants_price"]);
-    expect(draftProblems({ ...ready(), everyone: false })).toEqual(["everyone_deciding_present"]);
+  it("never stops for the phone, the door questions, the soffit, the photos or the map position", () => {
+    const thin = { ...emptyDraft(), first_name: "Sarah" };
+    expect(canBookDraft(withAnswer(thin, "phone", NOT_COLLECTED))).toBe(true);
+    expect(canBookDraft({ ...thin, wants_price: false, everyone: false })).toBe(true);
+    expect(canBookDraft(markScreenNotCollected("door", thin))).toBe(true);
+    expect(canBookDraft({ ...ready(), photo_slots: ["front"], soffit_colour: null, lat: null, lng: null })).toBe(true);
   });
 
-  it("never counts Not collected as an answer where booking needs a real one", () => {
+  it("keeps what Book says short enough for its button", () => {
+    for (const label of ["Can't book", "Add a name or address", "Check the phone", "Check the soffit"]) expect(label.length).toBeLessThanOrEqual(21);
+  });
+
+  it("points at what was typed and can't be saved: a phone that isn't one, a split soffit without its note", () => {
+    expect(typedProblem(ready())).toBeNull();
+    expect(typedProblem({ ...ready(), phone: "12" })).toMatchObject({ key: "phone", screen: "book" });
+    expect(typedProblem(withAnswer({ ...ready(), phone: "" }, "phone", NOT_COLLECTED))).toBeNull();
+    expect(typedProblem({ ...ready(), soffit_colour_2: "off_white", soffit_note: "" })).toMatchObject({ key: "soffit_note", screen: "address" });
+    expect(typedProblem({ ...ready(), soffit_colour_2: "off_white", soffit_note: "White at the front" })).toBeNull();
+    // Book says it on its button, and the list to finish later leaves it out.
+    expect(canBookDraft({ ...ready(), phone: "12" })).toBe(false);
+    expect(bookNeed({ ...ready(), phone: "12" })).toBe("Check the phone");
+    expect(bookNeed({ ...ready(), soffit_colour_2: "off_white", soffit_note: "" })).toBe("Check the soffit");
+    expect(toFinishLater({ ...ready(), soffit_colour_2: "off_white", soffit_note: "" })).toEqual([]);
+    // A name or address comes first, then what was typed.
+    expect(bookNeed({ ...emptyDraft(), phone: "12" })).toBe("Add a name or address");
+  });
+
+  it("sends a database refusal to the step that fixes it", () => {
+    expect(PROBLEM_SCREENS.owns_home).toBe("door");
+    expect(PROBLEM_SCREENS.photos_skip_note).toBe("house");
+  });
+});
+
+describe("To finish later, on Book", () => {
+  it("is empty for a lead with everything in", () => {
+    expect(toFinishLater(ready())).toEqual([]);
+  });
+
+  it("lists everything still missing in the order of the steps, each with its step", () => {
+    const thin = { ...emptyDraft(), first_name: "Sarah" };
+    expect(toFinishLater(thin).map((item) => [item.screen, item.key])).toEqual([
+      ["door", "owns_home"],
+      ["door", "wants_price"],
+      ["door", "both_decision_makers"],
+      ["learned", "christmas_lights_now"],
+      ["learned", "looked_into_before"],
+      ["address", "map_position"],
+      ["address", "soffit_colour"],
+      ["house", "photos"],
+      ["book", "phone"],
+    ]);
+    expect(toFinishLater({ ...emptyDraft(), address_line: "1 Test Street NW", lat: 51.04, lng: -114.07 })[0]).toMatchObject({ key: "first_name", screen: "who" });
+  });
+
+  it("counts Not collected as still to finish, as the lead page and the reminder do", () => {
     let draft = ready();
-    for (const question of ["phone", "owns_home", "wants_price", "both_decision_makers"] as const) {
-      draft = withAnswer(draft, question, NOT_COLLECTED);
-    }
-    expect(draftProblems(draft)).toEqual(["phone", "owns_home", "wants_price", "everyone_deciding_present"]);
-    // What they learned after the door never blocks booking.
-    expect(draftProblems(markScreenNotCollected("learned", { ...ready(), christmas_lights_now: null, looked_into_before: null }))).toEqual([]);
+    for (const question of ["phone", "owns_home", "wants_price", "both_decision_makers"] as const) draft = withAnswer(draft, question, NOT_COLLECTED);
+    expect(toFinishLater(draft).map((item) => item.key)).toEqual(["owns_home", "wants_price", "both_decision_makers", "phone"]);
+    // Every step is still dealt with, so Next skips them for a lead.
+    expect(sheetMissing(draft)).toEqual([]);
+  });
+
+  it("takes a No on wants a price or on everyone who decides as an answer", () => {
+    expect(toFinishLater({ ...ready(), wants_price: false, everyone: false })).toEqual([]);
+  });
+
+  it("takes a skip reason for the photos, Other only with its note", () => {
+    const none = { ...ready(), photo_slots: [] as SheetDraft["photo_slots"] };
+    expect(toFinishLater({ ...none, skip: "homeowner_said_no" })).toEqual([]);
+    expect(toFinishLater({ ...none, skip: "other" }).map((item) => item.key)).toEqual(["photos_skip_note"]);
+    expect(toFinishLater({ ...none, skip: "other", skip_note: "Dog in the yard" })).toEqual([]);
+    expect(toFinishLater({ ...none, photo_slots: ["front"] }).map((item) => item.label)).toEqual(["2 more photos"]);
   });
 });
 
 describe("Saving the lead from the sheet", () => {
-  it("saves once there is a first name and an address, as the database needs", () => {
+  it("saves at Book once there is a first name or the address (2026-11-10)", () => {
     expect(canSaveLead(emptyDraft())).toBe(false);
-    expect(canSaveLead({ ...emptyDraft(), first_name: "Sarah" })).toBe(false);
-    expect(canSaveLead({ ...emptyDraft(), first_name: "Sarah", address_line: "123 Evanston Way NW" })).toBe(true);
+    expect(canSaveLead({ ...emptyDraft(), first_name: "Sarah" })).toBe(true);
+    expect(canSaveLead({ ...emptyDraft(), address_line: "123 Evanston Way NW" })).toBe(true);
+    expect(canSaveLead({ ...emptyDraft(), first_name: " ", address_line: " " })).toBe(false);
+  });
+
+  it("saves on Next only what New lead could save", () => {
+    expect(meetsLeadRules(ready())).toBe(true);
+    expect(meetsLeadRules({ ...ready(), first_name: "" })).toBe(false);
+    expect(meetsLeadRules({ ...ready(), address_line: "" })).toBe(false);
+    expect(meetsLeadRules({ ...ready(), looked_into_before: null })).toBe(false);
+    expect(meetsLeadRules(withAnswer(ready(), "looked_into_before", NOT_COLLECTED))).toBe(true);
+    expect(meetsLeadRules({ ...ready(), phone: "12" })).toBe(false);
+    expect(meetsLeadRules(withAnswer({ ...ready(), phone: "" }, "phone", NOT_COLLECTED))).toBe(true);
+    expect(meetsLeadRules({ ...ready(), phone: "" })).toBe(false);
   });
 
   it("builds input the lead form's validator accepts, with the answers it expects", () => {
@@ -347,13 +433,13 @@ describe("Move freely, check at Book (round 3, Keenan, 2026-11-05)", () => {
     expect(canBookDraft(bare)).toBe(true);
   });
 
-  it("books only once everything is answered, nothing rules it out and Before you book is met", () => {
+  it("books with answers still missing, and only a No on owns the home stops it (2026-11-10)", () => {
     expect(canBookDraft(ready())).toBe(true);
-    expect(canBookDraft({ ...ready(), christmas_lights_now: null })).toBe(false);
-    expect(canBookDraft(withAnswer(ready(), "christmas_lights_now", NOT_COLLECTED))).toBe(true);
-    expect(canBookDraft({ ...ready(), wants_price: false })).toBe(false);
-    expect(canBookDraft(withAnswer(ready(), "phone", NOT_COLLECTED))).toBe(false);
-    expect(canBookDraft({ ...ready(), photo_slots: ["front"] })).toBe(false);
+    expect(canBookDraft({ ...ready(), christmas_lights_now: null })).toBe(true);
+    expect(canBookDraft({ ...ready(), wants_price: false })).toBe(true);
+    expect(canBookDraft(withAnswer(ready(), "phone", NOT_COLLECTED))).toBe(true);
+    expect(canBookDraft({ ...ready(), photo_slots: ["front"] })).toBe(true);
+    expect(canBookDraft({ ...ready(), owns_home: false })).toBe(false);
   });
 
   it("walks the steps in order whatever is missing: Next never stops", () => {
@@ -366,18 +452,12 @@ describe("Move freely, check at Book (round 3, Keenan, 2026-11-05)", () => {
     expect(visited).toEqual(SCREENS);
   });
 
-  it("says Book can't book yet while an answer rules it out, and how much is left otherwise", () => {
+  it("says on Book only what stops it, never how much is left to finish", () => {
     expect(bookNeed(ready())).toBeNull();
-    expect(bookNeed({ ...ready(), wants_price: false })).toBe("Can't book yet");
-    expect(bookNeed(withAnswer(ready(), "phone", NOT_COLLECTED))).toBe("Can't book yet");
-    expect(bookNeed({ ...ready(), soffit_colour: null })).toBe("1 left to answer");
-    expect(bookNeed({ ...ready(), soffit_colour: null, photo_slots: [] })).toBe("2 left to answer");
-    expect(bookNeed({ ...ready(), soffit_colour: null, owns_home: false })).toBe("Can't book yet");
-    for (const label of ["Can't book yet", "9 left to answer", "Fix 7 first"]) expect(label.length).toBeLessThanOrEqual(21);
-  });
-
-  it("sends the phone to Book when the database refuses it", () => {
-    expect(PROBLEM_SCREENS.phone).toBe("book");
+    expect(bookNeed({ ...ready(), wants_price: false })).toBeNull();
+    expect(bookNeed(withAnswer(ready(), "phone", NOT_COLLECTED))).toBeNull();
+    expect(bookNeed({ ...ready(), soffit_colour: null, photo_slots: [] })).toBeNull();
+    expect(bookNeed({ ...ready(), soffit_colour: null, owns_home: false })).toBe("Can't book");
   });
 });
 
@@ -500,7 +580,7 @@ describe("Keep as a lead", () => {
 // Round 6 (Keenan, 2026-11-07): a split soffit, two answers together, and
 // a note on each answer, from the sheet to the lead.
 describe("Round 6 answers from the sheet", () => {
-  it("saves a split soffit with its note, and asks for the note before Book", () => {
+  it("saves a split soffit with its note, and asks for the note before it saves", () => {
     const split = { ...ready(), soffit_colour: "white" as const, soffit_colour_2: "off_white" as const, soffit_note: "" };
     expect(sheetMissing(split).map((item) => item.key)).toContain("soffit_note");
     expect(parseLeadForm(draftToLeadInput(split)).ok).toBe(false);
@@ -531,5 +611,75 @@ describe("Round 6 answers from the sheet", () => {
     expect(Object.keys(input)).not.toContain("areas_wanted");
     expect(Object.keys(input)).not.toContain("install_timing");
     expect(Object.keys(input)).not.toContain("confirm_by");
+  });
+});
+
+// The save at Book (2026-11-10): a first name or the address is enough, the
+// other saved as Name to come or Address to come with its flag, and every
+// question not asked yet stays open.
+describe("The save at Book", () => {
+  it("saves a person with only a first name, the address to come", () => {
+    const parsed = parseSheetLead(draftToLeadInput({ ...emptyDraft(), first_name: "Sarah" }));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect([parsed.values.first_name, parsed.values.address_line]).toEqual(["Sarah", "Address to come"]);
+    expect([parsed.values.name_to_come, parsed.values.address_to_come]).toEqual([false, true]);
+    expect([parsed.values.lat, parsed.values.lng, parsed.values.position_source]).toEqual([null, null, null]);
+    // Nothing was asked, and nothing is marked Not collected.
+    expect(parsed.values.not_collected).toEqual([]);
+    expect([parsed.values.phone, parsed.values.owns_home, parsed.values.looked_into_before]).toEqual([null, null, null]);
+  });
+
+  it("saves a person with only the address, the name to come", () => {
+    const parsed = parseSheetLead(
+      draftToLeadInput({ ...emptyDraft(), address_line: "1 Test Street NW", lat: 51.04, lng: -114.07, position_source: "picked", place_id: "abc" }),
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect([parsed.values.first_name, parsed.values.address_line]).toEqual(["Name to come", "1 Test Street NW"]);
+    expect([parsed.values.name_to_come, parsed.values.address_to_come]).toEqual([true, false]);
+    expect(parsed.values.lat).toBe(51.04);
+  });
+
+  it("refuses a person with neither, pointing at the name", () => {
+    const parsed = parseSheetLead(draftToLeadInput(emptyDraft()));
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.errors.first_name).toBe(NAME_OR_ADDRESS);
+  });
+
+  it("keeps what was answered and marked, and leaves the rest open", () => {
+    let draft: SheetDraft = { ...emptyDraft(), first_name: "Sarah", owns_home: true, wants_price: false };
+    draft = withAnswer(draft, "phone", NOT_COLLECTED);
+    draft = withAnswer(draft, "christmas_lights_now", NOT_COLLECTED);
+    const parsed = parseSheetLead(draftToLeadInput(draft));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect([parsed.values.owns_home, parsed.values.wants_price, parsed.values.both_decision_makers]).toEqual([true, false, null]);
+    expect([...parsed.values.not_collected].sort()).toEqual(["christmas_lights_now", "phone"]);
+  });
+
+  it("still checks what was typed as New lead does", () => {
+    const badPhone = parseSheetLead(draftToLeadInput({ ...emptyDraft(), first_name: "Sarah", phone: "12" }));
+    expect(badPhone.ok === false && badPhone.errors.phone).toBeTruthy();
+    const split = parseSheetLead(draftToLeadInput({ ...emptyDraft(), first_name: "Sarah", soffit_colour: "white", soffit_colour_2: "off_white" }));
+    expect(split.ok === false && split.errors.soffit_note).toBeTruthy();
+    const phone = parseSheetLead(draftToLeadInput({ ...emptyDraft(), first_name: "Sarah", phone: "403 555 0177" }));
+    expect(phone.ok && phone.values.phone).toBe("+14035550177");
+  });
+
+  it("leaves New lead's own rules as they are", () => {
+    const parsed = parseLeadForm(draftToLeadInput({ ...emptyDraft(), first_name: "Sarah" }));
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.errors.address_line).toBeTruthy();
+  });
+
+  it("reads a name or an address still to come from the flag, or the words saved in its place", () => {
+    expect(nameToCome({ first_name: "Name to come", name_to_come: true })).toBe(true);
+    expect(nameToCome({ first_name: "Sarah", name_to_come: false })).toBe(false);
+    expect(nameToCome({ first_name: "Name to come" })).toBe(true);
+    expect(addressToCome({ address_line: "Address to come", address_to_come: true })).toBe(true);
+    expect(addressToCome({ address_line: "1 Test Street NW" })).toBe(false);
   });
 });

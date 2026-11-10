@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { findLeadsNear, type DuplicateLead } from "@/app/(app)/app/leads/actions";
 import { FieldError } from "@/components/field-error";
+import { toComeHandlers } from "@/components/leads/to-come-input";
 import { UseMyPosition } from "@/components/leads/use-my-position";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -71,6 +72,7 @@ export function AddressField({
   leadId = null,
   linkLeads = true,
   place = "door",
+  toCome = null,
 }: {
   apiKey: string | null;
   defaults?: AddressDefaults;
@@ -97,6 +99,10 @@ export function AddressField({
   // False inside the booking sheet, where a link would change the page
   // hidden behind it: nearby leads are named as text there.
   linkLeads?: boolean;
+  // Book now, finish later (2026-11-10): the "Address to come" a booking
+  // saved without an address. Focusing or tapping the field selects it, so
+  // typing replaces it.
+  toCome?: string | null;
 }) {
   const listId = useId();
   const [text, setText] = useState(defaults?.addressLine ?? "");
@@ -320,7 +326,10 @@ export function AddressField({
           value={text}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={onKeyDown}
+          {...toComeHandlers(toCome)}
           onBlur={() => setTimeout(() => setOpen(false), 150)}
+          // An address still to finish jumps here, clear of the header.
+          className="scroll-mt-40"
           autoComplete="off"
           autoCorrect="off"
           spellCheck={false}

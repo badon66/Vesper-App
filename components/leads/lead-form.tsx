@@ -18,6 +18,7 @@ import { OptionalChoice } from "@/components/leads/optional-choice";
 import { bookingRuledOut, LeadQuestions, type QuestionDefaults } from "@/components/leads/find-out-fields";
 import { PhotoPicker } from "@/components/leads/photo-picker";
 import { PhotoSlots } from "@/components/leads/photo-slots";
+import { toComeHandlers } from "@/components/leads/to-come-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +38,7 @@ import { defaultsFromDraft, draftFromFormData, draftHasContent, draftKey, draftP
 import { timed } from "@/lib/answer-within";
 import { takeHandOff } from "@/lib/leads/hand-off";
 import { QUESTION_LABELS, type AnswerNotes, type CountedQuestion } from "@/lib/leads/questions";
+import { ADDRESS_TO_COME, NAME_TO_COME } from "@/lib/leads/to-finish";
 import { ANSWER_OR_NOT_COLLECTED, leadFormDataToInput, unansweredQuestions, type LeadFormErrors } from "@/lib/leads/schema";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { createClient } from "@/lib/supabase/client";
@@ -70,6 +72,12 @@ export type LeadFormDefaults = {
   address: AddressDefaults;
   // A new lead's save key, from its draft (2026-11-04).
   saveKey?: string | null;
+  // Book now, finish later (2026-11-10): a booking made without a name or
+  // an address saved "Name to come" or "Address to come" in its place.
+  // Focusing or tapping the field selects it, so typing replaces it; left
+  // as it is, it stays to come.
+  name_to_come?: boolean;
+  address_to_come?: boolean;
 };
 
 const initialState: LeadFormState = {};
@@ -161,14 +169,12 @@ export function LeadForm({
   // The questions still open, once Save was tapped with some open: checked
   // before sending, and updated as they're answered.
   const [openNow, setOpenNow] = useState<CountedQuestion[] | null>(null);
-  // Save and book steps back while the answers rule booking out (a phone or
-  // a booking question Not collected, a No or a Not yet): the sheet would
-  // hold a time it can't book.
+  // Save and book steps back while the answers rule booking out (a No on
+  // owns the home, from 2026-11-10): the sheet would hold a time it can't
+  // book.
   const [bookingBlocked, setBookingBlocked] = useState<boolean | null>(null);
   const markRestRef = useRef<(() => void) | null>(null);
-  const blocked =
-    bookingBlocked ??
-    bookingRuledOut(shown?.questions ?? NOTHING_FOUND_OUT, Boolean(shown?.phone_not_collected) && !(shown?.phone ?? "").trim());
+  const blocked = bookingBlocked ?? bookingRuledOut(shown?.questions ?? NOTHING_FOUND_OUT);
   const openErrors: LeadFormErrors = Object.fromEntries((openNow ?? []).map((question) => [question, ANSWER_OR_NOT_COLLECTED]));
   const errors: LeadFormErrors = { ...(state.errors ?? {}), ...openErrors };
   const openCount = openNow?.length ?? 0;
@@ -331,7 +337,9 @@ export function LeadForm({
     }
     const formData = new FormData(form, submitter);
     if (mode === "create" && key) formData.set("save_key", key);
-    const open = unansweredQuestions(leadFormDataToInput(formData));
+    // Only New lead needs every answer before it saves; a saved lead's edit
+    // page saves what is filled in (Keenan, 2026-11-10).
+    const open = mode === "create" ? unansweredQuestions(leadFormDataToInput(formData)) : [];
     setOpenNow(open.length > 0 ? open : null);
     if (open.length > 0) {
       const first = form.querySelector<HTMLElement>(open[0] === "phone" ? "#lead-phone" : `[data-question="${open[0]}"] input`);
@@ -407,6 +415,7 @@ export function LeadForm({
         onPicked={onPicked}
         leadId={leadId ?? null}
         keepsEntries={drafting}
+        toCome={shown?.address_to_come ? ADDRESS_TO_COME : null}
       />
 
       {duplicates.length > 0 ? (
@@ -457,6 +466,9 @@ export function LeadForm({
             id="lead-first_name"
             name="first_name"
             defaultValue={shown?.first_name}
+            // Book now, finish later: a name still to come jumps here.
+            className="scroll-mt-40"
+            {...toComeHandlers(shown?.name_to_come ? NAME_TO_COME : null)}
             autoComplete="off"
             autoCapitalize="words"
             aria-invalid={errors.first_name ? true : undefined}
@@ -589,7 +601,7 @@ export function LeadForm({
           )}
           {mode === "create" && blocked && openCount === 0 && !state.error ? (
             <p className="text-sm text-pretty text-muted-foreground" data-testid="booking-ruled-out">
-              Booking needs a number and a Yes for owns the home, wants a price and everyone who decides, so this one saves as a lead.
+              They don&apos;t own the home, so this one saves as a lead.
             </p>
           ) : null}
           {mode === "create" ? (

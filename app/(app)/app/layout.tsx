@@ -6,6 +6,7 @@ import { BellLink } from "@/components/notifications/bell-link";
 import { Wordmark } from "@/components/brand/wordmark";
 import { SignOutButton } from "@/components/sign-out-button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { ToFinishBar } from "@/components/to-finish/to-finish-bar";
 import { ViewAsBar } from "@/components/view-as-bar";
 import { ViewAsProvider } from "@/components/view-as-context";
 import { getViewer } from "@/lib/auth/profile";
@@ -56,6 +57,10 @@ export default async function AppLayout({
             </div>
           </div>
         </header>
+        {/* Book now, finish later (Keenan, 2026-11-10): a setter's bookings
+            that still miss something, as one slim line under the header.
+            While Keenan views the app as a setter, it is that setter's. */}
+        <ToFinishBar person={{ id: profile.id, role: profile.role }} />
       </div>
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-10">
         {children}
