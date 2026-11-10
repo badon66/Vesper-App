@@ -263,6 +263,7 @@ describe("what a token shows", () => {
         // Round 9 (2026-11-10): the offers branch's fields, live in the
         // database ahead of its page (it waits for Keenan's preview).
         "install_day_deck",
+        "lines",
         "next_steps",
         "selection_offer",
         "booked_offer",
