@@ -1518,6 +1518,8 @@ export type Database = {
       }
       settings: {
         Row: {
+          black_friday_kind: string | null
+          black_friday_value: number | null
           deck: Json
           light_looks: Json
           confirm_text: string
@@ -1566,6 +1568,8 @@ export type Database = {
           warranty_text: string
         }
         Insert: {
+          black_friday_kind?: string | null
+          black_friday_value?: number | null
           deck?: Json
           light_looks?: Json
           confirm_text?: string
@@ -1614,6 +1618,8 @@ export type Database = {
           warranty_text: string
         }
         Update: {
+          black_friday_kind?: string | null
+          black_friday_value?: number | null
           deck?: Json
           light_looks?: Json
           confirm_text?: string
