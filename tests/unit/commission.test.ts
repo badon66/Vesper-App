@@ -178,4 +178,74 @@ describe("a quotes row", () => {
     const parsed = commissionQuoteFromRow({ runs: null, box_count: 1, price_per_ft: 24, box_price: 500, discounts: {} }, null);
     expect(commissionFor(parsed, 0.05)).toEqual({ base: 500, amount: 25 });
   });
+
+  it("reads a whole stored quote and leaves out every line that isn't lights, boxes or discounts", () => {
+    // A quote as the database holds it, on main or after the quote link
+    // rework: extra work (one only with upper runs), rush colour both ways
+    // (per foot and flat), upper access and a minimum far above the total.
+    const stored = {
+      runs: [
+        { name: "Front", feet: 60, level: "lower", part: "eave" },
+        { name: "Garage", feet: 25, level: "lower", part: "garage" },
+        { name: "Upper peak", feet: 40, level: "upper", part: "gable" },
+      ],
+      box_count: 2,
+      price_per_ft: 24,
+      box_price: 500,
+      adders: [
+        { label: "Extra wiring", amount: 120 },
+        { label: "Lift rental", amount: 300, upper_only: true },
+      ],
+      discounts: [
+        { label: "Neighbour discount", amount: 150 },
+        { label: "Referral credit", amount: 150 },
+      ],
+      colour_timing: "rush",
+      rush_fee_per_ft: 4,
+      rush_fee: 350,
+      upper_access_fee: 200,
+      upper_gable_access_fee: 400,
+      min_job_total: 10_000,
+      subtotal: 10_000,
+      total: 10_000,
+    };
+    // The full quote: 125 ft x $24 = $3,000, two $500 boxes, less $300:
+    // $3,700. 5% is $185.
+    expect(commissionFor(commissionQuoteFromRow(stored, null), 0.05)).toEqual({ base: 3700, amount: 185 });
+    // Start smaller, the lower runs only: 85 ft x $24 = $2,040, both boxes,
+    // less $300: $2,740. 5% is $137.
+    expect(commissionFor(commissionQuoteFromRow(stored, [0, 1]), 0.05)).toEqual({ base: 2740, amount: 137 });
+  });
+});
+
+// A small, repeatable stream of numbers, so the checks below cover many
+// values and still run the same way every time.
+function numbers(seed: number) {
+  let state = seed >>> 0;
+  return (below: number) => {
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+    return state % below;
+  };
+}
+
+describe("exactly the database's rounding", () => {
+  it("rounds the amount half up from exact whole numbers, for every base and rate", () => {
+    const next = numbers(8);
+    for (let i = 0; i < 2_000; i++) {
+      const base = next(100_000_000);
+      const points = next(2_001);
+      // round(base x rate, 2) worked in exact integers.
+      const exact = Number((BigInt(base) * BigInt(points) + BigInt(5_000)) / BigInt(10_000));
+      expect(commissionAmountCents(base, points / 10_000)).toBe(exact);
+    }
+  });
+
+  it("turns stored decimals into cents the way Postgres does", () => {
+    const next = numbers(11);
+    for (let i = 0; i < 2_000; i++) {
+      // A stored amount with up to three decimals, read back as a number.
+      const thousandths = next(10_000_000);
+      expect(shiftRounded(thousandths / 1_000, 2)).toBe(Math.floor((thousandths + 5) / 10));
+    }
+  });
 });

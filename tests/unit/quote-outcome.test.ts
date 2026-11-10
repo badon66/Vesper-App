@@ -217,6 +217,29 @@ describe("messages", () => {
     expect(outcomeMessageFor("not_allowed")).toBe("Only Keenan can do that.");
     expect(outcomeMessageFor("read_only")).toBe("View as: nothing was saved.");
     expect(outcomeMessageFor("bad_date")).toBe("Pick the install day: today or earlier.");
+    // The database also answers not_open for a quote it can't find, so the
+    // words fit both.
+    expect(outcomeMessageFor("not_open")).toBe("This quote has changed since the page opened. Refresh to see where it stands.");
+    expect(outcomeMessageFor("already_accepted")).toBe("Another quote on this lead is already accepted. Undo that one first.");
+  });
+
+  it("has words for every hint the outcome functions and guards raise", () => {
+    const hints = [
+      "not_allowed",
+      "not_open",
+      "already_accepted",
+      "track_colour_needed",
+      "bad_runs",
+      "bad_reason",
+      "bad_note",
+      "not_accepted",
+      "not_undoable",
+      "not_sold",
+      "bad_date",
+      "outcome_only",
+      "quote_locked",
+    ];
+    for (const hint of hints) expect(outcomeMessageFor(hint)).not.toBe("That didn't save. Check your signal and try again.");
   });
 
   it("falls back for anything it does not know", () => {

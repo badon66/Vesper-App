@@ -1,5 +1,5 @@
 import { commissionFor, commissionQuoteFromRow, type CommissionQuoteRow } from "@/lib/pay/commission";
-import { cleanFeet, formatMoney, selectRuns, totalFeet, type QuoteRun } from "@/lib/pricing";
+import { formatMoney, selectRuns, totalFeet, type QuoteRun } from "@/lib/pricing";
 import { choiceLabel, optionName } from "@/lib/quote-link/view";
 import type { CommissionLine } from "@/lib/quotes/outcome";
 import type { Json } from "@/types/database";
@@ -159,10 +159,4 @@ export function voidWords(line: CommissionLine): string | null {
 export function installedWords(line: CommissionLine): string | null {
   if (line.kind !== "earning" || line.status !== "pending" || line.payableAt) return null;
   return `The ${formatMoney(line.amount)} commission to ${line.setterName} becomes owed, ready to mark paid in Pay.`;
-}
-
-// The feet on a quote's accepted runs, for the card.
-export function acceptedFeet(runs: QuoteRun[], positions: readonly number[] | null): number {
-  const part = partOfQuote(runs.length, positions);
-  return selectRuns(runs, part).reduce((sum, run) => sum + cleanFeet(run.feet), 0);
 }

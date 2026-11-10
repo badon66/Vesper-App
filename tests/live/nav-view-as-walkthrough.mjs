@@ -65,6 +65,11 @@ const addDays = (day, n) => {
 };
 const formatDay = (day) => shortDay.format(new Date(`${day}T12:00:00Z`));
 
+// The setter's own commission lines on Home (round 8), the only "$" a
+// screen other than My pay may show them.
+const OWN_COMMISSION_LINE =
+  /(?:Sold\. \$[\d,]+(?:\.\d{2})? commission once it's installed\.|Installed\. \$[\d,]+(?:\.\d{2})? commission to be paid\.|Paid\. \$[\d,]+(?:\.\d{2})? commission\.)/g;
+
 const visibleTabs = (page) =>
   page.locator('nav[aria-label="Tabs"]:visible').getByRole("link").evaluateAll((links) => links.map((link) => link.textContent.trim()));
 
@@ -822,7 +827,14 @@ try {
     if (label === "My pay") {
       check("View as shows the setter's own pay and nobody else's", viewed.text.includes("Owed now $") && !viewed.text.includes("Nav Test B") && !/Price per foot|Booking pay/.test(viewed.text));
     } else {
-      check(`View as shows no prices or settings on ${label}`, !/\$|Price per foot|Booking pay|Commission/.test(viewed.text));
+      // Round 8 (2026-11-09): Home may carry the setter's own commission
+      // lines under How mine went ("Sold. $142 commission once it's
+      // installed."); nothing else on any screen but My pay shows a "$".
+      const shown = label === "Home" ? viewed.text.replace(OWN_COMMISSION_LINE, "") : viewed.text;
+      check(
+        `View as shows no prices or settings on ${label}${label === "Home" ? ", only the setter's own commission lines" : ""}`,
+        !/\$|Price per foot|Booking pay|Commission/.test(shown),
+      );
     }
   }
   check("View as keeps owner screens from the setter's view", (await op.getByRole("heading", { name: "Not for your role" }).count()) === 1);

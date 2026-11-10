@@ -151,6 +151,35 @@ export async function undoAcceptance(input: z.input<typeof undoSchema>): Promise
   return { ok: true };
 }
 
+const installDaySchema = z.object({ leadId: id, on: day.nullable() });
+
+// The planned install day on a Sold lead, added or changed after the yes
+// (Accepted asks for it too). Only Keenan may set it; the database refuses
+// anyone else (leads_owner_dates). It is a day, never an amount.
+export async function setInstallDay(input: z.input<typeof installDaySchema>): Promise<OutcomeResult> {
+  const refused = await owner();
+  if (refused) return refused;
+  const parsed = installDaySchema.safeParse(input);
+  if (!parsed.success) {
+    return parsed.error.issues[0]?.path[0] === "on"
+      ? { ok: false, code: "bad_install_on", message: "Pick the planned install day." }
+      : { ok: false, code: "no_lead", message: OUTCOME_MESSAGES.no_lead };
+  }
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("leads")
+    .update({ install_on: parsed.data.on })
+    .eq("id", parsed.data.leadId)
+    .eq("status", "sold")
+    .select("id");
+  if (error) return outcomeFailure(error);
+  if (!data || data.length === 0) {
+    return { ok: false, code: "not_sold", message: "The install day goes on a Sold lead. Refresh to see where it stands." };
+  }
+  refresh(parsed.data.leadId);
+  return { ok: true };
+}
+
 const installedSchema = z.object({ leadId: id, on: day });
 
 // Installed, on the day the crew finished. The commission becomes owed.

@@ -9,6 +9,7 @@ import { followUpLabel } from "@/lib/leads/attention";
 import { followUpsDue, namesById, openKnockSession } from "@/lib/leads/queries";
 import { completenessLabel } from "@/lib/leads/questions";
 import { leadName } from "@/lib/leads/status";
+import { commissionStage, homeCommissions, homeCommissionText, type HomeCommission } from "@/lib/pay/earnings";
 import { heldTimeLabel, MEETING_STATUS_LABELS } from "@/lib/schedule/meetings";
 import { bookingSettings, meetingsBetween, meetingsOnDay, type MeetingWithLead } from "@/lib/schedule/queries";
 import { createClient } from "@/lib/supabase/server";
@@ -24,15 +25,16 @@ const PAST_SHOWN = 4;
 // live session; the team's schedule for today, with a switch to tomorrow
 // (every meeting's time, area and who booked it, never a customer's name,
 // phone or email); How mine went (their own bookings: how each meeting in
-// the last 7 days went, then what's coming up); follow-ups due. Every query
-// is scoped to this person or to the team, so View as shows exactly what
-// they would see (CLAUDE.md, View as).
+// the last 7 days went, then what's coming up, with their own commission on
+// each sale first, round 8); follow-ups due. Every query is scoped to this
+// person or to the team, so View as shows exactly what they would see
+// (CLAUDE.md, View as).
 export async function SalesHome({ profile }: { profile: SessionProfile }) {
   const supabase = await createClient();
   const today = calgaryToday();
   const tomorrow = addDays(today, 1);
   const settings = await bookingSettings(supabase);
-  const [session, due, teamToday, teamTomorrow, mine] = await Promise.all([
+  const [session, due, teamToday, teamTomorrow, mine, commissionRows] = await Promise.all([
     openKnockSession(supabase, profile.id),
     followUpsDue(supabase, profile.id, today),
     // No viewer: the team's list asks for no contact details at all.
@@ -42,6 +44,16 @@ export async function SalesHome({ profile }: { profile: SessionProfile }) {
       setterId: profile.id,
       viewer: profile,
     }),
+    // Only this person's own commission, never anyone else's (round 8).
+    supabase
+      .from("earnings")
+      .select(
+        "id, lead_id, amount, status, payable_at, paid_at, note, updated_at, lead:leads!earnings_lead_id_fkey(id, first_name, last_name, address_line)",
+      )
+      .eq("profile_id", profile.id)
+      .eq("type", "commission")
+      .order("updated_at", { ascending: false })
+      .limit(500),
   ]);
   const names = await namesById(
     supabase,
@@ -49,6 +61,15 @@ export async function SalesHome({ profile }: { profile: SessionProfile }) {
   );
   const now = requestTime();
   const { coming, past } = splitMine(mine, now);
+  const sales = homeCommissions(
+    (commissionRows.data ?? []).map((row) => ({
+      ...row,
+      amount: Number(row.amount),
+      lead: row.lead as unknown as SaleLead | null,
+    })),
+    now,
+    PAST_DAYS,
+  );
   const todayRows = teamRows(teamToday, names, profile.id);
   const tomorrowRows = teamRows(teamTomorrow, names, profile.id);
   const firstName = profile.full_name.split(" ")[0] || profile.full_name;
@@ -86,10 +107,20 @@ export async function SalesHome({ profile }: { profile: SessionProfile }) {
         <h2 id="mine-heading" className="text-lg font-bold">
           How mine went
         </h2>
-        {coming.length === 0 && past.length === 0 ? (
+        {coming.length === 0 && past.length === 0 && sales.length === 0 ? (
           <p className="text-sm text-pretty text-muted-foreground">
             No bookings in the last 7 days or coming up. Book a time from Session or Schedule, and it shows here.
           </p>
+        ) : null}
+        {sales.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            <h3 className="text-base font-bold">Sales</h3>
+            <ul className="flex flex-col divide-y rounded-md border" aria-label="Sales">
+              {sales.map((sale) => (
+                <SaleRow key={sale.id} sale={sale} />
+              ))}
+            </ul>
+          </div>
         ) : null}
         {past.length > 0 ? (
           <div className="flex flex-col gap-2">
@@ -240,6 +271,44 @@ function PastRow({ meeting, today }: { meeting: MeetingWithLead; today: string }
         </span>
         <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
       </Link>
+    </li>
+  );
+}
+
+type SaleLead = { id: string; first_name: string; last_name: string | null; address_line: string };
+
+// One of the setter's own sales (round 8): the lead's name and street, and
+// where its commission stands, in Keenan's words: "Sold. $142 commission
+// once it's installed." Owed and paid carry the tick that Qualified does.
+function SaleRow({ sale }: { sale: HomeCommission & { lead: SaleLead | null } }) {
+  const stage = commissionStage(sale);
+  const text = homeCommissionText(sale);
+  const body = (
+    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <span className="font-semibold">{sale.lead ? leadName(sale.lead) : "One of your leads"}</span>
+      {sale.lead ? <span className="text-sm text-muted-foreground">{sale.lead.address_line}</span> : null}
+      <span
+        className={cn("flex items-center gap-1 text-sm", stage === "void" ? "text-muted-foreground" : "font-semibold")}
+        data-testid="sale-commission"
+      >
+        {stage === "owed" || stage === "paid" ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
+        {text}
+      </span>
+    </span>
+  );
+  return (
+    <li data-testid="home-sale">
+      {sale.lead ? (
+        <Link
+          href={`/app/leads/${sale.lead.id}`}
+          className="flex min-h-16 items-center gap-3 px-4 py-3 outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        >
+          {body}
+          <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
+        </Link>
+      ) : (
+        <div className="flex min-h-16 items-center gap-3 px-4 py-3">{body}</div>
+      )}
     </li>
   );
 }

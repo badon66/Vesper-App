@@ -238,7 +238,8 @@ export const OUTCOME_MESSAGES = {
   read_only: VIEW_AS_READ_ONLY,
   no_quote: "That quote was not found. Refresh to see the lead as it is now.",
   no_lead: "That lead was not found.",
-  not_open: "This quote already has an outcome. Refresh to see it.",
+  // Also what the database says for a quote it can't find.
+  not_open: "This quote has changed since the page opened. Refresh to see where it stands.",
   already_accepted: "Another quote on this lead is already accepted. Undo that one first.",
   track_colour_needed: "Set the track colour first. It goes on the accepted quote.",
   bad_runs: "Pick the option they said yes to.",

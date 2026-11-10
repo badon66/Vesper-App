@@ -107,6 +107,13 @@ describe("describeEvent", () => {
     ).toBe("Changed the second soffit colour code. Updated Find out: soffit colour and second soffit colour.");
   });
 
+  // Round 8: the planned install day by name, never the day itself.
+  it("names the planned install day", () => {
+    expect(describeEvent({ ...base, type: "edited", payload: { fields: ["install_on"] } })).toBe(
+      "Changed the planned install day.",
+    );
+  });
+
   it("names the colour book photos", () => {
     expect(describeEvent({ ...base, type: "photo_added", payload: { photo_id: "p", slot: "soffit_book" } })).toBe(
       "Added the colour book photo.",

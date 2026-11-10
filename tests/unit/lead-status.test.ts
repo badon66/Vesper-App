@@ -18,11 +18,27 @@ describe("status rules", () => {
     }
   });
 
-  it("lets the owner set any status and crew none", () => {
-    expect(statusChoices("owner", "new")).toHaveLength(8);
-    expect(canChangeStatus("owner", "new", "installed")).toBe(true);
+  it("lets the owner set any status but Sold and Installed, and crew none", () => {
+    expect(statusChoices("owner", "new")).toEqual(["new", "follow_up", "meeting_booked", "met", "quoted", "lost"]);
+    expect(canChangeStatus("owner", "new", "lost")).toBe(true);
+    expect(canChangeStatus("owner", "lost", "met")).toBe(true);
     expect(canChangeStatus("owner", "new", "new")).toBe(false);
     expect(statusChoices("crew", "new")).toEqual([]);
+  });
+
+  it("leaves Sold and Installed to the quote's outcome card (round 8)", () => {
+    for (const from of ["new", "met", "quoted", "lost"] as const) {
+      expect(canChangeStatus("owner", from, "sold"), from).toBe(false);
+      expect(canChangeStatus("owner", from, "installed"), from).toBe(false);
+    }
+    expect(canChangeStatus("owner", "sold", "installed")).toBe(false);
+    expect(canChangeStatus("owner", "installed", "sold")).toBe(false);
+    // A lead already Sold or Installed keeps its own status in the menu, and
+    // can still be moved to the others.
+    expect(statusChoices("owner", "sold")).toEqual(["new", "follow_up", "meeting_booked", "met", "quoted", "sold", "lost"]);
+    expect(statusChoices("owner", "installed")).toContain("installed");
+    expect(statusChoices("owner", "installed")).not.toContain("sold");
+    expect(canChangeStatus("owner", "sold", "lost")).toBe(true);
   });
 });
 

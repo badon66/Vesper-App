@@ -39,6 +39,9 @@ const FIELD_LABELS: Record<string, string> = {
   // The soffit's own code from the RAL colour book (2026-11-09).
   soffit_ral_code: "soffit colour code",
   soffit_ral_code_2: "second soffit colour code",
+  // Round 8: the planned install day, which only Keenan sets (the
+  // acceptance's own entry names the day).
+  install_on: "planned install day",
 };
 
 // The Find out questions, named the way the form asks them.

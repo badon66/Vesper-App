@@ -21,7 +21,7 @@ const sections = [
   {
     href: "/app/admin/pay",
     title: "Pay",
-    text: "What each setter is owed, pending install and paid. Mark owed lines paid in one batch.",
+    text: "What each setter is owed, commission coming and paid. Mark owed lines paid in one batch.",
   },
 ];
 

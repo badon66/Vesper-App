@@ -26,7 +26,7 @@
 -- the lead page, and the lead's setter earns a share of the lights and
 -- control boxes after discounts. Dollar amounts stay in quotes and
 -- earnings; nothing here puts one anywhere a setter reads.
--- Additive: new columns, two indexes, new functions and triggers; the
+-- Additive: new columns, three indexes, new functions and triggers; the
 -- earnings guard is re-created with one more allowance.
 
 -- ---------------------------------------------------------------- quotes
