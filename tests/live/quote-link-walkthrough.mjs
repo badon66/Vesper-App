@@ -79,7 +79,9 @@ const flat = (t) => (t ?? "").replace(/\s+/g, " ").replace(/[\u2018\u2019]/g, "'
 const totalOf = async (page, testId) => flat(await page.getByTestId(testId).first().innerText().catch(() => "")).trim();
 const lineShown = async (page, label) =>
   (await page.locator(`[data-testid="quote-lines"] [data-line="${label}"]`).getAttribute("data-shown").catch(() => null)) === "true";
-const segment = async (page, name) => page.locator(`[data-testid="quote-house"] [data-segment="${name}"]`).getAttribute("data-state").catch(() => null);
+// Round 10: the option's picture (its own mockup, else the Main): "true" when its own.
+const pictureOwn = async (page) => page.getByTestId("option-picture").getAttribute("data-own").catch(() => null);
+const pictureSrc = async (page) => page.getByTestId("option-mockup").getAttribute("src").catch(() => null);
 // The option rows, top to bottom: id, whether selected, the total and the coverage line.
 const optionRows = (page) =>
   page.getByTestId("option-row").evaluateAll((rows) =>
@@ -152,6 +154,7 @@ let ownerSession = null;
 let page = null;
 let leadId = null;
 let mockupPath = null;
+let frontMockupPath = null;
 
 try {
   // ---------------------------------------------------------------- setup
@@ -244,7 +247,16 @@ try {
   mockupPath = `${setter.id}/${crypto.randomUUID()}.jpg`;
   const uploaded = await admin.storage.from(BUCKET).upload(mockupPath, jpeg, { contentType: "image/jpeg" });
   if (uploaded.error) throw new Error(`mockup: ${uploaded.error.message}`);
-  await admin.from("lead_photos").insert({ lead_id: leadId, storage_path: mockupPath, slot: "mockup", created_by: setter.id });
+  // Round 10: mockups per house. The Main, and a picture marked for the
+  // Front only option (the same image at its own path, for the test).
+  frontMockupPath = `${setter.id}/${crypto.randomUUID()}.jpg`;
+  const uploadedFront = await admin.storage.from(BUCKET).upload(frontMockupPath, jpeg, { contentType: "image/jpeg" });
+  if (uploadedFront.error) throw new Error(`front mockup: ${uploadedFront.error.message}`);
+  const mockupRows = await admin.from("lead_mockups").insert([
+    { lead_id: leadId, storage_path: mockupPath, name: "Main", is_main: true, position: 0, created_by: setter.id },
+    { lead_id: leadId, storage_path: frontMockupPath, name: "Front only", offer_ids: ["front"], position: 1, created_by: setter.id },
+  ]);
+  if (mockupRows.error) throw new Error(`mockup rows: ${mockupRows.error.message}`);
 
   // The link, made by the throwaway setter: its notices go nowhere near Keenan.
   const token = randomBytes(18).toString("base64url");
@@ -334,28 +346,31 @@ try {
     "the options as radio rows, biggest first, each with what it covers and its total; the biggest selected",
     JSON.stringify(rows.map((row) => [row.offer, row.total, row.coverage, row.selected])) ===
       JSON.stringify([
-        ["full", "$4,959", "Front, Front upper, Garage and Left gable, 166 ft", true],
-        ["main", "$2,633", "Front and Garage, 92 ft", false],
-        ["front", "$2,500", "Front, 64 ft", false],
+        ["full", "$4,959", "Front, garage and left gable, upper and lower: 166 ft", true],
+        ["main", "$2,633", "Front and garage, lower: 92 ft", false],
+        ["front", "$2,500", "Front, lower: 64 ft", false],
       ]) && rows.every((row) => !row.tagged),
     JSON.stringify(rows),
   );
-  const states = {};
-  for (const name of ["lower-eave", "upper-eave", "garage", "upper-gable", "garage-gable", "porch", "lower-sides", "upper-sides"]) states[name] = await segment(page, name);
   check(
-    "one house for the option on screen: gold for its runs, the plain outline where nothing was measured",
-    states["lower-eave"] === "on" && states["upper-eave"] === "on" && states.garage === "on" && states["upper-gable"] === "on" && states["garage-gable"] === "none" && states.porch === "none",
-    JSON.stringify(states),
+    "round 10: no house drawing anywhere on the page, the explainer included",
+    (await page.locator('[data-testid="quote-house"], [data-segment]').count()) === 0,
   );
-  check("its caption names the option", flat(await page.getByTestId("drawing-caption").innerText()) === fillLine(words("link_drawing_caption"), { name: "Full wrap" }));
+  const mainSrc = await pictureSrc(page);
+  check(
+    "the Full wrap has no picture of its own, so the Main shows beside the options, loaded, with no caption (it covers every run)",
+    (await pictureOwn(page)) === "false" &&
+      (await page.getByTestId("option-mockup").evaluate((img) => img.complete && img.naturalWidth > 0).catch(() => false)) &&
+      (await page.getByTestId("option-mockup-caption").count()) === 0,
+  );
   const fit = await page.evaluate(() => {
-    const figure = document.querySelector('[data-testid="quote-house"]').getBoundingClientRect();
+    const figure = document.querySelector('[data-testid="option-picture"]').getBoundingClientRect();
     const rows = [...document.querySelectorAll('[data-testid="option-row"]')].map((row) => row.getBoundingClientRect());
     const bar = document.querySelector('[data-testid="quote-bar"]').getBoundingClientRect();
     return { span: Math.round(rows[rows.length - 1].bottom - figure.top), room: Math.round(window.innerHeight - bar.height), heights: rows.map((r) => Math.round(r.height)) };
   });
   check(
-    "the diagram and the three rows fit on one screen at 390, above the bar, so a tap and the house changing are in view together; rows 44 to 88 px (name and total, then what it covers in two lines at most)",
+    "the option's picture and the three rows fit on one screen at 390, above the bar, so a tap and the house changing are in view together; rows 44 to 88 px (name and total, then what it covers in two lines at most)",
     fit.span <= fit.room && fit.heights.every((h) => h >= 44 && h <= 88),
     JSON.stringify(fit),
   );
@@ -365,10 +380,10 @@ try {
   await page.waitForTimeout(400);
   const explained = flat(await page.getByTestId("parts-explained").innerText().catch(() => ""));
   check(
-    "What do these mean? opens labelled drawings of an eave, a gable, a garage line, the sides and a porch",
+    "What do these mean? opens plain words for an eave, a gable, a garage line, the sides and a porch, with no drawings (round 10)",
     explainerClosed &&
       ["Eave:", "Gable:", "Garage line:", "Sides:", "Porch:", "Upper is the second storey. Lower is the main floor."].every((t) => explained.includes(t)) &&
-      (await page.getByTestId("parts-explained").locator("svg").count()) === 5,
+      (await page.getByTestId("parts-explained").locator("svg").count()) === 0,
     explained.slice(0, 160),
   );
   await explainer.locator("summary").click();
@@ -442,7 +457,7 @@ try {
     `${galleryCount} gallery photos`,
   );
   const order = await page.evaluate(() =>
-    ["hero-total", "quote-christmas", "quote-points", "quote-options", "quote-house", "option-rows", "whats-in", "quote-lines", "quote-includes", "quote-colour", "quote-next-steps", "quote-more", "quote-footer"]
+    ["hero-total", "quote-christmas", "quote-points", "quote-options", "option-picture", "option-rows", "whats-in", "quote-lines", "quote-includes", "quote-colour", "quote-next-steps", "quote-more", "quote-footer"]
       .map((id) => [id, document.querySelector(`[data-testid="${id}"]`)])
       .filter(([, el]) => el)
       .map(([id, el]) => [id, Math.round(el.getBoundingClientRect().top + window.scrollY)]),
@@ -501,10 +516,7 @@ try {
     "tapping Main floor selects it, dashes the upper runs it leaves out, and the hero follows",
     (await totalOf(page, "hero-option")) === "Main floor" &&
       (await totalOf(page, "hero-total")) === "$2,633" &&
-      (await segment(page, "upper-eave")) === "off" &&
-      (await segment(page, "upper-gable")) === "off" &&
-      (await segment(page, "lower-eave")) === "on" &&
-      (await segment(page, "garage")) === "on" &&
+      (await pictureOwn(page)) === "false" &&
       (await optionRows(page)).find((row) => row.selected)?.offer === "main",
     `${await totalOf(page, "hero-option")} ${await totalOf(page, "hero-total")}`,
   );
@@ -518,8 +530,9 @@ try {
       flat(await page.getByTestId("whats-in").innerText()) === fillLine(words("whats_in"), { name: "Main floor" }),
   );
   check(
-    "an option that leaves runs out puts a caption under the mockup",
-    flat(await page.getByTestId("mockup-caption").innerText().catch(() => "")) === words("link_mockup_caption"),
+    "an option that leaves runs out puts a caption under the mockup, and under the Main beside the options",
+    flat(await page.getByTestId("mockup-caption").innerText().catch(() => "")) === words("link_mockup_caption") &&
+      flat(await page.getByTestId("option-mockup-caption").innerText().catch(() => "")) === words("link_mockup_caption"),
   );
   await page.screenshot({ path: `${out}/ql-phone-main-floor.png`, fullPage: true });
   await pickOption(page, "front");
@@ -531,8 +544,12 @@ try {
       (await totalOf(page, "line-total")) === "Total $2,500" &&
       (await totalOf(page, "hero-total")) === "$2,500" &&
       note === "That's under our $2,500 minimum, so this option comes to $2,500. Need a repair or something smaller? Call or text us and we'll see what we can do." &&
-      (await segment(page, "garage")) === "off",
+      true,
     `${minLines} | ${note}`,
+  );
+  check(
+    "Front only shows its own mockup beside the options, with no caption",
+    (await pictureOwn(page)) === "true" && (await pictureSrc(page)) !== mainSrc && (await page.getByTestId("option-mockup-caption").count()) === 0,
   );
   check("prices, footage and discounts can't be changed: the rows are the only choice", (await page.locator("input:not([type=radio]), textarea, select").count()) === 0);
   await page.screenshot({ path: `${out}/ql-phone-front-only.png`, fullPage: true });
@@ -772,12 +789,11 @@ try {
   await settle(calmPage);
   await pickOption(calmPage, "full");
   const calmMotion = await calmPage.evaluate(() => ({
-    house: getComputedStyle(document.querySelector('[data-testid="quote-house"] .house-on')).transitionDuration,
     row: getComputedStyle(document.querySelector('[data-testid="quote-lines"] .quote-row')).transitionProperty,
   }));
   check(
-    "with reduce motion on, the total is the new option's at once, the house only fades quickly and no line slides",
-    (await totalOf(calmPage, "hero-total")) === "$4,959" && parseFloat(calmMotion.house) <= 0.1 && !/grid-template-rows/.test(calmMotion.row),
+    "with reduce motion on, the total is the new option's at once and no line slides",
+    (await totalOf(calmPage, "hero-total")) === "$4,959" && !/grid-template-rows/.test(calmMotion.row),
     JSON.stringify(calmMotion),
   );
   await calm.close();
@@ -892,12 +908,14 @@ try {
   if (page) await page.screenshot({ path: `${out}/ql-failure.png`, fullPage: true }).catch(() => {});
 } finally {
   if (ownerSession) await ownerSession.close().catch(() => {});
-  if (mockupPath) await admin.storage.from(BUCKET).remove([mockupPath]).catch(() => {});
+  const stored = [mockupPath, frontMockupPath].filter(Boolean);
+  if (stored.length > 0) await admin.storage.from(BUCKET).remove(stored).catch(() => {});
   if (setter.id) {
     const { data: owned } = await admin.from("leads").select("id").eq("created_by", setter.id);
     const ids = (owned ?? []).map((row) => row.id);
     if (ids.length > 0) {
       await admin.from("earnings").delete().in("lead_id", ids);
+      await admin.from("lead_mockups").delete().in("lead_id", ids);
       await admin.from("quote_links").delete().in("lead_id", ids);
       await admin.from("quotes").delete().in("lead_id", ids);
     }

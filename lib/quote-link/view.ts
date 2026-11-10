@@ -560,3 +560,43 @@ export function smsWithBody(phone: string, body: string): string {
 
 // The breakdown's money, as the page shows it: a true minus for discounts.
 export const lineAmount = (amount: number) => (amount < 0 ? `\u2212${formatMoney(-amount)}` : formatMoney(amount));
+
+// Mockups per house (round 10): the pictures the link may show, from
+// quote_link_mockups: the Main and the ones Keenan marked for offers, Main
+// first. Paths only; the server signs each for a live token.
+export type LinkMockup = { path: string; main: boolean; offers: string[] };
+
+const linkMockupSchema = z.object({
+  path: z.string().min(1),
+  main: z.boolean().catch(false),
+  offers: z.array(z.string()).catch([]),
+});
+
+export function parseLinkMockups(data: unknown): LinkMockup[] {
+  if (!Array.isArray(data)) return [];
+  return data.flatMap((item) => {
+    const parsed = linkMockupSchema.safeParse(item);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
+// A mockup the page may show, signed for ten minutes (lib/quote-link/server.ts).
+export type LinkPicture = { url: string; main: boolean; offers: string[] };
+
+// The Main picture, or none.
+export function mainPicture<T extends { main: boolean }>(pictures: readonly T[]): T | null {
+  return pictures.find((picture) => picture.main) ?? null;
+}
+
+// The picture for an option (Keenan, 2026-11-10): its own (a picture marked
+// for that offer), else the Main, else none. own says which it is, so the
+// Main's caption can say it shows every run.
+export function offerPicture<T extends { main: boolean; offers: readonly string[] }>(
+  pictures: readonly T[],
+  offerId: string | null | undefined,
+): { picture: T; own: boolean } | null {
+  const own = offerId ? pictures.find((picture) => picture.offers.includes(offerId)) : undefined;
+  if (own) return { picture: own, own: true };
+  const main = mainPicture(pictures);
+  return main ? { picture: main, own: false } : null;
+}

@@ -5,12 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { bookInstall, recordVisit, saveSelection } from "@/app/q/[token]/actions";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
 import { Disclosure } from "@/components/quote-link/disclosure";
-import { HouseDiagram, WHOLE_HOUSE, type Crop } from "@/components/quote-link/house-diagram";
 import { PointIconMark } from "@/components/quote-link/point-icon";
 import { ClosedQuote, ContactButtons } from "@/components/quote-link/quote-shell";
 import { DialogPanel } from "@/components/ui/dialog-panel";
 import { formatMoney, screenTotal, type QuoteLine, type QuoteRun, type QuoteTotals } from "@/lib/pricing";
-import { HOUSE_SEGMENTS, segmentStates, type HouseSegment } from "@/lib/quote-link/house";
 import { offerCoverage, type PricedOffer } from "@/lib/quotes/offers";
 import { fillLine } from "@/lib/deck";
 import {
@@ -23,12 +21,14 @@ import {
   linkOffers,
   nextStepsFor,
   offerChoice,
+  offerPicture,
   openingOffer,
   otherColoursLine,
   phoneHref,
   priceHoldPassed,
   smsWithBody,
   type CustomerQuote,
+  type LinkPicture,
 } from "@/lib/quote-link/view";
 import { calgaryDateOf, formatFullDate, formatLongDay } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -37,14 +37,15 @@ import { cn } from "@/lib/utils";
 // page, phone first; round 9, 2026-11-10, Keenan's options in place of
 // Start smaller and Your lights, settled by the five seats). Top to bottom:
 // their house and the price of the option on screen, the Christmas banner,
-// what they're getting, Your options (one house diagram and a row per
-// option, biggest first, then what's in the one on screen), track colour,
+// what they're getting, Your options (the option's own mockup, else the
+// Main, round 10, where the house drawing was; a row per option, biggest
+// first, then what's in the one on screen), track colour,
 // what happens next, two things to tap open, and a bar that stays put with
 // Call, Text and Book my install. Prices come from lib/pricing.ts over the
 // quote's own stored prices; the page sends an option's id, never a price.
 // Once Keenan marks the quote accepted, the page shows only what was agreed.
 
-type View = CustomerQuote & { mockupUrl: string | null; galleryUrls: string[] };
+type View = CustomerQuote & { mockupUrl: string | null; pictures: LinkPicture[]; galleryUrls: string[] };
 // offer: the option's id; null on a link booked before options.
 type Booked = { at: string; option: string; offer: string | null };
 
@@ -62,13 +63,6 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
   }, [token]);
 
   return view.quote.accepted ? <AgreedQuote view={view} /> : <LiveQuote token={token} view={view} />;
-}
-
-// The house lit for one option: gold for its runs, dashed for the measured
-// runs it leaves out, the plain outline for the rest.
-function statesFor(runs: QuoteRun[], positions: readonly number[]) {
-  const on = new Set(positions);
-  return segmentStates(runs.map((run, at) => ({ run, on: on.has(at) })));
 }
 
 function LiveQuote({ token, view }: { token: string; view: View }) {
@@ -93,7 +87,6 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   const minimum = quote.minJobTotal && quote.minJobTotal > 0 ? quote.minJobTotal : null;
   const atMinimum = Boolean(totals?.minimumApplied) && minimum !== null;
   const holdPassed = priceHoldPassed(view.validUntil, view.today);
-  const states = useMemo(() => statesFor(quote.runs, selected?.offer.runs ?? []), [quote.runs, selected]);
   const everyLines = useMemo(() => shown.flatMap((priced) => (priced.totals ? [priced.totals.lines] : [])), [shown]);
   const steps = nextStepsFor(view);
 
@@ -270,12 +263,12 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
           </h2>
           {selected && totals ? (
             <>
-              <figure className="mt-4" data-testid="quote-house">
-                <HouseDiagram states={states} />
-                <figcaption className="mt-2 text-sm text-pretty text-muted-foreground" data-testid="drawing-caption">
-                  {fillLine(words.link_drawing_caption, { name })}
-                </figcaption>
-              </figure>
+              <OptionPicture
+                pictures={view.pictures}
+                offerId={selected.offer.id}
+                name={name}
+                caption={leavesRunsOut(quote.runs.length, selected.offer.runs) ? words.link_mockup_caption : null}
+              />
               <div className="mt-1">
                 <Disclosure title="What do these mean?" variant="inline" testId="quote-explainer">
                   <PartsExplained />
@@ -466,7 +459,6 @@ function AgreedQuote({ view }: { view: View }) {
   const { quote, words } = view;
   // A quote accepted before options has no option to name; the rest stands.
   const agreed = offerChoice(quote, quote.acceptedOffer);
-  const states = statesFor(quote.runs, agreed?.offer.runs ?? []);
   const textHref = smsWithBody(view.company.phone, `Hi Keenan, a question about the install at ${view.address}: `);
 
   return (
@@ -506,12 +498,12 @@ function AgreedQuote({ view }: { view: View }) {
             <h2 id="whats-in" className="text-xl font-bold text-pretty" data-testid="whats-in">
               {fillLine(words.whats_in, { name: agreed.name })}
             </h2>
-            <figure className="mt-4" data-testid="quote-house">
-              <HouseDiagram states={states} />
-              <figcaption className="mt-2 text-sm text-pretty text-muted-foreground" data-testid="drawing-caption">
-                {fillLine(words.link_drawing_caption, { name: agreed.name })}
-              </figcaption>
-            </figure>
+            <OptionPicture
+              pictures={view.pictures}
+              offerId={agreed.offer.id}
+              name={agreed.name}
+              caption={leavesRunsOut(quote.runs.length, agreed.offer.runs) ? words.link_mockup_caption : null}
+            />
             <p className="mt-4 text-sm text-pretty text-muted-foreground" data-testid="whats-in-coverage">
               {offerCoverage(quote.runs, agreed.offer)}
             </p>
@@ -933,39 +925,30 @@ function LineRow({ label, detail, amount }: { label: string; detail?: string | n
   );
 }
 
-// "What do these mean?": the same house, small, one part lit at a time,
-// cropped to that part so even the porch and the sides read at the small
-// size (the screenshot review, 2026-11-04).
-const EXPLAINED: { title: string; text: string; lit: HouseSegment[]; crop: Crop }[] = [
+// "What do these mean?": the roof words the options use, in plain words
+// (round 10: the house drawing is gone, so words alone).
+const EXPLAINED: { title: string; text: string }[] = [
   {
     title: "Eave",
     text: "The level edge of a roof, where the gutter runs. The track sits on the soffit, the underside of that edge.",
-    lit: ["lower-eave", "upper-eave"],
-    crop: WHOLE_HOUSE,
   },
-  { title: "Gable", text: "The two sloped edges of a peak.", lit: ["garage-gable", "upper-gable"], crop: WHOLE_HOUSE },
-  { title: "Garage line", text: "The roof edge over the garage door.", lit: ["garage"], crop: [0, 84, 120, 67] },
-  { title: "Sides", text: "The roof edges down each side of the house.", lit: ["lower-sides", "upper-sides"], crop: [189, 40, 161, 90] },
-  { title: "Porch", text: "The small roof over your front door.", lit: ["porch"], crop: [182, 128, 110, 61.5] },
+  { title: "Gable", text: "The two sloped edges of a peak." },
+  { title: "Garage line", text: "The roof edge over the garage door." },
+  { title: "Sides", text: "The roof edges down each side of the house." },
+  { title: "Porch", text: "The small roof over your front door." },
 ];
 
 function PartsExplained() {
   return (
     <div className="flex flex-col gap-4" data-testid="parts-explained">
       <ul className="flex flex-col gap-3">
-        {EXPLAINED.map((item) => {
-          const states = Object.fromEntries(
-            HOUSE_SEGMENTS.map((segment) => [segment, item.lit.includes(segment) ? "on" : "none"]),
-          ) as Record<HouseSegment, "on" | "none">;
-          return (
-            <li key={item.title} className="flex items-center gap-4">
-              <HouseDiagram states={states} mini crop={item.crop} label={`${item.title}, lit on a small drawing of a house`} className="w-32 shrink-0" />
-              <p className="min-w-0 text-base text-pretty">
-                <span className="font-semibold">{item.title}:</span> {item.text}
-              </p>
-            </li>
-          );
-        })}
+        {EXPLAINED.map((item) => (
+          <li key={item.title}>
+            <p className="text-base text-pretty">
+              <span className="font-semibold">{item.title}:</span> {item.text}
+            </p>
+          </li>
+        ))}
       </ul>
       <p className="text-base text-pretty">Upper is the second storey. Lower is the main floor.</p>
     </div>
@@ -1111,12 +1094,62 @@ function ThankYou({
   );
 }
 
+// The picture for the option on screen (Keenan, 2026-11-10): its own
+// mockup, else the Main, else nothing, and the offers take the room. The
+// Main standing in for an option that leaves runs out says it shows every
+// run. Keyed by its address, so a new picture starts fresh.
+function OptionPicture({
+  pictures,
+  offerId,
+  name,
+  caption,
+}: {
+  pictures: LinkPicture[];
+  offerId: string;
+  name: string;
+  caption: string | null;
+}) {
+  const chosen = offerPicture(pictures, offerId);
+  if (!chosen) return null;
+  return (
+    <div className="mt-4" data-testid="option-picture" data-own={chosen.own}>
+      <Mockup
+        key={chosen.picture.url}
+        url={chosen.picture.url}
+        caption={chosen.own ? null : caption}
+        alt={chosen.own ? `Your house with ${name}, as a mockup` : "Your house with Vesper lights on, as a mockup"}
+        openLabel={`Open the picture for ${name} full screen`}
+        inset
+        ids={{ image: "option-mockup", caption: "option-mockup-caption", viewer: "option-mockup-viewer" }}
+      />
+    </div>
+  );
+}
+
 // Their mockup, full width in a 3:2 frame on navy, so the whole picture
 // shows; the expand button (or a tap anywhere on it) opens it full screen
 // to pinch and zoom. Space is kept for it while it loads. When the option
 // on screen doesn't cover every run, a caption says the mockup shows them
 // all, so nobody thinks they're getting lights they're not.
-function Mockup({ url, caption }: { url: string; caption: string | null }) {
+// The hero shows the Main (round 10); each option's own picture uses the
+// same frame, inset in its section, with its own test ids.
+const HERO_IDS = { image: "quote-mockup", caption: "mockup-caption", viewer: "mockup-viewer" };
+
+function Mockup({
+  url,
+  caption,
+  alt = "Your house with Vesper lights on, as a mockup",
+  openLabel = "Open the picture of your house full screen",
+  inset = false,
+  ids = HERO_IDS,
+}: {
+  url: string;
+  caption: string | null;
+  alt?: string;
+  openLabel?: string;
+  inset?: boolean;
+  ids?: { image: string; caption: string; viewer: string };
+}) {
   const [open, setOpen] = useState(false);
   const [broken, setBroken] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
@@ -1138,17 +1171,20 @@ function Mockup({ url, caption }: { url: string; caption: string | null }) {
         ref={opener}
         type="button"
         onClick={() => setOpen(true)}
-        aria-label="Open the picture of your house full screen"
-        className="group relative block aspect-[3/2] w-full overflow-hidden bg-navy outline-none focus-visible:outline-solid focus-visible:outline-3 focus-visible:-outline-offset-4 focus-visible:outline-white"
+        aria-label={openLabel}
+        className={cn(
+          "group relative block aspect-[3/2] w-full overflow-hidden bg-navy outline-none focus-visible:outline-solid focus-visible:outline-3 focus-visible:-outline-offset-4 focus-visible:outline-white",
+          inset && "rounded-md",
+        )}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- a private photo behind a ten-minute signed link */}
         <img
           ref={picture}
           src={url}
-          alt="Your house with Vesper lights on, as a mockup"
+          alt={alt}
           className="block size-full object-contain"
           onError={() => setBroken(true)}
-          data-testid="quote-mockup"
+          data-testid={ids.image}
         />
         <span
           aria-hidden="true"
@@ -1158,11 +1194,11 @@ function Mockup({ url, caption }: { url: string; caption: string | null }) {
         </span>
       </button>
       {caption ? (
-        <figcaption className="px-5 pt-2 text-sm text-pretty text-muted-foreground" data-testid="mockup-caption">
+        <figcaption className={cn("pt-2 text-sm text-pretty text-muted-foreground", !inset && "px-5")} data-testid={ids.caption}>
           {caption}
         </figcaption>
       ) : null}
-      <MockupViewer url={url} open={open} onClose={close} />
+      <MockupViewer url={url} alt={alt} open={open} onClose={close} testId={ids.viewer} />
     </figure>
   );
 }
@@ -1191,7 +1227,19 @@ function PictureNeedsRefresh({ className, dark = false }: { className?: string; 
 
 // A real modal dialog: it sits above the page, keeps focus inside, and
 // Escape closes it. The picture is the one already on the page.
-function MockupViewer({ url, open, onClose }: { url: string; open: boolean; onClose: () => void }) {
+function MockupViewer({
+  url,
+  alt,
+  open,
+  onClose,
+  testId,
+}: {
+  url: string;
+  alt: string;
+  open: boolean;
+  onClose: () => void;
+  testId: string;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [broken, setBroken] = useState(false);
   useEffect(() => {
@@ -1216,7 +1264,7 @@ function MockupViewer({ url, open, onClose }: { url: string; open: boolean; onCl
         onClose();
       }}
       className="m-0 h-dvh max-h-none w-screen max-w-none overflow-hidden border-0 bg-black p-0 text-white backdrop:bg-black"
-      data-testid="mockup-viewer"
+      data-testid={testId}
     >
       {open ? (
         <div className="relative size-full">
@@ -1225,7 +1273,7 @@ function MockupViewer({ url, open, onClose }: { url: string; open: boolean; onCl
               <PictureNeedsRefresh dark />
             </div>
           ) : (
-            <PinchZoom src={url} alt="Your house with Vesper lights on, as a mockup" crossOrigin={null} onError={() => setBroken(true)} />
+            <PinchZoom src={url} alt={alt} crossOrigin={null} onError={() => setBroken(true)} />
           )}
           <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-4 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             <p className="text-sm text-white/80">Pinch or double-tap to zoom.</p>

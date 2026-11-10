@@ -3,7 +3,15 @@ import { createClient } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import { getExtrasEnv, getPublicEnv } from "@/lib/env";
 import { PHOTO_BUCKET } from "@/lib/photos";
-import { parseCustomerQuote, TOKEN_PATTERN, type ClosedQuote, type CustomerQuote } from "@/lib/quote-link/view";
+import {
+  mainPicture,
+  parseCustomerQuote,
+  parseLinkMockups,
+  TOKEN_PATTERN,
+  type ClosedQuote,
+  type CustomerQuote,
+  type LinkPicture,
+} from "@/lib/quote-link/view";
 import type { Database } from "@/types/database";
 
 // The customer quote link's server side (2026-11-02). The customer's page
@@ -30,7 +38,13 @@ export function anonymousClient(token?: string) {
 // gallery's, and nothing else there (storage policy, 2026-11-04).
 const PRESENTATION_BUCKET = "presentation";
 
-export type LoadedQuote = (CustomerQuote & { mockupUrl: string | null; galleryUrls: string[] }) | ClosedQuote;
+// A mockup the page may show (round 10): the Main and the ones marked for
+// offers, each signed for ten minutes.
+export type { LinkPicture };
+
+export type LoadedQuote =
+  | (CustomerQuote & { mockupUrl: string | null; pictures: LinkPicture[]; galleryUrls: string[] })
+  | ClosedQuote;
 
 // What the page shows for a token. Throws only when the database can't be
 // reached; every other kind of bad link is the closed screen.
@@ -42,15 +56,31 @@ export async function loadCustomerQuote(token: string): Promise<LoadedQuote> {
   const view = parseCustomerQuote(data);
   if (view.state !== "live") return view;
 
+  // The house's mockups (round 10): the Main and the ones for offers. If
+  // the list can't be read, the old mockup slot stands in as the Main.
+  const listed = await anonymousClient().rpc("quote_link_mockups", { p_token: token });
+  const mockups = listed.error
+    ? view.mockupPath
+      ? [{ path: view.mockupPath, main: true, offers: [] }]
+      : []
+    : parseLinkMockups(listed.data);
+
   const storage = anonymousClient(token).storage;
-  const [mockup, gallery] = await Promise.all([
-    view.mockupPath ? storage.from(PHOTO_BUCKET).createSignedUrl(view.mockupPath, MOCKUP_SECONDS) : null,
+  const [signedMockups, gallery] = await Promise.all([
+    mockups.length > 0 ? storage.from(PHOTO_BUCKET).createSignedUrls(mockups.map((m) => m.path), MOCKUP_SECONDS) : null,
     view.gallery.length > 0 ? storage.from(PRESENTATION_BUCKET).createSignedUrls(view.gallery, MOCKUP_SECONDS) : null,
   ]);
-  const mockupUrl = mockup?.data?.signedUrl ?? null;
   // A photo that can't be signed is left out rather than shown broken.
+  const urlByPath = new Map(
+    (signedMockups?.data ?? []).flatMap((item) => (item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : [])),
+  );
+  const pictures: LinkPicture[] = mockups.flatMap((m) => {
+    const url = urlByPath.get(m.path);
+    return url ? [{ url, main: m.main, offers: m.offers }] : [];
+  });
+  const mockupUrl = mainPicture(pictures)?.url ?? null;
   const galleryUrls = (gallery?.data ?? []).flatMap((item) => (item.signedUrl ? [item.signedUrl] : []));
-  return { ...view, mockupUrl, galleryUrls };
+  return { ...view, mockupUrl, pictures, galleryUrls };
 }
 
 // The address links start with: QUOTE_BASE_URL when it is set (later
