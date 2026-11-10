@@ -24,6 +24,7 @@ import { TalkingPoints } from "@/components/meeting/talking-points";
 import { WarrantyPage } from "@/components/meeting/warranty-page";
 import type { DeckPageKey } from "@/lib/deck";
 import { coolWhiteOf, warmWhiteOf } from "@/lib/lights/looks";
+import { blackFridayOn, offerPrice, recapParts, settleBlackFriday } from "@/lib/meeting/black-friday-state";
 import {
   bottomRowWidth,
   coverLine,
@@ -40,7 +41,6 @@ import {
   mockupJobs,
   measuredFeet,
   nextLabelParts,
-  recapLine,
   shownInstallDay,
   startIndex,
   stepFor,
@@ -60,7 +60,6 @@ import {
   type QuoteUIState,
 } from "@/lib/meeting/state";
 import { EASE_QUIET, useReducedMotion } from "@/lib/motion";
-import { priceOffer } from "@/lib/quotes/offers";
 import { smartApostrophes } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 
@@ -228,7 +227,9 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
     const opened = start?.quote ?? null;
     if (!opened || accepted) return opened;
     const timing = colourTimingFor(colour.kind, colour.text, opened.colourTiming);
-    return timing === opened.colourTiming ? opened : { ...opened, colourTiming: timing };
+    const timed = timing === opened.colourTiming ? opened : { ...opened, colourTiming: timing };
+    // Its Black Friday line as Settings' deal works it out now.
+    return meeting ? settleBlackFriday(timed, meeting.pricing) : timed;
   });
 
   const frontPhotoUrl = meeting ? frontPhotoOf(meeting) : null;
@@ -441,13 +442,25 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
 
   // What happens next reads back the option chosen on the price page, priced
   // as the price page prices it.
+  // With Black Friday on, the regular total struck through before the
+  // Black Friday one (lib/meeting/black-friday-state.ts).
   const recap = useMemo(() => {
     if (!meeting || !quote?.chosenOffer) return null;
     const offer = quoteOffers(quote).find((item) => item.id === quote.chosenOffer);
-    const totals = offer ? priceOffer(quoteInputs(quote, meeting.pricing), offer) : null;
-    if (!offer || !totals || totals.totalFeet <= 0) return null;
-    return recapLine(deck.words.lines, offer.name, totals.subtotal, meeting.pricing.gstEnabled);
-  }, [meeting, quote, deck.words.lines]);
+    if (!offer) return null;
+    const deal = meeting.pricing.blackFriday;
+    const price = offerPrice(quoteInputs(quote, meeting.pricing), offer, deal, !accepted && blackFridayOn(quote, deal));
+    const totals = price.deal ?? price.regular;
+    if (!totals || !price.regular || totals.totalFeet <= 0) return null;
+    return recapParts(deck.words.lines, offer.name, price.regular.subtotal, price.deal ? price.deal.subtotal : null, meeting.pricing.gstEnabled);
+  }, [meeting, quote, deck.words.lines, accepted]);
+  // Every change to the quote keeps its Black Friday line as the button
+  // says (an edit to the runs recomputes it); the accepted quote stays as
+  // agreed.
+  const changeQuote = useCallback(
+    (next: QuoteUIState) => setQuote(accepted || !meeting ? next : settleBlackFriday(next, meeting.pricing)),
+    [accepted, meeting],
+  );
 
   const context = useMemo<DeckContextValue>(
     () => ({
@@ -510,7 +523,7 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             colourKind={colour.kind}
             colourText={colour.text}
             state={quote}
-            onChange={setQuote}
+            onChange={changeQuote}
             quoteId={quoteId}
             savedAt={savedAt}
             dirty={dirty}

@@ -7,6 +7,7 @@ import type { SoffitColour } from "@/lib/leads/status";
 import type { TrackColour } from "@/lib/leads/track-colour";
 import { defaultValidUntil, guessRunPart, RUN_PARTS, type ColourTiming, type QuoteInputs, type QuoteRun, type RunPart } from "@/lib/pricing";
 import { EFFECTS, type DeckPageKey, type DeckWords, type Effect, type Look, type Trace } from "@/lib/deck";
+import type { BlackFridayDeal } from "@/lib/quotes/black-friday";
 import { cleanPositions, offersForSave, parseOffers, type QuoteOffer } from "@/lib/quotes/offers";
 
 // Round 7 (Keenan, 2026-11-08): the deck's own part of the payload. Keenan's
@@ -111,6 +112,9 @@ export type MeetingPayload = {
     priceHoldDays: number;
     // The least a job can cost before GST (Settings); null = no minimum.
     minJobTotal: number | null;
+    // Black Friday (Keenan, 2026-11-10): the deal set in Settings, a percent
+    // or a dollar amount off; null shows no Black Friday button.
+    blackFriday: BlackFridayDeal | null;
   };
   draft: {
     quoteId: string;
@@ -194,6 +198,11 @@ export type QuoteUIState = {
   // This quote's own minimum job total, as typed ("" is none). Left out
   // (a new quote, or an iPad copy from before round 9), Settings' minimum.
   minJobTotal?: string;
+  // The Black Friday button on Your price, as the iPad left it. Left out (a
+  // quote opened from the server), it reads as on when the quote carries
+  // the Black Friday line (lib/meeting/black-friday-state.ts). Never saved
+  // as such: the line in customDiscounts is what saves.
+  blackFriday?: boolean;
 };
 
 // The offers as shown: an empty list is one full wrap over every run.

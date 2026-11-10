@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { FieldError } from "@/components/field-error";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +21,7 @@ import { POINT_ICONS } from "@/lib/quote-link/view";
 import { formatTime } from "@/lib/time";
 import {
   DAY_OPTIONS,
+  type BlackFridayKindInput,
   type SettingsFormDefaults,
   type SettingsFormField,
 } from "@/lib/settings/schema";
@@ -66,6 +67,56 @@ function Field({ name, label, hint, errors, children }: FieldProps) {
   );
 }
 
+// Black Friday (Keenan, 2026-11-10): None, Percent off or Dollars off, and
+// the amount. Once set, meeting mode's price page shows a Black Friday
+// button; None takes it away. The amount is checked on the server like the
+// other prices.
+function BlackFridayFields({ defaults, errors }: { defaults: SettingsFormDefaults; errors?: SettingsState["errors"] }) {
+  const [kind, setKind] = useState<BlackFridayKindInput>(defaults.black_friday_kind);
+  const hintId = "settings-black_friday-hint";
+  return (
+    <fieldset className="flex flex-col gap-3 sm:col-span-2" aria-describedby={hintId}>
+      <legend className="mb-2 text-sm leading-none font-medium">Black Friday deal</legend>
+      <div className="grid gap-5 sm:grid-cols-2">
+        <Field name="black_friday_kind" label="Deal" errors={errors}>
+          {(p) => (
+            <select
+              {...p}
+              value={kind}
+              onChange={(event) => setKind(event.target.value as BlackFridayKindInput)}
+              className="flex h-11 w-full rounded-md border border-input bg-background px-3 text-base text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none"
+            >
+              <option value="none">None</option>
+              <option value="percent">Percent off</option>
+              <option value="amount">Dollars off</option>
+            </select>
+          )}
+        </Field>
+        <Field name="black_friday_value" label={kind === "amount" ? "Dollars off ($)" : "Percent off (%)"} errors={errors}>
+          {(p) => (
+            <Input
+              {...p}
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              max={kind === "percent" ? "90" : undefined}
+              disabled={kind === "none"}
+              defaultValue={defaults.black_friday_value}
+            />
+          )}
+        </Field>
+      </div>
+      <p id={hintId} className="text-sm text-muted-foreground">
+        Once set, meeting mode&apos;s price page shows a Black Friday button. Tapped, every option shows its regular price struck
+        through beside the Black Friday price. If the customer says yes with it on, the deal saves on their quote as a discount
+        line. A percent is taken off each option&apos;s own total, up to 90%. None takes the button away; quotes already saved
+        keep their line.
+      </p>
+    </fieldset>
+  );
+}
+
 function formatSavedAt(iso: string) {
   return formatTime(iso);
 }
@@ -99,6 +150,7 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
           <Field name="referral_credit" label="Referral credit ($)" errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.referral_credit} />}
           </Field>
+          <BlackFridayFields defaults={defaults} errors={errors} />
         </CardContent>
       </Card>
 

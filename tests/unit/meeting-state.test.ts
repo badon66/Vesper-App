@@ -57,6 +57,7 @@ const payload = (draft: MeetingPayload["draft"] = null): MeetingPayload => ({
     upperGableAccessFee: 400,
     priceHoldDays: 120,
     minJobTotal: null,
+    blackFriday: null,
   },
   draft,
   today: "2026-11-03",

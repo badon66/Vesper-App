@@ -63,6 +63,7 @@ const pricing: MeetingPayload["pricing"] = {
   upperGableAccessFee: 400,
   priceHoldDays: 120,
   minJobTotal: 2500,
+  blackFriday: null,
 };
 const context = { pricing, today: "2026-11-10", lead: { colourKind: "list" as const, colourText: "White" } };
 

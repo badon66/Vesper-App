@@ -11,12 +11,14 @@ import { useQuoteSave } from "@/components/quotes/quote-editor/use-quote-save";
 import { Button } from "@/components/ui/button";
 import { DEFAULT_LINES, deckLine, priceSubLine, type DeckLines } from "@/lib/deck";
 import { breakdownRows, coverageLine, minimumSentence, NO_PAYMENT, screenOptions, type BreakdownRow } from "@/lib/meeting/price-screen";
+import { blackFridayOn, chooseWithBlackFriday, offerPrice, withBlackFriday } from "@/lib/meeting/black-friday-state";
 import { colourTimingView, offerMockup } from "@/lib/meeting/deck-pages";
 import { quoteInputs, quoteOffers, quoteRushFee, type MeetingMockup, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
 import { MOTION, transition } from "@/lib/motion";
 import { formatMoney, type QuoteTotals } from "@/lib/pricing";
 import { QUOTE_LOCKED_MEETING, savedLine } from "@/lib/quotes/draft";
 import { offerNameIssue } from "@/lib/quotes/editor";
+import { BLACK_FRIDAY_LABEL, blackFridayWords } from "@/lib/quotes/black-friday";
 import { cleanOfferName, type PricedOffer } from "@/lib/quotes/offers";
 import { formatFullDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -38,6 +40,14 @@ import { cn } from "@/lib/utils";
 // in a layer near the top so the keyboard never covers it (the colour
 // page's own box and save path), unless they already initialled this
 // colour tonight; then the deck goes to What happens next.
+//
+// Black Friday (Keenan, 2026-11-10): once the deal is set in Settings, a
+// quiet button beside the headline. On, every option shows its regular
+// total struck through beside the Black Friday total, and the breakdown
+// shows the Black Friday line. A yes with it on puts the deal's line on the
+// quote (lib/meeting/black-friday-state.ts), so the save, the link, the
+// acceptance and commission all read it; off, or the yes taken back, takes
+// it off.
 //
 // Keenan's small outlined Edit, bottom left, opens the quote editor (the
 // same one as the lead page's Edit the quote) as a full-screen layer; the
@@ -129,6 +139,24 @@ export function QuoteScreen({
 }: QuoteScreenProps) {
   const inputs = useMemo(() => quoteInputs(state, pricing), [state, pricing]);
   const options = useMemo(() => screenOptions(inputs, quoteOffers(state)), [inputs, state]);
+  // Black Friday (Keenan, 2026-11-10): the button shows only once the deal
+  // is set in Settings. On, every option shows its regular total struck
+  // through beside the Black Friday total. An accepted quote shows as it
+  // was agreed (its line, if any, is an ordinary discount there).
+  const deal = pricing.blackFriday;
+  const dealOn = !locked && blackFridayOn(state, deal);
+  const prices = useMemo(
+    () => new Map(options.map((option) => [option.offer.id, offerPrice(inputs, option.offer, deal, dealOn)])),
+    [options, inputs, deal, dealOn],
+  );
+  const shownTotals = (option: PricedOffer) => {
+    const price = prices.get(option.offer.id);
+    return price?.deal ?? price?.regular ?? option.totals;
+  };
+  const struckTotal = (option: PricedOffer) => {
+    const price = prices.get(option.offer.id);
+    return price?.deal && price.regular ? price.regular.subtotal : null;
+  };
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [ownEdit, setOwnEdit] = useState(false);
   const [ownBreakdown, setOwnBreakdown] = useState(false);
@@ -155,7 +183,10 @@ export function QuoteScreen({
   // The pick, the install day and the colour's timing save with the quote,
   // quietly, when there's signal: a moment after they change, and again when the signal comes
   // back. A failure stays on the iPad and shows only in the Edit layer.
-  const pickKey = `${state.chosenOffer ?? ""}|${state.installOn ?? ""}|${state.colourTiming ?? ""}`;
+  // The Black Friday line saves the same way, so turning the button off
+  // after a yes takes the line off the saved quote too.
+  const dealLine = state.customDiscounts.find((line) => line.label.trim() === BLACK_FRIDAY_LABEL)?.amount ?? "";
+  const pickKey = `${state.chosenOffer ?? ""}|${state.installOn ?? ""}|${state.colourTiming ?? ""}|${dealLine}`;
   const lastPick = useRef(pickKey);
   const [pickWaiting, setPickWaiting] = useState(false);
   const quietSave = useEffectEvent(async () => {
@@ -183,14 +214,17 @@ export function QuoteScreen({
   const choose = (id: string) => {
     setViewingId(id);
     if (state.chosenOffer === id) {
-      onChange({ ...state, chosenOffer: null });
+      onChange(chooseWithBlackFriday(state, null, pricing));
       return;
     }
-    onChange({ ...state, chosenOffer: id });
+    // With Black Friday on, the yes carries the deal's line for this option.
+    onChange(chooseWithBlackFriday(state, id, pricing));
     if (initials && colour !== null && !initials.confirmed) setInitialsOpen(true);
     else onYes?.();
   };
   const viewingChosen = viewing !== null && chosen?.offer.id === viewing.offer.id;
+  const viewingTotals = viewing ? shownTotals(viewing) : null;
+  const viewingRegular = viewing ? struckTotal(viewing) : null;
   const setTiming = (next: "factory_order" | "rush") => {
     if (locked || state.colourTiming === next) return;
     onChange({ ...state, colourTiming: next });
@@ -204,6 +238,23 @@ export function QuoteScreen({
           <p className={cn(DECK_TYPE.body, "text-muted-foreground")} data-testid="price-sub">
             {say(sub)}
           </p>
+        ) : null}
+        {/* Black Friday: quiet, outlined while off, the light fill and the
+            deal's words while on. Never gold. Only once the deal is set. */}
+        {deal && !locked && viewing !== null ? (
+          <button
+            type="button"
+            aria-pressed={dealOn}
+            onClick={() => onChange(withBlackFriday(state, !dealOn, pricing))}
+            className={cn(
+              "ml-auto inline-flex h-12 shrink-0 touch-manipulation items-center gap-2 self-center rounded-md border px-4 text-[20px] leading-none font-semibold whitespace-nowrap outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-ring",
+              dealOn ? "border-foreground bg-foreground text-background" : "border-input bg-background text-foreground hover:bg-muted",
+            )}
+            data-testid="price-black-friday"
+          >
+            {dealOn ? <Check aria-hidden="true" className="size-5 shrink-0" strokeWidth={2.5} /> : null}
+            {dealOn ? `${BLACK_FRIDAY_LABEL}, ${blackFridayWords(deal)}` : BLACK_FRIDAY_LABEL}
+          </button>
         ) : null}
       </header>
 
@@ -234,6 +285,8 @@ export function QuoteScreen({
                 <OptionButton
                   key={option.offer.id}
                   option={option}
+                  total={shownTotals(option)?.subtotal ?? 0}
+                  regular={struckTotal(option)}
                   coverage={coverageLine(state.runs, option.offer)}
                   onScreen={option.offer.id === viewing.offer.id}
                   chosen={option.offer.id === chosen?.offer.id}
@@ -274,8 +327,8 @@ export function QuoteScreen({
               </div>
             ) : null}
 
-            <div className={cn("grid shrink-0 gap-3", viewing.totals && !locked ? "grid-cols-2" : "grid-cols-1", !picture && "max-w-[720px]")}>
-              {viewing.totals ? (
+            <div className={cn("grid shrink-0 gap-3", viewingTotals && !locked ? "grid-cols-2" : "grid-cols-1", !picture && "max-w-[720px]")}>
+              {viewingTotals ? (
                 <DeckButton
                   onClick={() => setBreakdownOpen(true)}
                   aria-haspopup="dialog"
@@ -334,7 +387,7 @@ export function QuoteScreen({
       </div>
 
       {/* The breakdown, one tap away: every line, its total. */}
-      {viewing?.totals ? (
+      {viewing && viewingTotals ? (
         <MoreLayer open={breakdownOpen} onClose={() => setBreakdownOpen(false)} label={deckLine(lines, "whats_in", { name: cleanOfferName(viewing.offer.name) })}>
           <div className="flex h-full w-full flex-col pr-16 pl-16" style={{ paddingTop: 88, paddingBottom: "var(--deck-clear, 78px)" }} data-testid="price-breakdown">
             <h2 className={DECK_TYPE.moreLabel}>{say(deckLine(lines, "whats_in", { name: cleanOfferName(viewing.offer.name) }))}</h2>
@@ -342,11 +395,18 @@ export function QuoteScreen({
               {say(coverageLine(state.runs, viewing.offer))}
             </p>
             <div className="mt-4 flex min-h-0 max-w-[760px] flex-col">
-              <Breakdown totals={viewing.totals} />
+              <Breakdown totals={viewingTotals} />
               <p className="mt-2 flex items-baseline justify-between gap-4 border-t border-foreground/60 pt-3" data-testid="price-total">
                 <span className={cn(DECK_TYPE.small, "text-muted-foreground")}>Total</span>
                 <span className="whitespace-nowrap">
-                  <span className="text-[length:var(--deck-headline)] leading-none font-semibold tabular-nums">{formatMoney(viewing.totals.subtotal)}</span>
+                  {viewingRegular !== null ? (
+                    <s className="mr-3 text-[22px] text-muted-foreground tabular-nums" data-testid="price-total-regular">
+                      <span className="sr-only">Regular price </span>
+                      {formatMoney(viewingRegular)}
+                    </s>
+                  ) : null}
+                  {viewingRegular !== null ? <span className="sr-only">{`${BLACK_FRIDAY_LABEL} price `}</span> : null}
+                  <span className="text-[length:var(--deck-headline)] leading-none font-semibold tabular-nums">{formatMoney(viewingTotals.subtotal)}</span>
                   {pricing.gstEnabled ? <span className="ml-2 text-[22px] text-muted-foreground">+ GST</span> : null}
                 </span>
               </p>
@@ -447,6 +507,8 @@ function TimingChoice({
 // and "Your choice".
 function OptionButton({
   option,
+  total,
+  regular,
   coverage,
   onScreen,
   chosen,
@@ -455,6 +517,10 @@ function OptionButton({
   onShow,
 }: {
   option: PricedOffer;
+  // The total shown, and the regular total struck through beside it while
+  // Black Friday is on (null otherwise).
+  total: number;
+  regular: number | null;
   coverage: string;
   onScreen: boolean;
   chosen: boolean;
@@ -483,14 +549,25 @@ function OptionButton({
           {say(yourChoice)}
         </span>
       ) : null}
-      <span className="flex items-baseline justify-between gap-3">
+      {/* The name and the price share a line while they fit; with Black
+          Friday's two prices in a narrow column, the prices drop under it. */}
+      <span className="flex flex-wrap items-baseline justify-between gap-x-3">
         <span className="flex min-w-0 items-start gap-2 text-[23px] leading-tight font-semibold">
           {chosen ? <Check aria-hidden="true" className="mt-0.5 size-6 shrink-0" /> : null}
           <span className="truncate">{say(name)}</span>
         </span>
-        <span className="shrink-0 text-[26px] leading-tight font-semibold tabular-nums">
-          {formatMoney(option.totals?.subtotal ?? 0)}
-          {gstEnabled ? <span className="ml-1.5 text-[18px] font-normal">+ GST</span> : null}
+        <span className="flex shrink-0 items-baseline gap-2 tabular-nums">
+          {regular !== null ? (
+            <s className={cn("text-[18px] leading-tight", chosen ? "text-background/75" : "text-muted-foreground")} data-testid="price-option-regular">
+              <span className="sr-only">Regular price </span>
+              {formatMoney(regular)}
+            </s>
+          ) : null}
+          <span className="text-[26px] leading-tight font-semibold" data-testid="price-option-total">
+            {regular !== null ? <span className="sr-only">{`${BLACK_FRIDAY_LABEL} price `}</span> : null}
+            {formatMoney(total)}
+            {gstEnabled ? <span className="ml-1.5 text-[18px] font-normal">+ GST</span> : null}
+          </span>
         </span>
       </span>
       <span className={cn("line-clamp-2 text-pretty text-[19px] leading-snug", chosen ? "text-background/85" : "text-muted-foreground")} data-testid="price-option-coverage">
