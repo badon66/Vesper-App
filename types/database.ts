@@ -1068,6 +1068,7 @@ export type Database = {
       quote_links: {
         Row: {
           booked_at: string | null
+          booked_offer: string | null
           booked_option: string | null
           booked_selection: number[] | null
           created_at: string
@@ -1081,6 +1082,7 @@ export type Database = {
           revoked_by: string | null
           selection: number[] | null
           selection_at: string | null
+          selection_offer: string | null
           selection_runs: string | null
           token: string
           updated_at: string
@@ -1088,6 +1090,7 @@ export type Database = {
         }
         Insert: {
           booked_at?: string | null
+          booked_offer?: string | null
           booked_option?: string | null
           booked_selection?: number[] | null
           created_at?: string
@@ -1101,6 +1104,7 @@ export type Database = {
           revoked_by?: string | null
           selection?: number[] | null
           selection_at?: string | null
+          selection_offer?: string | null
           selection_runs?: string | null
           token: string
           updated_at?: string
@@ -1108,6 +1112,7 @@ export type Database = {
         }
         Update: {
           booked_at?: string | null
+          booked_offer?: string | null
           booked_option?: string | null
           booked_selection?: number[] | null
           created_at?: string
@@ -1121,6 +1126,7 @@ export type Database = {
           revoked_by?: string | null
           selection?: number[] | null
           selection_at?: string | null
+          selection_offer?: string | null
           selection_runs?: string | null
           token?: string
           updated_at?: string
@@ -1218,6 +1224,7 @@ export type Database = {
           lead_status_before: Database["public"]["Enums"]["lead_status"] | null
           min_job_total: number | null
           notes: string | null
+          offers: Json
           outcome_note: string | null
           pdf_path: string | null
           presented_at: string | null
@@ -1262,6 +1269,7 @@ export type Database = {
           lead_status_before?: Database["public"]["Enums"]["lead_status"] | null
           min_job_total?: number | null
           notes?: string | null
+          offers?: Json
           outcome_note?: string | null
           pdf_path?: string | null
           presented_at?: string | null
@@ -1306,6 +1314,7 @@ export type Database = {
           lead_status_before?: Database["public"]["Enums"]["lead_status"] | null
           min_job_total?: number | null
           notes?: string | null
+          offers?: Json
           outcome_note?: string | null
           pdf_path?: string | null
           presented_at?: string | null
@@ -2335,10 +2344,12 @@ export type Database = {
         Args: { p_position: number; p_run: Json }
         Returns: string
       }
+      quote_link_book_offer: { Args: { p_offer: string; p_token: string }; Returns: Json }
       quote_link_select: {
         Args: { p_positions: number[]; p_token: string }
         Returns: boolean
       }
+      quote_link_select_offer: { Args: { p_offer: string; p_token: string }; Returns: boolean }
       quote_link_visit: { Args: { p_token: string }; Returns: boolean }
       quote_mockup_signable: { Args: { p_name: string }; Returns: boolean }
       quote_undo_acceptance: {
