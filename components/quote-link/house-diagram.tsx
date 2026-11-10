@@ -1,11 +1,13 @@
 import { HOUSE_SEGMENTS, houseDescription, type HouseSegment, type SegmentState } from "@/lib/quote-link/house";
 import { cn } from "@/lib/utils";
 
-// The house diagram (2026-11-04): an original line drawing in navy, with
-// gold where the lights go. A lit part is a navy track with gold nodes,
-// tucked just under the roof edge, as the product sits under the soffit.
-// A part switched off is a dashed line; a part not in the quote is the
-// plain outline. One drawing for every house; see lib/quote-link/house.ts.
+// The house diagram (2026-11-04; round 9, one diagram for the option on
+// screen): an original line drawing in navy, with gold where the lights
+// go. A lit part, in the option, is a navy track with gold nodes, tucked
+// just under the roof edge, as the product sits under the soffit. A part
+// measured but left out of the option is a dashed track; a part not
+// measured is the plain outline. Changing the option cross-fades the parts.
+// One drawing for every house; see lib/quote-link/house.ts.
 
 // The roof edges each part lights, in the drawing's own units.
 const EDGES: Record<HouseSegment, string> = {
@@ -82,28 +84,12 @@ export type Crop = [x: number, y: number, width: number, height: number];
 // The small drawings in "What do these mean?" are this wide on screen.
 const MINI_PX = 128;
 
-// Each part's own close-up, for the small drawing beside its switch, so a
-// row shows which part of the house it is and what switching it does at any
-// scroll position (the critique, 2026-11-04).
-export const SEGMENT_CROPS: Record<HouseSegment, Crop> = {
-  "garage-gable": [0, 84, 120, 67],
-  garage: [0, 84, 120, 67],
-  "lower-eave": [100, 70, 230, 128],
-  porch: [182, 128, 110, 61.5],
-  "upper-eave": [100, 20, 200, 112],
-  "upper-gable": [180, 6, 170, 95],
-  "lower-sides": [189, 40, 161, 90],
-  "upper-sides": [189, 40, 161, 90],
-};
-
 export function HouseDiagram({
   states,
   className,
   mini = false,
   crop = WHOLE_HOUSE,
-  px = MINI_PX,
   label,
-  decorative = false,
 }: {
   states: Record<HouseSegment, SegmentState>;
   className?: string;
@@ -111,22 +97,19 @@ export function HouseDiagram({
   // lit, cropped to that part so it reads at the small size.
   mini?: boolean;
   crop?: Crop;
-  // How wide a small drawing is on screen, so its lines can be scaled to it.
-  px?: number;
   // Overrides the description a screen reader hears.
   label?: string;
-  // Beside a control that already says what it is: hidden from screen readers.
-  decorative?: boolean;
 }) {
   // Lines are set in the drawing's units. A small drawing scales them by
   // its own zoom, so its lines and lights look the same size on screen as
   // the big drawing's, however it is cropped.
-  const k = mini ? crop[2] / px : 1;
+  const k = mini ? crop[2] / MINI_PX : 1;
   const line = (mini ? 1.2 : 1.5) * k;
   return (
     <svg
       viewBox={crop.join(" ")}
-      {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": label ?? houseDescription(states) })}
+      role="img"
+      aria-label={label ?? houseDescription(states)}
       className={cn("house block h-auto w-full text-navy", mini && "house-mini", className)}
       fill="none"
       strokeLinecap="round"
@@ -148,17 +131,17 @@ export function HouseDiagram({
   );
 }
 
-// One part, in all three looks at once; only one shows, and switching
-// cross-fades between them (globals.css, .house-part).
+// One part, in all three looks at once; only one shows, and changing the
+// option cross-fades between them (globals.css, .house-part).
 function Segment({ segment, state, k, mini }: { segment: HouseSegment; state: SegmentState; k: number; mini: boolean }) {
   const edge = (mini ? 1.2 : 1.5) * k;
   return (
     <g data-segment={segment} data-state={state} className="house-part">
-      {/* Not in the quote: the plain outline. */}
+      {/* Not measured: the plain outline. */}
       <path d={EDGES[segment]} stroke="currentColor" strokeWidth={edge} className="house-none" />
-      {/* Switched off: the roof stays drawn; only the light goes, a dashed
-          line where the track would be (navy at 60%, over 3:1 on white), so
-          it reads as a gap even without colour. */}
+      {/* Measured, not in this option: the roof stays drawn; only the light
+          goes, a dashed line where the track would be (navy at 60%, over
+          3:1 on white), so it reads as a gap even without colour. */}
       <g className="house-off">
         <path d={EDGES[segment]} stroke="currentColor" strokeWidth={edge} />
         <path d={TRACKS[segment]} stroke="currentColor" strokeWidth={1.5 * k} strokeDasharray={`${4 * k} ${3.5 * k}`} opacity={0.6} />

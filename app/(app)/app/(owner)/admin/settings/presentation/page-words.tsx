@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { NO_PAYMENT_LINE, WORD_LIMITS, wordCount, type PageWords, type WordsPageKey } from "@/lib/deck";
+import { WORD_LIMITS, wordCount, type PageWords, type WordsPageKey } from "@/lib/deck";
 import {
   headlineLength,
   isDraftField,
@@ -24,7 +24,25 @@ import { cn } from "@/lib/utils";
 // One page's words in Settings: the headline, the words, the More button's
 // label and the words behind it, each with a live count against the copy
 // rules' limits. Fields a page doesn't have are not shown, and the save
-// never touches them.
+// never touches them. The built pages' lines are lines-words.tsx.
+
+const WORDS_LABEL: Partial<Record<WordsPageKey, string>> = {
+  light_picker: "The line under it",
+  your_house: "The line under it",
+  mockup: "The line under it",
+};
+
+const WORDS_HINT: Partial<Record<WordsPageKey, string>> = {
+  light_picker: "Two lines at most beside Steady, Twinkle, Chase and Off.",
+  your_house: "{feet} is filled in with the feet measured on the quote. The line is hidden until something is measured.",
+};
+
+const BUTTON_HINT: Partial<Record<WordsPageKey, string>> = {
+  gallery: "The meeting adds the real count, like See all 6. It opens the grid of every photo.",
+  warranty: "It opens every line of the warranty, word for word.",
+  your_house: "It opens our drawing of their roofline, every measured run lit and named with its feet. Shown once something is measured.",
+  next_steps: "It opens what we need on install day, beside the control box photo.",
+};
 
 export const wordsFieldId = (page: WordsPageKey, field: WordsField) => `deck-${page}-${field}`;
 export const LINES_UP_FRONT_ID = "deck-warranty-lines-up-front";
@@ -60,20 +78,14 @@ export function PageWords({ page, value, onChange, onBlur, errors, linesUpFront,
         <WordsInput
           page={page}
           field="words"
-          label={page === "install_day" ? "The steps, one per line" : page === "light_picker" ? "The line under it" : "Words"}
+          label={WORDS_LABEL[page] ?? "Words"}
+          hint={WORDS_HINT[page]}
           value={value.words}
           onChange={onChange}
           onBlur={onBlur}
           error={errors.words}
-          rows={rules.words.steps ? 4 : 3}
+          rows={3}
           count={{ n: wordCount(value.words), max: rules.words.max, aim: rules.words.aim, unit: "words" }}
-          after={
-            rules.words.steps ? (
-              <p className="text-sm text-muted-foreground">
-                Then, set apart on the page: <span className="font-semibold text-foreground">{NO_PAYMENT_LINE}</span>
-              </p>
-            ) : null
-          }
         />
       ) : null}
       {page === "warranty" && onLinesUpFront ? (
@@ -84,13 +96,7 @@ export function PageWords({ page, value, onChange, onBlur, errors, linesUpFront,
           page={page}
           field="moreLabel"
           label="Button label"
-          hint={
-            rules.moreLabel.countAdded
-              ? "The meeting adds the real count, like See all 6. It opens the grid of every photo."
-              : page === "warranty"
-                ? "It opens every line of the warranty, word for word."
-                : "Say what's behind it, like What's in it or Up close. The button is hidden when there's nothing behind it."
-          }
+          hint={BUTTON_HINT[page] ?? "Say what's behind it, like What's in it or Up close. The button is hidden when there's nothing behind it."}
           value={value.moreLabel}
           onChange={onChange}
           onBlur={onBlur}

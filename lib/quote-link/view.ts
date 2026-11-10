@@ -1,8 +1,9 @@
 // The customer quote link (2026-11-02), kept pure: what the database's
-// quote_for_customer answer means, the prices for whatever runs the
-// customer has switched on, the option named in words, the link itself
-// and the text Keenan sends. No React and no network, so it is unit tested
-// like the pricing it feeds, and the page and the server share it.
+// quote_for_customer answer means, each option's price (round 9, the
+// options Keenan made in place of Start smaller), which option the page
+// opens on, the next steps in the meeting's words, the link itself and the
+// text Keenan sends. No React and no network, so it is unit tested like the
+// pricing it feeds, and the page and the server share it.
 
 import { z } from "zod";
 import {
@@ -17,6 +18,14 @@ import {
   type QuoteRun,
   type QuoteTotals,
 } from "@/lib/pricing";
+import { fillLine, NO_PAYMENT_LINE, parseDeckLines, type DeckLines } from "@/lib/deck";
+import {
+  parseOffers,
+  priceOffer,
+  shownOffers,
+  type PricedOffer,
+  type QuoteOffer,
+} from "@/lib/quotes/offers";
 import { formatLongDay } from "@/lib/time";
 
 // The token's shape, as the database makes it: 24 base64url characters.
@@ -73,6 +82,18 @@ export type CustomerQuote = {
     // The track colour the quote was made with, by name; null until set.
     trackColourName: string | null;
     trackCustom: boolean;
+    // The options (round 9), cleaned the way the database cleans them; a
+    // quote made before them reads as one Full wrap covering every run.
+    offers: QuoteOffer[];
+    // "Financing is available. Just ask." shows only while this is on.
+    financingOffered: boolean;
+    // The option chosen at the table (an offer id), if any.
+    meetingOffer: string | null;
+    // Once Keenan marks the quote accepted: the page shows only what was
+    // agreed, and acceptedOffer names the option (null on a quote accepted
+    // before options).
+    accepted: boolean;
+    acceptedOffer: string | null;
   };
   warranty: string;
   // Warranty years 6 to 10 (Settings); null hides its line.
@@ -81,16 +102,28 @@ export type CustomerQuote = {
   // database decides, by Calgary's date).
   christmas: { title: string; text: string } | null;
   productPoints: ProductPoint[];
-  installDay: { title: string; body: string } | null;
+  // What happens next: whether the colour was initialled at the meeting,
+  // the planned install day (the lead's, else the one picked at the table),
+  // and What we'll need, in the meeting's own words.
+  nextSteps: NextStepsData;
   // The presentation gallery's photo paths: Vesper's own installs.
   gallery: string[];
   company: Company;
   mockupPath: string | null;
-  // Positions of the runs they had switched on; null = the Recommended package.
+  // Positions of the runs they last looked at; null = every run. Kept for
+  // Keenan's card on links from before options.
   selection: number[] | null;
+  // The option they last looked at, and the one they booked (offer ids).
+  selectionOffer: string | null;
+  bookedOffer: string | null;
   bookedAt: string | null;
+  // The booked option's name as it was when they booked.
   bookedOption: string | null;
+  // The page's words, the meeting's own where they are shared.
+  words: LinkWords;
 };
+
+export type NextStepsData = { colourConfirmed: boolean; installOn: string | null; whatWeNeed: string | null };
 
 // A link Keenan turned off, or one that never existed. Links don't expire
 // (2026-11-04): prices are held until a date, and the page still works after.
@@ -147,10 +180,20 @@ const quoteSchema = z.object({
   gst_rate: number,
   track_colour_name: z.string().nullable().optional().catch(null),
   track_custom: z.boolean().optional().catch(false),
+  offers: z.unknown().optional(),
+  financing_offered: z.boolean().optional().catch(false),
+  meeting_offer: z.string().nullable().optional().catch(null),
+  accepted: z.boolean().optional().catch(false),
+  accepted_offer: z.string().nullable().optional().catch(null),
 });
 
 function toQuote(q: z.infer<typeof quoteSchema>): CustomerQuote["quote"] {
   return {
+    offers: parseOffers(q.offers, q.runs.length),
+    financingOffered: q.financing_offered === true,
+    meetingOffer: q.meeting_offer?.trim() || null,
+    accepted: q.accepted === true,
+    acceptedOffer: q.accepted === true ? q.accepted_offer?.trim() || null : null,
     runs: q.runs.map((run) => ({ name: run.name, feet: run.feet, level: run.level, part: runPart(run) })),
     runsFingerprint: q.runs_fingerprint,
     pricePerFt: q.price_per_ft,
@@ -199,8 +242,12 @@ const liveSchema = z.object({
     .optional()
     .catch(null),
   product_points: z.array(pointSchema.catch({ icon: "check", text: "" })).catch([]),
-  install_day: z
-    .object({ title: z.string().nullable().catch(""), body: z.string().nullable().catch("") })
+  next_steps: z
+    .object({
+      colour_confirmed: z.boolean().catch(false),
+      install_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().catch(null),
+      what_we_need: z.string().nullable().catch(null),
+    })
     .nullable()
     .optional()
     .catch(null),
@@ -208,8 +255,13 @@ const liveSchema = z.object({
   company: companySchema,
   mockup_path: z.string().nullable().catch(null),
   selection: z.array(z.number().int()).nullable().catch(null),
+  selection_offer: text,
+  booked_offer: text,
   booked_at: z.string().nullable().catch(null),
   booked_option: z.string().nullable().catch(null),
+  // The meeting's words from settings.deck.lines, when the database hands
+  // them over; otherwise the defaults below, which are the same words.
+  lines: z.record(z.string(), z.unknown()).nullable().optional().catch(null),
 });
 
 // The database's answer, as the page uses it. Anything that isn't a live
@@ -225,8 +277,6 @@ export function parseCustomerQuote(data: unknown): CustomerQuote | ClosedQuote {
   const v = live.data;
   const fee = v.service_call_fee ?? null;
   const christmas = v.christmas && v.christmas.title.trim() ? { title: v.christmas.title.trim(), text: v.christmas.text.trim() } : null;
-  const installTitle = v.install_day?.title?.trim() ?? "";
-  const installBody = v.install_day?.body?.trim() ?? "";
   return {
     state: "live",
     firstName: v.first_name,
@@ -242,15 +292,32 @@ export function parseCustomerQuote(data: unknown): CustomerQuote | ClosedQuote {
     productPoints: v.product_points
       .map((point) => ({ icon: point.icon, text: point.text.trim() }))
       .filter((point) => point.text !== ""),
-    installDay: installBody ? { title: installTitle || "How install day works", body: installBody } : null,
+    nextSteps: {
+      colourConfirmed: v.next_steps?.colour_confirmed === true,
+      installOn: v.next_steps?.install_on ?? null,
+      whatWeNeed: v.next_steps?.what_we_need?.trim() || null,
+    },
     gallery: v.gallery.filter((path) => path.trim() !== ""),
     company: v.company,
     mockupPath: v.mockup_path,
     selection: v.selection,
+    selectionOffer: v.selection_offer?.trim() || null,
+    bookedOffer: v.booked_offer?.trim() || null,
     bookedAt: v.booked_at,
     bookedOption: v.booked_option,
+    words: parseDeckLines(v.lines),
   };
 }
+
+// ---------------------------------------------------------------- the words
+
+// The page's words (round 9): settings.deck.lines, the same map and the
+// same defaults as meeting mode (lib/deck.ts), so the four steps, the
+// shared price lines and the stock colour line read the same on the iPad
+// and the link, and the link's own lines (link_*) are Keenan's to edit in
+// Settings too. Until the database hands the map over, the defaults are
+// the words.
+export type LinkWords = DeckLines;
 
 // Whether it is the Christmas season on the page: September 1 to November 30
 // by Calgary's date, the same window the database gives the Christmas
@@ -261,24 +328,25 @@ export function christmasSeason(today: string | null): boolean {
   return month >= 9 && month <= 11;
 }
 
-// The track colour section's line about other colours, in Keenan's words.
-// From September 1 to November 30 the rush colour fee is "to have it before
-// Christmas". From December 1 nothing promises Christmas: the spring option
-// only, colour matching included; a quote Keenan priced for this season
-// still names its fee, "to have it sooner", so the line never contradicts
-// that customer's own breakdown (Keenan, 2026-11-05). A fee that isn't set
-// drops its clause.
+// The track colour section's line about other colours: one colour rule,
+// the same as the iPad's colour page (round 9). White is in stock; every
+// other colour is made to order, included for spring or the rush colour
+// fee this season. From September 1 to November 30 the fee is "to have it
+// this season". From December 1 the spring option only, at no extra cost;
+// a quote Keenan priced for this season still names its fee, "to have it
+// sooner", so the line never contradicts that customer's own breakdown
+// (Keenan, 2026-11-05). A fee that isn't set drops its clause.
 export function otherColoursLine({ season, rushFee, rush }: { season: boolean; rushFee: number | null; rush: boolean }): string {
   const fee = rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
   if (season) {
-    return `Any other colour is powder coated: nothing extra if it can wait for spring${
-      fee !== null ? `, or the ${formatMoney(fee)} rush colour fee to have it before Christmas` : ""
+    return `Any other colour is made to order: nothing extra if it can wait for spring${
+      fee !== null ? `, or the ${formatMoney(fee)} rush colour fee to have it this season` : ""
     }.`;
   }
   if (rush && fee !== null) {
-    return `Any other colour is powder coated: nothing extra if it can wait for spring, or the ${formatMoney(fee)} rush colour fee to have it sooner.`;
+    return `Any other colour is made to order: nothing extra if it can wait for spring, or the ${formatMoney(fee)} rush colour fee to have it sooner.`;
   }
-  return "Any other colour is powder coated for a spring install, with colour matching included at no extra cost.";
+  return "Any other colour is made to order for a spring install, at no extra cost.";
 }
 
 // Whether the price hold has passed: after the valid-until date (Calgary),
@@ -328,6 +396,65 @@ export function customerTotal(quote: CustomerQuote["quote"], positions: readonly
   return screenTotal(priceSelection(quote, positions).subtotal, quote.gstEnabled);
 }
 
+// ---------------------------------------------------------------- the options
+
+// The options a customer sees (round 9): those covering at least one run,
+// each priced with the quote's own prices and its own box count, biggest
+// first, the same order as the iPad (lib/quotes/offers.ts).
+export function linkOffers(quote: CustomerQuote["quote"]): PricedOffer[] {
+  return shownOffers(customerInputs(quote, null), quote.offers);
+}
+
+// One option by id, named and priced the way the customer reads it. Null
+// when the quote has no such option or it covers no run. Book my install's
+// total on the server comes from here, from the stored quote, never from
+// the browser.
+export function offerChoice(
+  quote: CustomerQuote["quote"],
+  offerId: string | null,
+): { id: string; name: string; total: string; totals: QuoteTotals; offer: QuoteOffer } | null {
+  if (!offerId) return null;
+  const offer = quote.offers.find((candidate) => candidate.id === offerId);
+  const totals = offer ? priceOffer(customerInputs(quote, null), offer) : null;
+  if (!offer || !totals) return null;
+  return { id: offer.id, name: offer.name, total: screenTotal(totals.subtotal, quote.gstEnabled), totals, offer };
+}
+
+// Which option the page opens on: the one they booked, else the one chosen
+// at the meeting, else the biggest. Null when no option covers a run.
+export function openingOffer(
+  shown: readonly PricedOffer[],
+  { booked, meeting }: { booked: string | null; meeting: string | null },
+): string | null {
+  for (const id of [booked, meeting]) {
+    if (id && shown.some((priced) => priced.offer.id === id)) return id;
+  }
+  return shown[0]?.offer.id ?? null;
+}
+
+// ---------------------------------------------------------------- what happens next
+
+export type NextStep = { key: "colour" | "day" | "on_day" | "pay"; label: string; text: string; done: boolean };
+
+// The meeting's four steps in the same words (round 9, section 4): the
+// colour, read back from the initials taken at the meeting; the install
+// day if one is planned; the day itself; and paying.
+export function nextStepsFor(view: Pick<CustomerQuote, "nextSteps" | "words"> & { quote: Pick<CustomerQuote["quote"], "trackColourName"> }): NextStep[] {
+  const w = view.words;
+  const { colourConfirmed, installOn } = view.nextSteps;
+  return [
+    {
+      key: "colour",
+      label: w.step_colour_label,
+      text: colourConfirmed ? fillLine(w.link_colour_done, { colour: view.quote.trackColourName ?? "Your track colour" }) : w.step_colour_todo,
+      done: colourConfirmed,
+    },
+    { key: "day", label: w.step_day_label, text: installOn ? formatLongDay(installOn) : w.step_day_none, done: installOn !== null },
+    { key: "on_day", label: w.step_on_day_label, text: w.step_on_day, done: false },
+    { key: "pay", label: w.step_pay_label, text: NO_PAYMENT_LINE, done: false },
+  ];
+}
+
 // A run's name, never blank.
 export function runName(run: QuoteRun, position: number): string {
   return run.name.trim() || `Run ${position + 1}`;
@@ -341,11 +468,13 @@ export function optionName(runs: QuoteRun[], positions: readonly number[] | null
   return `Start smaller: ${kept.map((p) => runName(runs[p], p)).join(", ")}`;
 }
 
-// The option the way people say it: "Recommended package", "Garage only",
-// "Front and Garage", "Front, Front upper and Garage". The database keeps
-// the plain form ("Start smaller: Front, Garage"); this is for reading.
+// The option the way people say it. Since round 9 a booking names one of
+// Keenan's options ("Main floor"), which reads as it is. A link booked
+// before then named the runs: "Recommended package", "Garage only",
+// "Front and Garage", "Front, Front upper and Garage" (the database kept
+// the plain form, "Start smaller: Front, Garage"); this is for reading.
 export function choiceLabel(option: string): string {
-  if (option === "Recommended package") return option;
+  if (option === "Recommended package" || !/^Start smaller:/.test(option)) return option;
   const names = option
     .replace(/^Start smaller:\s*/, "")
     .split(/,\s*/)

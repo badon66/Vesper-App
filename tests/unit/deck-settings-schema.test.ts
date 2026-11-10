@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { firstFamily } from "@/app/(app)/app/(owner)/admin/settings/presentation/measure-labels";
 import { TRAY, TRAY_AT_PRO } from "@/components/meeting/picker/layout";
-import { parseLooks, WORDS_PAGES, type DeckWords, type Look } from "@/lib/deck";
+import { DECK_LINE_DEFAULTS, DECK_LINE_KEYS, DEFAULT_LINES, parseDeckWords, parseLooks, WORDS_PAGES, type DeckWords, type Look } from "@/lib/deck";
 import { BAND_AT_AIR, BAND_AT_PRO, bottomRowRight, DECK_CLEAR_PX, DECK_ROW, DECK_SIZES, fluidPx } from "@/lib/meeting/deck-pages";
 import {
   BAND_FIT,
@@ -15,13 +15,14 @@ import {
   deckWordIssues,
   editableFields,
   GALLERY_MAX_PHOTOS,
+  braceIssue,
   headlineIssue,
-  installDayFitIssue,
-  installDayHeight,
   isDraftField,
+  isDraftLine,
   isDraftLook,
   isWebUrl,
   lineCount,
+  lineIssue,
   LINES_UP_FRONT_KEY,
   linesUpFrontIssue,
   LOOK_ROW,
@@ -55,6 +56,7 @@ import {
   tidyDeckWords,
   tidyText,
   warrantyFitIssue,
+  warrantyHeight,
   warrantyLines,
   wordsToAvoid,
   type TextMeasure,
@@ -88,10 +90,13 @@ describe("a page's words", () => {
     expect(pageWordIssues("what_vesper_is", page({ words: words(26) })).words).toBe("25 words at most. Aim for 20.");
   });
 
-  it("lets a split page run to 40 words, one step per line", () => {
-    const steps = { ...DECK_SEED.pages.install_day };
-    expect(pageWordIssues("install_day", { ...steps, words: `${words(20)}\n${words(20)}` }).words).toBeUndefined();
-    expect(pageWordIssues("install_day", { ...steps, words: `${words(20)}\n${words(21)}` }).words).toBe("40 words at most.");
+  it("lets Your house's line say {feet}, and nothing else in braces anywhere", () => {
+    const house = DECK_SEED.pages.your_house;
+    expect(pageWordIssues("your_house", house)).toEqual({});
+    expect(pageWordIssues("your_house", { ...house, words: "We measured {feet} ft, about {metres} m." }).words).toBe("Only {feet} can go in braces here.");
+    expect(pageWordIssues("what_vesper_is", page({ words: "A slim track, {feet} ft of it." })).words).toMatch(/No braces here/);
+    expect(braceIssue("Half open { brace", ["feet"])).toMatch(/Only \{feet\}/);
+    expect(braceIssue("{feet} ft", ["feet"])).toBeNull();
   });
 
   it("keeps the picker's line short", () => {
@@ -129,13 +134,15 @@ describe("a page's words", () => {
   });
 
   it("checks only the fields a page has", () => {
-    expect(editableFields("mockup")).toEqual(["headline"]);
+    expect(editableFields("mockup")).toEqual(["headline", "words"]);
     expect(editableFields("light_picker")).toEqual(["headline", "words"]);
     expect(editableFields("gallery")).toEqual(["headline", "moreLabel"]);
     expect(editableFields("warranty")).toEqual(["headline", "moreLabel"]);
-    expect(editableFields("install_day")).toEqual(["headline", "words", "moreLabel", "moreText"]);
-    // The mockup has no words in Settings, so stray text there is never checked.
-    expect(pageWordIssues("mockup", { ...DECK_SEED.pages.mockup, words: "Wow! —" })).toEqual({});
+    expect(editableFields("your_house")).toEqual(["headline", "words", "moreLabel", "moreText"]);
+    expect(editableFields("next_steps")).toEqual(["headline", "moreLabel", "moreText"]);
+    // What happens next's steps are lines, so stray words there are never checked.
+    expect(pageWordIssues("next_steps", { ...DECK_SEED.pages.next_steps, words: "Wow! —" })).toEqual({});
+    expect(WORDS_PAGES).not.toContain("install_day" as never);
   });
 });
 
@@ -162,15 +169,19 @@ describe("the deck's words as a whole", () => {
     expect(deckWordIssues(DECK_SEED)).toEqual({});
   });
 
-  it("names each problem by page and field", () => {
+  it("names each problem by page and field, and each line by its key", () => {
     const edited = copy();
     edited.pages.hidden_by_day.headline = "Hidden by day!";
     edited.pages.phone_control.moreText = words(70);
     edited.warrantyLinesUpFront = 8;
+    edited.lines.closing = "Talk soon!";
+    edited.lines.next_prefix = "Next up";
     expect(deckWordIssues(edited, "a\nb\nc")).toEqual({
       "hidden_by_day.headline": "No exclamation marks.",
       "phone_control.moreText": "60 words at most, so it fits one screen.",
       "warranty.linesUpFront": "Fewer than all 3 lines: the full warranty is one tap away.",
+      "lines.closing": "No exclamation marks.",
+      "lines.next_prefix": "Keep {page}: it is filled in on screen.",
     });
   });
 
@@ -186,11 +197,17 @@ describe("the deck's words as a whole", () => {
     expect(parseDeckWordsInput("nonsense").ok).toBe(false);
     const edited = copy();
     edited.pages.whites_first.words = "Clean — and warm";
+    edited.lines.colour_made = "{colour} — made to order.";
     const parsed = parseDeckWordsInput(edited);
     expect(parsed.ok).toBe(false);
-    if (!parsed.ok) expect(Object.keys(parsed.errors)).toEqual(["whites_first.words"]);
+    if (!parsed.ok) expect(Object.keys(parsed.errors)).toEqual(["whites_first.words", "lines.colour_made"]);
     const fine = parseDeckWordsInput({ ...copy(), pages: { ...copy().pages, mockup: { ...copy().pages.mockup, headline: " Your plan " } } });
     expect(fine.ok && fine.words.pages.mockup.headline).toBe("Your plan");
+    // A save that leaves a line out keeps ours; lines are tidied to one line.
+    const { lines, ...withoutLines } = copy();
+    const partial = parseDeckWordsInput({ ...withoutLines, lines: { closing: "  We'll text you\nthe link. " } });
+    expect(partial.ok && partial.words.lines.closing).toBe("We'll text you the link.");
+    expect(partial.ok && partial.words.lines.cover_line).toBe(lines.cover_line);
   });
 
   it("changes only the fields Settings shows", () => {
@@ -200,11 +217,15 @@ describe("the deck's words as a whole", () => {
     edited.pages.mockup.words = "never saved";
     edited.pages.mockup.headline = "Your plan";
     edited.pages.light_picker.moreLabel = "never saved";
+    edited.pages.next_steps.words = "never saved";
     edited.warrantyLinesUpFront = 2;
+    edited.lines.closing = "Talk soon.";
     const merged = mergeEditableWords(stored, edited);
-    expect(merged.pages.mockup).toEqual({ ...stored.pages.mockup, headline: "Your plan" });
+    expect(merged.pages.mockup).toEqual({ ...stored.pages.mockup, words: "never saved", headline: "Your plan" });
     expect(merged.pages.light_picker.moreLabel).toBe("");
+    expect(merged.pages.next_steps.words).toBe("");
     expect(merged.warrantyLinesUpFront).toBe(2);
+    expect(merged.lines.closing).toBe("Talk soon.");
     for (const key of WORDS_PAGES) expect(Object.keys(merged.pages[key])).toEqual(["headline", "words", "moreLabel", "moreText"]);
   });
 
@@ -215,6 +236,52 @@ describe("the deck's words as a whole", () => {
     expect(sameWords(edited, DECK_SEED)).toBe(true);
     edited.pages.gallery.headline = "Homes we lit";
     expect(sameWords(edited, DECK_SEED)).toBe(false);
+    const line = copy();
+    line.lines.closing = "Talk soon.";
+    expect(sameWords(line, DECK_SEED)).toBe(false);
+  });
+});
+
+describe("the built pages' lines (round 9, settings.deck.lines)", () => {
+  it("passes every line we wrote", () => {
+    for (const key of DECK_LINE_KEYS) expect(lineIssue(key, DECK_LINE_DEFAULTS[key]), key).toBeNull();
+  });
+
+  it("refuses an empty line, too many words, dashes, exclamation marks and names it can't fill", () => {
+    expect(lineIssue("cover_line", " ")).toBe("Add the words, or use ours.");
+    expect(lineIssue("colour_spring_label", "Install it in the spring")).toBe("4 words at most.");
+    expect(lineIssue("closing", "We'll text you – the link")).toMatch(/dashes/);
+    expect(lineIssue("financing", "Financing is available!")).toMatch(/exclamation/);
+    expect(lineIssue("colour_made", "{colour} is made to order, {fee}.")).toBe("Only {colour} can go in braces here.");
+    expect(lineIssue("closing", "We'll text you {name}.")).toMatch(/No braces here/);
+  });
+
+  it("keeps the names a line can't do without", () => {
+    expect(lineIssue("next_prefix", "Up next: {page}")).toBeNull();
+    expect(lineIssue("next_prefix", "Up next")).toBe("Keep {page}: it is filled in on screen.");
+    expect(lineIssue("price_held", "Price held for a while.")).toBe("Keep {date}: it is filled in on screen.");
+    // A name a line may use but needn't: fine without it.
+    expect(lineIssue("colour_made", "Made to order.")).toBeNull();
+  });
+
+  it("marks a line still as we wrote it", () => {
+    expect(isDraftLine("closing", DECK_LINE_DEFAULTS.closing)).toBe(true);
+    expect(isDraftLine("closing", "Talk soon.")).toBe(false);
+  });
+
+  it("are read from settings.deck with ours for any line missing or empty, and saved back with the rest of the deck kept", async () => {
+    const { deckWordsToJson } = await import("@/lib/deck");
+    const stored = { version: 1, pages: { install_day: { headline: "How install day works" } }, lines: { closing: "Talk soon.", old_line: "kept" }, other: 1 };
+    const read = parseDeckWords(stored);
+    expect(read.lines).toEqual({ ...DEFAULT_LINES, closing: "Talk soon." });
+    const json = deckWordsToJson(read, stored) as Record<string, Record<string, unknown>>;
+    // Round 7's How install day works (the customer's link reads it) and
+    // anything else this code doesn't know stay as they were.
+    expect(json.pages.install_day).toEqual({ headline: "How install day works" });
+    expect(json.lines.old_line).toBe("kept");
+    expect(json.lines.closing).toBe("Talk soon.");
+    expect(json.other).toBe(1);
+    expect(parseDeckWords(json as never)).toEqual(read);
   });
 });
 
@@ -466,7 +533,7 @@ describe("will the words fit at the meeting?", () => {
     expect(lineCount("a averyveryverylongword b", 100, tenPx)).toBe(3);
   });
 
-  it("knows the band's words column and how many lines stay above the More button", () => {
+  it("knows the band's words column and how many lines stay above the bottom row", () => {
     const [air, pro] = BAND_FIT.screens.map(bandWordsFit);
     expect(air.width).toBeCloseTo(431.2, 1);
     expect(air.maxLines).toBe(4);
@@ -474,21 +541,31 @@ describe("will the words fit at the meeting?", () => {
     expect(pro.maxLines).toBe(4);
   });
 
-  it("refuses band words that would reach the button, with the line count", () => {
+  it("refuses band words that would reach the bottom row, with the line count", () => {
     expect(bandWordsFitIssue(DECK_SEED.pages.what_vesper_is.words, approx)).toBeNull();
     expect(bandWordsFitIssue("", approx)).toBeNull();
     const long = "Permanent lights that stay up all year and change with the seasons, the holidays and your team, with no ladders or tangled strings every single fall.";
-    expect(bandWordsFitIssue(long, approx)).toMatch(/runs to \d lines and reaches the button\. Keep it to 4\./);
+    expect(bandWordsFitIssue(long, approx)).toMatch(/runs to \d lines and reaches the page dots\. Keep it to 4\./);
+    // Your house's {feet} is measured as a three-figure number.
+    const seen: string[] = [];
+    bandWordsFitIssue(DECK_SEED.pages.your_house.words, (text, font) => {
+      seen.push(text);
+      return approx(text, font);
+    });
+    expect(seen.at(-1)).toBe("We measured 888 ft of roofline.");
+    expect(seen.some((text) => text.includes("{"))).toBe(false);
   });
 
-  it("keeps the picker's line to one line at both iPads", () => {
+  it("keeps the picker's line to two lines at both iPads", () => {
     expect(pickerLineWidth(PICKER_LINE_FIT.screens[0])).toBe(535);
     expect(pickerLineWidth(PICKER_LINE_FIT.screens[1])).toBe(673);
+    expect(PICKER_LINE_FIT.maxLines).toBe(2);
     expect(pickerLineFitIssue(DECK_SEED.pages.light_picker.words, approx)).toBeNull();
-    expect(pickerLineFitIssue("A preview drawn on our own photo of your house tonight. Tap a look to see it.", approx)).toMatch(/one line/);
+    const three = "A preview drawn on our own photo of your house tonight, lit the way it would be on any evening you like. Tap a look to see it on the house.";
+    expect(pickerLineFitIssue(three, approx)).toMatch(/two lines/);
   });
 
-  it("checks the band pages' words, the picker's line and install day's steps, and passes the seeded words", () => {
+  it("checks the band pages' words and the picker's line, and passes the seeded words", () => {
     expect(deckFitIssues(DECK_SEED, approx)).toEqual({});
     expect(deckFitIssues(DECK_SEED, approx, { warrantyText: WARRANTY, company: COMPANY })).toEqual({});
     const words = copy();
@@ -496,11 +573,12 @@ describe("will the words fit at the meeting?", () => {
     for (const page of WORDS_PAGES) words.pages[page].words = long;
     expect(Object.keys(deckFitIssues(words, approx)).sort()).toEqual([
       "hidden_by_day.words",
-      "install_day.words",
       "light_picker.words",
+      "mockup.words",
       "phone_control.words",
       "what_vesper_is.words",
       "whites_first.words",
+      "your_house.words",
     ]);
   });
 
@@ -536,17 +614,20 @@ describe("will the words fit at the meeting?", () => {
 
   it("stays in step with the deck's bottom row and More button", () => {
     for (const width of MORE_FIT.widths) expect(moreRowRight(width)).toBe(bottomRowRight(width, MORE_FIT.pages));
-    expect(MORE_FIT.pages).toBe(12);
+    // The most pages a meeting shows at once.
+    expect(MORE_FIT.pages).toBe(11);
     expect(MORE_FIT.row).toEqual({ dot: DECK_ROW.dot, pillEnds: DECK_ROW.pillEnds, chevron: DECK_ROW.chevron, gap: DECK_ROW.gap });
-    // DeckButton: 20 px semibold, 24 px padding and a 1 px border each side; BottomRight: 48 px from the edge.
+    // DeckButton: 20 px semibold, 24 px padding and a 1 px border each side;
+    // BottomCorner: 48 px from the left edge (round 9), the row centred, so
+    // the room is the same as measured from the right.
     const parts = readFileSync("components/meeting/deck-parts.tsx", "utf8");
-    const button = parts.slice(parts.indexOf("export function DeckButton("), parts.indexOf("export function BottomRight("));
+    const button = parts.slice(parts.indexOf("export function DeckButton("), parts.indexOf("export function BottomCorner("));
     expect(button).toMatch(/\bborder\b/);
     expect(button).toContain("px-6");
     expect(button).toContain("text-[20px]");
     expect(button).toContain("font-semibold");
-    const corner = parts.slice(parts.indexOf("export function BottomRight("));
-    expect(corner.slice(0, corner.indexOf("\n}\n"))).toContain("right-12");
+    const corner = parts.slice(parts.indexOf("export function BottomCorner("));
+    expect(corner.slice(0, corner.indexOf("\n}\n"))).toContain("left-12");
   });
 
   it("stays in step with the deck's split pages", () => {
@@ -559,12 +640,6 @@ describe("will the words fit at the meeting?", () => {
     expect(SPLIT_FIT.padBottom).toBeGreaterThanOrEqual(DECK_CLEAR_PX);
     const lines = parts.slice(parts.indexOf("export function Lines("));
     expect(lines.slice(0, lines.indexOf("\n}\n"))).toContain("gap-3");
-    const pages = readFileSync("components/meeting/deck-pages.tsx", "utf8");
-    const install = pages.slice(pages.indexOf("export function InstallDayPage("), pages.indexOf("export function WarrantyPage("));
-    expect(install).toMatch(/<ol className="flex flex-col gap-4">/);
-    expect(install).toMatch(/flex items-baseline gap-4/);
-    expect(install).toMatch(/w-\[1ch\] shrink-0 font-semibold/);
-    expect(install).toMatch(/border-t border-border pt-6 font-semibold/);
     expect(DECK_SIZES.headline).toBe(fluidPx(SPLIT_FIT.screens[0].headline, SPLIT_FIT.screens[1].headline));
     expect(DECK_SIZES.body).toBe(fluidPx(SPLIT_FIT.screens[0].body, SPLIT_FIT.screens[1].body));
     expect(DECK_SIZES.small).toBe(fluidPx(SPLIT_FIT.screens[0].small, SPLIT_FIT.screens[1].small));
@@ -593,23 +668,26 @@ const MANROPE_LABELS: Record<string, number> = {
 const labelMeasure: TextMeasure = (text, font) => (font.size === 20 && font.weight === 600 && text in MANROPE_LABELS ? MANROPE_LABELS[text] : approx(text, font));
 
 describe("will a More button's label fit the bottom row?", () => {
-  it("leaves 16 px between the button and the dots and chevrons, with all 12 pages", () => {
-    // 588 px of dots and chevrons, centred: they end at 884 at 1180 and 977 at 1366.
-    expect(moreRowRight(1180)).toBe(884);
-    expect(moreRowRight(1366)).toBe(977);
-    // The button ends 48 px from the edge, with 24 px padding and a 1 px border each side.
-    expect(moreLabelRoom(1180)).toBe(1180 - 48 - (884 + 16) - 50);
-    expect(moreLabelRoom(1366)).toBe(1366 - 48 - (977 + 16) - 50);
+  it("leaves 16 px between the button and the dots and chevrons, with the 11 pages a meeting can show", () => {
+    // 548 px of dots and chevrons, centred: they span 316 to 864 at 1180 and
+    // 409 to 957 at 1366.
+    expect(moreRowRight(1180)).toBe(864);
+    expect(moreRowRight(1366)).toBe(957);
+    // The button sits 48 px from the edge, with 24 px padding and a 1 px border each side.
+    expect(moreLabelRoom(1180)).toBe(1180 - 48 - (864 + 16) - 50);
+    expect(moreLabelRoom(1180)).toBe(1180 - 864 - 16 - 48 - 50);
+    expect(moreLabelRoom(1366)).toBe(1366 - 48 - (957 + 16) - 50);
   });
 
   it("passes every seeded label at Manrope's own widths, and refuses one that would reach the dots", () => {
     for (const page of WORDS_PAGES) {
       expect(deckFitIssues(DECK_SEED, labelMeasure)[`${page}.moreLabel`], page).toBeUndefined();
     }
-    // "What the app does" leaves 19 px at 1180 (its button starts at 903, the dots end at 884).
+    // "What the app does" leaves 23 px at 1180 (its button ends at 277, the dots start at 316).
     expect(moreLabelFitIssue("What the app does", labelMeasure)).toBeNull();
-    // 195 px: its button would start at 887, 3 px from the dots.
-    expect(moreLabelFitIssue("What the app can do", labelMeasure)).toMatch(/run into the page dots/);
+    expect(moreLabelFitIssue("What the app can do", labelMeasure)).toBeNull();
+    // About 212 px: its button would end at 310, 6 px from the dots.
+    expect(moreLabelFitIssue("What the app can do now", labelMeasure)).toMatch(/run into the page dots/);
     // Within the 4 words Settings allows, but far too wide.
     const words = copy();
     words.pages.hidden_by_day.moreLabel = "Homeowners association guidelines";
@@ -664,41 +742,6 @@ describe("will a split page's words fit beside its photo?", () => {
     expect(pro.room).toBe(1000 - 64 - 112);
   });
 
-  it("counts the headline's lines, the steps one by one and the payment line", () => {
-    const air = SPLIT_FIT.screens[0];
-    // 3 em a word: two headline words to a line, five words of the payment line.
-    const threeEmAWord: TextMeasure = (text, font) => text.split(" ").length * font.size * 3;
-    const bare = installDayHeight({ headline: "", words: "" }, air, threeEmAWord);
-    // Only the payment line: its rule and 24 px, then its lines.
-    expect(bare).toBeCloseTo(1 + 24 + 2 * 27 * 1.3, 5);
-    const withHeadline = installDayHeight({ headline: "How install day works", words: "" }, air, threeEmAWord);
-    // "How install day works" runs to two lines at 52 px, then the 28 px gap.
-    expect(withHeadline - bare).toBeCloseTo(28 + 2 * 52 * 1.1, 5);
-    const oneStep = installDayHeight({ headline: "", words: "We clean up" }, air, threeEmAWord);
-    const twoSteps = installDayHeight({ headline: "", words: "We clean up\nWe clean up" }, air, threeEmAWord);
-    expect(twoSteps - oneStep).toBeCloseTo(16 + 27 * 1.3, 5);
-    // A number Keenan typed is dropped: the page numbers the steps.
-    expect(installDayHeight({ headline: "", words: "1. We clean up" }, air, threeEmAWord)).toBe(oneStep);
-  });
-
-  it("passes the seeded steps and refuses 40 long words, naming the steps", () => {
-    expect(installDayFitIssue(DECK_SEED.pages.install_day, approx)).toBeNull();
-    // Within the 40 words Settings allows, but long words in five steps.
-    const long = [
-      "Together we walk around the house and confirm every run.",
-      "We double check colours, measurements and outlet locations.",
-      "A small crew fits aluminum track underneath every eave.",
-      "Electricians aren't needed: the control box plugs straight in.",
-      "Everything gets tidied afterwards.",
-    ].join("\n");
-    expect(long.split(/\s+/).length).toBeLessThanOrEqual(40);
-    expect(pageWordIssues("install_day", { ...DECK_SEED.pages.install_day, words: long }).words).toBeUndefined();
-    expect(installDayFitIssue({ headline: "How install day works", words: long }, approx)).toMatch(/steps would run into the bottom row/);
-    const words = copy();
-    words.pages.install_day.words = long;
-    expect(deckFitIssues(words, approx)["install_day.words"]).toMatch(/once its photo is in/);
-  });
-
   it("counts the warranty's lines up front, the headline and the company lines, only when the warranty is given", () => {
     expect(warrantyFitIssue("Our 10-year warranty", 3, { warrantyText: WARRANTY, company: COMPANY }, approx)).toBeNull();
     const longer = Array.from({ length: 8 }, (_, at) => `${at + 1} years of something covered in full, with every part and the labour to fit it at no charge to you.`).join("\n");
@@ -713,7 +756,7 @@ describe("will a split page's words fit beside its photo?", () => {
   it("never breaks a headline inside a hyphenated word, and draws it 0.015 em tighter", () => {
     const air = SPLIT_FIT.screens[0];
     const seen: string[] = [];
-    installDayHeight({ headline: "Our 10-year plan", words: "" }, air, (text, font) => {
+    warrantyHeight({ headline: "Our 10-year plan", linesUpFront: 1, warrantyText: "One line.", company: [] }, air, (text, font) => {
       if (font.size === air.headline) seen.push(text);
       return approx(text, font);
     });
@@ -736,7 +779,7 @@ describe("Settings' help for Keenan", () => {
       expect(PAGE_HELP[page], page).not.toMatch(/["']/);
     }
     expect(PAGE_HELP.whites_first).toContain("\u201cso warm white looks warm\u201d");
-    expect(PAGE_HELP.install_day).toContain("\u201cNo payment until your install is complete.\u201d");
+    expect(PAGE_HELP.next_steps).toContain("\u201cNo payment until your install is complete.\u201d");
   });
 
   it("says what to say about the track's colour, plainly", () => {

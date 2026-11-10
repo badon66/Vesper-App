@@ -210,7 +210,8 @@ describe("the examples", () => {
 describe("staying on the page after a switch", () => {
   const keys = (...list: DeckPageKey[]) => list;
   const withLead = keys(...DECK_PAGES);
-  const noLead = DECK_PAGES.filter((key) => !["light_picker", "mockup", "colour", "quote"].includes(key));
+  // With no lead: no Your house, picker, mockup, colour or price (round 9).
+  const noLead = DECK_PAGES.filter((key) => !["your_house", "light_picker", "mockup", "colour", "quote"].includes(key));
 
   it("keeps the page when it still shows", () => {
     expect(landingPage(withLead, "warranty")).toBe("warranty");
@@ -222,9 +223,10 @@ describe("staying on the page after a switch", () => {
   });
 
   it("moves to the next page that shows, else the last", () => {
-    expect(landingPage(noLead, "light_picker")).toBe("phone_control");
-    expect(landingPage(noLead, "mockup")).toBe("warranty");
-    expect(landingPage(noLead, "quote")).toBe("warranty");
+    expect(landingPage(noLead, "light_picker")).toBe("whites_first");
+    expect(landingPage(noLead, "mockup")).toBe("whites_first");
+    expect(landingPage(noLead, "your_house")).toBe("whites_first");
+    expect(landingPage(noLead, "quote")).toBe("next_steps");
     expect(landingPage(keys("cover", "what_vesper_is", "warranty"), "hidden_by_day")).toBe("warranty");
   });
 
@@ -251,7 +253,7 @@ describe("staying on the page after a switch", () => {
     expect(rehearsal).toContain("gallery");
     expect(customer).not.toContain("gallery");
     expect(landingPage(customer, "gallery")).toBe("warranty");
-    expect(landingPage(rehearsal, "colour")).toBe("warranty");
+    expect(landingPage(rehearsal, "colour")).toBe("next_steps");
   });
 });
 

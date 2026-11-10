@@ -8,7 +8,7 @@ import { useCallback, useId, useMemo, useOptimistic, useState, useTransition } f
 
 import { Deck } from "@/components/meeting/deck-view";
 import type { DeckPageKey, DeckSlot } from "@/lib/deck";
-import { deckPages } from "@/lib/meeting/deck-pages";
+import { deckPages, frontPhotoOf, runsMeasured } from "@/lib/meeting/deck-pages";
 
 import { ExampleShot } from "./example-shot";
 import { customerViewFor, landingPage, PRESENTATION_SETTINGS, REHEARSAL_WORDS, rehearsalHref, type RehearsalData } from "./rehearsal";
@@ -18,7 +18,7 @@ import { customerViewFor, landingPage, PRESENTATION_SETTINGS, REHEARSAL_WORDS, r
 // empty slot shows its example to copy; the Customer view switch shows
 // exactly what a real meeting would show today, fallbacks and skipped pages
 // included, with the bar still on. "Rehearse with" picks one of the upcoming
-// meetings, or no lead (the picker, mockup, colour and price pages are then
+// meetings, or no lead (Your house, the picker, mockup, colour and price pages are then
 // skipped). Choosing a lead turns the Customer view on, so a run-through of
 // tonight's meeting shows what the customer will see; No lead turns it off,
 // for studying the examples. Keenan can switch it either way after.
@@ -53,7 +53,10 @@ export function RehearsalView({ deck, meeting, examples, choices, leadId }: Rehe
   // The page the deck opens on when it remounts: the one Keenan was on, or
   // the next that still shows.
   const startPage = useMemo(() => {
-    const keys = deckPages({ deck, lead: meeting ? { mockupUrl: meeting.mockupUrl } : null, fillEmpty }).map((item) => item.key);
+    const lead = meeting
+      ? { mockupUrl: meeting.mockupUrl, frontPhotoUrl: frontPhotoOf(meeting), measured: runsMeasured(meeting.draft?.runs) }
+      : null;
+    const keys = deckPages({ deck, lead, fillEmpty }).map((item) => item.key);
     return landingPage(keys, page) ?? undefined;
   }, [deck, meeting, fillEmpty, page]);
 

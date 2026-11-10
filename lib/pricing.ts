@@ -49,7 +49,8 @@ export type QuoteInputs = {
   gstEnabled: boolean;
   gstRate: number;
   // The track colour's name, for the rush colour line's detail ("Brown
-  // track, powder coated this season"); left out, the detail says less.
+  // track, made to order this season", the colour page's own words, round
+  // 9); left out, the detail says less.
   colourName?: string | null;
 };
 
@@ -152,7 +153,7 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
   const trackCents = toCents(inputs.pricePerFt) * feet;
   lines.push({
     label: "Track and lights",
-    detail: `${feet} ft at ${formatMoney(inputs.pricePerFt)}/ft`,
+    detail: `${feet} ft at ${formatMoney(inputs.pricePerFt)} a foot`,
     amount: toDollars(trackCents),
   });
 
@@ -179,7 +180,7 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
     const colour = inputs.colourName?.trim();
     lines.push({
       label: RUSH_COLOUR_LABEL,
-      detail: colour ? `${colour} track, powder coated this season` : "Powder coated this season",
+      detail: colour ? `${colour} track, made to order this season` : "Made to order this season",
       amount: toDollars(rushCents),
     });
   }

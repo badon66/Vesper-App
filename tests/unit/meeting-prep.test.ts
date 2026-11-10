@@ -5,8 +5,10 @@ import {
   confirmationTime,
   DEFAULT_CONFIRM_TEXT,
   missingAnswers,
+  draftedOfferCount,
   prepItems,
   prepSummary,
+  quoteDraftedAhead,
   ROOFLINE_NOT_TRACED,
   ROOFLINE_PHOTO_CHANGED,
   rooflineDoneLine,
@@ -121,5 +123,28 @@ describe("The confirmation text", () => {
 
   it("opens Messages with the text filled in", () => {
     expect(smsLink("+14035550199", "Hi Todd, see you at 7:30!")).toBe("sms:+14035550199?&body=Hi%20Todd%2C%20see%20you%20at%207%3A30!");
+  });
+});
+
+// Round 9 (2026-11-10): Quote drafted ahead counts once an offer covers a
+// measured run.
+describe("Quote drafted ahead", () => {
+  const runs = [
+    { name: "Front", feet: 60, level: "lower" },
+    { name: "Garage", feet: 0, level: "lower" },
+  ];
+
+  it("counts a quote saved before offers once a run has feet", () => {
+    expect(quoteDraftedAhead({ runs, offers: [] })).toBe(true);
+    expect(quoteDraftedAhead({ runs })).toBe(true);
+    expect(quoteDraftedAhead({ runs: [{ name: "Front", feet: 0, level: "lower" }], offers: [] })).toBe(false);
+    expect(quoteDraftedAhead({ runs: [], offers: [] })).toBe(false);
+    expect(quoteDraftedAhead(null)).toBe(false);
+  });
+
+  it("counts offers only once one covers a run with feet", () => {
+    expect(quoteDraftedAhead({ runs, offers: [{ id: "a", name: "Garage", runs: [1] }] })).toBe(false);
+    expect(quoteDraftedAhead({ runs, offers: [{ id: "a", name: "Garage", runs: [1] }, { id: "b", name: "Front", runs: [0] }] })).toBe(true);
+    expect(draftedOfferCount({ runs, offers: [{ id: "a", name: "Garage", runs: [1] }, { id: "b", name: "Front", runs: [0, 1] }] })).toBe(1);
   });
 });

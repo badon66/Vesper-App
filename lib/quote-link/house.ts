@@ -1,6 +1,6 @@
 // The house diagram on the customer's quote link (2026-11-04), kept pure:
 // which drawn part of the house each run lights, and how each part looks
-// for the runs they have switched on. No React, so it is unit tested.
+// for the option on screen (round 9). No React, so it is unit tested.
 //
 // One two-storey front view for every house (decisions.md, 2026-11-04): a
 // garage on the left with a front gable, a porch over the front door, the
@@ -23,9 +23,9 @@ export const HOUSE_SEGMENTS = [
 ] as const;
 export type HouseSegment = (typeof HOUSE_SEGMENTS)[number];
 
-// none: not in the quote (the plain outline); on: lit; off: in the quote,
-// switched off (a dashed line, so on and off differ in shape, not only
-// colour).
+// none: not measured (the plain outline); on: lit, in the option on
+// screen; off: measured, but not in that option (a dashed line, so on and
+// off differ in shape, not only colour).
 export type SegmentState = "none" | "on" | "off";
 
 // Where a run is drawn. Gable, eave and sides follow the level; a garage
@@ -59,8 +59,9 @@ export function segmentsFor(run: QuoteRun): HouseSegment[] {
 }
 
 // Each drawn part's state for the runs in the quote: lit when any run drawn
-// there is on, dashed when every run drawn there is off, the plain outline
-// when no run is drawn there. Runs with no feet aren't part of the job.
+// there is in the option, dashed when every run drawn there is left out,
+// the plain outline when no run is drawn there. Runs with no feet aren't
+// part of the job.
 export function segmentStates(runs: { run: QuoteRun; on: boolean }[]): Record<HouseSegment, SegmentState> {
   const states = Object.fromEntries(HOUSE_SEGMENTS.map((segment) => [segment, "none"])) as Record<HouseSegment, SegmentState>;
   for (const { run, on } of runs) {
@@ -91,11 +92,11 @@ export function listInWords(items: string[]): string {
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
-// The drawing in words: what is lit, and what is switched off.
+// The drawing in words: what is lit, and what was measured but left out.
 export function houseDescription(states: Record<HouseSegment, SegmentState>): string {
   const lit = HOUSE_SEGMENTS.filter((segment) => states[segment] === "on").map((segment) => SEGMENT_NAMES[segment]);
   const off = HOUSE_SEGMENTS.filter((segment) => states[segment] === "off").map((segment) => SEGMENT_NAMES[segment]);
   const parts = [`A drawing of a two-storey house${lit.length > 0 ? ` with lights on ${listInWords(lit)}` : ""}.`];
-  if (off.length > 0) parts.push(`Switched off: ${listInWords(off)}.`);
+  if (off.length > 0) parts.push(`Not in this option: ${listInWords(off)}.`);
   return parts.join(" ");
 }

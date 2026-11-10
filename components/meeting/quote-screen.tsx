@@ -1,32 +1,81 @@
 "use client";
 
-import { Minus, Plus, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
-import { saveQuoteDraft } from "@/app/(app)/meeting/actions";
+import { Check } from "lucide-react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+
+import { DECK_TYPE, say, useDeck } from "@/components/meeting/deck-parts";
+import { RunsDrawing } from "@/components/meeting/runs-drawing";
+import { hasMeasuredRun, QuoteEditor } from "@/components/quotes/quote-editor/quote-editor";
+import { useQuoteSave } from "@/components/quotes/quote-editor/use-quote-save";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { quoteFingerprint, quoteInputs, quoteRushFee, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
-import { defaultValidUntil, formatMoney, guessRunPart, priceQuote, RUN_PARTS, screenTotal, type ColourTiming, type RunPart } from "@/lib/pricing";
-import { formatFullDate, formatTime } from "@/lib/time";
+import { DEFAULT_LINES, deckLine, priceSubLine, type DeckLines } from "@/lib/deck";
+import { breakdownRows, coverageLine, minimumSentence, NO_PAYMENT, screenOptions } from "@/lib/meeting/price-screen";
+import { quoteInputs, quoteOffers, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
+import { MOTION, transition } from "@/lib/motion";
+import { formatMoney, type QuoteTotals } from "@/lib/pricing";
+import { QUOTE_LOCKED_MEETING, savedLine } from "@/lib/quotes/draft";
+import { offerNameIssue } from "@/lib/quotes/editor";
+import { cleanOfferName, type PricedOffer } from "@/lib/quotes/offers";
+import { formatFullDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
-// The live quote (M5): Keenan builds on the left, the bill sits on the
-// right, and the total moves as he types. All math is lib/pricing.ts on
-// the iPad; Save is the only thing that needs signal.
+// Your price (round 9, the spec 3.5): a presentation, not a form. Every
+// option the customer can have, biggest first in one row, every total the
+// same size, so Keenan walks them down from the full wrap. The option on
+// screen lights its runs on the house (the rest dashed) with its coverage
+// line, and its own breakdown sits on the right with its total and Choose.
+// On screen and picked never look alike (DESIGN.md's Porch Light Rule): on
+// screen is a 2 px Night Text outline; picked is the Night Text fill with a
+// tick and "Your choice". The page the customer watches holds no gold at
+// all: the total is Night Text and Choose is outlined.
+//
+// Keenan's small outlined Edit, bottom left, opens the quote editor (the
+// same one as the lead page's Edit the quote) as a full-screen layer; the
+// inputs, Save and the signal note appear only there. The pick and the
+// install day picked on What happens next save quietly with the quote when
+// there's signal; anything unsaved shows only in the Edit layer.
+//
+// Everything is worked on the iPad (lib/pricing.ts over the payload cached
+// when meeting mode opened), so the page makes no network call to show a
+// price. An accepted quote shows read only.
+//
+// CONTRACT (deck-view passes these)
+//   <QuoteScreen
+//     leadId, pricing, colourKind, colourText, today
+//     state, onChange          the quote as the deck holds it (setQuote)
+//     quoteId, savedAt, dirty  the last save, and whether anything changed
+//                              since (the Edit layer says so)
+//     onSaved(id, at, fingerprint)
+//     readOnly?                the rehearsal view: saves are acted out
+//     lines?                   settings.deck.lines (deck.words.lines); the
+//                              code's defaults when left out
+//     edit?                    the deck's layer state for this page
+//                              (moreOf("quote")), so the pager locks and the
+//                              dots hide while the editor is open; left out,
+//                              the page keeps its own (and the dots show)
+//     locked?                  the quote is accepted (meeting.draft.accepted):
+//                              read only, Choose hidden, Edit says why
+//   />
 
-const RUN_NAMES = ["Front", "Front upper", "Left gable", "Right gable", "Garage", "Back", "Left side", "Right side"];
-
-// The part of the house each run lights (2026-11-04): guessed from the
-// name, and Keenan can change it. The customer's house diagram lights it,
-// and an upper gable sets the upper access amount.
-const PART_NAMES: Record<RunPart, string> = {
-  eave: "Eave",
-  gable: "Gable",
-  garage: "Garage",
-  porch: "Porch",
-  sides: "Sides",
-  other: "Other",
+export type QuoteScreenProps = {
+  leadId: string;
+  pricing: MeetingPayload["pricing"];
+  colourKind: "none" | "list" | "custom";
+  colourText: string;
+  state: QuoteUIState;
+  onChange: (next: QuoteUIState) => void;
+  quoteId: string | null;
+  savedAt: string | null;
+  dirty: boolean;
+  onSaved: (quoteId: string, savedAt: string, fingerprint: string) => void;
+  today: string;
+  // The rehearsal view (round 7): Save is acted out on screen and nothing
+  // is written.
+  readOnly?: boolean;
+  lines?: DeckLines;
+  edit?: { open: boolean; set: (open: boolean) => void };
+  locked?: boolean;
 };
 
 export function QuoteScreen({
@@ -42,6 +91,288 @@ export function QuoteScreen({
   onSaved,
   today,
   readOnly = false,
+  lines = DEFAULT_LINES,
+  edit,
+  locked = false,
+}: QuoteScreenProps) {
+  const inputs = useMemo(() => quoteInputs(state, pricing), [state, pricing]);
+  const options = useMemo(() => screenOptions(inputs, quoteOffers(state)), [inputs, state]);
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  const [ownEdit, setOwnEdit] = useState(false);
+  const editOpen = edit ? edit.open : ownEdit;
+  const setEditOpen = edit ? edit.set : setOwnEdit;
+
+  const chosen = options.find((option) => option.offer.id === state.chosenOffer) ?? null;
+  // On screen: the one Keenan tapped, else the choice, else the biggest.
+  const viewing = options.find((option) => option.offer.id === viewingId) ?? chosen ?? options[0] ?? null;
+  const colour = colourKind === "none" ? null : colourText.trim() || null;
+  // The sub-line counts the options: none until something is measured.
+  const sub = options.length > 0 ? priceSubLine(lines, options.length, colour) : "";
+  const { save } = useQuoteSave({ leadId, pricing, from: "meeting", readOnly });
+
+  // The pick, the install day and the colour's timing save with the quote,
+  // quietly, when there's signal: a moment after they change, and again when the signal comes
+  // back. A failure stays on the iPad and shows only in the Edit layer.
+  // The colour's timing, chosen on the colour page, saves the same way.
+  const pickKey = `${state.chosenOffer ?? ""}|${state.installOn ?? ""}|${state.colourTiming ?? ""}`;
+  const lastPick = useRef(pickKey);
+  const [pickWaiting, setPickWaiting] = useState(false);
+  const quietSave = useEffectEvent(async () => {
+    if (readOnly || locked || !hasMeasuredRun(state) || quoteOffers(state).some((offer) => offerNameIssue(offer.name))) return;
+    const result = await save(state, { quiet: true, quoteId });
+    setPickWaiting(result === null);
+    if (result) onSaved(result.quoteId, result.savedAt, result.fingerprint);
+  });
+  useEffect(() => {
+    if (lastPick.current === pickKey) return;
+    lastPick.current = pickKey;
+    const timer = window.setTimeout(() => void quietSave(), 800);
+    return () => window.clearTimeout(timer);
+  }, [pickKey]);
+  useEffect(() => {
+    if (!pickWaiting) return;
+    const retry = () => void quietSave();
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+  }, [pickWaiting]);
+
+  const choose = (id: string) => {
+    setViewingId(id);
+    onChange({ ...state, chosenOffer: state.chosenOffer === id ? null : id });
+  };
+  const viewingChosen = viewing !== null && chosen?.offer.id === viewing.offer.id;
+
+  return (
+    <div className="relative flex h-full w-full flex-col pt-[72px]" style={{ paddingBottom: "var(--deck-clear, 78px)" }} data-testid="price-page">
+      {/* The headline and the sub-line share a line, so the options and
+          their breakdowns keep the height. */}
+      <header className="flex flex-wrap items-baseline gap-x-6 gap-y-1 pr-12 pl-16">
+        <h2 className={DECK_TYPE.headline}>{say(deckLine(lines, "price_headline"))}</h2>
+        {sub ? (
+          <p className={cn(DECK_TYPE.body, "text-muted-foreground")} data-testid="price-sub">
+            {say(sub)}
+          </p>
+        ) : null}
+      </header>
+
+      {viewing === null ? (
+        <p className={cn(DECK_TYPE.body, "mt-8 pr-12 pl-16 text-muted-foreground")} data-testid="price-empty">
+          {say(deckLine(lines, "price_empty"))}
+        </p>
+      ) : (
+        <>
+          {/* The options: biggest on the left, every total the same size. */}
+          <div className="mt-6 flex shrink-0 gap-3 pr-12 pl-16" role="group" aria-label="Options" data-testid="price-options">
+            {options.map((option) => (
+              <OptionButton
+                key={option.offer.id}
+                option={option}
+                onScreen={option.offer.id === viewing.offer.id}
+                chosen={option.offer.id === chosen?.offer.id}
+                gstEnabled={pricing.gstEnabled}
+                yourChoice={deckLine(lines, "your_choice")}
+                onShow={() => setViewingId(option.offer.id)}
+              />
+            ))}
+          </div>
+
+          <div className="mt-6 grid min-h-0 flex-1 grid-cols-[56%_44%]">
+            {/* Left: the house lighting the option on screen, what it
+                covers, and what every option shares. */}
+            <div className="flex min-h-0 min-w-0 flex-col gap-3 pr-10 pl-16">
+              <RunsDrawing runs={state.runs} lit={viewing.offer.runs} dashedRest className="min-h-0 w-full flex-1" />
+              <p className={cn(DECK_TYPE.small, "font-semibold")} data-testid="price-coverage">
+                {say(coverageLine(state.runs, viewing.offer))}
+              </p>
+              <div className={cn(DECK_TYPE.small, "flex flex-col gap-1 text-muted-foreground")}>
+                <p>{say(deckLine(lines, "price_includes"))}</p>
+                <p>{NO_PAYMENT}</p>
+                {state.validUntil ? <p>{say(deckLine(lines, "price_held", { date: formatFullDate(state.validUntil) }))}</p> : null}
+                {state.financingOffered ? <p>{say(deckLine(lines, "financing"))}</p> : null}
+              </div>
+            </div>
+
+            {/* Right: its breakdown, its total and Choose. */}
+            <div className="flex min-h-0 min-w-0 flex-col pr-12 pl-10" data-testid="price-breakdown">
+              <p className={cn(DECK_TYPE.body, "font-semibold")}>
+                {say(deckLine(lines, "whats_in", { name: cleanOfferName(viewing.offer.name) }))}
+              </p>
+              {viewing.totals ? <Breakdown totals={viewing.totals} /> : null}
+              {viewing.totals ? (
+                <div className="mt-2 flex items-baseline justify-between gap-4 border-t border-foreground/60 pt-2" data-testid="price-total">
+                  <span className={cn(DECK_TYPE.small, "text-muted-foreground")}>Total</span>
+                  <span className="text-right">
+                    <span className="text-[length:var(--deck-headline)] leading-none font-semibold tabular-nums">
+                      {formatMoney(viewing.totals.subtotal)}
+                    </span>
+                    {pricing.gstEnabled ? <span className="ml-2 text-[22px] text-muted-foreground">+ GST</span> : null}
+                  </span>
+                </div>
+              ) : null}
+              {!locked ? (
+                <button
+                  type="button"
+                  aria-pressed={viewingChosen}
+                  onClick={() => choose(viewing.offer.id)}
+                  className={cn(
+                    "mt-4 inline-flex h-14 w-full shrink-0 touch-manipulation items-center justify-center gap-2 rounded-md border px-6 text-[22px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                    viewingChosen ? "border-foreground bg-foreground text-background" : "border-foreground/70 bg-background hover:bg-muted",
+                  )}
+                  data-testid="price-choose"
+                >
+                  {viewingChosen ? (
+                    <>
+                      <Check aria-hidden="true" className="size-6" />
+                      {say(deckLine(lines, "your_choice"))}
+                    </>
+                  ) : (
+                    say(deckLine(lines, "choose", { name: cleanOfferName(viewing.offer.name) }))
+                  )}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Keenan's own: small, outlined, bottom left, away from Choose and
+          the forward chevron. */}
+      <div className="absolute left-12 z-10" style={{ bottom: "var(--deck-row-bottom, 20px)" }}>
+        <button
+          type="button"
+          onClick={() => setEditOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={editOpen}
+          className="inline-flex h-12 touch-none items-center justify-center rounded-md border border-input bg-background px-5 text-[20px] leading-none font-semibold text-foreground outline-none select-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+          data-testid="price-edit"
+        >
+          Edit
+        </button>
+      </div>
+
+      {editOpen ? (
+        <EditLayer
+          leadId={leadId}
+          pricing={pricing}
+          colourKind={colourKind}
+          colourText={colourText}
+          state={state}
+          onChange={onChange}
+          quoteId={quoteId}
+          savedAt={savedAt}
+          dirty={dirty}
+          onSaved={onSaved}
+          today={today}
+          readOnly={readOnly}
+          locked={locked}
+          onClose={() => setEditOpen(false)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+// One option: its name and its total, all the same size. On screen: a 2 px
+// Night Text outline. Picked: the Night Text fill, a tick and "Your choice".
+function OptionButton({
+  option,
+  onScreen,
+  chosen,
+  gstEnabled,
+  yourChoice,
+  onShow,
+}: {
+  option: PricedOffer;
+  onScreen: boolean;
+  chosen: boolean;
+  gstEnabled: boolean;
+  yourChoice: string;
+  onShow: () => void;
+}) {
+  const name = cleanOfferName(option.offer.name);
+  return (
+    <button
+      type="button"
+      aria-pressed={onScreen}
+      onClick={onShow}
+      data-testid="price-option"
+      data-option={option.offer.id}
+      data-on-screen={onScreen ? "yes" : "no"}
+      data-chosen={chosen ? "yes" : "no"}
+      className={cn(
+        "relative flex min-h-[88px] min-w-[250px] flex-1 basis-0 touch-manipulation flex-col justify-center gap-1 rounded-lg border-2 px-5 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        chosen ? "bg-foreground text-background" : "bg-background text-foreground",
+        onScreen || chosen ? "border-foreground" : "border-border",
+      )}
+    >
+      {/* "Your choice" sits on the button's top edge, so marking a pick
+          never changes the row's height, even at four options with GST. */}
+      {chosen ? (
+        <span className="absolute -top-4 right-3 rounded-md bg-foreground px-2.5 text-[20px] leading-7 font-semibold text-background" data-testid="price-your-choice">
+          {say(yourChoice)}
+        </span>
+      ) : null}
+      <span className="flex items-start gap-2 text-[24px] leading-tight font-semibold">
+        {chosen ? <Check aria-hidden="true" className="mt-0.5 size-6 shrink-0" /> : null}
+        <span className="line-clamp-2 min-w-0">{say(name)}</span>
+      </span>
+      <span className="text-[28px] leading-tight tabular-nums">
+        {formatMoney(option.totals?.subtotal ?? 0)}
+        {gstEnabled ? <span className="ml-1.5 text-[20px]">+ GST</span> : null}
+      </span>
+    </button>
+  );
+}
+
+// The option's breakdown, in the rows and words the link and the Accepted
+// sheet use (lib/pricing.ts): 22 px, or 20 px when there are more than seven
+// rows. A long one scrolls inside its column; the total and Choose stay put.
+function Breakdown({ totals }: { totals: QuoteTotals }) {
+  const rows = breakdownRows(totals);
+  const size = rows.length > 7 ? "text-[20px]" : "text-[22px]";
+  const detail = "text-[20px] leading-tight text-muted-foreground";
+  return (
+    <dl className={cn("mt-2 flex min-h-0 flex-col overflow-y-auto", size)} data-testid="price-lines">
+      {rows.map((row, at) =>
+        row.kind === "sum" ? (
+          <div key={at} className="flex items-baseline justify-between gap-4 border-t border-input py-1.5 leading-tight">
+            <dt className="text-muted-foreground">{row.label}</dt>
+            <dd className="shrink-0 font-semibold tabular-nums">{row.amount}</dd>
+          </div>
+        ) : (
+          <div key={at} className="flex flex-col border-t border-border py-1.5" data-line={row.label}>
+            <div className="flex items-baseline justify-between gap-4 leading-tight">
+              <dt className="min-w-0">{say(row.label)}</dt>
+              <dd className="shrink-0 font-semibold tabular-nums">{row.amount}</dd>
+            </div>
+            {row.detail ? <p className={detail}>{say(row.detail)}</p> : null}
+            {row.minimum ? <p className={cn(detail, "mt-1 text-foreground")}>{say(minimumSentence(totals.subtotal))}</p> : null}
+          </div>
+        ),
+      )}
+    </dl>
+  );
+}
+
+// Keenan's Edit layer: the shared quote editor, full screen inside the deck
+// (over the pages, under the way out), with Save in gold, the save's state
+// and the signal note. Done goes back to the price page; anything unsaved
+// stays on the iPad.
+function EditLayer({
+  leadId,
+  pricing,
+  colourKind,
+  colourText,
+  state,
+  onChange,
+  quoteId,
+  savedAt,
+  dirty,
+  onSaved,
+  today,
+  readOnly,
+  locked,
+  onClose,
 }: {
   leadId: string;
   pricing: MeetingPayload["pricing"];
@@ -54,442 +385,115 @@ export function QuoteScreen({
   dirty: boolean;
   onSaved: (quoteId: string, savedAt: string, fingerprint: string) => void;
   today: string;
-  // The rehearsal view (round 7): Save is acted out on screen and nothing
-  // is written.
-  readOnly?: boolean;
+  readOnly: boolean;
+  locked: boolean;
+  onClose: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const inputs = useMemo(() => quoteInputs(state, pricing), [state, pricing]);
-  const priced = useMemo(() => priceQuote(inputs), [inputs]);
-  const rushFee = quoteRushFee(state);
-  const set = (patch: Partial<QuoteUIState>) => onChange({ ...state, ...patch });
+  const { overlay, reduced } = useDeck();
+  const { busy, message, save } = useQuoteSave({ leadId, pricing, from: "meeting", readOnly });
+  const [shown, setShown] = useState(false);
+  const title = useRef<HTMLHeadingElement>(null);
+  const nameIssue = quoteOffers(state).some((offer) => offerNameIssue(offer.name) !== null);
+  const measured = hasMeasuredRun(state);
 
-  async function save() {
-    // What is being saved, as it stands at the tap; edits made while the
-    // save is in flight still count as unsaved afterwards.
-    const snapshot = quoteFingerprint(state);
-    if (readOnly) {
-      onSaved(quoteId ?? "rehearsal", new Date().toISOString(), snapshot);
-      return;
-    }
-    setBusy(true);
-    setMessage(null);
-    try {
-      const result = await saveQuoteDraft({
-        leadId,
-        runs: state.runs.map((run) => ({ ...run, feet: Math.max(0, Math.round(run.feet)) })),
-        boxCount: state.boxCount,
-        pricePerFt: inputs.pricePerFt,
-        boxPrice: inputs.boxPrice,
-        adders: inputs.adders,
-        discounts: inputs.discounts,
-        colourTiming: state.colourTiming,
-        rushFee,
-        upperAccessFee: inputs.upperAccessFee ?? null,
-        upperGableAccessFee: inputs.upperGableAccessFee ?? null,
-        minJobTotal: pricing.minJobTotal,
-        financingOffered: state.financingOffered,
-        validUntil: state.validUntil,
-        notes: "",
-        gstEnabled: pricing.gstEnabled,
-        gstRate: pricing.gstRate,
-        gstNumber: pricing.gstNumber,
-      });
-      if (!result.ok) {
-        setMessage(result.message);
-        return;
-      }
-      onSaved(result.quoteId, result.savedAt, snapshot);
-    } catch {
-      setMessage("No signal. The quote stays on this iPad; save again when you're back online.");
-    } finally {
-      setBusy(false);
-    }
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setShown(true));
+    title.current?.focus({ preventScroll: true });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  // Escape goes back (the deck leaves this layer's keys to it).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("input, textarea, select")) return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  async function onSave() {
+    const result = await save(state, { quoteId });
+    if (result) onSaved(result.quoteId, result.savedAt, result.fingerprint);
   }
 
-  return (
-    // Round 7 review: the top clears the exit (20 px in, 48 px, so it ends
-    // at 68) and the foot clears the bottom row of dots and chevrons; the
-    // builder's sections sit 16 px apart on the iPad with no padding under
-    // the last, so an empty quote's last row (Financing and Valid until)
-    // shows whole at 1180 x 820 and in the installed app (796 tall); the
-    // bill scrolls on its own if a long breakdown ever needs it. The page is
-    // otherwise as built.
-    <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-6 overflow-y-auto px-6 pt-[88px] pb-[var(--deck-clear,78px)] lg:grid lg:grid-cols-[1fr_380px] lg:gap-10 lg:overflow-hidden lg:px-10 lg:pt-[72px]">
-      {/* ------------------------------------------------ the builder */}
-      <div className="flex min-w-0 flex-col gap-5 lg:min-h-0 lg:gap-4 lg:overflow-y-auto lg:pr-1" data-testid="quote-builder">
-        <h2 className="text-3xl font-bold lg:text-4xl">Your price</h2>
+  const status = locked
+    ? null
+    : !measured
+      ? "Measure a run to save."
+      : nameIssue
+        ? "An offer's name needs fixing first."
+        : dirty
+          ? savedAt
+            ? "Changes not saved yet."
+            : "Not saved yet."
+          : savedAt
+            ? savedLine(savedAt)
+            : null;
 
-        <section className="flex flex-col gap-2" aria-label="Runs">
-          <p className="text-sm font-semibold text-muted-foreground">Runs</p>
-          {state.runs.map((run, at) => (
-            <div key={at} className="flex items-center gap-2">
-              <Input
-                value={run.name}
-                list="run-names"
-                aria-label={`Run ${at + 1} name`}
-                maxLength={60}
-                onChange={(event) => {
-                  const name = event.target.value;
-                  // The part follows the name until Keenan picks one that
-                  // differs from the guess.
-                  set({
-                    runs: state.runs.map((item, which) =>
-                      which === at ? { ...item, name, part: !item.part || item.part === guessRunPart(item.name) ? guessRunPart(name) : item.part } : item,
-                    ),
-                  });
-                }}
-                className="min-w-0 flex-1"
-              />
-              <select
-                aria-label={`Run ${at + 1} part of the house`}
-                value={run.part ?? guessRunPart(run.name)}
-                onChange={(event) => {
-                  const part = event.target.value as RunPart;
-                  set({ runs: state.runs.map((item, which) => (which === at ? { ...item, part } : item)) });
-                }}
-                className="h-9 w-24 rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {RUN_PARTS.map((part) => (
-                  <option key={part} value={part}>
-                    {PART_NAMES[part]}
-                  </option>
-                ))}
-              </select>
-              <Input
-                inputMode="numeric"
-                aria-label={`Run ${at + 1} feet`}
-                value={run.feet === 0 ? "" : String(run.feet)}
-                placeholder="ft"
-                onChange={(event) => {
-                  const feet = Number(event.target.value.replace(/\D/g, "")) || 0;
-                  set({ runs: state.runs.map((item, which) => (which === at ? { ...item, feet } : item)) });
-                }}
-                className="w-20 text-center tabular-nums"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                aria-label={`Run ${at + 1} level: ${run.level === "upper" ? "upper" : "lower"}`}
-                onClick={() => set({ runs: state.runs.map((item, which) => (which === at ? { ...item, level: item.level === "upper" ? "lower" : "upper" } : item)) })}
-                className="w-20"
-              >
-                {run.level === "upper" ? "Upper" : "Lower"}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={`Remove run ${at + 1}`}
-                onClick={() => set({ runs: state.runs.filter((_, which) => which !== at) })}
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            </div>
-          ))}
-          <datalist id="run-names">
-            {RUN_NAMES.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
-          <div className="flex flex-wrap gap-2">
-            {RUN_NAMES.filter((name) => !state.runs.some((run) => run.name === name)).slice(0, 5).map((name) => (
-              <Button key={name} type="button" variant="outline" size="sm" onClick={() => set({ runs: [...state.runs, { name, feet: 0, level: name.includes("upper") ? "upper" : "lower", part: guessRunPart(name) }] })}>
-                + {name}
-              </Button>
-            ))}
-            <Button type="button" variant="ghost" size="sm" onClick={() => set({ runs: [...state.runs, { name: "", feet: 0, level: "lower", part: "other" }] })}>
-              + Other
-            </Button>
-          </div>
-        </section>
-
-        <section className="flex flex-wrap items-end gap-5" aria-label="Boxes and prices">
-          <div className="flex flex-col gap-1.5">
-            <Label>Control boxes</Label>
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="outline" size="icon" aria-label="Fewer boxes" disabled={state.boxCount <= 0} onClick={() => set({ boxCount: state.boxCount - 1 })}>
-                <Minus className="size-4" />
-              </Button>
-              <span className="w-8 text-center text-lg font-bold tabular-nums">{state.boxCount}</span>
-              <Button type="button" variant="outline" size="icon" aria-label="More boxes" disabled={state.boxCount >= 20} onClick={() => set({ boxCount: state.boxCount + 1 })}>
-                <Plus className="size-4" />
-              </Button>
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="quote-ppf">Per foot</Label>
-            <Input id="quote-ppf" inputMode="decimal" value={state.pricePerFt} onChange={(event) => set({ pricePerFt: event.target.value })} className="w-24 text-center tabular-nums" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="quote-box">Per box</Label>
-            <Input id="quote-box" inputMode="decimal" value={state.boxPrice} onChange={(event) => set({ boxPrice: event.target.value })} className="w-24 text-center tabular-nums" />
-          </div>
-          {/* Upper access (2026-11-04): added on its own when an upper run
-              is in, the gable amount when an upper gable is. Blank: no line. */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="quote-upper">Upper access</Label>
-            <Input id="quote-upper" inputMode="decimal" placeholder="None" value={state.upperAccessFee} onChange={(event) => set({ upperAccessFee: event.target.value })} className="w-24 text-center tabular-nums" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="quote-upper-gable">With upper gable</Label>
-            <Input id="quote-upper-gable" inputMode="decimal" placeholder="None" value={state.upperGableAccessFee} onChange={(event) => set({ upperGableAccessFee: event.target.value })} className="w-24 text-center tabular-nums" />
-          </div>
-        </section>
-
-        <section className="flex flex-col gap-2" aria-label="Extra work">
-          <p className="text-sm font-semibold text-muted-foreground">Extra work</p>
-          {state.adders.map((adder, at) => (
-            <div key={at} className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-2">
-                <Input
-                  value={adder.label}
-                  placeholder="Height, complexity"
-                  aria-label={`Extra work ${at + 1} label`}
-                  maxLength={80}
-                  onChange={(event) => set({ adders: state.adders.map((item, which) => (which === at ? { ...item, label: event.target.value } : item)) })}
-                  className="min-w-0 flex-1"
-                />
-                <Input
-                  inputMode="decimal"
-                  aria-label={`Extra work ${at + 1} amount`}
-                  value={adder.amount}
-                  placeholder="$"
-                  onChange={(event) => set({ adders: state.adders.map((item, which) => (which === at ? { ...item, amount: event.target.value } : item)) })}
-                  className="w-24 text-center tabular-nums"
-                />
-                <Button type="button" variant="ghost" size="icon" aria-label={`Remove extra work ${at + 1}`} onClick={() => set({ adders: state.adders.filter((_, which) => which !== at) })}>
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-              {/* On the customer's link, this line drops off when they
-                  switch off every upper run (2026-11-02). */}
-              <button
-                type="button"
-                aria-pressed={Boolean(adder.upperOnly)}
-                aria-label={`Extra work ${at + 1}: only with upper runs`}
-                onClick={() => set({ adders: state.adders.map((item, which) => (which === at ? { ...item, upperOnly: !item.upperOnly } : item)) })}
-                className={cn(
-                  "inline-flex min-h-11 items-center self-start rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  adder.upperOnly ? "border-foreground bg-foreground text-background" : "border-input",
-                )}
-              >
-                Only with upper runs
-              </button>
-            </div>
-          ))}
-          <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => set({ adders: [...state.adders, { label: "", amount: "" }] })}>
-            + Extra work
-          </Button>
-        </section>
-
-        <section className="flex flex-col gap-2" aria-label="Discounts">
-          <p className="text-sm font-semibold text-muted-foreground">Discounts</p>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              aria-pressed={state.neighbourOn}
-              onClick={() => set({ neighbourOn: !state.neighbourOn })}
-              className={cn(
-                "inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                state.neighbourOn ? "border-foreground bg-foreground text-background" : "border-input",
-              )}
-            >
-              Neighbour discount
-            </button>
-            {state.neighbourOn ? (
-              <Input
-                inputMode="decimal"
-                aria-label="Neighbour discount amount"
-                value={state.neighbourAmount}
-                onChange={(event) => set({ neighbourAmount: event.target.value })}
-                className="w-24 text-center tabular-nums"
-              />
-            ) : null}
-          </div>
-          {state.customDiscounts.map((discount, at) => (
-            <div key={at} className="flex items-center gap-2">
-              <Input
-                value={discount.label}
-                placeholder="Discount"
-                aria-label={`Discount ${at + 1} label`}
-                maxLength={80}
-                onChange={(event) => set({ customDiscounts: state.customDiscounts.map((item, which) => (which === at ? { ...item, label: event.target.value } : item)) })}
-                className="min-w-0 flex-1"
-              />
-              <Input
-                inputMode="decimal"
-                aria-label={`Discount ${at + 1} amount`}
-                value={discount.amount}
-                placeholder="$"
-                onChange={(event) => set({ customDiscounts: state.customDiscounts.map((item, which) => (which === at ? { ...item, amount: event.target.value } : item)) })}
-                className="w-24 text-center tabular-nums"
-              />
-              <Button type="button" variant="ghost" size="icon" aria-label={`Remove discount ${at + 1}`} onClick={() => set({ customDiscounts: state.customDiscounts.filter((_, which) => which !== at) })}>
-                <Trash2 className="size-4" />
-              </Button>
-            </div>
-          ))}
-          <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => set({ customDiscounts: [...state.customDiscounts, { label: "", amount: "" }] })}>
-            + Discount
-          </Button>
-        </section>
-
-        <section className="flex flex-col gap-2" aria-label="Track colour">
-          <p className="text-sm font-semibold text-muted-foreground">Track colour</p>
-          {colourKind === "none" ? (
-            <p className="text-sm text-pretty text-muted-foreground">To be confirmed. A stocked colour is included either way.</p>
-          ) : colourKind === "list" ? (
-            <p className="text-sm text-pretty">{colourText}: included.</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <p className="text-sm text-pretty">{colourText}.</p>
-              <div className="flex flex-wrap gap-2">
-                <TimingChoice
-                  current={state.colourTiming}
-                  value="factory_order"
-                  onPick={(value) => set({ colourTiming: value })}
-                  label="Factory order, spring install"
-                  detail="Included"
-                />
-                {rushFee !== null && rushFee > 0 ? (
-                  <TimingChoice
-                    current={state.colourTiming}
-                    value="rush"
-                    onPick={(value) => set({ colourTiming: value })}
-                    label="This season"
-                    detail={formatMoney(rushFee)}
-                  />
-                ) : null}
-              </div>
-              {/* The flat rush colour fee for this quote only (2026-11-04).
-                  Blank hides the choice. */}
-              <div className="flex items-center gap-2">
-                <Label htmlFor="quote-rush" className="text-sm text-muted-foreground">
-                  Rush colour fee
-                </Label>
-                <Input id="quote-rush" inputMode="decimal" placeholder="None" value={state.rushFee} onChange={(event) => set({ rushFee: event.target.value })} className="w-24 text-center tabular-nums" />
-              </div>
-            </div>
-          )}
-        </section>
-
-        <section className="flex flex-wrap items-end gap-5" aria-label="Financing and dates">
-          <button
-            type="button"
-            aria-pressed={state.financingOffered}
-            onClick={() => set({ financingOffered: !state.financingOffered })}
-            className={cn(
-              "inline-flex min-h-11 items-center rounded-md border px-4 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              state.financingOffered ? "border-foreground bg-foreground text-background" : "border-input",
-            )}
-          >
-            Financing available
-          </button>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="quote-valid">Price held until</Label>
-            <Input
-              id="quote-valid"
-              type="date"
-              min={today}
-              value={state.validUntil}
-              onChange={(event) => set({ validUntil: event.target.value || defaultValidUntil(today, pricing.priceHoldDays) })}
-              className="w-44"
-            />
-          </div>
-        </section>
-      </div>
-
-      {/* ------------------------------------------------ the bill */}
-      {/* Pinned high in its column: the iPad's keyboard rises over the
-          lower half while Keenan types the feet. */}
-      <div className="flex min-w-0 flex-col gap-4 border-t pt-6 lg:min-h-0 lg:overflow-y-auto lg:border-t-0 lg:pt-20 lg:pl-2" data-testid="quote-bill">
-        {priced.totalFeet === 0 ? (
-          // No number until something is measured: the first price the
-          // customer sees is the real one, never the box on its own.
-          <div>
-            <p className="text-sm text-muted-foreground">Total</p>
-            <p className="mt-1 text-2xl text-muted-foreground lg:text-3xl" data-testid="quote-waiting">
-              Adds up here as we measure.
-            </p>
-          </div>
-        ) : (
-          <>
-            <ul className="flex flex-col gap-1.5">
-              {priced.lines.map((line, at) => (
-                <li key={at} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 text-base lg:text-lg">
-                  <span className="min-w-0">
-                    {line.label}
-                    {line.detail ? <span className="ml-2 text-sm text-muted-foreground">{line.detail}</span> : null}
-                  </span>
-                  <span className="font-semibold tabular-nums">{formatMoney(line.amount)}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="border-t pt-3">
-              <p className="text-sm text-muted-foreground">Total</p>
-              <p className="text-5xl font-bold text-primary tabular-nums lg:text-6xl" data-testid="quote-total">
-                {screenTotal(priced.subtotal, pricing.gstEnabled)}
-              </p>
-            </div>
-          </>
-        )}
-        <div className="flex flex-col gap-1 text-sm text-muted-foreground">
-          <p>No payment until your install is complete.</p>
-          {state.financingOffered ? <p>Financing available. We will walk through the options together.</p> : null}
-          {state.validUntil ? <p>Price held until {formatFullDate(state.validUntil)}.</p> : null}
+  if (!overlay) return null;
+  const ms = reduced ? MOTION.reducedFadeMs : MOTION.moreInMs;
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="quote-edit-title"
+      data-deck-layer=""
+      data-deck-keys="own"
+      data-testid="quote-edit-layer"
+      className="absolute inset-0 z-30 flex flex-col bg-card text-foreground"
+      style={{
+        touchAction: "pan-y",
+        opacity: shown ? 1 : 0,
+        transform: reduced ? undefined : `translateY(${shown ? 0 : MOTION.moreRisePx}px)`,
+        transition: reduced ? transition("opacity", ms) : `${transition("opacity", ms)}, ${transition("transform", ms)}`,
+      }}
+    >
+      {/* Clear of the way out, top left. */}
+      <header className="flex shrink-0 items-center border-b py-4 pr-12 pl-24">
+        <h2 id="quote-edit-title" ref={title} tabIndex={-1} className="text-2xl font-bold outline-none">
+          {locked ? "The quote" : "Edit the quote"}
+        </h2>
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="mx-auto w-full max-w-6xl px-12 py-6">
+          <QuoteEditor
+            state={state}
+            onChange={onChange}
+            pricing={pricing}
+            colourKind={colourKind}
+            colourText={colourText}
+            today={today}
+            locked={locked}
+            lockedWords={QUOTE_LOCKED_MEETING}
+          />
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Outline, so the total stays the one gold thing on the screen. */}
-          <Button type="button" variant="outline" onClick={() => void save()} disabled={busy || priced.totalFeet === 0}>
-            {busy ? "Saving" : quoteId ? "Save changes" : "Save quote"}
-          </Button>
-          {message || priced.totalFeet === 0 ? null : dirty ? (
-            <p className="text-sm text-muted-foreground" data-testid="quote-unsaved">
-              {savedAt ? "Changes not saved yet." : "Not saved yet."}
+      </div>
+      <footer className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-t px-12 py-4">
+        <div className="flex min-w-0 flex-col text-sm" aria-live="polite">
+          {message ? (
+            <p role="alert" className="font-semibold text-pretty text-destructive" data-testid="quote-edit-message">
+              {message}
             </p>
-          ) : savedAt ? (
-            <p className="text-sm text-muted-foreground">Saved {formatTime(savedAt)}.</p>
+          ) : locked ? null : (
+            <p data-testid="quote-edit-status">{[status, readOnly ? "Rehearsal: nothing is saved." : "Saving needs signal."].filter(Boolean).join(" ")}</p>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <Button type="button" variant="outline" size="lg" onClick={onClose} data-testid="quote-edit-done">
+            Done
+          </Button>
+          {!locked ? (
+            <Button type="button" size="lg" onClick={() => void onSave()} disabled={busy || !measured || nameIssue} data-testid="quote-edit-save">
+              {busy ? "Saving" : quoteId ? "Save changes" : "Save quote"}
+            </Button>
           ) : null}
         </div>
-        {message ? (
-          <p role="alert" className="max-w-sm text-sm font-semibold text-pretty text-destructive">
-            {message}
-          </p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function TimingChoice({
-  current,
-  value,
-  label,
-  detail,
-  onPick,
-}: {
-  current: ColourTiming | null;
-  value: ColourTiming;
-  label: string;
-  detail: string;
-  onPick: (value: ColourTiming) => void;
-}) {
-  const chosen = current === value;
-  return (
-    <button
-      type="button"
-      aria-pressed={chosen}
-      onClick={() => onPick(value)}
-      className={cn(
-        "inline-flex min-h-11 flex-col items-start justify-center rounded-md border px-4 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        chosen ? "border-foreground bg-foreground text-background" : "border-input",
-      )}
-    >
-      <span className="text-sm font-semibold">{label}</span>
-      <span className={cn("text-xs", chosen ? "text-background/80" : "text-muted-foreground")}>{detail}</span>
-    </button>
+      </footer>
+    </div>,
+    overlay,
   );
 }

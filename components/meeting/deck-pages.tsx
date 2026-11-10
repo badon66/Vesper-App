@@ -24,12 +24,11 @@ import {
   type DrawingOptions,
 } from "@/components/meeting/deck-parts";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
-import { NO_PAYMENT_LINE, SLOT_BY_KEY, type Look, type PageWords } from "@/lib/deck";
+import { SLOT_BY_KEY, type Look, type PageWords } from "@/lib/deck";
 import { pairLayout } from "@/lib/drawings/pair";
 import {
   companyLines,
   fullWarrantyShows,
-  installSteps,
   moreWords,
   pairView,
   serviceCallLine,
@@ -40,11 +39,12 @@ import {
 import type { DeckPayload } from "@/lib/meeting/state";
 import { cn } from "@/lib/utils";
 
-// The deck's pages (round 7, the settled spec's pages[]), each laid out as
-// the spec gives it. Every word comes from Settings (deck.words) or the
-// warranty text, except the built lines the spec gives word for word. A
-// page mounts its pictures only while it is on screen or next to it
-// (`near`), so an older iPad never holds every 3200 px photo at once.
+// The deck's pages (round 7, the settled spec's pages[]; round 9, the
+// meeting as one story), each laid out as the spec gives it. Every word
+// comes from Settings (deck.words, its pages and its lines) or the warranty
+// text. A page mounts its pictures only while it is on screen or next to it
+// (`near`), so an older iPad never holds every 3200 px photo at once. Your
+// house, the colour page and What happens next have their own files.
 //
 // Until Keenan's photos exist, the drawings zoom in page by page (round 7
 // review): the whole house on page 2, the garage and lower eave on page 3's
@@ -94,7 +94,7 @@ function morePicture(view: SlotView, key: string): ReactNode | null {
   return <SlotPicture view={view} alt={altOf(key)} drawing={MORE_DRAWING[key] ?? { ground: "none" }} />;
 }
 
-function MoreButton({ more, label }: { more: MoreState; label: string }) {
+export function MoreButton({ more, label }: { more: MoreState; label: string }) {
   return (
     <DeckButton onClick={() => more.set(true)} aria-haspopup="dialog" aria-expanded={more.open}>
       {say(label)}
@@ -103,21 +103,32 @@ function MoreButton({ more, label }: { more: MoreState; label: string }) {
 }
 
 // The band's words, or nothing (so a page with no words has no right column).
-function bandWords(words: PageWords): ReactNode {
+export function bandWords(words: PageWords): ReactNode {
   return words.words.trim() ? <p className={DECK_TYPE.body}>{say(words.words.trim())}</p> : null;
 }
 
 // ---------------------------------------------------------------- cover
 
-// A quiet title card while Keenan says hello: the wordmark and the address.
-// No photo, greeting, name, date or tagline. With no lead (rehearsal), the
-// wordmark alone. The wordmark's letters are centred, its gold dot hanging
+// A quiet title card while Keenan says hello: the wordmark, the address and
+// (round 9) one line under it naming what's coming, the price included, so
+// they listen to the product pages instead of waiting for the number. No
+// photo, greeting, name or date. With no lead (rehearsal), the wordmark and
+// the line. The wordmark's letters are centred, its gold dot hanging
 // outside the centring.
-export function CoverPage({ line }: { line: string | null }) {
+export function CoverPage({ line, tagline }: { line: string | null; tagline?: string | null }) {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-8 px-16 text-center">
       <Wordmark hangDot className="text-[length:var(--deck-wordmark)] leading-none" />
-      {line ? <p className="text-[length:var(--deck-address)] leading-[1.3] text-muted-foreground">{say(line)}</p> : null}
+      {line || tagline ? (
+        <div className="flex flex-col items-center gap-4">
+          {line ? <p className="text-[length:var(--deck-address)] leading-[1.3] text-muted-foreground">{say(line)}</p> : null}
+          {tagline ? (
+            <p className={cn(DECK_TYPE.body, "max-w-[34em]")} data-testid="deck-cover-line">
+              {say(tagline)}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -198,7 +209,11 @@ export function HiddenByDayPage({ deck, near, more, fillEmpty }: PageProps) {
   );
 }
 
-// ---------------------------------------------------------------- Warm white, most nights
+// ---------------------------------------------------------------- Warm white, most nights (the stand-in)
+
+// Round 9: stands in for the light picker when there is neither a roofline
+// trace nor a mockup, as built (its words and its Warm or cool layer): with
+// no picker on screen, nothing repeats.
 
 // A caption under each of the pair: the two looks' names from Settings.
 const CAPTION_GAP = 12;
@@ -336,42 +351,6 @@ export function PhonePage({ deck, near, more, fillEmpty }: PageProps) {
   );
 }
 
-// ---------------------------------------------------------------- How install day works
-
-export function InstallDayPage({ deck, near, more, fillEmpty }: PageProps) {
-  const words = deck.words.pages.install_day;
-  const hero = slotView(deck, "install_day.hero", fillEmpty);
-  const steps = installSteps(words.words);
-  const layer = moreWords(words);
-  const picture = slotHasPicture(hero) ? (near ? <SlotPicture view={hero} alt={altOf("install_day.hero")} /> : <span />) : null;
-  return (
-    <>
-      <SplitPage picture={picture} headline={words.headline} more={layer ? <MoreButton more={more} label={layer.label} /> : null}>
-        {steps.length > 0 ? (
-          <ol className="flex flex-col gap-4">
-            {steps.map((step, at) => (
-              <li key={at} className={cn(DECK_TYPE.body, "flex items-baseline gap-4")}>
-                <span className="w-[1ch] shrink-0 font-semibold text-muted-foreground tabular-nums">{at + 1}</span>
-                <span>{say(step)}</span>
-              </li>
-            ))}
-          </ol>
-        ) : null}
-        <p className={cn(DECK_TYPE.body, "border-t border-border pt-6 font-semibold")}>{NO_PAYMENT_LINE}</p>
-      </SplitPage>
-      {layer ? (
-        <MoreLayer
-          open={more.open}
-          onClose={() => more.set(false)}
-          label={layer.label}
-          picture={morePicture(slotView(deck, "install_day.more", fillEmpty), "install_day.more")}
-          lines={layer.lines}
-        />
-      ) : null}
-    </>
-  );
-}
-
 // ---------------------------------------------------------------- Our 10-year warranty
 
 // The first lines of settings.warranty_text word for word (how many is a
@@ -412,10 +391,12 @@ export function WarrantyPage({ deck, near, more, fillEmpty }: PageProps) {
   );
 }
 
-// ---------------------------------------------------------------- Where your lights would go
+// ---------------------------------------------------------------- Your house, lit (the stand-in)
 
-// The customer's mockup, pinch to zoom, as built. No words, no More: the
-// headline sits alone in the band.
+// Round 9: stands in for Your house when the roofline isn't traced but the
+// lead has a mockup: the mockup, pinch to zoom, as built, with its title
+// ("Your house, lit") and its line ("Our drawing of your lights on your
+// photo.") in the band. No More. The light picker is skipped then.
 export function MockupPage({
   words,
   mockupUrl,
@@ -433,6 +414,8 @@ export function MockupPage({
     <BandPage
       picture={near ? <PinchZoom src={mockupUrl} alt={`${addressLine}, with the lights on`} onSwipe={onSwipe} /> : null}
       headline={words.headline}
-    />
+    >
+      {bandWords(words)}
+    </BandPage>
   );
 }

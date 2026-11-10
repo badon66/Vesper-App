@@ -1,5 +1,7 @@
 import { traceStillValid } from "@/lib/deck";
 import { COUNTED_QUESTIONS, QUESTION_LABELS, questionState, type CountedQuestion, type QuestionLead } from "@/lib/leads/questions";
+import { cleanFeet } from "@/lib/pricing";
+import { parseOffers } from "@/lib/quotes/offers";
 
 // The prep list (Keenan, 2026-11-08): what each meeting still needs before
 // Keenan walks in. Each item says whether it's done; a meeting is Ready when
@@ -12,7 +14,8 @@ export type PrepKey = "mockup" | "track_colour" | "quote" | "confirmed" | "answe
 export type PrepFacts = {
   hasMockup: boolean;
   hasTrackColour: boolean;
-  // A quote drafted ahead: the lead has a quote with at least one run.
+  // A quote drafted ahead (round 9): the lead has a quote with an offer
+  // that covers at least one measured run (quoteDraftedAhead).
   hasQuoteWithRuns: boolean;
   // A booked meeting Keenan has confirmed with them; null when there's no
   // booked meeting (Start a meeting for someone walking in), and the item
@@ -69,6 +72,24 @@ export function prepItems(facts: PrepFacts): PrepItem[] {
     });
   }
   return items;
+}
+
+// Quote drafted ahead (round 9, the spec 3.7): a quote counts once any of
+// its offers covers at least one run with feet. A quote saved before offers
+// is one full wrap over every run (parseOffers), so it counts as soon as a
+// run has feet, as before.
+export function quoteDraftedAhead(quote: { runs: unknown; offers?: unknown } | null | undefined): boolean {
+  if (!quote || !Array.isArray(quote.runs)) return false;
+  const feet = quote.runs.map((run) => (run && typeof run === "object" ? cleanFeet(Number((run as { feet?: unknown }).feet)) : 0));
+  return parseOffers(quote.offers ?? [], feet.length).some((offer) => offer.runs.some((p) => feet[p] > 0));
+}
+
+// The offers a drafted quote shows, for prep's line: those covering a run
+// with feet.
+export function draftedOfferCount(quote: { runs: unknown; offers?: unknown } | null | undefined): number {
+  if (!quote || !Array.isArray(quote.runs)) return 0;
+  const feet = quote.runs.map((run) => (run && typeof run === "object" ? cleanFeet(Number((run as { feet?: unknown }).feet)) : 0));
+  return parseOffers(quote.offers ?? [], feet.length).filter((offer) => offer.runs.some((p) => feet[p] > 0)).length;
 }
 
 // Prep item 6 (light_picker.tracing), word for word.

@@ -175,6 +175,9 @@ export function slotStatus(slot: DeckSlot, photos: { slot: string }[]): SlotStat
 // 56% at full height.
 export const BAND_PHOTO_ASPECT = 1180 / (820 * 0.7);
 export const SPLIT_PHOTO_ASPECT = (1180 * 0.56) / 820;
+// What happens next (round 9) keeps its words beside a narrower picture,
+// the left 34%: four steps don't fit beside the deck's usual 56%.
+export const NEXT_STEPS_PHOTO_ASPECT = (1180 * 0.34) / 820;
 
 // The shape the meeting crops a slot's photo to, around its focus point, or
 // null where the photo is shown whole (app screenshots, the warm and cool
@@ -184,6 +187,7 @@ export function slotCrop(slot: DeckSlot): { aspect: number; label: string } | nu
   if (slot.role === "more") {
     return slot.max > 1 ? null : { aspect: SPLIT_PHOTO_ASPECT, label: "Behind the button, beside its words" };
   }
+  if (slot.page === "next_steps") return { aspect: NEXT_STEPS_PHOTO_ASPECT, label: "On the left of the page" };
   if (PAGE_LAYOUT[slot.page] === "split") return { aspect: SPLIT_PHOTO_ASPECT, label: "On the left of the page" };
   return { aspect: BAND_PHOTO_ASPECT, label: "Above the band" };
 }

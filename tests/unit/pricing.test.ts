@@ -51,7 +51,7 @@ describe("A plain house", () => {
 
   it("names the breakdown the way Keenan says it", () => {
     const quote = priceQuote(base());
-    expect(quote.lines[0].detail).toBe("100 ft at $23/ft");
+    expect(quote.lines[0].detail).toBe("100 ft at $23 a foot");
     expect(quote.lines[1].detail).toBe("Always included");
   });
 });
@@ -96,11 +96,11 @@ describe("The rush colour fee", () => {
     const rush = priceQuote(base({ colourTiming: "rush", rushFee: 350 }));
     expect(rush.lines.find((line) => line.label === RUSH_COLOUR_LABEL)).toEqual({
       label: RUSH_COLOUR_LABEL,
-      detail: "Powder coated this season",
+      detail: "Made to order this season",
       amount: 350,
     });
     const named = priceQuote(base({ colourTiming: "rush", rushFee: 350, colourName: "Brown" }));
-    expect(named.lines.find((line) => line.label === RUSH_COLOUR_LABEL)?.detail).toBe("Brown track, powder coated this season");
+    expect(named.lines.find((line) => line.label === RUSH_COLOUR_LABEL)?.detail).toBe("Brown track, made to order this season");
     expect(rush.subtotal).toBe(3150);
     const longer = priceQuote(base({ colourTiming: "rush", rushFee: 350, runs: [{ name: "Front", feet: 400, level: "lower" }] }));
     expect(longer.lines.find((line) => line.label === RUSH_COLOUR_LABEL)?.amount).toBe(350);

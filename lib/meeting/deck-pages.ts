@@ -1,7 +1,9 @@
 import {
   activeLooks,
   DECK_PAGES,
-  PAGE_NAMES,
+  deckLine,
+  fillLine,
+  HEADLINE_FALLBACK,
   parseDeckWords,
   parseLooks,
   parseTrace,
@@ -10,6 +12,7 @@ import {
   traceStillValid,
   WORDS_PAGES,
   type DeckPageKey,
+  type DeckLines,
   type DeckSlot,
   type DeckWords,
   type PageWords,
@@ -21,27 +24,39 @@ import { SOFFIT_LABELS, type SoffitColour } from "@/lib/leads/status";
 import { CUSTOM_CHOICE, RAL_CODE_PATTERN } from "@/lib/leads/track-colour";
 import type { DeckPayload, DeckPhoto, MeetingPayload } from "@/lib/meeting/state";
 import { galleryPhotos, isGallerySlot, photosInOrder } from "@/lib/photos-deck";
-import { screenTotal } from "@/lib/pricing";
+import { addDays } from "@/lib/time";
+import { cleanFeet, formatMoney, screenTotal, type QuoteRun } from "@/lib/pricing";
 import type { Json } from "@/types/database";
 
-// The deck (round 7, the settled spec's page_order, pages and colour_screen):
-// which pages a meeting shows and in what order, what each slot shows while
-// Keenan's photo is missing, the words each page reads, and the payload the
-// meeting page builds from the database rows. Pure (no React, no network),
-// so the deck's rules are unit tested; meeting mode, the rehearsal view and
-// the payload loader (lib/meeting/deck-payload.ts) all read it.
+// The deck (round 7, the settled spec's page_order, pages and colour_screen;
+// round 9, the meeting as one story, 2026-11-10): which pages a meeting
+// shows and in what order, what each slot shows while Keenan's photo is
+// missing, the words each page reads, and the payload the meeting page
+// builds from the database rows. Pure (no React, no network), so the deck's
+// rules are unit tested; meeting mode, the rehearsal view and the payload
+// loader (lib/meeting/deck-payload.ts) all read it.
 //
 // CONTRACT
 //   deckPages({ deck, lead, fillEmpty? })   the pages to show, in order, with
 //                                           the label their dot and region read
+//   houseView(deck, lead)                   what Your house shows: the traced
+//                                           photo by day, the Front photo, our
+//                                           drawing, or nothing (skipped)
+//   nextLabel(pages, at, lines)             "Next: Hidden by day", null on the last
 //   slotView(deck, key, fillEmpty?)         a slot's photos, its example
 //                                           (rehearsal) or its fallback
 //   pairView(deck, a, b, fillEmpty?)        the day and night or warm and cool pair
 //   galleryItems(deck, fillEmpty?)          the gallery's photos (and, in
 //                                           rehearsal, its empty slots)
-//   moreWords(page), seeAllLabel, galleryCounter, installSteps,
+//   moreWords(page), seeAllLabel, galleryCounter,
 //   warrantyLines, serviceCallLine, companyLines, placeOf, soffitView,
-//   coverLine, COLOUR_LINES, CHOOSER_LINES
+//   coverLine, CHOOSER_LINES
+//   measuredRuns(runs), measuredFeet(runs), houseLine(words, runs)
+//                                           Your house's line and drawing
+//   colourIsStock(kind, text), colourTimingView(...)
+//                                           the colour page's one colour rule
+//   installDays(today), installDayGrid(today), recapLine(...)
+//                                           What happens next
 //   chooserSave({ choice, current, code, ralNames })
 //                                           the meeting chooser's Save: waiting
 //                                           (outline) or ready (gold)
@@ -58,51 +73,105 @@ import type { Json } from "@/types/database";
 
 export type DeckPage = { key: DeckPageKey; label: string };
 
+// The lead's own part of the deck. frontPhotoUrl: their Front photo, signed,
+// for Your house when the roofline isn't traced; measured: the quote has a
+// run with feet, so Your house can show our drawing of it.
+export type DeckLead = { mockupUrl: string | null; frontPhotoUrl?: string | null; measured?: boolean };
+
+// The lead's Front photo, signed, when the meeting's payload carries one
+// (lib/meeting/deck-payload.ts): Your house with no trace and no mockup.
+export function frontPhotoOf(meeting: MeetingPayload): string | null {
+  return "frontPhotoUrl" in meeting && typeof meeting.frontPhotoUrl === "string" && meeting.frontPhotoUrl !== "" ? meeting.frontPhotoUrl : null;
+}
+
+// Whether a saved quote's runs (quotes.runs as stored) have any feet.
+export function runsMeasured(runs: unknown): boolean {
+  return Array.isArray(runs) && runs.some((run) => run !== null && typeof run === "object" && cleanFeet(Number((run as { feet?: unknown }).feet)) > 0);
+}
+
 export type DeckPagesInput = {
   deck: DeckPayload;
-  // The lead's own part; null with no lead (the rehearsal view only): the
-  // picker, mockup, colour and price pages are skipped.
-  lead: { mockupUrl: string | null } | null;
+  // The lead's own part; null with no lead (the rehearsal view only): Your
+  // house, the picker, the mockup, the colour and the price are skipped.
+  lead: DeckLead | null;
   // The rehearsal view (not its Customer view): every empty slot shows its
   // example, so no page is skipped for want of a photo.
   fillEmpty?: boolean;
 };
 
-const BUILT_LABELS: Partial<Record<DeckPageKey, string>> = {
-  cover: "Vesper",
-  colour: "Your colours",
-  quote: "Your price",
-};
-
 const isWordsPage = (key: DeckPageKey): key is WordsPageKey => (WORDS_PAGES as readonly string[]).includes(key);
 
-// What a page's dot and region are called: its headline, as Settings has it.
+// What a page's dot, region and the Next label call it: its headline, as
+// Settings has it; the built pages' from their lines.
 export function pageLabel(key: DeckPageKey, words: DeckWords): string {
-  if (isWordsPage(key)) return words.pages[key].headline.trim() || PAGE_NAMES[key];
-  return BUILT_LABELS[key] ?? key;
+  if (isWordsPage(key)) return words.pages[key].headline.trim() || HEADLINE_FALLBACK[key];
+  if (key === "colour") return words.lines.colour_headline;
+  if (key === "quote") return words.lines.price_headline;
+  return "Vesper";
 }
 
 const hasWords = (page: PageWords) => page.headline.trim() !== "" || page.words.trim() !== "";
 
-// A page with nothing to show is skipped, never shown empty.
+// What Your house shows (round 9, the five seats' table): with a trace, the
+// photo it was traced on by day, in the picker's own crop, so the next page
+// is the reveal; with no trace, the mockup stands in (Your house, lit), so
+// Your house itself is skipped; else their Front photo by day; else, with
+// something measured, our drawing with every measured run lit; else nothing.
+export type HouseView = { kind: "trace" } | { kind: "photo"; url: string } | { kind: "drawing" };
+
+export function houseView(deck: Pick<DeckPayload, "picker">, lead: DeckLead | null): HouseView | null {
+  if (!lead) return null;
+  if (deck.picker) return { kind: "trace" };
+  if (lead.mockupUrl) return null;
+  if (lead.frontPhotoUrl) return { kind: "photo", url: lead.frontPhotoUrl };
+  return lead.measured ? { kind: "drawing" } : null;
+}
+
+// A page with nothing to show is skipped, never shown empty. What happens
+// next is never skipped: every meeting reaches it (and the initials there).
 export function deckPages({ deck, lead, fillEmpty = false }: DeckPagesInput): DeckPage[] {
+  const traced = lead !== null && deck.picker !== null;
+  const mockup = lead !== null && Boolean(lead.mockupUrl);
   const shows: Record<DeckPageKey, () => boolean> = {
     cover: () => true,
     what_vesper_is: () => hasWords(deck.words.pages.what_vesper_is),
     hidden_by_day: () => hasWords(deck.words.pages.hidden_by_day),
-    whites_first: () => hasWords(deck.words.pages.whites_first),
-    // Their own house only: never a drawing or another house in its place.
-    light_picker: () => lead !== null && deck.picker !== null && deck.looks.length > 0,
     phone_control: () => hasWords(deck.words.pages.phone_control),
     // Real installs only: skipped until Keenan has some.
     gallery: () => galleryItems(deck, fillEmpty).length > 0,
-    install_day: () => hasWords(deck.words.pages.install_day),
     warranty: () => warrantyLines(deck.warranty.text).length > 0,
-    mockup: () => lead !== null && Boolean(lead.mockupUrl),
+    your_house: () => houseView(deck, lead) !== null,
+    // Stands in for Your house: a mockup and no trace.
+    mockup: () => mockup && !traced,
+    // Their own house only: never a drawing or another house in its place.
+    light_picker: () => traced && deck.looks.length > 0,
+    // Stands in for the picker when there is neither a trace nor a mockup,
+    // so "most nights, warm white" still lands.
+    whites_first: () => hasWords(deck.words.pages.whites_first) && !traced && !mockup,
     colour: () => lead !== null,
     quote: () => lead !== null,
+    next_steps: () => true,
   };
   return DECK_PAGES.filter((key) => shows[key]()).map((key) => ({ key, label: pageLabel(key, deck.words) }));
+}
+
+// The quiet label beside the forward chevron (round 9): the next shown
+// page's headline, so it always names the page that actually comes next.
+// Null on the last page.
+export function nextLabel(pages: Pick<DeckPage, "label">[], at: number, lines: DeckLines): string | null {
+  const next = pages[at + 1];
+  return next ? deckLine(lines, "next_prefix", { page: next.label }) : null;
+}
+
+// The Next label in two parts, so the page's name can take its own line:
+// the words before {page}, and {page} with whatever follows it.
+export function nextLabelParts(pages: Pick<DeckPage, "label">[], at: number, lines: DeckLines): { lead: string; page: string } | null {
+  const next = pages[at + 1];
+  if (!next) return null;
+  const template = lines.next_prefix;
+  const split = template.indexOf("{page}");
+  if (split < 0) return { lead: "", page: deckLine(lines, "next_prefix") };
+  return { lead: fillLine(template.slice(0, split), {}), page: fillLine(template.slice(split), { page: next.label }) };
 }
 
 // ---------------------------------------------------------------- slots
@@ -186,12 +255,6 @@ export function moreWords(page: PageWords): MoreWords | null {
   return label && lines.length > 0 ? { label, lines } : null;
 }
 
-// How install day works: one step per line, numbered on screen (a number
-// Keenan typed at the start of a line is not doubled).
-export function installSteps(words: string): string[] {
-  return splitLines(words).map((line) => line.replace(/^\d+[.)]?\s+/, "")).filter(Boolean);
-}
-
 // settings.warranty_text, line by line, word for word.
 export function warrantyLines(text: string): string[] {
   return splitLines(text);
@@ -228,23 +291,116 @@ export function companyLines(company: DeckPayload["company"]): string[] {
   return [first, company.phone.trim()].filter(Boolean);
 }
 
-// The cover's one line: the address and neighbourhood, as built.
+// The cover's address line: the address and neighbourhood, as built.
 export function coverLine(lead: Pick<MeetingPayload["lead"], "addressLine" | "neighbourhood">): string {
   const neighbourhood = lead.neighbourhood?.trim();
   return neighbourhood ? `${lead.addressLine}, ${neighbourhood}` : lead.addressLine;
+}
+
+// ---------------------------------------------------------------- Your house
+
+// The runs measured so far: those with feet, by their place on the quote.
+export function measuredRuns(runs: QuoteRun[]): number[] {
+  return runs.flatMap((run, at) => (cleanFeet(run.feet) > 0 ? [at] : []));
+}
+
+export function measuredFeet(runs: QuoteRun[]): number {
+  return runs.reduce((sum, run) => sum + cleanFeet(run.feet), 0);
+}
+
+// "We measured 166 ft of roofline.", from the quote's runs; null (the line
+// is hidden) while nothing is measured.
+export function houseLine(words: PageWords, runs: QuoteRun[]): string | null {
+  const feet = measuredFeet(runs);
+  const template = words.words.trim();
+  if (feet <= 0 || template === "") return null;
+  return fillLine(template, { feet });
 }
 
 // ---------------------------------------------------------------- the colour page
 
 export const CHECK_TOGETHER = "We'll check it together.";
 
-// The colour page's built lines, word for word from the spec. The chooser
-// opened over it reads the same screens line (round 7 review).
-export const COLOUR_LINES = {
-  splitTrack: "One track colour for the whole house.",
-  screens: "Screens can't show colour exactly, so we choose it from the colour book together.",
-  initials: "Your initials confirm the track colour we'll order.",
-} as const;
+// One colour rule (round 9, CLAUDE.md): White is the only stock colour. Any
+// other list colour, and Custom, is made to order: included for a spring
+// install, or the rush colour fee to have it this season.
+export function colourIsStock(kind: "none" | "list" | "custom", text: string): boolean {
+  return kind === "list" && /^white\b/i.test(text.trim());
+}
+
+// What the colour page says about timing: nothing until a colour is chosen;
+// the stock line for White; for any other colour the made-to-order line and
+// its two buttons, "Install this season" only while the quote has a rush
+// fee. chosen follows the quote's colour timing (spring unless rush).
+export type ColourTimingView =
+  | { kind: "none" }
+  | { kind: "stock"; line: string }
+  | {
+      kind: "made";
+      line: string;
+      spring: { label: string; value: string };
+      season: { label: string; value: string } | null;
+      chosen: "spring" | "season";
+    };
+
+export function colourTimingView({
+  lines,
+  kind,
+  text,
+  timing,
+  rushFee,
+}: {
+  lines: DeckLines;
+  kind: "none" | "list" | "custom";
+  text: string;
+  timing: "stock" | "factory_order" | "rush" | null;
+  rushFee: number | null;
+}): ColourTimingView {
+  if (kind === "none") return { kind: "none" };
+  if (colourIsStock(kind, text)) return { kind: "stock", line: deckLine(lines, "colour_stock") };
+  const fee = rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
+  return {
+    kind: "made",
+    line: deckLine(lines, "colour_made", { colour: text.trim() }),
+    spring: { label: deckLine(lines, "colour_spring_label"), value: deckLine(lines, "colour_spring_value") },
+    season: fee === null ? null : { label: deckLine(lines, "colour_season_label"), value: deckLine(lines, "colour_season_value", { fee: formatMoney(fee) }) },
+    chosen: timing === "rush" && fee !== null ? "season" : "spring",
+  };
+}
+
+// ---------------------------------------------------------------- What happens next
+
+// The install days the table can pick (round 9): three weeks of days,
+// starting tomorrow, as YYYY-MM-DD.
+export const INSTALL_DAY_SPAN = 21;
+
+export function installDays(today: string, span = INSTALL_DAY_SPAN): string[] {
+  return Array.from({ length: span }, (_, at) => addDays(today, at + 1));
+}
+
+// The same days as a calendar, a week to a row, Sunday first: null fills the
+// days before tomorrow in its week and after the last in its week.
+export function installDayGrid(today: string, span = INSTALL_DAY_SPAN): (string | null)[][] {
+  const days = installDays(today, span);
+  if (days.length === 0) return [];
+  const lead = new Date(`${days[0]}T12:00:00Z`).getUTCDay();
+  const cells: (string | null)[] = [...Array.from({ length: lead }, () => null), ...days];
+  while (cells.length % 7 !== 0) cells.push(null);
+  const rows: (string | null)[][] = [];
+  for (let at = 0; at < cells.length; at += 7) rows.push(cells.slice(at, at + 7));
+  return rows;
+}
+
+// A picked day the table still offers is kept; one that has passed (a draft
+// from another evening) isn't shown as a date.
+export function shownInstallDay(installOn: string | null | undefined, today: string): string | null {
+  return installOn && /^\d{4}-\d{2}-\d{2}$/.test(installOn) && installOn > today ? installOn : null;
+}
+
+// "Your choice: Main floor, $3,380 + GST", once an option is chosen.
+export function recapLine(lines: DeckLines, name: string, subtotal: number, gstEnabled: boolean): string {
+  return deckLine(lines, "recap", { name: name.trim(), total: screenTotal(subtotal, gstEnabled) });
+}
 
 // The colour chooser in front of the customer (round 7 review): the colour
 // book, never "RAL Classic" or "powder coating". The read-back of a typed
@@ -362,14 +518,17 @@ export const DECK_SIZES = {
 } as const;
 
 // The bottom row (round 7 review): every page's More button (and Back on
-// its layer) sits bottom right, 56 px tall, 20 px up (or above the home
+// its layer) sits bottom left (round 9; bottom right before), 56 px tall, 20 px up (or above the home
 // indicator); the dots and the Previous and Next chevrons share its centre
 // line in the middle, so the bottom edge reads as one row. Dot targets 40 px
 // wide and 44 px tall in a pill with 4 px ends, 44 px chevron discs, 6 px
-// between them and the pill: with all 12 pages that is 588 px, which clears
-// the widest seeded More button ("What the app does") at 1180. Whatever
-// sits in the bottom row's band (the tray's controls, a picture on a split
-// page or a More) ends 8 px above the row's tallest part: --deck-clear.
+// between them and the pill: with the most a meeting shows (11 pages) that
+// is 548 px, which clears the widest seeded More button ("What the app
+// does") at 1180. Round 9: the More button moved to the row's left, so the
+// Next label ("Next: Hidden by day") sits right of the forward chevron.
+// Whatever sits in the bottom row's band (the tray's controls, a picture on
+// a split page or a More) ends 8 px above the row's tallest part:
+// --deck-clear.
 export const DECK_ROW = { height: 56, bottom: 20, dot: 40, dotHeight: 44, pillEnds: 4, chevron: 44, gap: 6, clearance: 8 } as const;
 export const DECK_ROW_BOTTOM_CSS = `max(${DECK_ROW.bottom}px, env(safe-area-inset-bottom, 0px))`;
 const rowTopOverBottom = (DECK_ROW.height + Math.max(DECK_ROW.chevron, DECK_ROW.dotHeight)) / 2;

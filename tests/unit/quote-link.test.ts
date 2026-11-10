@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DECK_LINE_DEFAULTS, fillLine } from "@/lib/deck";
 import { UPPER_ACCESS_LABEL } from "@/lib/pricing";
 import {
   choiceInSentence,
@@ -8,6 +9,10 @@ import {
   customerChoiceInSentence,
   customerTotal,
   lineAmount,
+  linkOffers,
+  nextStepsFor,
+  offerChoice,
+  openingOffer,
   optionName,
   parseCustomerQuote,
   phoneHref,
@@ -21,11 +26,13 @@ import {
   runDetail,
   smsWithBody,
   TOKEN_PATTERN,
+  type CustomerQuote,
 } from "@/lib/quote-link/view";
 
-// The customer quote link's pure parts (2026-11-02): reading the database's
-// answer, pricing what the customer switched on, naming the option in
-// words, the link and the text Keenan sends.
+// The customer quote link's pure parts (2026-11-02; round 9, options):
+// reading the database's answer, pricing each option, which option the
+// page opens on, what happens next, naming a choice in words, the link and
+// the text Keenan sends.
 
 const live = {
   state: "live",
@@ -222,7 +229,6 @@ const rework = {
     { icon: "rocket", text: "An icon Settings doesn't offer." },
     { icon: "plug", text: "  " },
   ],
-  install_day: { title: "How install day works", body: "We confirm the plan." },
   gallery: ["gallery/a.jpg", " "],
 };
 
@@ -230,7 +236,7 @@ describe("the reworked page's answer", () => {
   const view = parseCustomerQuote(rework);
   const quote = view.state === "live" ? view.quote : null;
 
-  it("reads the new parts: the hold date, banner, points, install day, gallery and service call", () => {
+  it("reads the new parts: the hold date, banner, points, gallery and service call", () => {
     expect(view.state).toBe("live");
     if (view.state !== "live") return;
     expect([view.validUntil, view.today]).toEqual(["2027-03-02", "2026-11-04"]);
@@ -240,7 +246,8 @@ describe("the reworked page's answer", () => {
       { icon: "lightbulb", text: "RGBW lights with a dedicated white." },
       { icon: "check", text: "An icon Settings doesn't offer." },
     ]);
-    expect(view.installDay).toEqual({ title: "How install day works", body: "We confirm the plan." });
+    // An answer without the round 9 parts: nothing initialled, no day, nothing listed.
+    expect(view.nextSteps).toEqual({ colourConfirmed: false, installOn: null, whatWeNeed: null });
     expect(view.gallery).toEqual(["gallery/a.jpg"]);
     expect(view.serviceCallFee).toBe(200);
     expect(view.quote.trackColourName).toBe("Brown");
@@ -251,8 +258,8 @@ describe("the reworked page's answer", () => {
   });
 
   it("leaves out what Settings hasn't set, and reads a take 1 answer without the new parts", () => {
-    const bare = parseCustomerQuote({ ...rework, christmas: null, install_day: { title: "x", body: " " }, service_call_fee: null, product_points: "junk", gallery: null });
-    expect(bare.state === "live" && [bare.christmas, bare.installDay, bare.serviceCallFee, bare.productPoints, bare.gallery]).toEqual([null, null, null, [], []]);
+    const bare = parseCustomerQuote({ ...rework, christmas: null, service_call_fee: null, product_points: "junk", gallery: null });
+    expect(bare.state === "live" && [bare.christmas, bare.serviceCallFee, bare.productPoints, bare.gallery]).toEqual([null, null, [], []]);
     const take1 = parseCustomerQuote(live);
     expect(take1.state === "live" && [take1.today, take1.christmas, take1.quote.rushFee, take1.quote.upperAccessFee]).toEqual([null, null, null, null]);
   });
@@ -267,7 +274,7 @@ describe("the reworked page's answer", () => {
       ["Rush colour fee", 350],
       ["Family & Friends Discount", -300],
     ]);
-    expect(priced.lines[3].detail).toBe("Brown track, powder coated this season");
+    expect(priced.lines[3].detail).toBe("Brown track, made to order this season");
     expect(customerTotal(quote, null)).toBe("$4,910");
   });
 
@@ -300,24 +307,28 @@ describe("the reworked page's answer", () => {
     ]);
   });
 
-  it("words the other track colours for the time of year, never promising Christmas after November", () => {
+  it("words the other track colours with the iPad's one rule: made to order, spring included, the rush fee this season", () => {
     expect(otherColoursLine({ season: true, rushFee: 350, rush: false })).toBe(
-      "Any other colour is powder coated: nothing extra if it can wait for spring, or the $350 rush colour fee to have it before Christmas.",
+      "Any other colour is made to order: nothing extra if it can wait for spring, or the $350 rush colour fee to have it this season.",
     );
     expect(otherColoursLine({ season: true, rushFee: null, rush: false })).toBe(
-      "Any other colour is powder coated: nothing extra if it can wait for spring.",
+      "Any other colour is made to order: nothing extra if it can wait for spring.",
     );
     expect(otherColoursLine({ season: false, rushFee: 350, rush: false })).toBe(
-      "Any other colour is powder coated for a spring install, with colour matching included at no extra cost.",
+      "Any other colour is made to order for a spring install, at no extra cost.",
     );
     expect(otherColoursLine({ season: false, rushFee: 350, rush: true })).toBe(
-      "Any other colour is powder coated: nothing extra if it can wait for spring, or the $350 rush colour fee to have it sooner.",
+      "Any other colour is made to order: nothing extra if it can wait for spring, or the $350 rush colour fee to have it sooner.",
     );
     expect(otherColoursLine({ season: false, rushFee: null, rush: true })).toBe(
-      "Any other colour is powder coated for a spring install, with colour matching included at no extra cost.",
+      "Any other colour is made to order for a spring install, at no extra cost.",
     );
-    for (const season of [false]) {
-      for (const rush of [true, false]) expect(otherColoursLine({ season, rushFee: 350, rush })).not.toMatch(/Christmas/);
+    for (const season of [true, false]) {
+      for (const rush of [true, false]) {
+        const line = otherColoursLine({ season, rushFee: 350, rush });
+        expect(line).not.toMatch(/Christmas|powder|colour match/);
+        expect(line).not.toMatch(/[\u2013\u2014!]/);
+      }
     }
   });
 
@@ -334,8 +345,172 @@ describe("the reworked page's answer", () => {
     expect(customerChoice("Start smaller: Front, Garage")).toBe("Front and Garage");
   });
 
+  it("reads one of Keenan's options by its own name, commas and all, never as runs", () => {
+    for (const name of ["Main floor", "Full wrap", "Front, no gables", "Garage"]) {
+      expect(choiceLabel(name)).toBe(name);
+      expect(choiceInSentence(name)).toBe(name);
+      expect(customerChoice(name)).toBe(name);
+      expect(customerChoiceInSentence(name)).toBe(name);
+    }
+  });
+
   it("writes a discount with a true minus sign", () => {
     expect(lineAmount(-300)).toBe("\u2212$300");
     expect(lineAmount(400)).toBe("$400");
+  });
+});
+
+// Round 9 (the five seats, 2026-11-10): Keenan's options in place of Start
+// smaller, priced with the quote's own prices and each option's own box
+// count; the page opens on the booked option, else the meeting's, else the
+// biggest; What happens next in the meeting's words; after Accepted, only
+// what was agreed.
+const withOffers = {
+  ...rework,
+  quote: {
+    ...rework.quote,
+    offers: [
+      { id: "full", name: "Full wrap", runs: [0, 1, 2, 3, 4, 5] },
+      { id: "front", name: "Front only", runs: [] },
+      { id: "garage", name: "Garage", runs: [1, 0], boxes: 2 },
+      { id: "main", name: "Main floor", runs: [0, 1, 2, 5], boxes: null },
+    ],
+    financing_offered: true,
+    meeting_offer: "main",
+    accepted: false,
+    accepted_offer: null,
+  },
+  next_steps: { colour_confirmed: true, install_on: "2026-11-21", what_we_need: "  An outlet near the box.\nYour Wi-Fi name.  " },
+  selection_offer: "garage",
+  booked_offer: null,
+};
+
+const liveOf = (data: unknown): CustomerQuote => {
+  const view = parseCustomerQuote(data);
+  if (view.state !== "live") throw new Error("not live");
+  return view;
+};
+
+describe("the options", () => {
+  const view = liveOf(withOffers);
+  const { quote } = view;
+
+  it("reads the options, the meeting's choice, financing and the next steps", () => {
+    expect(quote.offers.map((offer) => [offer.id, offer.name, offer.runs, offer.boxes])).toEqual([
+      ["full", "Full wrap", [0, 1, 2, 3, 4, 5], null],
+      ["front", "Front only", [], null],
+      ["garage", "Garage", [0, 1], 2],
+      ["main", "Main floor", [0, 1, 2, 5], null],
+    ]);
+    expect([quote.meetingOffer, quote.financingOffered, quote.accepted, quote.acceptedOffer]).toEqual(["main", true, false, null]);
+    expect([view.selectionOffer, view.bookedOffer]).toEqual(["garage", null]);
+    expect(view.nextSteps).toEqual({ colourConfirmed: true, installOn: "2026-11-21", whatWeNeed: "An outlet near the box.\nYour Wi-Fi name." });
+  });
+
+  it("shows the options biggest first, leaving out one with no runs", () => {
+    // Full wrap: 165 ft x $24 = $3,960 + $500 + $400 upper gable + $350 rush - $300 = $4,910.
+    // Main floor: 103 ft x $24 = $2,472 + $500 + $350 - $300 = $3,022 (no upper run, no access).
+    // Garage: 64 ft x $24 = $1,536 + two boxes $1,000 + $350 - $300 = $2,586.
+    expect(linkOffers(quote).map((priced) => [priced.offer.name, priced.totals?.subtotal, priced.everyRun])).toEqual([
+      ["Full wrap", 4910, true],
+      ["Main floor", 3022, false],
+      ["Garage", 2586, false],
+    ]);
+  });
+
+  it("prices an option from the stored quote and its own box count, in the iPad's rows and words", () => {
+    const garage = offerChoice(quote, "garage");
+    expect([garage?.name, garage?.total]).toEqual(["Garage", "$2,586"]);
+    expect(garage?.totals.lines.map((line) => [line.label, line.detail, line.amount])).toEqual([
+      ["Track and lights", "64 ft at $24 a foot", 1536],
+      ["Control boxes (2)", "2 at $500", 1000],
+      ["Rush colour fee", "Brown track, made to order this season", 350],
+      ["Family & Friends Discount", null, -300],
+    ]);
+    expect(offerChoice({ ...quote, gstEnabled: true }, "main")?.total).toBe("$3,022 + GST");
+    // An option with no runs, one that isn't on the quote, or none at all.
+    expect([offerChoice(quote, "front"), offerChoice(quote, "gone"), offerChoice(quote, null)]).toEqual([null, null, null]);
+  });
+
+  it("raises an option under the minimum to it, with the line saying so", () => {
+    const porch = offerChoice({ ...quote, offers: [{ id: "porch", name: "Porch", runs: [2] }] }, "porch");
+    // 13 ft x $24 = $312 + $500 + $350 - $300 = $862, raised to $2,500.
+    expect([porch?.totals.minimumApplied, porch?.totals.beforeMinimum, porch?.total]).toEqual([true, 862, "$2,500"]);
+    expect(porch?.totals.lines.at(-1)).toEqual({ label: "To reach our $2,500 minimum", detail: null, amount: 1638 });
+  });
+
+  it("opens on the booked option, else the meeting's, else the biggest", () => {
+    const shown = linkOffers(quote);
+    expect(openingOffer(shown, { booked: "garage", meeting: "main" })).toBe("garage");
+    expect(openingOffer(shown, { booked: null, meeting: "main" })).toBe("main");
+    expect(openingOffer(shown, { booked: null, meeting: null })).toBe("full");
+    // An option since taken off, or one with no runs, is passed over.
+    expect(openingOffer(shown, { booked: "gone", meeting: "front" })).toBe("full");
+    expect(openingOffer([], { booked: "garage", meeting: "main" })).toBeNull();
+  });
+
+  it("reads a quote made before options as one Full wrap covering every run, priced like the whole quote", () => {
+    const before = liveOf(rework).quote;
+    const shown = linkOffers(before);
+    expect(shown.map((priced) => [priced.offer.id, priced.offer.name, priced.everyRun])).toEqual([["full", "Full wrap", true]]);
+    expect(offerChoice(before, "full")?.total).toBe(customerTotal(before, null));
+    expect(linkOffers(liveOf({ ...rework, quote: { ...rework.quote, runs: [] } }).quote)).toEqual([]);
+  });
+
+  it("knows the agreed option only once the quote is accepted", () => {
+    const agreed = liveOf({ ...withOffers, quote: { ...withOffers.quote, accepted: true, accepted_offer: "main" } }).quote;
+    expect([agreed.accepted, agreed.acceptedOffer, offerChoice(agreed, agreed.acceptedOffer)?.total]).toEqual([true, "main", "$3,022"]);
+    const open = liveOf({ ...withOffers, quote: { ...withOffers.quote, accepted: false, accepted_offer: "main" } }).quote;
+    expect(open.acceptedOffer).toBeNull();
+  });
+});
+
+describe("what happens next", () => {
+  it("reads back the colour initialled at the meeting and the planned day, in the meeting's words", () => {
+    expect(nextStepsFor(liveOf(withOffers)).map((step) => [step.label, step.text, step.done])).toEqual([
+      ["Your colour", "Brown, confirmed with your initials at the meeting.", true],
+      ["Your install day", "Saturday, November 21", true],
+      ["On the day", "A small crew fits the track and plugs in the control box. We clean up and set up the app with you.", false],
+      ["Paying", "No payment until your install is complete.", false],
+    ]);
+  });
+
+  it("says we confirm the colour from the colour book and pick the day together when neither is done", () => {
+    const steps = nextStepsFor(liveOf({ ...withOffers, next_steps: { colour_confirmed: false, install_on: "soon", what_we_need: " " } }));
+    expect(steps.slice(0, 2).map((step) => [step.text, step.done])).toEqual([
+      ["We confirm it with you from the colour book.", false],
+      ["We pick the day together.", false],
+    ]);
+  });
+
+  it("uses Keenan's words from settings.deck.lines when the database hands them over, ours otherwise", () => {
+    const view = liveOf({ ...withOffers, lines: { link_meeting_tag: "Chosen at the table", step_on_day: " ", nonsense: "x" } });
+    expect(view.words.link_meeting_tag).toBe("Chosen at the table");
+    expect(view.words.step_on_day).toBe(DECK_LINE_DEFAULTS.step_on_day);
+    expect(liveOf(withOffers).words.link_drawing_caption).toBe("Gold marks the lights in {name}.");
+  });
+
+  it("keeps every line the link shows plain: no dashes and no exclamation marks", () => {
+    const view = liveOf(withOffers);
+    const keys = [
+      "price_includes",
+      "price_empty",
+      "colour_stock",
+      "whats_in",
+      "link_mockup_caption",
+      "link_drawing_caption",
+      "link_meeting_tag",
+      "link_something_else",
+      "link_colour_done",
+      "step_colour_todo",
+      "step_day_none",
+      "step_on_day",
+    ] as const;
+    const lines = [
+      ...keys.map((key) => fillLine(view.words[key], { name: "Main floor", colour: "Brown" })),
+      ...nextStepsFor(view).map((step) => step.text),
+    ];
+    for (const line of lines) expect(line).not.toMatch(/[–—!]/);
+    expect(fillLine(view.words.link_drawing_caption, { name: "Main floor" })).toBe("Gold marks the lights in Main floor.");
   });
 });

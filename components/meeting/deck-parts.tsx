@@ -206,11 +206,14 @@ export function DeckButton({
   );
 }
 
-// Where every page's button sits: bottom right, on solid navy, in the
+// Where every page's button sits: bottom left, on solid navy, in the
 // bottom row (its centre line is the dots' and chevrons'; deck-view.tsx).
-export function BottomRight({ children }: { children: ReactNode }) {
+// Round 9 moved it from the right, so the Next label ("Next: Hidden by day")
+// has the right of the row beside the forward chevron. A layer's Back sits
+// in the same spot.
+export function BottomCorner({ children }: { children: ReactNode }) {
   return (
-    <div data-deck-row="button" className="absolute right-12 z-10" style={{ bottom: "var(--deck-row-bottom, 20px)" }}>
+    <div data-deck-row="button" className="absolute left-12 z-10" style={{ bottom: "var(--deck-row-bottom, 20px)" }}>
       {children}
     </div>
   );
@@ -218,7 +221,7 @@ export function BottomRight({ children }: { children: ReactNode }) {
 
 // A picture on the left 56% of a split page or a More: full height, ending
 // above the bottom row, so the dots and chevrons never sit on a photo.
-function LeftPicture({ children }: { children: ReactNode }) {
+export function LeftPicture({ children }: { children: ReactNode }) {
   return (
     <div className="relative min-w-0">
       <div data-deck-picture="" className="absolute inset-x-0 top-0 overflow-hidden" style={{ bottom: "var(--deck-clear, 78px)" }}>
@@ -234,7 +237,7 @@ function LeftPicture({ children }: { children: ReactNode }) {
 // block is taller than the room it starts there). A More with a picture
 // centres its words column the same way (`sides` gives the column's own
 // margins), so the words and the picture panel share a centre line.
-function CentredBlock({
+export function CentredBlock({
   children,
   className,
   box,
@@ -257,26 +260,34 @@ function CentredBlock({
 // A full page: the photo above a solid Night Background band (about 30% of
 // the height at 1180 x 820, 28% at 1366 x 1024), the headline left of a
 // vertical line at 56% of the width, the words right of it, and the More
-// button bottom right. Nothing sits on the photo. A page with no words and
-// no More (the mockup) has no line and no right column: its headline sits
-// alone in the band.
+// button bottom left. Nothing sits on the photo. A page with no words and
+// no More has no line and no right column: its headline sits alone in the
+// band. bandHeight: Your house draws its band at the picker's tray height,
+// so the photo above is exactly the picker's and stays put on the turn.
 export function BandPage({
   picture,
   headline,
   children,
   more,
+  bandHeight,
 }: {
   picture: ReactNode;
   headline: string;
   children?: ReactNode;
   more?: ReactNode;
+  bandHeight?: string;
 }) {
   const side = Boolean(more) || (children !== null && children !== undefined && children !== false);
   const title = headline.trim() ? <h2 className={DECK_TYPE.headline}>{keepHyphens(headline)}</h2> : null;
   return (
     <div className="flex h-full w-full flex-col">
       <div className="relative min-h-0 flex-1 overflow-hidden bg-background">{picture}</div>
-      <div data-deck-box="band" className="relative shrink-0 overflow-hidden bg-background" style={{ height: "var(--deck-band)" }}>
+      <div
+        data-deck-box="band"
+        data-deck-tray=""
+        className="relative shrink-0 overflow-hidden bg-background"
+        style={{ height: bandHeight ?? "var(--deck-band)" }}
+      >
         {side ? (
           <>
             {/* The line stops above the bottom row. */}
@@ -289,7 +300,7 @@ export function BandPage({
         ) : (
           <div className="min-w-0 pt-6 pr-16 pl-16">{title}</div>
         )}
-        {more ? <BottomRight>{more}</BottomRight> : null}
+        {more ? <BottomCorner>{more}</BottomCorner> : null}
       </div>
     </div>
   );
@@ -328,7 +339,7 @@ export function SplitPage({
           {children}
         </CentredBlock>
       )}
-      {more ? <BottomRight>{more}</BottomRight> : null}
+      {more ? <BottomCorner>{more}</BottomCorner> : null}
     </div>
   );
 }
@@ -411,7 +422,7 @@ export function useSideSwipe(onSwipe: (delta: 1 | -1) => void) {
 // and closing in 180 ms (the contact sheet just fades, over 200 ms; with
 // Reduce Motion, a fade of 100 ms). The page behind does not move, the pager
 // is locked while it is open (the deck does that), a sideways swipe closes
-// it, and Back sits where the More button was.
+// it, and Back sits where the More button was (bottom left).
 //
 // Without `children`, it lays out a More: its picture on the left 56% (one
 // full-height panel, ending above the bottom row) and its label and words
@@ -508,11 +519,11 @@ export function MoreLayer({
           </CentredBlock>
         )
       )}
-      <BottomRight>
+      <BottomCorner>
         <DeckButton ref={back} onClick={onClose}>
           Back
         </DeckButton>
-      </BottomRight>
+      </BottomCorner>
     </div>,
     overlay,
   );

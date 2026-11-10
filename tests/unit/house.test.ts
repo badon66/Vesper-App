@@ -3,7 +3,7 @@ import { houseDescription, segmentFor, segmentsFor, segmentStates } from "@/lib/
 import type { QuoteRun } from "@/lib/pricing";
 
 // The quote link's house diagram (2026-11-04): where each run is drawn,
-// and how each drawn part looks for the runs switched on.
+// and how each drawn part looks for the option on screen (round 9).
 
 const run = (name: string, level: "lower" | "upper", feet = 20, part?: QuoteRun["part"]): QuoteRun => ({ name, feet, level, part });
 
@@ -70,10 +70,10 @@ describe("how each part looks", () => {
     expect(segmentStates([{ run: run("Porch", "lower", 0), on: true }]).porch).toBe("none");
   });
 
-  it("says in words what is lit and what is switched off", () => {
+  it("says in words what is lit and what was measured but left out", () => {
     const states = segmentStates(todd.map((r) => ({ run: r, on: r.level === "lower" })));
     expect(houseDescription(states)).toBe(
-      "A drawing of a two-storey house with lights on the garage gable, the garage line, the porch, the main floor sides and the upper sides. Switched off: the upper eave and the upper gable.",
+      "A drawing of a two-storey house with lights on the garage gable, the garage line, the porch, the main floor sides and the upper sides. Not in this option: the upper eave and the upper gable.",
     );
     expect(houseDescription(segmentStates([]))).toBe("A drawing of a two-storey house.");
   });

@@ -243,6 +243,7 @@ describe("what a token shows", () => {
       [
         "address",
         "booked_at",
+        "booked_offer",
         "booked_option",
         "city",
         "company",
@@ -251,6 +252,7 @@ describe("what a token shows", () => {
         "mockup_path",
         "quote",
         "selection",
+        "selection_offer",
         "state",
         "valid_until",
         "warranty",
@@ -259,6 +261,8 @@ describe("what a token shows", () => {
         "christmas",
         "product_points",
         "install_day",
+        "install_day_deck",
+        "next_steps",
         "gallery",
       ].sort(),
     );
@@ -280,8 +284,21 @@ describe("what a token shows", () => {
         "upper_gable_access_fee",
         "track_colour_name",
         "track_custom",
+        "offers",
+        "financing_offered",
+        "meeting_offer",
+        "accepted",
+        "accepted_offer",
       ].sort(),
     );
+    // What happens next: the initials, the planned day and What we'll need,
+    // nothing else about the lead.
+    expect(Object.keys(view.next_steps as object).sort()).toEqual(["colour_confirmed", "install_on", "what_we_need"]);
+    expect((view.next_steps as { colour_confirmed: boolean; install_on: string | null }).colour_confirmed).toBe(false);
+    expect((view.next_steps as { install_on: string | null }).install_on).toBeNull();
+    // Not accepted, so no agreed option is named.
+    expect((view.quote as { accepted: boolean; accepted_offer: string | null }).accepted).toBe(false);
+    expect((view.quote as { accepted_offer: string | null }).accepted_offer).toBeNull();
     const text = JSON.stringify(view);
     expect(text).not.toContain(INTERNAL);
     expect(text).not.toContain(users.a.email);

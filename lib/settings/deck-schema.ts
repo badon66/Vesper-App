@@ -1,16 +1,23 @@
 import { z } from "zod";
 import {
-  DECK_PAGES,
+  DECK_LINE_DEFAULTS,
+  DECK_LINE_KEYS,
   DECK_SLOTS,
+  DEFAULT_LINES,
   hasDash,
   hasExclamation,
+  LINE_SPECS,
+  linePlaceholders,
   MAX_ACTIVE_LOOKS,
   MAX_LOOK_COLOURS,
-  NO_PAYMENT_LINE,
+  MAX_SHOWN_PAGES,
+  PAGE_DEFAULTS,
   PAGE_LAYOUT,
   WORD_LIMITS,
   WORDS_PAGES,
   wordCount,
+  type DeckLineKey,
+  type DeckLines,
   type DeckWords,
   type Look,
   type PageWords,
@@ -29,9 +36,11 @@ import type { Json } from "@/types/database";
 //   PAGE_FIELDS[page]          which of headline, words, More label and More
 //                              text a page has in Settings, with its limits
 //   pageWordIssues(page, w)    { field: message } for one page's words
+//   lineIssue(key, text)       a built page's line (settings.deck.lines)
 //   deckWordIssues(words, warrantyText?)
 //                              { "page.field": message } for the whole deck,
-//                              plus "warranty.linesUpFront"
+//                              plus "warranty.linesUpFront" and
+//                              "lines.<key>" for each line
 //   parseDeckWordsInput(x, warrantyText?)
 //                              the server's check: { ok, words } or { ok, errors }
 //   tidyDeckWords, tidyLook, sameWords, sameLooks
@@ -45,14 +54,14 @@ import type { Json } from "@/types/database";
 //                              the meeting's row of look buttons, and which
 //                              labels would wrap in it (measured in the browser)
 //   BAND_FIT, PICKER_LINE_FIT, lineCount, bandWordsFitIssue,
-//   pickerLineFitIssue         whether a band's words stay above its button,
-//                              and the picker's line on one line, at 1180 and
-//                              1366 (measured in the browser)
+//   pickerLineFitIssue         whether a band's words stay above the bottom
+//                              row, and the picker's line within two lines,
+//                              at 1180 and 1366 (measured in the browser)
 //   MORE_FIT, moreLabelFitIssue
 //                              whether a More button stays clear of the dots
 //                              and chevrons in the bottom row
-//   SPLIT_FIT, installDayFitIssue, warrantyFitIssue
-//                              whether a split page's words fit beside its
+//   SPLIT_FIT, warrantyFitIssue
+//                              whether the warranty's words fit beside its
 //                              photo, above the bottom row
 //   deckFitIssues(words, measure, { warrantyText, company })
 //                              all of the above, as { "page.field": message }
@@ -60,8 +69,10 @@ import type { Json } from "@/types/database";
 //   referenceIssues(input) / parseReferenceInput(input)
 //                              a replaced example link
 //   wordsToAvoid(text)         copy-rule reminders that never block a save
-//   DECK_SEED, LOOKS_SEED, isDraftField, isDraftLook
-//                              the seeded words, to mark them Draft
+//   ROUND7_SEED, DECK_SEED, LOOKS_SEED, isDraftField, isDraftLine, isDraftLook
+//                              the seeded words, to mark them Draft (round 7's
+//                              as first seeded, and the deck as round 9's
+//                              seed migration leaves it)
 //   PAGE_HELP[page]            Settings-only help: lines Keenan may add once
 //                              he confirms them
 
@@ -79,9 +90,10 @@ export type PageFieldRules = {
   moreText: boolean;
 };
 
-// The light picker's line sits beside the effects in the tray, about two
-// lines at 20 px: the spec gives no number, so it stops at 16 (judgment call,
-// docs/decisions.md). Band and split pages use the copy rules' numbers.
+// The light picker's line sits beside the effects in the tray, at most two
+// lines at 20 px (round 9: "Most nights, warm white." joined it): it stops
+// at 16 words (judgment call, docs/decisions.md). Band and split pages use
+// the copy rules' numbers.
 export const PICKER_WORDS_MAX = 16;
 
 const BAND = { max: WORD_LIMITS.bandWords, aim: 20 };
@@ -90,13 +102,25 @@ const MORE = { required: false, maxWords: WORD_LIMITS.moreLabelWords };
 export const PAGE_FIELDS: Record<WordsPageKey, PageFieldRules> = {
   what_vesper_is: { words: BAND, moreLabel: MORE, moreText: true },
   hidden_by_day: { words: BAND, moreLabel: MORE, moreText: true },
-  whites_first: { words: BAND, moreLabel: MORE, moreText: true },
-  light_picker: { words: { max: PICKER_WORDS_MAX, aim: 12 }, moreLabel: null, moreText: false },
   phone_control: { words: BAND, moreLabel: MORE, moreText: true },
   gallery: { words: null, moreLabel: { required: true, maxWords: WORD_LIMITS.moreLabelWords - 1, countAdded: true }, moreText: false },
-  install_day: { words: { max: WORD_LIMITS.splitWords, steps: true }, moreLabel: MORE, moreText: true },
   warranty: { words: null, moreLabel: { required: true, maxWords: WORD_LIMITS.moreLabelWords }, moreText: false },
-  mockup: { words: null, moreLabel: null, moreText: false },
+  // Round 9: their house by day. The line is built from the quote's runs
+  // ({feet}) and hidden while nothing is measured; What we measured shows
+  // our drawing of the roofline, with these words under it.
+  your_house: { words: BAND, moreLabel: MORE, moreText: true },
+  // The stand-in for Your house: their mockup, with a line under the title.
+  mockup: { words: BAND, moreLabel: null, moreText: false },
+  light_picker: { words: { max: PICKER_WORDS_MAX, aim: 12 }, moreLabel: null, moreText: false },
+  whites_first: { words: BAND, moreLabel: MORE, moreText: true },
+  // Round 9: the steps are the built lines (settings.deck.lines); here, the
+  // headline and What we'll need.
+  next_steps: { words: null, moreLabel: MORE, moreText: true },
+};
+
+// The names a page's words may use in braces: only Your house's line.
+export const PAGE_FILL: Partial<Record<WordsPageKey, Partial<Record<keyof PageWords, readonly string[]>>>> = {
+  your_house: { words: ["feet"] },
 };
 
 export function editableFields(page: WordsPageKey): WordsField[] {
@@ -113,10 +137,20 @@ export function editableFields(page: WordsPageKey): WordsField[] {
 // Labels that never say what's behind them (copy rules).
 const VAGUE_LABELS = new Set(["more", "learn more", "read more", "more info", "more information", "the details", "details", "info", "i", "+", "see more", "tap here", "click here"]);
 
-function textIssue(text: string): string | null {
+function textIssue(text: string, fill: readonly string[] = []): string | null {
   if (hasDash(text)) return "No dashes. Use a comma or a full stop instead.";
   if (hasExclamation(text)) return "No exclamation marks.";
-  return null;
+  return braceIssue(text, fill);
+}
+
+// A name in braces is filled in at the meeting; any other is refused, so a
+// customer never reads "{name}".
+const braced = (names: readonly string[]) => names.map((name) => `{${name}}`).join(", ");
+export function braceIssue(text: string, fill: readonly string[] = []): string | null {
+  const unknown = linePlaceholders(text).filter((name) => !fill.includes(name));
+  if (unknown.length === 0 && !/[{}]/.test(text.replace(/\{[^{}]*\}/g, ""))) return null;
+  if (fill.length === 0) return "No braces here: nothing is filled in on this line.";
+  return `Only ${braced(fill)} can go in braces here.`;
 }
 
 export const headlineLength = (text: string) => Array.from(text.trim()).length;
@@ -144,7 +178,7 @@ export function pageWordIssues(page: WordsPageKey, words: PageWords): Partial<Re
         ? `${rules.words.max} words at most. Aim for ${rules.words.aim}.`
         : `${rules.words.max} words at most.`;
     } else {
-      const problem = textIssue(words.words);
+      const problem = textIssue(words.words, PAGE_FILL[page]?.words);
       if (problem) issues.words = problem;
     }
   }
@@ -211,7 +245,24 @@ export function linesUpFrontIssue(count: number, warrantyText?: string): string 
 export type DeckWordErrors = Record<string, string>;
 
 export const fieldKey = (page: WordsPageKey, field: WordsField) => `${page}.${field}`;
+export const lineKey = (key: DeckLineKey) => `lines.${key}`;
 export const LINES_UP_FRONT_KEY = "warranty.linesUpFront";
+
+// A built page's line (round 9, settings.deck.lines): never empty (ours is
+// one tap away), within its words, the copy rules, and only the names it may
+// use in braces, keeping the ones it needs.
+export function lineIssue(key: DeckLineKey, text: string): string | null {
+  const spec = LINE_SPECS[key];
+  const line = text.trim();
+  if (line === "") return "Add the words, or use ours.";
+  if (wordCount(line) > spec.words) return `${spec.words} ${spec.words === 1 ? "word" : "words"} at most.`;
+  const problem = textIssue(line, spec.fill ?? []);
+  if (problem) return problem;
+  const used = linePlaceholders(line);
+  const missing = (spec.need ?? []).filter((name) => !used.includes(name));
+  if (missing.length > 0) return `Keep ${braced(missing)}: it is filled in on screen.`;
+  return null;
+}
 
 export function deckWordIssues(words: DeckWords, warrantyText?: string): DeckWordErrors {
   const errors: DeckWordErrors = {};
@@ -223,6 +274,10 @@ export function deckWordIssues(words: DeckWords, warrantyText?: string): DeckWor
   }
   const lines = linesUpFrontIssue(words.warrantyLinesUpFront, warrantyText);
   if (lines) errors[LINES_UP_FRONT_KEY] = lines;
+  for (const key of DECK_LINE_KEYS) {
+    const issue = lineIssue(key, words.lines[key]);
+    if (issue) errors[lineKey(key)] = issue;
+  }
   return errors;
 }
 
@@ -249,10 +304,12 @@ const pageWordsShape = z.object({
 const deckWordsShape = z.object({
   pages: z.object(Object.fromEntries(WORDS_PAGES.map((page) => [page, pageWordsShape])) as Record<WordsPageKey, typeof pageWordsShape>),
   warrantyLinesUpFront: z.number(),
+  // Every line a save sends; a key it leaves out keeps ours.
+  lines: z.record(z.string(), z.string().max(400)).optional(),
 });
 
-// What a save stores: each line tidied (see tidyText), headlines and labels
-// on one line.
+// What a save stores: each line tidied (see tidyText), headlines, labels and
+// the built pages' lines on one line.
 export function tidyDeckWords(words: DeckWords): DeckWords {
   const pages = {} as Record<WordsPageKey, PageWords>;
   for (const page of WORDS_PAGES) {
@@ -264,7 +321,9 @@ export function tidyDeckWords(words: DeckWords): DeckWords {
       moreText: tidyText(value.moreText),
     };
   }
-  return { pages, warrantyLinesUpFront: words.warrantyLinesUpFront };
+  const lines = {} as DeckLines;
+  for (const key of DECK_LINE_KEYS) lines[key] = tidyLine(words.lines[key] ?? "");
+  return { pages, warrantyLinesUpFront: words.warrantyLinesUpFront, lines };
 }
 
 // The server's check of what Settings sends: the shape, then every rule.
@@ -274,13 +333,17 @@ export function parseDeckWordsInput(
 ): { ok: true; words: DeckWords } | { ok: false; errors: DeckWordErrors } {
   const shaped = deckWordsShape.safeParse(input);
   if (!shaped.success) return { ok: false, errors: { form: "These words could not be read. Reload the page and try again." } };
-  const words = tidyDeckWords(shaped.data);
+  const sent = shaped.data.lines ?? {};
+  const lines = {} as DeckLines;
+  for (const key of DECK_LINE_KEYS) lines[key] = Object.hasOwn(sent, key) ? sent[key] : DEFAULT_LINES[key];
+  const words = tidyDeckWords({ pages: shaped.data.pages, warrantyLinesUpFront: shaped.data.warrantyLinesUpFront, lines });
   const errors = deckWordIssues(words, warrantyText);
   return Object.keys(errors).length > 0 ? { ok: false, errors } : { ok: true, words };
 }
 
 // Only the fields Settings shows are taken from the edit; everything else
-// keeps what is stored, so a field with no box is never wiped.
+// keeps what is stored, so a field with no box is never wiped. Every line
+// has its box.
 export function mergeEditableWords(stored: DeckWords, edited: DeckWords): DeckWords {
   const pages = {} as Record<WordsPageKey, PageWords>;
   for (const page of WORDS_PAGES) {
@@ -288,7 +351,7 @@ export function mergeEditableWords(stored: DeckWords, edited: DeckWords): DeckWo
     for (const field of editableFields(page)) next[field] = edited.pages[page][field];
     pages[page] = next;
   }
-  return { pages, warrantyLinesUpFront: edited.warrantyLinesUpFront };
+  return { pages, warrantyLinesUpFront: edited.warrantyLinesUpFront, lines: { ...edited.lines } };
 }
 
 // ---------------------------------------------------------------- the looks
@@ -507,11 +570,12 @@ export type TextMeasure = (text: string, font: { weight: number; size: number })
 // The band under a page's photo, at both iPads (round 7 review). The words
 // sit in the band's right 44%, 40 px from the line at 56% and 48 px from
 // the edge, 24 px below the band's top, at the words size (27 px at 1180,
-// 30 px at 1366) on 1.3 lines. The More button sits bottom right, 56 px
-// tall and 20 px up, and the words must end above its top. These are the
-// deck's numbers (lib/meeting/deck-pages.ts: BAND_AT_AIR, BAND_AT_PRO,
-// DECK_SIZES.body, DECK_ROW; components/meeting/deck-parts.tsx: BandPage);
-// a unit test keeps them in step.
+// 30 px at 1366) on 1.3 lines. The bottom row is 56 px tall and 20 px up:
+// round 9 put the Next label at its right, under these words (the More
+// button moved to its left), and the words must end above its top. These
+// are the deck's numbers (lib/meeting/deck-pages.ts: BAND_AT_AIR,
+// BAND_AT_PRO, DECK_SIZES.body, DECK_ROW; components/meeting/deck-parts.tsx:
+// BandPage); a unit test keeps them in step.
 export const BAND_FIT = {
   split: 0.56,
   padLeft: 40,
@@ -530,13 +594,15 @@ export const BAND_FIT = {
 // The light picker's line under its headline, at both iPads: left of the
 // four joined effect buttons (their edges overlap by 1 px), 48 px from the
 // tray's edge and 24 px from the effects, at 20 px (1180) and 22 px (1366).
-// It stays on one line. The tray's numbers (components/meeting/picker/
-// layout.ts: TRAY, TRAY_AT_PRO); a unit test keeps them in step.
+// It stays within two lines (round 9: the tray keeps room for two). The
+// tray's numbers (components/meeting/picker/layout.ts: TRAY, TRAY_AT_PRO);
+// a unit test keeps them in step.
 export const PICKER_LINE_FIT = {
   sidePadding: 48,
   columnGap: 24,
   effects: 4,
   weight: 400,
+  maxLines: 2,
   screens: [
     { width: 1180, effectSegment: 132, size: 20 },
     { width: 1366, effectSegment: 144, size: 22 },
@@ -563,8 +629,9 @@ export function lineCount(text: string, width: number, measureLine: (line: strin
 }
 
 // The band's words as the meeting draws them: one paragraph, typographic
-// apostrophes.
-const shownWords = (text: string) => smartApostrophes(text.replace(/\s+/g, " ").trim());
+// apostrophes, a name in braces as a three-figure number ("We measured 166
+// ft of roofline." is measured as 888 ft).
+const shownWords = (text: string) => smartApostrophes(text.replace(/\{[^{}]*\}/g, "888").replace(/\s+/g, " ").trim());
 
 export function bandWordsFit(screen: (typeof BAND_FIT.screens)[number]): { width: number; maxLines: number } {
   const width = screen.width * (1 - BAND_FIT.split) - BAND_FIT.padLeft - BAND_FIT.padRight;
@@ -573,7 +640,8 @@ export function bandWordsFit(screen: (typeof BAND_FIT.screens)[number]): { width
   return { width, maxLines: Math.floor((buttonTop - top) / (screen.size * BAND_FIT.lineHeight)) };
 }
 
-// Refused when, on either iPad, the words would run down into the button.
+// Refused when, on either iPad, the words would run down into the bottom
+// row (the Next label under them).
 export function bandWordsFitIssue(text: string, measure: TextMeasure): string | null {
   const shown = shownWords(text);
   if (!shown) return null;
@@ -581,7 +649,7 @@ export function bandWordsFitIssue(text: string, measure: TextMeasure): string | 
     const { width, maxLines } = bandWordsFit(screen);
     const lines = lineCount(shown, width, (line) => measure(line, { weight: BAND_FIT.weight, size: screen.size }));
     if (lines > maxLines) {
-      return `Too long for the band: at the meeting it runs to ${lines} lines and reaches the button. Keep it to ${maxLines}.`;
+      return `Too long for the band: at the meeting it runs to ${lines} lines and reaches the page dots. Keep it to ${maxLines}.`;
     }
   }
   return null;
@@ -592,13 +660,14 @@ export function pickerLineWidth(screen: (typeof PICKER_LINE_FIT.screens)[number]
   return screen.width - 2 * PICKER_LINE_FIT.sidePadding - effects - PICKER_LINE_FIT.columnGap;
 }
 
-// Refused when, on either iPad, the line would wrap to a second line.
+// Refused when, on either iPad, the line would wrap to a third line.
 export function pickerLineFitIssue(text: string, measure: TextMeasure): string | null {
   const shown = shownWords(text);
   if (!shown) return null;
   for (const screen of PICKER_LINE_FIT.screens) {
-    if (measure(shown, { weight: PICKER_LINE_FIT.weight, size: screen.size }) > pickerLineWidth(screen)) {
-      return "Keep it to one line: at the meeting it would wrap under the headline. Shorten it.";
+    const lines = lineCount(shown, pickerLineWidth(screen), (line) => measure(line, { weight: PICKER_LINE_FIT.weight, size: screen.size }));
+    if (lines > PICKER_LINE_FIT.maxLines) {
+      return "Keep it to two lines: at the meeting it would run on under the headline. Shorten it.";
     }
   }
   return null;
@@ -606,19 +675,23 @@ export function pickerLineFitIssue(text: string, measure: TextMeasure): string |
 
 // ---------------------------------------------------------------- will a More button's label fit the bottom row?
 
-// The bottom row (round 7 review): every page's More button sits bottom
-// right, 48 px from the edge, an outline button with its label at 20 px
-// semibold, 24 px of padding and a 1 px border each side. The page dots and
-// the Previous and Next chevrons sit in the middle of the same row: with all
-// 12 pages the dots' 40 px targets in a pill with 4 px ends, then a 44 px
-// chevron 6 px out on each side. A label is refused when its button's left
+// The bottom row (round 7 review; round 9 moved the More button to its
+// left, so the Next label has the right of the row beside the forward
+// chevron): every page's More button sits bottom left, 48 px from the edge,
+// an outline button with its label at 20 px semibold, 24 px of padding and
+// a 1 px border each side. The page dots and the Previous and Next chevrons
+// sit in the middle of the same row: with the most pages a meeting shows
+// (11) the dots' 40 px targets in a pill with 4 px ends, then a 44 px
+// chevron 6 px out on each side. A label is refused when its button's right
 // edge would come within 16 px of that middle on either iPad, so a long
-// label never slides under the Next chevron or the last dot (which jumps to
-// the price). These are the deck's numbers (lib/meeting/deck-pages.ts:
-// DECK_ROW, bottomRowRight; components/meeting/deck-parts.tsx: DeckButton,
-// BottomRight); a unit test keeps them in step.
+// label never slides under the Previous chevron or the first dot. The row
+// is centred, so the room is the same as it was on the right (moreRowRight
+// measures it from that side). These are the deck's numbers
+// (lib/meeting/deck-pages.ts: DECK_ROW, bottomRowRight;
+// components/meeting/deck-parts.tsx: DeckButton, BottomCorner); a unit test
+// keeps them in step.
 export const MORE_FIT = {
-  pages: DECK_PAGES.length,
+  pages: MAX_SHOWN_PAGES,
   rightInset: 48,
   padding: 24,
   border: 1,
@@ -662,7 +735,8 @@ export function moreLabelFitIssue(label: string, measure: TextMeasure, { countAd
 
 // ---------------------------------------------------------------- will a split page's words fit beside its photo?
 
-// How install day works and Our 10-year warranty, once their photo is in:
+// Our 10-year warranty, once its photo is in (round 9: How install day works
+// joined What happens next, whose steps are the built lines):
 // the picture on the left 56%, the words in the right 44%, 40 px from the
 // line and 48 px from the edge (431 px wide at 1180, 513 px at 1366), 64 px
 // from the top, the headline, then the page's words, 28 px apart. The
@@ -673,12 +747,10 @@ export function moreLabelFitIssue(label: string, measure: TextMeasure, { countAd
 // app's real deck heights (1180 x 796 and 1366 x 1000: the status bar takes
 // 24 px), the tighter case. Headlines 52/60 px semibold on 1.1 lines at
 // -0.015em, never broken inside a hyphenated word; words 27/30 px on 1.3
-// lines; install day's steps 16 px apart, each after its number (1ch of
-// semibold) and 16 px; the payment line semibold under a rule and 24 px;
-// the warranty's lines 12 px apart, then the company and phone at 20/22 px.
-// These are the deck's numbers (components/meeting/deck-parts.tsx:
+// lines; the warranty's lines 12 px apart, then the company and phone at
+// 20/22 px. These are the deck's numbers (components/meeting/deck-parts.tsx:
 // SplitPage, Lines, DECK_TYPE; components/meeting/deck-pages.tsx:
-// InstallDayPage, WarrantyPage); a unit test keeps them in step.
+// WarrantyPage); a unit test keeps them in step.
 export const SPLIT_FIT = {
   split: 0.56,
   padLeft: 40,
@@ -688,8 +760,6 @@ export const SPLIT_FIT = {
   gap: 28,
   headline: { weight: 600, lineHeight: 1.1, tracking: -0.015 },
   body: { weight: 400, lineHeight: 1.3 },
-  steps: { gap: 16, numberGap: 16, numberWeight: 600 },
-  payment: { weight: 600, rule: 1, padTop: 24 },
   lines: { gap: 12 },
   small: { weight: 400, lineHeight: 1.3 },
   screens: [
@@ -727,29 +797,6 @@ function stackHeight(blocks: number[]): number {
   return blocks.reduce((sum, block) => sum + block, 0) + SPLIT_FIT.gap * Math.max(0, blocks.length - 1);
 }
 
-// How install day works: the headline, the numbered steps (one per line),
-// then "No payment until your install is complete." under its rule.
-export function installDayHeight(page: Pick<PageWords, "headline" | "words">, screen: SplitScreen, measure: TextMeasure): number {
-  const { width } = splitColumn(screen);
-  const body = { ...SPLIT_FIT.body, size: screen.body };
-  const blocks: number[] = [];
-  if (page.headline.trim()) blocks.push(headlineHeight(page.headline, screen, width, measure));
-  // One step per line, any number Keenan typed dropped: the page numbers them.
-  const steps = tidyText(page.words)
-    .split("\n")
-    .map((line) => line.replace(/^\d+[.)]?\s+/, ""))
-    .filter(Boolean);
-  if (steps.length > 0) {
-    // The number's column is 1ch wide: a semibold "0".
-    const number = measure("0", { weight: SPLIT_FIT.steps.numberWeight, size: screen.body });
-    const stepWidth = width - number - SPLIT_FIT.steps.numberGap;
-    const heights = steps.map((step) => paragraphHeight(step, stepWidth, body, measure));
-    blocks.push(heights.reduce((sum, height) => sum + height, 0) + SPLIT_FIT.steps.gap * (steps.length - 1));
-  }
-  blocks.push(SPLIT_FIT.payment.rule + SPLIT_FIT.payment.padTop + paragraphHeight(NO_PAYMENT_LINE, width, { ...body, weight: SPLIT_FIT.payment.weight }, measure));
-  return stackHeight(blocks);
-}
-
 // Our 10-year warranty: the headline, the warranty's first lines word for
 // word, then the company and phone.
 export function warrantyHeight(
@@ -772,15 +819,6 @@ export function warrantyHeight(
 // text (Settings, the warranty) and the company and phone lines.
 export type SplitContext = { warrantyText?: string; company?: string[] };
 
-export function installDayFitIssue(page: Pick<PageWords, "headline" | "words">, measure: TextMeasure): string | null {
-  for (const screen of SPLIT_FIT.screens) {
-    if (installDayHeight(page, screen, measure) > splitColumn(screen).room) {
-      return "Too long for the page once its photo is in: at the meeting the steps would run into the bottom row. Shorten a step or the headline.";
-    }
-  }
-  return null;
-}
-
 export function warrantyFitIssue(headline: string, linesUpFront: number, context: Required<SplitContext>, measure: TextMeasure): string | null {
   for (const screen of SPLIT_FIT.screens) {
     const height = warrantyHeight({ headline, linesUpFront, warrantyText: context.warrantyText, company: context.company }, screen, measure);
@@ -792,12 +830,11 @@ export function warrantyFitIssue(headline: string, linesUpFront: number, context
 }
 
 // { "page.field": message } for whatever would not fit at the meeting: the
-// band pages' words (above the More button), the picker's line (one line),
-// every More button's label (clear of the dots and chevrons), and the split
-// pages' words beside their photo (install day's steps; the warranty's lines
-// up front, when the warranty text is given). Settings refuses a save with
-// any of them; the server, which can't measure a font, checks the counts
-// only.
+// band pages' words (above the bottom row), the picker's line (two lines at
+// most), every More button's label (clear of the dots and chevrons), and
+// the warranty's lines up front beside its photo, when the warranty text is
+// given. Settings refuses a save with any of them; the server, which can't
+// measure a font, checks the counts only.
 export function deckFitIssues(words: DeckWords, measure: TextMeasure, context: SplitContext = {}): DeckWordErrors {
   const errors: DeckWordErrors = {};
   for (const page of WORDS_PAGES) {
@@ -809,9 +846,7 @@ export function deckFitIssues(words: DeckWords, measure: TextMeasure, context: S
           ? pickerLineFitIssue(value.words, measure)
           : PAGE_LAYOUT[page] === "band"
             ? bandWordsFitIssue(value.words, measure)
-            : page === "install_day"
-              ? installDayFitIssue(value, measure)
-              : null;
+            : null;
       if (issue) errors[fieldKey(page, "words")] = issue;
     }
     if (rules.moreLabel) {
@@ -925,48 +960,83 @@ export function wordsToAvoid(text: string): string[] {
 // ---------------------------------------------------------------- what was seeded, to mark it Draft
 
 // Word for word what supabase/migrations/20261108080527_round7_deck_words_and_looks.sql
-// seeded (a unit test reads the migration and checks). A field that still
-// holds these words shows "Draft" in Settings only, never at a meeting.
+// seeded (a unit test reads the migration and checks), page by page as
+// stored. Round 9's seed migration (round9_deck_words) changes a page's
+// words only where they still match these, so nothing Keenan has edited is
+// overwritten.
+export const ROUND7_SEED: Record<string, PageWords> = {
+  what_vesper_is: {
+    headline: "Up once, there all year",
+    words: "A slim track under the edge of your roof, with the lights built in. Nothing to hang every fall.",
+    moreLabel: "What's in it",
+    moreText:
+      "The lights sit in a slim aluminum track, about 8 inches apart, tucked under the soffit, the underside of your roof's edge.\nEach light has red, green and blue, plus its own white.\nA control box plugs into a standard outlet.\nYou run it from an app on your phone, over your home Wi-Fi.",
+  },
+  hidden_by_day: {
+    headline: "Hidden by day",
+    words: "The track tucks under the soffit. By day you see your house. By night you choose the light.",
+    moreLabel: "Up close",
+    moreText:
+      "The track tucks under the soffit, where it's hard to spot by day. White track is in stock. Other colours are made to order. If your community has guidelines, we're happy to answer questions.",
+  },
+  whites_first: {
+    headline: "Warm white, most nights",
+    words: "Every light has its own white, so white looks clean. Colour is there for the nights you want it.",
+    moreLabel: "Warm or cool",
+    moreText: "Warm white is soft, like a porch light. Cool white is closer to daylight. Pick either one, any night, from your phone.",
+  },
+  light_picker: { headline: "Try it on your house", words: "A preview drawn on our photo of your house. Tap a look.", moreLabel: "", moreText: "" },
+  phone_control: {
+    headline: "Run it from your phone",
+    words: "Pick a look in the app and your house changes. We set up the app with you on install day.",
+    moreLabel: "What the app does",
+    moreText: "Turn the lights on or off and change the look from your phone. It works over your home Wi-Fi.",
+  },
+  gallery: { headline: "Homes we've lit", words: "", moreLabel: "See all", moreText: "" },
+  install_day: {
+    headline: "How install day works",
+    words: "We confirm the plan and the colours with you.\nA small crew fits the track and plugs in the control box.\nWe clean up and set up the app with you.",
+    moreLabel: "What we'll need",
+    moreText: "An outlet near where the control box will go, in the garage or outside.\nYour Wi-Fi name and password, so we can set up the app with you.",
+  },
+  warranty: { headline: "Our 10-year warranty", words: "", moreLabel: "The full warranty", moreText: "" },
+  mockup: { headline: "Where your lights would go", words: "", moreLabel: "", moreText: "" },
+};
+
+// The deck as round 9's seed migration leaves it on a deck nobody has
+// edited (a unit test reads that migration and checks each change against
+// this and ROUND7_SEED): the five seats' words (2026-11-10) for the pages
+// that changed, the two new pages, and every line. A field or line that
+// still holds these words shows "Draft" in Settings only, never at a meeting.
 export const DECK_SEED: DeckWords = {
   pages: {
     what_vesper_is: {
-      headline: "Up once, there all year",
-      words: "A slim track under the edge of your roof, with the lights built in. Nothing to hang every fall.",
-      moreLabel: "What's in it",
+      ...ROUND7_SEED.what_vesper_is,
       moreText:
-        "The lights sit in a slim aluminum track, about 8 inches apart, tucked under the soffit, the underside of your roof's edge.\nEach light has red, green and blue, plus its own white.\nA control box plugs into a standard outlet.\nYou run it from an app on your phone, over your home Wi-Fi.",
+        "The lights sit in a slim aluminum track, about 8 inches apart, tucked under the soffit, the underside of your roof's edge.\nEach light has red, green and blue, plus its own white.\nA control box plugs into a standard outlet.",
     },
     hidden_by_day: {
-      headline: "Hidden by day",
-      words: "The track tucks under the soffit. By day you see your house. By night you choose the light.",
-      moreLabel: "Up close",
-      moreText:
-        "The track tucks under the soffit, where it's hard to spot by day. White track is in stock. Other colours are made to order. If your community has guidelines, we're happy to answer questions.",
+      ...ROUND7_SEED.hidden_by_day,
+      moreText: "The track tucks under the soffit, where it's hard to spot by day. If your community has guidelines, we're happy to answer questions.",
     },
-    whites_first: {
-      headline: "Warm white, most nights",
-      words: "Every light has its own white, so white looks clean. Colour is there for the nights you want it.",
-      moreLabel: "Warm or cool",
-      moreText: "Warm white is soft, like a porch light. Cool white is closer to daylight. Pick either one, any night, from your phone.",
-    },
-    light_picker: { headline: "Try it on your house", words: "A preview drawn on our photo of your house. Tap a look.", moreLabel: "", moreText: "" },
     phone_control: {
-      headline: "Run it from your phone",
-      words: "Pick a look in the app and your house changes. We set up the app with you on install day.",
-      moreLabel: "What the app does",
-      moreText: "Turn the lights on or off and change the look from your phone. It works over your home Wi-Fi.",
+      ...ROUND7_SEED.phone_control,
+      words: "Pick a look in the app and your house changes. On or off, warm white or colour.",
     },
-    gallery: { headline: "Homes we've lit", words: "", moreLabel: "See all", moreText: "" },
-    install_day: {
-      headline: "How install day works",
-      words: "We confirm the plan and the colours with you.\nA small crew fits the track and plugs in the control box.\nWe clean up and set up the app with you.",
-      moreLabel: "What we'll need",
-      moreText: "An outlet near where the control box will go, in the garage or outside.\nYour Wi-Fi name and password, so we can set up the app with you.",
+    gallery: ROUND7_SEED.gallery,
+    warranty: ROUND7_SEED.warranty,
+    your_house: PAGE_DEFAULTS.your_house as PageWords,
+    mockup: { headline: "Your house, lit", words: "Our drawing of your lights on your photo.", moreLabel: "", moreText: "" },
+    light_picker: {
+      ...ROUND7_SEED.light_picker,
+      words: "A preview drawn on our photo of your house. Most nights, warm white. Tap a look.",
     },
-    warranty: { headline: "Our 10-year warranty", words: "", moreLabel: "The full warranty", moreText: "" },
-    mockup: { headline: "Where your lights would go", words: "", moreLabel: "", moreText: "" },
+    whites_first: ROUND7_SEED.whites_first,
+    // What we'll need carries over from How install day works as it was.
+    next_steps: { ...(PAGE_DEFAULTS.next_steps as PageWords), moreLabel: ROUND7_SEED.install_day.moreLabel, moreText: ROUND7_SEED.install_day.moreText },
   },
   warrantyLinesUpFront: 3,
+  lines: { ...DECK_LINE_DEFAULTS },
 };
 
 export const LOOKS_SEED: Look[] = [
@@ -1013,6 +1083,11 @@ export function isDraftField(page: WordsPageKey, field: WordsField, value: strin
   return seeded !== "" && value.trim() === seeded;
 }
 
+// A line still as we wrote it.
+export function isDraftLine(key: DeckLineKey, value: string): boolean {
+  return value.trim() === DECK_SEED.lines[key];
+}
+
 export function isDraftLook(look: Pick<Look, "key" | "name" | "words">): boolean {
   const seeded = LOOKS_SEED.find((item) => item.key === look.key);
   return Boolean(seeded) && seeded?.name === look.name.trim() && seeded?.words === look.words.trim();
@@ -1025,18 +1100,25 @@ export function isDraftLook(look: Pick<Look, "key" | "name" | "words">): boolean
 // reaches a customer.
 export const PAGE_HELP: Record<WordsPageKey, string> = {
   what_vesper_is:
-    "Answers the Christmas-only worry in the first minute. We left out “an investment in your home”. Add it back if you want it.",
-  hidden_by_day: "Never say the track matches the soffit: white is the only stock track.",
-  whites_first:
-    "Once you’ve confirmed how warm the lights’ own white is, you can add “so warm white looks warm”. Each light has one white of its own, so don’t claim both whites are true whites.",
-  light_picker:
-    "The headline and the line under it sit in the tray under their house, smaller than other headlines, and the line has to fit on one line. Keep “our photo”: the setter or you took it, not the customer.",
+    "Answers the Christmas-only worry in the first minute. We left out “an investment in your home”. Add it back if you want it. The app is said on Run it from your phone, so it isn’t in What’s in it.",
+  hidden_by_day: "Never say the track matches the soffit: white is the only stock track. Colour is said once, on the colour page, so Up close leaves it out.",
   phone_control:
-    "Only what the app does today. Once you’ve confirmed them, you can add lines about schedules, more than one phone, after a power cut or any monthly fee. Never the app’s brand name.",
+    "Only what the app does today. Once you’ve confirmed them, you can add lines about schedules, more than one phone, after a power cut or any monthly fee. Never the app’s brand name. Setting up the app is said once, on What happens next.",
   gallery: "The gallery’s words are each photo’s caption, set on the photo below: the look only. The button opens the grid of every photo.",
-  install_day:
-    "One step per line; the screen numbers them. “No payment until your install is complete.” is always added under the steps, word for word. No durations, dates or “before Christmas”.",
   warranty:
     "The page shows the first lines of the Warranty text in Settings, word for word, then the company and phone. The button opens every line, and the service call fee when it is set.",
-  mockup: "The title over their mockup. No words or button: you point, and they pinch to zoom.",
+  your_house:
+    "Their own photo by day, unlit, exactly where the light picker will light it, so the next page is the reveal. {feet} is filled in with the feet on the quote; the line is hidden until something is measured. The button opens our drawing of their roofline, every measured run lit and named with its feet, never a price.",
+  mockup:
+    "Stands in for Your house when the roofline isn’t traced but there is a mockup: the mockup with this title and line, and they pinch to zoom. The light picker is skipped then.",
+  light_picker:
+    "The headline and the line under it sit in the tray under their house, smaller than other headlines, and the line has to fit on two lines. Every meeting opens on Warm white, steady. Keep “our photo”: the setter or you took it, not the customer.",
+  whites_first:
+    "Stands in for the light picker when there is neither a roofline trace nor a mockup, so “most nights, warm white” still lands. Once you’ve confirmed how warm the lights’ own white is, you can add “so warm white looks warm”. Each light has one white of its own, so don’t claim both whites are true whites.",
+  next_steps:
+    "The last page, at every meeting. Its four steps, the recap of their choice and the closing line are the lines under What happens next below; “No payment until your install is complete.” is always step 4, word for word. What we’ll need is behind its button. No durations or “before Christmas”.",
 };
+
+// What Keenan reads beside the built pages' lines.
+export const LINES_HELP =
+  "A name in braces, like {colour} or {name}, is filled in on screen. Keep the ones a line needs; the box says if one can’t go.";

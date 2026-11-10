@@ -23,8 +23,10 @@ import {
   confirmationText,
   confirmationTime,
   DEFAULT_CONFIRM_TEXT,
+  draftedOfferCount,
   missingAnswers,
   prepSummary,
+  quoteDraftedAhead,
   rooflineDoneLine,
   rooflineFacts,
   smsLink,
@@ -67,7 +69,7 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
       supabase.from("lead_photos").select("storage_path, slot, created_at").eq("lead_id", leadId).eq("slot", "mockup").order("created_at", { ascending: false }).limit(1),
       supabase.from("track_colours").select("id, name, ral_code, sort_order, active"),
       supabase.from("ral_classic_colours").select("code, name"),
-      supabase.from("quotes").select("id, runs, updated_at").eq("lead_id", leadId).order("updated_at", { ascending: false }),
+      supabase.from("quotes").select("id, runs, offers, updated_at").eq("lead_id", leadId).order("updated_at", { ascending: false }),
       supabase.from("settings").select("confirm_text").eq("id", 1).maybeSingle(),
       supabase.from("lead_events").select("id, payload, created_at").eq("lead_id", leadId).eq("type", "note").order("created_at", { ascending: false }).limit(20),
       rooflineFor(supabase, leadId),
@@ -109,8 +111,9 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
     .filter((colour) => colour.active || colour.id === lead.track_colour_id)
     .map((colour) => ({ value: colour.id, label: colour.active ? colour.name : `${colour.name} (retired)` }));
 
-  const quoteWithRuns = (quoteRows ?? []).find((quote) => Array.isArray(quote.runs) && quote.runs.length > 0) ?? null;
-  const runCount = quoteWithRuns && Array.isArray(quoteWithRuns.runs) ? quoteWithRuns.runs.length : 0;
+  // Round 9: drafted ahead once an offer covers a measured run.
+  const quoteWithRuns = (quoteRows ?? []).find((quote) => quoteDraftedAhead(quote)) ?? null;
+  const offerCount = draftedOfferCount(quoteWithRuns);
 
   const summary = prepSummary({
     hasMockup: Boolean(mockupPath),
@@ -182,15 +185,15 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
           <div className="flex flex-col items-start gap-3">
             <p className="text-sm text-muted-foreground">
               {item.done
-                ? `A quote with ${runCount} ${runCount === 1 ? "run" : "runs"} is saved. Change it in meeting mode before you go.`
-                : "Measure from the photos and save the runs ahead, so the price is ready at the table."}
+                ? `A quote with ${offerCount} ${offerCount === 1 ? "offer" : "offers"} is saved. Meeting mode opens with it.`
+                : "Measure from the photos and save the runs and offers ahead, so the price is ready at the table."}
             </p>
             <Button asChild size="lg" variant={primary ? "default" : "outline"} className="h-12 px-5">
-              {/* A full page load on purpose, as Start: the service worker
-                  keeps the meeting page for a reload without signal. */}
-              <a href={`/meeting/${leadId}#quote`} data-testid="prep-quote">
-                {item.done ? "Open the quote" : "Draft the quote"}
-              </a>
+              {/* Round 9: the lead page's quote editor, the same quote
+                  meeting mode opens; #edit-quote opens its sheet at once. */}
+              <Link href={`/app/leads/${leadId}#edit-quote`} data-testid="prep-quote">
+                {item.done ? "Edit the quote" : "Draft the quote"}
+              </Link>
             </Button>
           </div>
         );

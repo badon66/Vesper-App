@@ -5,16 +5,23 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  DECK_PAGES,
   DECK_SLOTS,
+  LINE_GROUPS,
+  LINE_SPECS,
+  linesIn,
   PAGE_LAYOUT,
   PAGE_NAMES,
   SHOOTING_STANDARD,
   slotsFor,
-  WORDS_PAGES,
+  STAND_INS,
+  STORY_PAGES,
+  type DeckLineKey,
+  type DeckPageKey,
   type DeckWords,
+  type LineGroup,
   type Look,
   type PageWords as PageWordsValue,
+  type StandInKey,
   type WordsPageKey,
 } from "@/lib/deck";
 import {
@@ -32,6 +39,8 @@ import {
   editableFields,
   fieldKey,
   hasLooksIssues,
+  lineKey,
+  LINES_HELP,
   LINES_UP_FRONT_KEY,
   lookWrapIssues,
   looksIssues,
@@ -46,6 +55,7 @@ import {
 import { calgaryToday, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { saveDeck } from "./actions";
+import { lineFieldId, LinesWords } from "./lines-words";
 import { LooksEditor, lookFieldId } from "./looks-editor";
 import { labelMeasure, useTextMeasure } from "./measure-labels";
 import { LINES_UP_FRONT_ID, PageWords, wordsFieldId } from "./page-words";
@@ -64,9 +74,64 @@ export type { DeckPhotoView } from "./slot-card";
 
 type GroupBy = "page" | "when";
 
-// What a page is called here: its headline from Settings, as the deck and
-// its dot read it, or its own name while the headline is empty.
-const pageTitle = (words: DeckWords, page: WordsPageKey) => words.pages[page].headline.trim() || PAGE_NAMES[page];
+// What a page is called here (round 9): its headline from Settings, as the
+// deck, its dot and the Next label read it, a stand-in saying so, or its
+// own name while the headline is empty.
+const pageTitle = (words: DeckWords, page: WordsPageKey) => {
+  const headline = words.pages[page].headline.trim();
+  if (!headline) return PAGE_NAMES[page];
+  return Object.hasOwn(STAND_INS, page) ? `${headline} (stand-in)` : headline;
+};
+
+// The editor's sections, in the order customers see the pages (round 9):
+// each page with words, the built pages with their lines (the cover, Your
+// track colour, Your price), each stand-in after the page it stands in for,
+// then the lines on every page and the customer's link.
+type Section =
+  | { kind: "page"; page: WordsPageKey; lines?: LineGroup }
+  | { kind: "built"; page: "cover" | "colour" | "quote"; lines: LineGroup }
+  | { kind: "lines"; lines: LineGroup };
+
+const SECTIONS: Section[] = [
+  { kind: "built", page: "cover", lines: "cover" },
+  { kind: "page", page: "what_vesper_is" },
+  { kind: "page", page: "hidden_by_day" },
+  { kind: "page", page: "phone_control" },
+  { kind: "page", page: "gallery" },
+  { kind: "page", page: "warranty" },
+  { kind: "page", page: "your_house", lines: "your_house" },
+  { kind: "page", page: "mockup" },
+  { kind: "page", page: "light_picker" },
+  { kind: "page", page: "whites_first" },
+  { kind: "built", page: "colour", lines: "colour" },
+  { kind: "built", page: "quote", lines: "price" },
+  { kind: "page", page: "next_steps", lines: "next_steps" },
+  { kind: "lines", lines: "every_page" },
+  { kind: "lines", lines: "link" },
+];
+
+const sectionId = (section: Section) => (section.kind === "lines" ? `lines-${section.lines}` : `page-${section.page}`);
+const groupOf = (group: LineGroup) => LINE_GROUPS.find((item) => item.key === group);
+
+// "Page 7 of 11", or which page a stand-in stands in for.
+function sectionNumber(section: Section): string | null {
+  if (section.kind === "lines") return null;
+  const key: DeckPageKey = section.page;
+  if (Object.hasOwn(STAND_INS, key)) {
+    const target = STAND_INS[key as StandInKey];
+    return `Stands in for page ${STORY_PAGES.indexOf(target) + 1}`;
+  }
+  return `Page ${STORY_PAGES.indexOf(key) + 1} of ${STORY_PAGES.length}`;
+}
+
+function sectionTitle(section: Section, words: DeckWords): string {
+  if (section.kind === "page") return pageTitle(words, section.page);
+  if (section.kind === "built") {
+    if (section.page === "cover") return "Cover";
+    return section.page === "colour" ? words.lines.colour_headline : words.lines.price_headline;
+  }
+  return groupOf(section.lines)?.title ?? "";
+}
 
 type Props = {
   words: DeckWords;
@@ -87,10 +152,23 @@ const LAYOUT_WORDS: Record<(typeof PAGE_LAYOUT)[WordsPageKey], string> = {
   picker: "Their house at dusk, lit, with the looks in the tray under it.",
 };
 
-// The mockup page is a band page with their mockup for its photo and its
-// title alone in the band.
-const layoutWords = (page: WordsPageKey) =>
-  page === "mockup" ? "Their mockup above, the title alone in the band under it." : LAYOUT_WORDS[PAGE_LAYOUT[page]];
+const PAGE_LAYOUT_WORDS: Partial<Record<WordsPageKey, string>> = {
+  your_house: "Their house by day above, unlit, exactly where the light picker will light it; the words in the band under it.",
+  mockup: "Their mockup above, the title and its line in the band under it.",
+  next_steps: "The four steps, with your install day photo on the left once it's in.",
+};
+
+const BUILT_LAYOUT_WORDS: Record<"cover" | "colour" | "quote", string> = {
+  cover: "The wordmark, their address and this line, on navy.",
+  colour: "The colour decision on one page: the soffit, the track colour and its timing, then their initials.",
+  quote: "Every option at once, biggest first, with the one on screen lit on the house and its breakdown.",
+};
+
+const layoutWords = (section: Section) => {
+  if (section.kind === "page") return PAGE_LAYOUT_WORDS[section.page] ?? LAYOUT_WORDS[PAGE_LAYOUT[section.page]];
+  if (section.kind === "built") return BUILT_LAYOUT_WORDS[section.page];
+  return groupOf(section.lines)?.note ?? "";
+};
 
 export function DeckEditor(props: Props) {
   const [words, setWords] = useState(props.words);
@@ -160,6 +238,19 @@ export function DeckEditor(props: Props) {
   const touch = (key: string) => setTouched((previous) => (previous.has(key) ? previous : new Set(previous).add(key)));
   const edited = () => setStatus((previous) => (previous?.kind === "saved" ? null : previous));
 
+  const setLine = (key: DeckLineKey, text: string) => {
+    edited();
+    setWords((previous) => ({ ...previous, lines: { ...previous.lines, [key]: text } }));
+    const errorKey = lineKey(key);
+    if (serverErrors[errorKey]) {
+      setServerErrors((previous) => {
+        const next = { ...previous };
+        delete next[errorKey];
+        return next;
+      });
+    }
+  };
+
   const setPageField = (page: WordsPageKey, field: WordsField, text: string) => {
     edited();
     setWords((previous) => ({ ...previous, pages: { ...previous.pages, [page]: { ...previous.pages[page], [field]: text } } }));
@@ -196,17 +287,41 @@ export function DeckEditor(props: Props) {
     return out;
   }
 
-  // After a refused save: open and focus the first thing that needs fixing.
+  function lineErrors(group: LineGroup): Partial<Record<DeckLineKey, string>> {
+    const out: Partial<Record<DeckLineKey, string>> = {};
+    for (const key of linesIn(group)) {
+      const errorKey = lineKey(key);
+      const message = serverErrors[errorKey] ?? (due(errorKey) ? wordErrors[errorKey] : undefined);
+      if (message) out[key] = message;
+    }
+    return out;
+  }
+
+  const sectionNeedsFixing = (section: Section) =>
+    (section.kind === "page" && Object.keys(pageErrors(section.page)).length > 0) ||
+    (section.kind !== "page" || section.lines ? Object.keys(lineErrors(section.lines as LineGroup)).length > 0 : false);
+
+  // After a refused save: open and focus the first thing that needs fixing,
+  // in the order the editor shows them.
   function focusFirstProblem(errors: DeckWordErrors) {
     let target: string | null = null;
-    for (const page of WORDS_PAGES) {
-      const field = editableFields(page).find((name) => errors[fieldKey(page, name)]);
-      if (field) {
-        target = wordsFieldId(page, field);
-        break;
+    for (const section of SECTIONS) {
+      if (section.kind === "page") {
+        const page = section.page;
+        const field = editableFields(page).find((name) => errors[fieldKey(page, name)]);
+        if (field) {
+          target = wordsFieldId(page, field);
+          break;
+        }
+        if (page === "warranty" && errors[LINES_UP_FRONT_KEY]) {
+          target = LINES_UP_FRONT_ID;
+          break;
+        }
       }
-      if (page === "warranty" && errors[LINES_UP_FRONT_KEY]) {
-        target = LINES_UP_FRONT_ID;
+      const group = section.lines;
+      const line = group ? linesIn(group).find((key) => errors[lineKey(key)]) : undefined;
+      if (line) {
+        target = lineFieldId(line);
         break;
       }
     }
@@ -291,72 +406,99 @@ export function DeckEditor(props: Props) {
         looksOn={on}
         groupBy={groupBy}
         onGroupBy={setGroupBy}
-        pagesNeedingFixing={WORDS_PAGES.filter((page) => Object.keys(pageErrors(page)).length > 0)}
+        sectionsNeedingFixing={SECTIONS.filter(sectionNeedsFixing).map(sectionId)}
       />
 
       {groupBy === "when" ? (
         <ShotsByWhen photos={photos} onPhotos={updatePhotos} onBlobUrl={(url) => blobs.current.push(url)} onOpen={openSlot} />
       ) : null}
 
-      {groupBy === "page" ? WORDS_PAGES.map((page) => {
-        const slots = slotsFor(page);
-        const number = DECK_PAGES.indexOf(page) + 1;
-        return (
-          <section key={page} id={`page-${page}`} aria-labelledby={`page-${page}-title`} className="flex scroll-mt-24 flex-col gap-4" data-testid="deck-page">
-            <div className="flex flex-col gap-1 border-b pb-3">
-              <p className="text-sm font-semibold text-muted-foreground">
-                Page {number} of {DECK_PAGES.length}
-              </p>
-              <h2 id={`page-${page}-title`} className="text-xl font-bold">
-                {pageTitle(words, page)}
-              </h2>
-              <p className="text-sm text-muted-foreground">{layoutWords(page)}</p>
-            </div>
-            <Card>
-              <CardContent>
-                <PageWords
-                  page={page}
-                  value={words.pages[page] as PageWordsValue}
-                  onChange={(field, text) => setPageField(page, field, text)}
-                  onBlur={(field) => touch(fieldKey(page, field))}
-                  errors={pageErrors(page)}
-                  linesUpFront={words.warrantyLinesUpFront}
-                  onLinesUpFront={(count) => {
-                    edited();
-                    setWords((previous) => ({ ...previous, warrantyLinesUpFront: count }));
-                  }}
-                  warrantyText={props.warrantyText}
-                />
-              </CardContent>
-            </Card>
-            {page === "light_picker" ? (
-              <LooksEditor
-                looks={looks}
-                onLooks={updateLooks}
-                issues={lookIssues}
-                wrap={wrap}
-                due={due}
-                onBlur={touch}
-                openKey={openLook}
-                onOpen={setOpenLook}
-                checking={checking}
-              />
-            ) : null}
-            {page === "gallery" ? <GalleryOrder photos={photos} onPhotos={updatePhotos} /> : null}
-            {slots.map((slot) => (
-              <SlotCard
-                key={slot.key}
-                slot={slot}
-                photos={photos}
-                references={refsBySlot.get(slot.key) ?? []}
-                onPhotos={updatePhotos}
-                onReference={updateReference}
-                onBlobUrl={(url) => blobs.current.push(url)}
-              />
-            ))}
-          </section>
-        );
-      }) : null}
+      {groupBy === "page"
+        ? SECTIONS.map((section) => {
+            const id = sectionId(section);
+            const page = section.kind === "page" ? section.page : null;
+            const slots = page ? slotsFor(page) : [];
+            const number = sectionNumber(section);
+            const group = section.lines ? groupOf(section.lines) : undefined;
+            return (
+              <section key={id} id={id} aria-labelledby={`${id}-title`} className="flex scroll-mt-24 flex-col gap-4" data-testid="deck-page">
+                <div className="flex flex-col gap-1 border-b pb-3">
+                  {number ? <p className="text-sm font-semibold text-muted-foreground">{number}</p> : null}
+                  <h2 id={`${id}-title`} className="text-xl font-bold">
+                    {sectionTitle(section, words)}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">{layoutWords(section)}</p>
+                </div>
+                {page ? (
+                  <Card>
+                    <CardContent>
+                      <PageWords
+                        page={page}
+                        value={words.pages[page] as PageWordsValue}
+                        onChange={(field, text) => setPageField(page, field, text)}
+                        onBlur={(field) => touch(fieldKey(page, field))}
+                        errors={pageErrors(page)}
+                        linesUpFront={words.warrantyLinesUpFront}
+                        onLinesUpFront={(count) => {
+                          edited();
+                          setWords((previous) => ({ ...previous, warrantyLinesUpFront: count }));
+                        }}
+                        warrantyText={props.warrantyText}
+                      />
+                    </CardContent>
+                  </Card>
+                ) : null}
+                {section.lines ? (
+                  <Card>
+                    {section.kind === "page" && group ? (
+                      <CardHeader>
+                        <CardTitle className="text-base">{group.title === sectionTitle(section, words) ? "Its lines" : group.title}</CardTitle>
+                        <CardDescription>{group.note}</CardDescription>
+                      </CardHeader>
+                    ) : null}
+                    <CardContent className="flex flex-col gap-5">
+                      {linesIn(section.lines).some((key) => (LINE_SPECS[key].fill ?? []).length > 0) ? (
+                        <p className="max-w-prose text-sm text-pretty text-muted-foreground">{LINES_HELP}</p>
+                      ) : null}
+                      <LinesWords
+                        group={section.lines}
+                        lines={words.lines}
+                        onChange={setLine}
+                        onBlur={(key) => touch(lineKey(key))}
+                        errors={lineErrors(section.lines)}
+                      />
+                    </CardContent>
+                  </Card>
+                ) : null}
+                {page === "light_picker" ? (
+                  <LooksEditor
+                    looks={looks}
+                    onLooks={updateLooks}
+                    issues={lookIssues}
+                    wrap={wrap}
+                    due={due}
+                    onBlur={touch}
+                    openKey={openLook}
+                    onOpen={setOpenLook}
+                    checking={checking}
+                  />
+                ) : null}
+                {page === "gallery" ? <GalleryOrder photos={photos} onPhotos={updatePhotos} /> : null}
+                {slots.map((slot) => (
+                  <SlotCard
+                    key={slot.key}
+                    slot={slot}
+                    photos={photos}
+                    references={refsBySlot.get(slot.key) ?? []}
+                    onPhotos={updatePhotos}
+                    onReference={updateReference}
+                    onBlobUrl={(url) => blobs.current.push(url)}
+                  />
+                ))}
+              </section>
+            );
+          })
+        : null}
 
       {dirty || pending || status ? (
         <div
@@ -396,14 +538,14 @@ function Overview({
   looksOn,
   groupBy,
   onGroupBy,
-  pagesNeedingFixing,
+  sectionsNeedingFixing,
 }: {
   photos: DeckPhotoView[];
   words: DeckWords;
   looksOn: number;
   groupBy: GroupBy;
   onGroupBy: (group: GroupBy) => void;
-  pagesNeedingFixing: WordsPageKey[];
+  sectionsNeedingFixing: string[];
 }) {
   const filled = filledSlotCount(photos);
   const standard = standardPoints(SHOOTING_STANDARD);
@@ -448,18 +590,24 @@ function Overview({
             </CardHeader>
             <CardContent>
               <ol className="flex flex-col">
-                {WORDS_PAGES.map((page) => {
-                  const count = slotsFilled(page);
-                  const fixing = pagesNeedingFixing.includes(page);
+                {SECTIONS.map((section) => {
+                  const id = sectionId(section);
+                  const fixing = sectionsNeedingFixing.includes(id);
+                  const page = section.kind === "page" ? section.page : null;
+                  const count = page ? slotsFilled(page) : { done: 0, total: 0 };
+                  const lineCount = section.lines ? linesIn(section.lines).length : 0;
+                  const number = section.kind === "lines" ? null : sectionNumber(section);
                   return (
-                    <li key={page}>
+                    <li key={id}>
                       <a
-                        href={`#page-${page}`}
+                        href={`#${id}`}
                         className="flex min-h-11 items-center justify-between gap-3 rounded-md px-2 text-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <span className="min-w-0 font-semibold">
-                          <span className="text-muted-foreground tabular-nums">{DECK_PAGES.indexOf(page) + 1}. </span>
-                          {pageTitle(words, page)}
+                          {number?.startsWith("Page ") ? (
+                            <span className="text-muted-foreground tabular-nums">{number.slice(5, number.indexOf(" of"))}. </span>
+                          ) : null}
+                          {sectionTitle(section, words)}
                         </span>
                         <span className={cn("shrink-0 text-right", fixing ? "font-semibold text-destructive" : "text-muted-foreground")}>
                           {fixing
@@ -468,7 +616,9 @@ function Overview({
                               ? `${looksOn} ${looksOn === 1 ? "look" : "looks"} on`
                               : count.total > 0
                                 ? `${count.done} of ${count.total} ${count.total === 1 ? "slot" : "slots"}`
-                                : "Title only"}
+                                : page
+                                  ? "Words only"
+                                  : `${lineCount} ${lineCount === 1 ? "line" : "lines"}`}
                         </span>
                       </a>
                     </li>
@@ -476,7 +626,7 @@ function Overview({
                 })}
               </ol>
               <p className="mt-2 px-2 text-sm text-muted-foreground">
-                The cover, Your colours and Your price use built words and need nothing here.
+                A stand-in shows only when the page it stands in for can&apos;t: no roofline traced, or no mockup either.
               </p>
             </CardContent>
           </Card>

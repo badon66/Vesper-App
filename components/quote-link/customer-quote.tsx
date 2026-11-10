@@ -5,24 +5,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { bookInstall, recordVisit, saveSelection } from "@/app/q/[token]/actions";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
 import { Disclosure } from "@/components/quote-link/disclosure";
-import { HouseDiagram, SEGMENT_CROPS, WHOLE_HOUSE, type Crop } from "@/components/quote-link/house-diagram";
-import { useCountTo } from "@/components/quote-link/motion";
+import { HouseDiagram, WHOLE_HOUSE, type Crop } from "@/components/quote-link/house-diagram";
 import { PointIconMark } from "@/components/quote-link/point-icon";
 import { ClosedQuote, ContactButtons } from "@/components/quote-link/quote-shell";
 import { DialogPanel } from "@/components/ui/dialog-panel";
-import { formatMoney, screenTotal, type QuoteLine } from "@/lib/pricing";
-import { HOUSE_SEGMENTS, segmentsFor, segmentStates, type HouseSegment, type SegmentState } from "@/lib/quote-link/house";
+import { formatMoney, screenTotal, type QuoteLine, type QuoteRun, type QuoteTotals } from "@/lib/pricing";
+import { HOUSE_SEGMENTS, segmentStates, type HouseSegment } from "@/lib/quote-link/house";
+import { offerCoverage, type PricedOffer } from "@/lib/quotes/offers";
+import { fillLine } from "@/lib/deck";
 import {
+  christmasSeason,
   customerChoice,
   customerChoiceInSentence,
-  christmasSeason,
-  otherColoursLine,
   lineAmount,
-  optionName,
+  linkOffers,
+  nextStepsFor,
+  offerChoice,
+  openingOffer,
+  otherColoursLine,
   phoneHref,
   priceHoldPassed,
-  priceSelection,
-  runName,
   smsWithBody,
   type CustomerQuote,
 } from "@/lib/quote-link/view";
@@ -30,69 +32,24 @@ import { calgaryDateOf, formatFullDate, formatLongDay } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 // The customer's quote (Keenan, 2026-11-02; reworked 2026-11-04 as a sales
-// page, phone first, settled by debate in decisions.md). Top to bottom:
-// their house and price, the Christmas banner, what they're getting, their
-// lights on a house diagram, Start smaller, track colour, three things to
-// tap open, and a bar that stays put with Call, Text and Book my install.
-// Prices come from lib/pricing.ts over the quote's own stored prices; the
-// page never sends a price anywhere. One total follows their switches.
+// page, phone first; round 9, 2026-11-10, Keenan's options in place of
+// Start smaller and Your lights, settled by the five seats). Top to bottom:
+// their house and the price of the option on screen, the Christmas banner,
+// what they're getting, Your options (one house diagram and a row per
+// option, biggest first, then what's in the one on screen), track colour,
+// what happens next, two things to tap open, and a bar that stays put with
+// Call, Text and Book my install. Prices come from lib/pricing.ts over the
+// quote's own stored prices; the page sends an option's id, never a price.
+// Once Keenan marks the quote accepted, the page shows only what was agreed.
 
 type View = CustomerQuote & { mockupUrl: string | null; galleryUrls: string[] };
-type Booked = { at: string; option: string };
+// offer: the option's id; null on a link booked before options.
+type Booked = { at: string; option: string; offer: string | null };
 
 const FAILED = "That didn’t go through. Check your signal and try again, or call or text us.";
 const SLOW = "Still sending. If it doesn’t go through, call or text us.";
 
 export function CustomerQuoteView({ token, view }: { token: string; view: View }) {
-  const { quote } = view;
-  // The runs with feet are the parts of the job; positions stay the quote's own.
-  const parts = useMemo(
-    () => quote.runs.map((run, at) => ({ run, at })).filter(({ run }) => Math.round(run.feet) > 0),
-    [quote.runs],
-  );
-  const serverBooked: Booked | null = view.bookedAt && view.bookedOption ? { at: view.bookedAt, option: view.bookedOption } : null;
-  const [booked, setBooked] = useState<Booked | null>(serverBooked);
-
-  // The page opens at the full quote. Once they have asked to book, it
-  // opens at their latest choice, so the page matches what they asked for.
-  const [on, setOn] = useState<Set<number>>(() => {
-    const saved = serverBooked ? (view.selection?.filter((at) => parts.some((part) => part.at === at)) ?? []) : [];
-    return new Set(saved.length > 0 ? saved : parts.map((part) => part.at));
-  });
-  const allOn = parts.every(({ at }) => on.has(at));
-  const positionsKey = allOn ? "all" : parts.filter(({ at }) => on.has(at)).map(({ at }) => at).join(",");
-  const positions = useMemo(
-    () => (positionsKey === "all" ? null : positionsKey.split(",").map(Number)),
-    [positionsKey],
-  );
-
-  const full = useMemo(() => priceSelection(quote, null), [quote]);
-  const current = useMemo(() => priceSelection(quote, positions), [quote, positions]);
-  const option = optionName(quote.runs, positions);
-  const total = screenTotal(current.subtotal, quote.gstEnabled);
-  const minimum = quote.minJobTotal && quote.minJobTotal > 0 ? quote.minJobTotal : null;
-  const atMinimum = current.minimumApplied && minimum !== null;
-  const holdPassed = priceHoldPassed(view.validUntil, view.today);
-  const states = useMemo(
-    () => segmentStates(parts.map(({ run, at }) => ({ run, on: on.has(at) }))),
-    [parts, on],
-  );
-
-  const [phase, setPhase] = useState<"quote" | "confirm" | "sending" | "thanks" | "closed">("quote");
-  const [thanks, setThanks] = useState<{ option: string; total: string; preview: boolean } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [slow, setSlow] = useState(false);
-  const sending = phase === "sending";
-  const heading = useRef<HTMLHeadingElement>(null);
-  const smallerHeading = useRef<HTMLHeadingElement>(null);
-  // When the confirm step opened. Its Yes sits right where Book my install
-  // was, so a quick second tap would land on it; taps in the first half
-  // second are ignored (the critique, 2026-11-04).
-  const confirmOpenedAt = useRef(0);
-  // When the press on Yes began: a press that starts in that first half
-  // second doesn't count even if it lifts after it.
-  const yesPressedAt = useRef(0);
-
   // A visit, once per opening, even when React runs the effect twice.
   // Keenan's own visits are left out on the server.
   const visited = useRef(false);
@@ -102,35 +59,84 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
     void recordVisit(token).catch(() => undefined);
   }, [token]);
 
-  // Their choice, saved a moment after they stop switching (for Keenan's
-  // card). After they've asked to book, only a new booking changes it, so
-  // a return visit opens at what they booked.
+  return view.quote.accepted ? <AgreedQuote view={view} /> : <LiveQuote token={token} view={view} />;
+}
+
+// The house lit for one option: gold for its runs, dashed for the measured
+// runs it leaves out, the plain outline for the rest.
+function statesFor(runs: QuoteRun[], positions: readonly number[]) {
+  const on = new Set(positions);
+  return segmentStates(runs.map((run, at) => ({ run, on: on.has(at) })));
+}
+
+function LiveQuote({ token, view }: { token: string; view: View }) {
+  const { quote, words } = view;
+  // The options worth showing, biggest first, each with its price.
+  const shown = useMemo(() => linkOffers(quote), [quote]);
+  const many = shown.length > 1;
+
+  const serverBooked: Booked | null =
+    view.bookedAt && view.bookedOption ? { at: view.bookedAt, option: view.bookedOption, offer: view.bookedOffer } : null;
+  const [booked, setBooked] = useState<Booked | null>(serverBooked);
+
+  // It opens on the option they booked, else the one chosen at the
+  // meeting, else the biggest.
+  const [chosenId, setChosenId] = useState<string | null>(() =>
+    openingOffer(shown, { booked: view.bookedOffer, meeting: quote.meetingOffer }),
+  );
+  const selected: PricedOffer | null = shown.find((priced) => priced.offer.id === chosenId) ?? shown[0] ?? null;
+  const totals: QuoteTotals | null = selected?.totals ?? null;
+  const name = selected?.offer.name ?? "";
+  const total = totals ? screenTotal(totals.subtotal, quote.gstEnabled) : "";
+  const minimum = quote.minJobTotal && quote.minJobTotal > 0 ? quote.minJobTotal : null;
+  const atMinimum = Boolean(totals?.minimumApplied) && minimum !== null;
+  const holdPassed = priceHoldPassed(view.validUntil, view.today);
+  const states = useMemo(() => statesFor(quote.runs, selected?.offer.runs ?? []), [quote.runs, selected]);
+  const everyLines = useMemo(() => shown.flatMap((priced) => (priced.totals ? [priced.totals.lines] : [])), [shown]);
+  const steps = nextStepsFor(view);
+
+  const [phase, setPhase] = useState<"quote" | "confirm" | "sending" | "thanks" | "closed">("quote");
+  const [thanks, setThanks] = useState<{ option: string; total: string; preview: boolean } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [slow, setSlow] = useState(false);
+  const sending = phase === "sending";
+  const heading = useRef<HTMLHeadingElement>(null);
+  // When the confirm step opened. Its Yes sits right where Book my install
+  // was, so a quick second tap would land on it; taps in the first half
+  // second are ignored (the critique, 2026-11-04).
+  const confirmOpenedAt = useRef(0);
+  // When the press on Yes began: a press that starts in that first half
+  // second doesn't count even if it lifts after it.
+  const yesPressedAt = useRef(0);
+
+  // The option they're looking at, saved a moment after they settle on
+  // one, for Keenan's card. The page itself opens on what they booked.
   const firstChoice = useRef(true);
-  const hasBooked = booked !== null;
+  const selectedId = selected?.offer.id ?? null;
   useEffect(() => {
     if (firstChoice.current) {
       firstChoice.current = false;
       return;
     }
-    if (hasBooked) return;
+    if (!selectedId) return;
     const timer = window.setTimeout(() => {
-      void saveSelection(token, positions ?? []).catch(() => undefined);
+      void saveSelection(token, selectedId).catch(() => undefined);
     }, 1200);
     return () => window.clearTimeout(timer);
-  }, [token, positions, hasBooked]);
+  }, [token, selectedId]);
 
-  // A screen reader hears the new total once, when the switching settles,
-  // never the counting digits.
+  // A screen reader hears the option and its total once, when they settle.
   const [announced, setAnnounced] = useState("");
-  const firstTotal = useRef(true);
+  const firstAnnounce = useRef(true);
+  const announcement = selected ? `${name}, ${total}` : "";
   useEffect(() => {
-    if (firstTotal.current) {
-      firstTotal.current = false;
+    if (firstAnnounce.current) {
+      firstAnnounce.current = false;
       return;
     }
-    const timer = window.setTimeout(() => setAnnounced(`Total now ${total}`), 500);
+    const timer = window.setTimeout(() => setAnnounced(announcement), 400);
     return () => window.clearTimeout(timer);
-  }, [total]);
+  }, [announcement]);
 
   // A send that takes long says so, instead of a silent "Sending".
   useEffect(() => {
@@ -140,13 +146,15 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
   }, [sending]);
 
   async function book() {
+    if (!selected) return;
+    const offer = selected.offer.id;
     setPhase("sending");
     setError(null);
     setSlow(false);
     try {
-      const result = await bookInstall(token, positions ?? []);
+      const result = await bookInstall(token, offer);
       if (result.ok) {
-        if (!result.preview) setBooked({ at: new Date().toISOString(), option: result.option });
+        if (!result.preview) setBooked({ at: new Date().toISOString(), option: result.option, offer });
         setThanks({ option: result.option, total: result.total, preview: Boolean(result.preview) });
         setPhase("thanks");
         window.scrollTo({ top: 0 });
@@ -176,57 +184,46 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
     return <ThankYou firstName={view.firstName} thanks={thanks} company={view.company} onBack={backToQuote} />;
   }
 
-  const onlyOne = on.size === 1;
-  const matchesBooked = booked !== null && booked.option === option;
-  const toggle = (at: number) => {
-    if (sending) return;
-    setOn((now) => {
-      const next = new Set(now);
-      if (next.has(at)) {
-        if (next.size > 1) next.delete(at);
-      } else {
-        next.add(at);
-      }
-      return next;
-    });
-  };
-  const switchAllOn = () => {
-    setOn(new Set(parts.map((part) => part.at)));
-    window.requestAnimationFrame(() => smallerHeading.current?.focus());
-  };
+  const matchesBooked = booked !== null && selected !== null && booked.offer === selected.offer.id;
   const textHref = smsWithBody(view.company.phone, `Hi Keenan, a question about the quote for ${view.address}: `);
-  const minimumWords = minimum ? <MinimumWords minimum={minimum} /> : null;
+  const choose = (id: string) => {
+    if (!sending) setChosenId(id);
+  };
 
   return (
     <>
       <main className="mx-auto flex max-w-xl flex-col pb-36" data-testid="quote-live">
-        {/* 1. Their house and their price. */}
+        {/* 1. Their house and the price of the option on screen. */}
         <section aria-labelledby="quote-for" className="flex flex-col">
-          {view.mockupUrl ? <Mockup url={view.mockupUrl} /> : null}
+          {view.mockupUrl ? (
+            <Mockup url={view.mockupUrl} caption={selected && !selected.everyRun ? words.link_mockup_caption : null} />
+          ) : null}
           <div className="flex flex-col px-5 pt-6">
-            <h1 id="quote-for" ref={heading} tabIndex={-1} className="text-2xl font-bold text-balance outline-none">
-              {view.firstName.trim() ? `${view.firstName.trim()}, here’s your quote` : "Here’s your quote"}
-            </h1>
-            <p className="mt-3 text-[2.75rem] leading-none font-bold tracking-tight" data-testid="hero-total">
-              <CountedTotal subtotal={current.subtotal} gstEnabled={quote.gstEnabled} />
-            </p>
-            {!allOn ? (
-              <p className="mt-2 text-sm text-muted-foreground tabular-nums" data-testid="hero-full">
-                Full quote {screenTotal(full.subtotal, quote.gstEnabled)}
-              </p>
+            <Greeting firstName={view.firstName} headingRef={heading} />
+            {selected && totals ? (
+              <>
+                <p className="mt-4 text-base font-semibold text-pretty text-muted-foreground" data-testid="hero-option">
+                  {name}
+                </p>
+                <p className="mt-1 text-[2.75rem] leading-none font-bold tracking-tight" data-testid="hero-total">
+                  <Money subtotal={totals.subtotal} gstEnabled={quote.gstEnabled} />
+                </p>
+              </>
             ) : null}
-            <PriceHold validUntil={view.validUntil} passed={holdPassed} className="mt-2" />
+            <PriceHold validUntil={view.validUntil} passed={holdPassed} className="mt-3" />
             <ul className="mt-4 flex flex-col gap-1 text-base" data-testid="quote-promises">
               <li className="font-semibold">No payment until your install is complete.</li>
-              <li>
-                Financing is available.{" "}
-                <a
-                  href={smsWithBody(view.company.phone, "Hi Keenan, can you tell me about financing?")}
-                  className="-my-3 inline-block py-3 font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  Just ask.
-                </a>
-              </li>
+              {quote.financingOffered ? (
+                <li data-testid="quote-financing">
+                  Financing is available.{" "}
+                  <a
+                    href={smsWithBody(view.company.phone, "Hi Keenan, can you tell me about financing?")}
+                    className="-my-3 inline-block py-3 font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    Just ask.
+                  </a>
+                </li>
+              ) : null}
             </ul>
           </div>
         </section>
@@ -247,143 +244,91 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
         ) : null}
 
         {/* 3. What makes it worth it, in Keenan's words from Settings. */}
-        {view.productPoints.length > 0 ? (
-          <section aria-labelledby="getting" className="mt-12 px-5">
-            <h2 id="getting" className="text-xl font-bold">
-              What you’re getting
-            </h2>
-            <ul className="mt-5 flex flex-col gap-4" data-testid="quote-points">
-              {view.productPoints.map((point, at) => (
-                <li key={at} className="flex gap-3.5">
-                  <PointIconMark icon={point.icon} className="mt-0.5 size-5 shrink-0 text-navy" />
-                  <span className="text-base text-pretty">{point.text}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
+        <ProductPoints points={view.productPoints} />
 
-        {/* 4. Their lights, and where they go on a house. */}
-        {parts.length > 0 ? (
-          <section aria-labelledby="your-lights" className="mt-12 px-5">
-            <h2 id="your-lights" className="text-xl font-bold">
-              Your lights
-            </h2>
-            <ul className="mt-3 flex flex-col text-base" data-testid="quote-runs">
-              {parts.map(({ run, at }) => (
-                <li
-                  key={at}
-                  className={cn(
-                    "flex items-baseline justify-between gap-4 py-1 transition-colors duration-200",
-                    !on.has(at) && "text-muted-foreground",
-                  )}
-                >
-                  <span className="min-w-0 text-pretty">{runName(run, at)}</span>
-                  <span className="shrink-0 tabular-nums">{Math.round(run.feet)} ft</span>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-2">
-              <Disclosure title="What do these mean?" variant="inline" testId="quote-explainer">
-                <PartsExplained />
-              </Disclosure>
-            </div>
-            <figure className="mt-4" data-testid="quote-house">
-              <HouseDiagram states={states} />
-              <figcaption className="mt-2 text-sm text-muted-foreground">Gold marks your lights.</figcaption>
-            </figure>
-          </section>
-        ) : null}
-
-        {/* 5. Start smaller, with the price line by line, under the house. */}
-        <section aria-labelledby="start-smaller" className="mt-8 px-5">
-          <h2 id="start-smaller" ref={smallerHeading} tabIndex={-1} className="text-xl font-bold outline-none">
-            {parts.length > 1 ? "Start smaller" : "Your price"}
+        {/* 4. Your options: the house for the option on screen, a row per
+            option to pick from, then what's in it, line by line. */}
+        <section aria-labelledby="your-options" className="mt-12 px-5" data-testid="quote-options">
+          <h2 id="your-options" className="text-xl font-bold">
+            {many ? "Your options" : "Your price"}
           </h2>
-          {parts.length > 1 ? (
+          {selected && totals ? (
             <>
-              <p className="mt-1 text-pretty text-muted-foreground">Switch off any part you’d like to leave for later.</p>
-              <ul className="mt-4 flex flex-col divide-y border-t border-b-2 border-b-navy" data-testid="start-smaller">
-                {parts.map(({ run, at }) => {
-                  const isOn = on.has(at);
-                  const locked = isOn && onlyOne;
-                  return (
-                    <li key={at}>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={isOn}
-                        aria-disabled={locked || sending}
-                        aria-describedby={locked ? "smaller-hint" : undefined}
-                        aria-label={`${runName(run, at)}, ${Math.round(run.feet)} feet`}
-                        onClick={() => toggle(at)}
-                        className="flex min-h-[3.25rem] w-full items-center gap-3 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                      >
-                        <RunMark run={run} on={isOn} />
-                        <span className={cn("min-w-0 flex-1 text-pretty transition-colors duration-200", !isOn && "text-muted-foreground")}>
-                          <span className="font-medium">{runName(run, at)}</span>
-                          <span className="ml-2 text-base text-muted-foreground tabular-nums">{Math.round(run.feet)} ft</span>
-                        </span>
-                        <span
-                          aria-hidden="true"
-                          className={cn(
-                            "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border-2 transition-colors duration-150",
-                            isOn ? "border-navy bg-navy" : "border-input bg-background",
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "quote-switch-thumb size-5 rounded-full",
-                              isOn ? "translate-x-[1.375rem] bg-white" : "translate-x-0.5 bg-input",
-                            )}
-                          />
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-              {onlyOne ? (
-                <p id="smaller-hint" className="mt-2 text-sm text-muted-foreground">
-                  At least one part stays in.
-                </p>
-              ) : null}
-            </>
-          ) : null}
-
-          {/* The total sits right under the switches, so a flip and its new
-              figure share the screen; the lines that make it up follow. */}
-          <div className={cn("flex items-baseline justify-between gap-4 pt-3", parts.length > 1 ? "mt-1" : "mt-4 border-t-2 border-navy")}>
-            <span className="text-lg font-bold">Total</span>
-            <span className="text-3xl font-bold tracking-tight" data-testid="smaller-total">
-              <CountedTotal subtotal={current.subtotal} gstEnabled={quote.gstEnabled} />
-            </span>
-          </div>
-          <div className="quote-row" data-shown={atMinimum} aria-hidden={!atMinimum}>
-            <div>
-              {/* Keenan's words, at the total; the box keeps it calm, never red. */}
-              <div className="mt-3 rounded-md border px-4 py-3" data-testid="minimum-note">
-                {minimumWords}
+              <figure className="mt-4" data-testid="quote-house">
+                <HouseDiagram states={states} />
+                <figcaption className="mt-2 text-sm text-pretty text-muted-foreground" data-testid="drawing-caption">
+                  {fillLine(words.link_drawing_caption, { name })}
+                </figcaption>
+              </figure>
+              <div className="mt-1">
+                <Disclosure title="What do these mean?" variant="inline" testId="quote-explainer">
+                  <PartsExplained />
+                </Disclosure>
               </div>
-            </div>
-          </div>
-          {parts.length > 1 && !allOn ? (
-            <button
-              type="button"
-              onClick={switchAllOn}
-              className="mt-2 inline-flex min-h-11 items-center self-start text-base font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              data-testid="switch-all-on"
-            >
-              Switch all back on
-            </button>
-          ) : null}
-          <Breakdown full={full.lines} current={current.lines} beforeMinimum={current.beforeMinimum} totalSubtotal={current.subtotal} gstEnabled={quote.gstEnabled} />
-          <p aria-live="polite" className="sr-only">
-            {announced}
-          </p>
+
+              {many ? (
+                <fieldset className="mt-3" data-testid="option-rows">
+                  <legend className="sr-only">Your options</legend>
+                  <div className="flex flex-col gap-2.5">
+                    {shown.map((priced) => (
+                      <OptionRow
+                        key={priced.offer.id}
+                        priced={priced}
+                        runs={quote.runs}
+                        selected={priced.offer.id === selected.offer.id}
+                        meeting={priced.offer.id === quote.meetingOffer}
+                        meetingTag={words.link_meeting_tag}
+                        gstEnabled={quote.gstEnabled}
+                        disabled={sending}
+                        onChoose={choose}
+                      />
+                    ))}
+                  </div>
+                </fieldset>
+              ) : null}
+
+              <h3 className="mt-8 text-lg font-bold text-pretty" data-testid="whats-in">
+                {fillLine(words.whats_in, { name })}
+              </h3>
+              {/* With a list, each row already says what its option covers. */}
+              {many ? null : (
+                <p className="mt-1 text-sm text-pretty text-muted-foreground" data-testid="whats-in-coverage">
+                  {offerCoverage(quote.runs, selected.offer)}
+                </p>
+              )}
+              <Breakdown
+                every={everyLines}
+                current={totals.lines}
+                beforeMinimum={totals.beforeMinimum}
+                subtotal={totals.subtotal}
+                gstEnabled={quote.gstEnabled}
+              />
+              <div className="quote-row" data-shown={atMinimum} aria-hidden={!atMinimum}>
+                <div>
+                  {/* Keenan's words, at the total; the box keeps it calm, never red. */}
+                  <div className="mt-3 rounded-md border px-4 py-3" data-testid="minimum-note">
+                    {minimum ? <MinimumWords minimum={minimum} /> : null}
+                  </div>
+                </div>
+              </div>
+              <p className="mt-5 text-base text-pretty" data-testid="quote-includes">
+                {words.price_includes}
+              </p>
+              <p className="mt-2 text-base font-semibold text-pretty" data-testid="quote-something-else">
+                {words.link_something_else}
+              </p>
+              <p aria-live="polite" className="sr-only">
+                {announced}
+              </p>
+            </>
+          ) : (
+            <p className="mt-3 text-base text-pretty" data-testid="quote-options-empty">
+              {words.price_empty}
+            </p>
+          )}
         </section>
 
-        {/* 6. Track colour, in Keenan's words. */}
+        {/* 5. Track colour: one colour rule, the same as the iPad. */}
         <section aria-labelledby="track-colour" className="mt-12 px-5">
           <h2 id="track-colour" className="text-xl font-bold">
             Track colour
@@ -393,13 +338,16 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
               Your colour: {quote.trackColourName}.
             </p>
           ) : null}
-          <p className="mt-2 text-pretty">
-            White is our stock colour. It costs nothing extra and fits this season’s schedule.
+          <p className="mt-2 text-pretty" data-testid="quote-colour-stock">
+            {words.colour_stock}
           </p>
           <p className="mt-2 text-pretty" data-testid="quote-colour-rush">
             {otherColoursLine({ season: christmasSeason(view.today), rushFee: quote.rushFee, rush: quote.colourTiming === "rush" })}
           </p>
         </section>
+
+        {/* 6. What happens next: the meeting's four steps, in its words. */}
+        <NextSteps steps={steps} whatWeNeed={view.nextSteps.whatWeNeed} />
 
         {/* 7. Tap to open, closed until tapped. See our work leads once
             there are photos; until then it is hidden. */}
@@ -416,64 +364,17 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
               </ul>
             </Disclosure>
           ) : null}
-          {view.warranty.trim() ? (
-            <Disclosure title="Warranty" testId="quote-warranty">
-              <ul className="flex flex-col gap-2.5 text-base text-pretty">
-                {view.warranty
-                  .split(/\n+/)
-                  .map((line) => line.trim())
-                  .filter(Boolean)
-                  .map((line, at) => (
-                    <li key={at} className="flex gap-3">
-                      <span aria-hidden="true" className="mt-2.5 size-1.5 shrink-0 rounded-full bg-navy/50" />
-                      <span>{line}</span>
-                    </li>
-                  ))}
-              </ul>
-              {view.serviceCallFee ? (
-                <p className="mt-4 font-semibold" data-testid="quote-service-call">
-                  Service call fee for years 6 to 10: {formatMoney(view.serviceCallFee)}
-                </p>
-              ) : null}
-            </Disclosure>
-          ) : null}
-          {view.installDay ? (
-            <Disclosure title={view.installDay.title} testId="quote-install-day">
-              <div className="flex flex-col gap-2.5 text-base text-pretty">
-                {view.installDay.body
-                  .split(/\n+/)
-                  .map((line) => line.trim())
-                  .filter(Boolean)
-                  .map((line, at) => (
-                    <p key={at}>{line}</p>
-                  ))}
-              </div>
-            </Disclosure>
-          ) : null}
+          <Warranty warranty={view.warranty} serviceCallFee={view.serviceCallFee} />
         </section>
 
-        <footer className="mt-10 flex flex-col gap-1 px-5 text-sm text-pretty text-muted-foreground" data-testid="quote-footer">
-          <p className="font-semibold text-foreground">{view.company.name}</p>
-          <p>{view.company.address}</p>
-          <a
-            href={phoneHref(view.company.phone, "tel")}
-            className="-mx-1 inline-flex min-h-11 items-center self-start rounded-sm px-1 text-foreground tabular-nums underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {view.company.phone}
-          </a>
-          <a
-            href={`mailto:${view.company.email}?subject=${encodeURIComponent("My Vesper quote")}`}
-            className="-mx-1 inline-flex min-h-11 items-center self-start rounded-sm px-1 text-foreground underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {view.company.email}
-          </a>
-        </footer>
+        <Footer company={view.company} />
       </main>
 
       {/* 8. The bar that stays put. */}
       <BookBar
         callHref={phoneHref(view.company.phone, "tel")}
         textHref={textHref}
+        canBook={selected !== null}
         booked={matchesBooked}
         update={booked !== null && !matchesBooked}
         sending={sending}
@@ -521,20 +422,7 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
         }
       >
         <div className="flex flex-col gap-4 text-base">
-          <dl className="flex flex-col divide-y rounded-md border">
-            <div className="flex flex-col gap-0.5 px-4 py-3">
-              <dt className="text-sm font-semibold text-muted-foreground">Your choice</dt>
-              <dd className="font-semibold text-pretty" data-testid="confirm-option">
-                {customerChoice(option)}
-              </dd>
-            </div>
-            <div className="flex flex-col gap-0.5 px-4 py-3">
-              <dt className="text-sm font-semibold text-muted-foreground">Total</dt>
-              <dd className="text-xl font-bold tabular-nums" data-testid="confirm-total">
-                {total}
-              </dd>
-            </div>
-          </dl>
+          <ChoiceCard option={name} total={total} testIds={{ option: "confirm-option", total: "confirm-total" }} />
           {holdPassed && view.validUntil ? (
             <p className="font-semibold text-pretty">
               Prices may have changed since {formatFullDate(view.validUntil)}. We’ll confirm before booking.
@@ -550,7 +438,340 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
   );
 }
 
-// Keenan's two lines for a choice under the minimum, word for word.
+// After Keenan marks the quote accepted (round 9): only what was agreed.
+// The option, its total, the track colour, the install day if there is one
+// and the payment line; what's in it, line by line; and Call and Text. The
+// other options' prices, Your options and Book my install are gone, and no
+// status word is shown.
+function AgreedQuote({ view }: { view: View }) {
+  const { quote, words } = view;
+  // A quote accepted before options has no option to name; the rest stands.
+  const agreed = offerChoice(quote, quote.acceptedOffer);
+  const states = statesFor(quote.runs, agreed?.offer.runs ?? []);
+  const everyRun = agreed !== null && agreed.offer.runs.length === quote.runs.length;
+  const textHref = smsWithBody(view.company.phone, `Hi Keenan, a question about the install at ${view.address}: `);
+
+  return (
+    <>
+      <main className="mx-auto flex max-w-xl flex-col pb-36" data-testid="quote-agreed">
+        <section aria-labelledby="quote-for" className="flex flex-col">
+          {view.mockupUrl ? <Mockup url={view.mockupUrl} caption={agreed && !everyRun ? words.link_mockup_caption : null} /> : null}
+          <div className="flex flex-col px-5 pt-6">
+            <Greeting firstName={view.firstName} />
+            {agreed ? (
+              <>
+                <p className="mt-4 text-base font-semibold text-pretty text-muted-foreground" data-testid="agreed-choice">
+                  Your choice: {agreed.name}
+                </p>
+                <p className="mt-1 text-[2.75rem] leading-none font-bold tracking-tight" data-testid="agreed-total">
+                  <Money subtotal={agreed.totals.subtotal} gstEnabled={quote.gstEnabled} />
+                </p>
+              </>
+            ) : null}
+            <ul className="mt-5 flex flex-col gap-1.5 text-base" data-testid="agreed-summary">
+              {quote.trackColourName ? <li data-testid="agreed-colour">Your track colour: {quote.trackColourName}</li> : null}
+              {view.nextSteps.installOn ? (
+                <li data-testid="agreed-day">Your install day: {formatLongDay(view.nextSteps.installOn)}</li>
+              ) : null}
+              <li className="font-semibold">No payment until your install is complete.</li>
+            </ul>
+          </div>
+        </section>
+
+        {agreed ? (
+          <section aria-labelledby="whats-in" className="mt-12 px-5">
+            <h2 id="whats-in" className="text-xl font-bold text-pretty" data-testid="whats-in">
+              {fillLine(words.whats_in, { name: agreed.name })}
+            </h2>
+            <figure className="mt-4" data-testid="quote-house">
+              <HouseDiagram states={states} />
+              <figcaption className="mt-2 text-sm text-pretty text-muted-foreground" data-testid="drawing-caption">
+                {fillLine(words.link_drawing_caption, { name: agreed.name })}
+              </figcaption>
+            </figure>
+            <p className="mt-4 text-sm text-pretty text-muted-foreground" data-testid="whats-in-coverage">
+              {offerCoverage(quote.runs, agreed.offer)}
+            </p>
+            <Breakdown
+              every={[agreed.totals.lines]}
+              current={agreed.totals.lines}
+              beforeMinimum={agreed.totals.beforeMinimum}
+              subtotal={agreed.totals.subtotal}
+              gstEnabled={quote.gstEnabled}
+            />
+          </section>
+        ) : null}
+
+        <section aria-label="More about your install" className="mt-12 border-t" data-testid="quote-more">
+          {view.nextSteps.whatWeNeed ? <WhatWeNeed text={view.nextSteps.whatWeNeed} variant="row" /> : null}
+          <Warranty warranty={view.warranty} serviceCallFee={view.serviceCallFee} />
+        </section>
+
+        <Footer company={view.company} />
+      </main>
+
+      <BookBar
+        callHref={phoneHref(view.company.phone, "tel")}
+        textHref={textHref}
+        canBook={false}
+        booked={false}
+        update={false}
+        sending={false}
+        slow={false}
+        error={null}
+        onBook={() => undefined}
+      />
+    </>
+  );
+}
+
+function Greeting({ firstName, headingRef }: { firstName: string; headingRef?: React.Ref<HTMLHeadingElement> }) {
+  return (
+    <h1 id="quote-for" ref={headingRef} tabIndex={-1} className="text-2xl font-bold text-balance outline-none">
+      {firstName.trim() ? `${firstName.trim()}, here’s your quote` : "Here’s your quote"}
+    </h1>
+  );
+}
+
+// A total as a customer reads it: "$3,450" with a small "+ GST" while GST
+// is on. It changes at once with the option; it never counts.
+function Money({ subtotal, gstEnabled }: { subtotal: number; gstEnabled: boolean }) {
+  return (
+    <span className="tabular-nums">
+      {formatMoney(subtotal)}
+      {gstEnabled ? (
+        <>
+          {" "}
+          <span className="text-[0.5em] font-semibold">+ GST</span>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+// One option as a radio row: its name and what it covers on the left, its
+// total on the right. The one on screen has a 2 px navy border and a filled
+// navy radio; gold stays Book my install's alone. The meeting's choice
+// carries a small navy tag. A native radio underneath, so arrow keys and
+// screen readers work as they expect.
+function OptionRow({
+  priced,
+  runs,
+  selected,
+  meeting,
+  meetingTag,
+  gstEnabled,
+  disabled,
+  onChoose,
+}: {
+  priced: PricedOffer;
+  runs: QuoteRun[];
+  selected: boolean;
+  meeting: boolean;
+  meetingTag: string;
+  gstEnabled: boolean;
+  disabled: boolean;
+  onChoose: (id: string) => void;
+}) {
+  const { offer, totals } = priced;
+  if (!totals) return null;
+  return (
+    <label
+      className={cn(
+        "flex min-h-[4.5rem] cursor-pointer items-center gap-3 rounded-md transition-colors duration-150",
+        "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
+        selected ? "border-2 border-navy px-[0.8125rem] py-[0.6875rem]" : "border border-border px-[0.875rem] py-3 hover:bg-muted",
+      )}
+      data-testid="option-row"
+      data-offer={offer.id}
+      data-selected={selected}
+    >
+      <input
+        type="radio"
+        name="quote-option"
+        value={offer.id}
+        checked={selected}
+        disabled={disabled}
+        onChange={() => onChoose(offer.id)}
+        className="sr-only"
+      />
+      <span
+        aria-hidden="true"
+        className={cn(
+          "flex size-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-150",
+          selected ? "border-navy bg-navy" : "border-input bg-background",
+        )}
+      >
+        {selected ? <span className="size-2.5 rounded-full bg-white" /> : null}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="text-base leading-snug font-semibold text-pretty">{offer.name}</span>
+        {/* In full, feet included: it's what they compare the options by. */}
+        <span className="mt-0.5 text-sm leading-snug text-pretty text-muted-foreground" data-testid="option-coverage">
+          {offerCoverage(runs, offer)}
+        </span>
+        {meeting ? (
+          <span
+            className="mt-1.5 self-start rounded-sm border border-navy px-1.5 text-[0.8125rem] leading-5 font-semibold text-navy"
+            data-testid="option-meeting-tag"
+          >
+            {meetingTag}
+          </span>
+        ) : null}
+      </span>
+      <span className="flex shrink-0 flex-col items-end" data-testid="option-total">
+        <span className="text-lg leading-tight font-bold tabular-nums">{formatMoney(totals.subtotal)}</span>
+        {gstEnabled ? <span className="text-xs font-semibold text-muted-foreground">+ GST</span> : null}
+      </span>
+    </label>
+  );
+}
+
+// "Your choice" and its total, on the confirm sheet and the thank-you.
+function ChoiceCard({ option, total, testIds }: { option: string; total: string; testIds: { option: string; total: string } }) {
+  return (
+    <dl className="flex flex-col divide-y rounded-md border">
+      <div className="flex flex-col gap-0.5 px-4 py-3">
+        <dt className="text-sm font-semibold text-muted-foreground">Your choice</dt>
+        <dd className="font-semibold text-pretty" data-testid={testIds.option}>
+          {customerChoice(option)}
+        </dd>
+      </div>
+      {total ? (
+        <div className="flex flex-col gap-0.5 px-4 py-3">
+          <dt className="text-sm font-semibold text-muted-foreground">Total</dt>
+          <dd className="text-xl font-bold tabular-nums" data-testid={testIds.total}>
+            {total}
+          </dd>
+        </div>
+      ) : null}
+    </dl>
+  );
+}
+
+function ProductPoints({ points }: { points: CustomerQuote["productPoints"] }) {
+  if (points.length === 0) return null;
+  return (
+    <section aria-labelledby="getting" className="mt-12 px-5">
+      <h2 id="getting" className="text-xl font-bold">
+        What you’re getting
+      </h2>
+      <ul className="mt-5 flex flex-col gap-4" data-testid="quote-points">
+        {points.map((point, at) => (
+          <li key={at} className="flex gap-3.5">
+            <PointIconMark icon={point.icon} className="mt-0.5 size-5 shrink-0 text-navy" />
+            <span className="text-base text-pretty">{point.text}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// What happens next: four numbered steps, the same as the meeting's last
+// page, with What we'll need behind a tap.
+function NextSteps({ steps, whatWeNeed }: { steps: ReturnType<typeof nextStepsFor>; whatWeNeed: string | null }) {
+  return (
+    <section aria-labelledby="next-steps" className="mt-12 px-5" data-testid="quote-next-steps">
+      <h2 id="next-steps" className="text-xl font-bold">
+        What happens next
+      </h2>
+      <ol className="mt-5 flex flex-col gap-5">
+        {steps.map((step, at) => (
+          <li key={step.key} className="flex gap-4" data-testid={`next-step-${step.key}`}>
+            <span
+              aria-hidden="true"
+              className="flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-navy text-sm font-bold tabular-nums"
+            >
+              {at + 1}
+            </span>
+            <div className="min-w-0 pt-1">
+              <p className="font-semibold">{step.label}</p>
+              <p className={cn("mt-0.5 text-base text-pretty", step.key === "pay" && "font-semibold")}>
+                {step.key === "colour" && step.done ? (
+                  <Check aria-hidden="true" className="mr-1.5 -mt-0.5 inline size-4 text-navy" strokeWidth={2.5} />
+                ) : null}
+                {step.text}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ol>
+      {whatWeNeed ? (
+        <div className="mt-6">
+          <WhatWeNeed text={whatWeNeed} variant="inline" />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function WhatWeNeed({ text, variant }: { text: string; variant: "row" | "inline" }) {
+  return (
+    <Disclosure title="What we’ll need" variant={variant} testId="quote-what-we-need">
+      <ul className="flex flex-col gap-2.5 text-base text-pretty">
+        {text
+          .split(/\n+/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line, at) => (
+            <li key={at} className="flex gap-3">
+              <span aria-hidden="true" className="mt-2.5 size-1.5 shrink-0 rounded-full bg-navy/50" />
+              <span>{line}</span>
+            </li>
+          ))}
+      </ul>
+    </Disclosure>
+  );
+}
+
+function Warranty({ warranty, serviceCallFee }: { warranty: string; serviceCallFee: number | null }) {
+  if (!warranty.trim()) return null;
+  return (
+    <Disclosure title="Warranty" testId="quote-warranty">
+      <ul className="flex flex-col gap-2.5 text-base text-pretty">
+        {warranty
+          .split(/\n+/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line, at) => (
+            <li key={at} className="flex gap-3">
+              <span aria-hidden="true" className="mt-2.5 size-1.5 shrink-0 rounded-full bg-navy/50" />
+              <span>{line}</span>
+            </li>
+          ))}
+      </ul>
+      {serviceCallFee ? (
+        <p className="mt-4 font-semibold" data-testid="quote-service-call">
+          Service call fee for years 6 to 10: {formatMoney(serviceCallFee)}
+        </p>
+      ) : null}
+    </Disclosure>
+  );
+}
+
+function Footer({ company }: { company: CustomerQuote["company"] }) {
+  return (
+    <footer className="mt-10 flex flex-col gap-1 px-5 text-sm text-pretty text-muted-foreground" data-testid="quote-footer">
+      <p className="font-semibold text-foreground">{company.name}</p>
+      <p>{company.address}</p>
+      <a
+        href={phoneHref(company.phone, "tel")}
+        className="-mx-1 inline-flex min-h-11 items-center self-start rounded-sm px-1 text-foreground tabular-nums underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {company.phone}
+      </a>
+      <a
+        href={`mailto:${company.email}?subject=${encodeURIComponent("My Vesper quote")}`}
+        className="-mx-1 inline-flex min-h-11 items-center self-start rounded-sm px-1 text-foreground underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {company.email}
+      </a>
+    </footer>
+  );
+}
+
+// Keenan's two lines for an option under the minimum, word for word.
 function MinimumWords({ minimum }: { minimum: number }) {
   return (
     <>
@@ -564,7 +785,7 @@ function MinimumWords({ minimum }: { minimum: number }) {
   );
 }
 
-// "Price held until March 2, 2027" under the total; after that date the
+// "Price held until March 2, 2027." under the total; after that date the
 // page still works and says so, in navy rather than the quiet grey.
 function PriceHold({ validUntil, passed, className }: { validUntil: string | null; passed: boolean; className?: string }) {
   if (!validUntil) return null;
@@ -574,63 +795,65 @@ function PriceHold({ validUntil, passed, className }: { validUntil: string | nul
     </p>
   ) : (
     <p className={cn("text-sm text-muted-foreground", className)} data-testid="quote-price-hold">
-      Price held until {formatFullDate(validUntil)}
+      Price held until {formatFullDate(validUntil)}.
     </p>
   );
 }
 
-// The total counting to its new value. A screen reader reads the exact
-// figure; the counting digits are for the eye only.
-function CountedTotal({ subtotal, gstEnabled }: { subtotal: number; gstEnabled: boolean }) {
-  const shown = useCountTo(subtotal);
-  const settled = shown === subtotal;
-  return (
-    <>
-      <span aria-hidden="true" className="tabular-nums">
-        {formatMoney(settled ? subtotal : Math.round(shown))}
-        {gstEnabled ? <span className="ml-1.5 text-[0.5em] font-semibold">+ GST</span> : null}
-      </span>
-      <span className="sr-only">{screenTotal(subtotal, gstEnabled)}</span>
-    </>
-  );
-}
+// A breakdown line's place, the same for every option: "Control box" and
+// "Control boxes (2)" are one line whose count differs.
+const lineKey = (line: QuoteLine) => (/^Control box/.test(line.label) ? "Control box" : line.label);
 
-// The price line by line. A line that drops off (upper access when every
-// upper run is off, extra work only with upper runs) or appears (the top-up
-// to the minimum) eases in and out rather than jumping. Under the minimum,
-// "Before the minimum" shows the lines' own sum, discount taken (not called a
-// subtotal, which the PDF uses for the total before GST), so the top-up visibly
-// raises that rather than cancelling the discount; the column closes on its
-// total for anyone checking the sum downwards (the critique, 2026-11-04).
+// The option's price line by line, in the same rows and words as the iPad,
+// ending on one Total. A line one option has and another hasn't (upper
+// access, extra work only with upper runs, the top-up to the minimum) eases
+// in and out rather than jumping. Under the minimum, "Before the minimum"
+// shows the lines' own sum, discount taken (not called a subtotal, which
+// the PDF uses for the total before GST), so the top-up visibly raises that
+// rather than cancelling the discount (the critique, 2026-11-04).
 function Breakdown({
-  full,
+  every,
   current,
   beforeMinimum,
-  totalSubtotal,
+  subtotal,
   gstEnabled,
 }: {
-  full: QuoteLine[];
+  // Every shown option's lines, so a line can ease in and out between them.
+  every: QuoteLine[][];
   current: QuoteLine[];
   beforeMinimum: number;
-  totalSubtotal: number;
+  subtotal: number;
   gstEnabled: boolean;
 }) {
   const keyed = (lines: QuoteLine[]) => {
     const seen = new Map<string, number>();
     return lines.map((line) => {
-      const count = seen.get(line.label) ?? 0;
-      seen.set(line.label, count + 1);
-      return { key: `${line.label}#${count}`, line };
+      const base = lineKey(line);
+      const count = seen.get(base) ?? 0;
+      seen.set(base, count + 1);
+      return { key: `${base}#${count}`, line };
     });
   };
   const now = new Map(keyed(current).map(({ key, line }) => [key, line]));
-  const rows = [...keyed(full)];
-  for (const entry of keyed(current)) if (!rows.some((row) => row.key === entry.key)) rows.push(entry);
+  // Every line any option has, each in its place in the options' own order.
+  const rows: { key: string; line: QuoteLine }[] = [];
+  for (const lines of [...every, current]) {
+    let after = -1;
+    for (const entry of keyed(lines)) {
+      const found = rows.findIndex((row) => row.key === entry.key);
+      if (found >= 0) {
+        after = found;
+        continue;
+      }
+      rows.splice(after + 1, 0, entry);
+      after += 1;
+    }
+  }
   const isMinimum = (line: QuoteLine) => line.label.startsWith("To reach");
   return (
-    <dl className="mt-5 flex flex-col border-t" data-testid="quote-lines">
-      {rows.map(({ key, line: before }) => {
-        const line = now.get(key) ?? before;
+    <dl className="mt-4 flex flex-col border-t" data-testid="quote-lines">
+      {rows.map(({ key, line: other }) => {
+        const line = now.get(key) ?? other;
         const shown = now.has(key);
         return (
           <div key={key} className="quote-row" data-shown={shown} aria-hidden={!shown} data-line={line.label}>
@@ -641,10 +864,10 @@ function Breakdown({
           </div>
         );
       })}
-      <div className="flex items-baseline justify-between gap-4 border-t border-navy py-2.5" data-testid="line-total">
-        <dt className="font-bold">Total</dt>
-        <dd className="shrink-0 font-bold">
-          <CountedTotal subtotal={totalSubtotal} gstEnabled={gstEnabled} />
+      <div className="flex items-baseline justify-between gap-4 border-t border-navy py-3" data-testid="line-total">
+        <dt className="text-lg font-bold">Total</dt>
+        <dd className="shrink-0 text-2xl font-bold">
+          <Money subtotal={subtotal} gstEnabled={gstEnabled} />
         </dd>
       </div>
     </dl>
@@ -662,9 +885,9 @@ function SumRow({ label, amount, testId }: { label: string; amount: string; test
   );
 }
 
-function LineRow({ label, detail, amount, testId }: { label: string; detail?: string | null; amount: string; testId?: string }) {
+function LineRow({ label, detail, amount }: { label: string; detail?: string | null; amount: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b py-2.5" data-testid={testId}>
+    <div className="flex items-baseline justify-between gap-4 border-b py-2.5">
       <dt className="min-w-0">
         <span className="font-medium">{label}</span>
         {detail ? <span className="block text-sm text-muted-foreground">{detail}</span> : null}
@@ -672,19 +895,6 @@ function LineRow({ label, detail, amount, testId }: { label: string; detail?: st
       <dd className="shrink-0 font-semibold tabular-nums">{amount}</dd>
     </div>
   );
-}
-
-// Beside each switch: a small close-up of that run's own part of the house,
-// lit while the run is on and dashed once it's off, so the house answers the
-// thumb wherever the page is scrolled. A run drawn nowhere ("other") keeps
-// the space empty so the names still line up.
-function RunMark({ run, on }: { run: CustomerQuote["quote"]["runs"][number]; on: boolean }) {
-  const segments = segmentsFor(run);
-  if (segments.length === 0) return <span aria-hidden="true" className="w-14 shrink-0" />;
-  const states = Object.fromEntries(
-    HOUSE_SEGMENTS.map((segment) => [segment, segments.includes(segment) ? (on ? "on" : "off") : "none"]),
-  ) as Record<HouseSegment, SegmentState>;
-  return <HouseDiagram states={states} mini decorative crop={SEGMENT_CROPS[segments[0]]} px={56} className="w-14 shrink-0" />;
 }
 
 // "What do these mean?": the same house, small, one part lit at a time,
@@ -709,9 +919,7 @@ function PartsExplained() {
       <ul className="flex flex-col gap-3">
         {EXPLAINED.map((item) => {
           const states = Object.fromEntries(
-            (["garage-gable", "garage", "lower-eave", "porch", "upper-eave", "upper-gable", "lower-sides", "upper-sides"] as const).map(
-              (segment) => [segment, item.lit.includes(segment) ? "on" : "none"],
-            ),
+            HOUSE_SEGMENTS.map((segment) => [segment, item.lit.includes(segment) ? "on" : "none"]),
           ) as Record<HouseSegment, "on" | "none">;
           return (
             <li key={item.title} className="flex items-center gap-4">
@@ -729,10 +937,13 @@ function PartsExplained() {
 }
 
 // The bar fixed to the bottom: Call, Text, and the one gold button on the
-// page. Once they've asked to book this choice, it says so instead.
+// page. Once they've asked to book the option on screen, it says so
+// instead; after the quote is accepted, or with no option to book, it
+// holds Call and Text alone.
 function BookBar({
   callHref,
   textHref,
+  canBook,
   booked,
   update,
   sending,
@@ -742,6 +953,7 @@ function BookBar({
 }: {
   callHref: string;
   textHref: string;
+  canBook: boolean;
   booked: boolean;
   update: boolean;
   sending: boolean;
@@ -749,10 +961,12 @@ function BookBar({
   error: string | null;
   onBook: () => void;
 }) {
-  const contact =
-    "inline-flex h-12 shrink-0 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-base font-semibold outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring";
+  const contact = cn(
+    "inline-flex h-12 shrink-0 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-base font-semibold outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
+    !canBook && "flex-1",
+  );
   return (
-    <aside aria-label="Book your install" className="fixed inset-x-0 bottom-0 z-20 border-t bg-background pb-[env(safe-area-inset-bottom)]" data-testid="quote-bar">
+    <aside aria-label={canBook ? "Book your install" : "Call or text us"} className="fixed inset-x-0 bottom-0 z-20 border-t bg-background pb-[env(safe-area-inset-bottom)]" data-testid="quote-bar">
       {error ? (
         <p role="alert" className="mx-auto max-w-xl px-4 pt-3 text-sm font-semibold text-pretty text-destructive">
           {error}
@@ -771,7 +985,7 @@ function BookBar({
           <MessageSquare aria-hidden="true" className="size-[1.125rem]" />
           Text
         </a>
-        {booked ? (
+        {!canBook ? null : booked ? (
           <p className="min-w-0 flex-1 text-right text-sm text-pretty" data-testid="bar-requested">
             <span className="block font-semibold">Install requested</span>
             <span className="block text-muted-foreground">Keenan will be in touch.</span>
@@ -841,22 +1055,7 @@ function ThankYou({
           There’s nothing to sign or pay today. No payment until your install is complete.
         </p>
       </div>
-      <dl className="flex flex-col divide-y rounded-md border">
-        <div className="flex flex-col gap-0.5 px-4 py-3">
-          <dt className="text-sm font-semibold text-muted-foreground">Your choice</dt>
-          <dd className="font-semibold text-pretty" data-testid="thanks-option">
-            {customerChoice(thanks.option)}
-          </dd>
-        </div>
-        {thanks.total ? (
-          <div className="flex flex-col gap-0.5 px-4 py-3">
-            <dt className="text-sm font-semibold text-muted-foreground">Total</dt>
-            <dd className="text-xl font-bold tabular-nums" data-testid="thanks-total">
-              {thanks.total}
-            </dd>
-          </div>
-        ) : null}
-      </dl>
+      <ChoiceCard option={thanks.option} total={thanks.total} testIds={{ option: "thanks-option", total: "thanks-total" }} />
       <div className="flex flex-col gap-3">
         <p className="font-semibold text-pretty">Changed your mind? Call or text Keenan.</p>
         <ContactButtons company={company} />
@@ -874,8 +1073,10 @@ function ThankYou({
 
 // Their mockup, full width in a 3:2 frame on navy, so the whole picture
 // shows; the expand button (or a tap anywhere on it) opens it full screen
-// to pinch and zoom. Space is kept for it while it loads.
-function Mockup({ url }: { url: string }) {
+// to pinch and zoom. Space is kept for it while it loads. When the option
+// on screen doesn't cover every run, a caption says the mockup shows them
+// all, so nobody thinks they're getting lights they're not.
+function Mockup({ url, caption }: { url: string; caption: string | null }) {
   const [open, setOpen] = useState(false);
   const [broken, setBroken] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
@@ -898,7 +1099,7 @@ function Mockup({ url }: { url: string }) {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Open the picture of your house full screen"
-        className="group block aspect-[3/2] w-full overflow-hidden bg-navy outline-none focus-visible:outline-solid focus-visible:outline-3 focus-visible:-outline-offset-4 focus-visible:outline-white"
+        className="group relative block aspect-[3/2] w-full overflow-hidden bg-navy outline-none focus-visible:outline-solid focus-visible:outline-3 focus-visible:-outline-offset-4 focus-visible:outline-white"
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- a private photo behind a ten-minute signed link */}
         <img
@@ -916,6 +1117,11 @@ function Mockup({ url }: { url: string }) {
           <Maximize2 className="size-5" strokeWidth={1.5} />
         </span>
       </button>
+      {caption ? (
+        <figcaption className="px-5 pt-2 text-sm text-pretty text-muted-foreground" data-testid="mockup-caption">
+          {caption}
+        </figcaption>
+      ) : null}
       <MockupViewer url={url} open={open} onClose={close} />
     </figure>
   );

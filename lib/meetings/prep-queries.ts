@@ -1,5 +1,5 @@
 import "server-only";
-import { prepSummary, rooflineFacts, rooflineState, type PrepSummary, type RooflineState } from "@/lib/meetings/prep";
+import { prepSummary, quoteDraftedAhead, rooflineFacts, rooflineState, type PrepSummary, type RooflineState } from "@/lib/meetings/prep";
 import type { QuestionLead } from "@/lib/leads/questions";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
@@ -8,7 +8,8 @@ type Client = Awaited<ReturnType<typeof createClient>>;
 type PhotoSlot = Database["public"]["Enums"]["photo_slot"];
 
 // The prep list's facts for some leads (round 7, Keenan, 2026-11-08): the
-// mockup, the track colour, a quote with runs, the six questions, and (round
+// mockup, the track colour, a quote drafted ahead (round 9: an offer with a
+// measured run), the six questions, and (round
 // 7, Branch B) the roofline traced for the light picker. Owner only: quotes
 // and traces are his alone, and the screens that call this are his.
 export type PrepLead = QuestionLead & { id: string };
@@ -25,12 +26,13 @@ export async function prepFor(
   const [{ data: colours }, { data: photos }, { data: quotes }, { data: traces }] = await Promise.all([
     supabase.from("leads").select("id, track_colour_id, track_ral_code").in("id", ids),
     supabase.from("lead_photos").select("id, lead_id, slot").in("lead_id", ids),
-    supabase.from("quotes").select("lead_id, runs").in("lead_id", ids),
+    supabase.from("quotes").select("lead_id, runs, offers").in("lead_id", ids),
     supabase.from("roofline_traces").select("lead_id, photo_id, photo_slot").in("lead_id", ids),
   ]);
   const hasColour = new Set((colours ?? []).filter((row) => row.track_colour_id || row.track_ral_code).map((row) => row.id));
   const hasMockup = new Set((photos ?? []).filter((row) => row.slot === "mockup").map((row) => row.lead_id));
-  const hasQuote = new Set((quotes ?? []).filter((row) => Array.isArray(row.runs) && row.runs.length > 0).map((row) => row.lead_id));
+  // Round 9: a quote counts once an offer covers a measured run.
+  const hasQuote = new Set((quotes ?? []).filter((row) => quoteDraftedAhead(row)).map((row) => row.lead_id));
   const roofline = rooflineStates(traces ?? [], photos ?? []);
   for (const lead of leads) {
     const meeting = meetingFor(lead.id);

@@ -41,7 +41,10 @@ import { cn } from "@/lib/utils";
 // Try it on your house (round 7, the settled spec's light_picker and the
 // motion section's picker rules): the customer's own house at dusk, lit,
 // and they choose the look on the spot. The deck's one peak and Keenan's
-// trial close.
+// trial close. Round 9: it follows Your house, which shows this same photo
+// by day in this same crop and layout, so the turn is the reveal; it opens
+// on Warm white, Steady, and its line says "Most nights, warm white." (the
+// Warm white page only stands in when there is no trace).
 //
 // The photo fills the top, framed to the trace's bounds joined with its
 // scale handles (the garage or front door's bottom corners) plus 10%, on one
@@ -80,7 +83,7 @@ import { cn } from "@/lib/utils";
 //                 (signed, loaded crossOrigin anonymous) and its stored trace
 //     looks       the looks on offer (DeckPayload.looks)
 //     headline    "Try it on your house" (settings.deck)
-//     words       the line under it (settings.deck)
+//     words       the line under it (settings.deck), up to two lines
 //     current     the page is on screen and the scroll has settled
 //     stored      MeetingStored.picker, or undefined in a new meeting
 //     onStored    called with the new { look, effect, played } on every change
@@ -255,7 +258,7 @@ export function PickerPage({
         />
       </div>
 
-      <div data-testid="picker-tray" className="flex shrink-0 flex-col bg-background" style={{ height: TRAY_HEIGHT_CSS }}>
+      <div data-testid="picker-tray" data-deck-tray="" className="flex shrink-0 flex-col bg-background" style={{ height: TRAY_HEIGHT_CSS }}>
         <div className="flex min-h-0 flex-1 flex-col" style={{ paddingTop: TRAY.padTop, paddingInline: TRAY.sidePadding }}>
           <div className="my-auto flex flex-col" style={{ gap: TRAY.rowGap }}>
             <div
@@ -287,7 +290,7 @@ export function PickerPage({
                 ) : null}
                 {words ? (
                   <p
-                    className="text-pretty text-muted-foreground"
+                    className="line-clamp-2 text-pretty text-muted-foreground"
                     style={{ fontSize: TRAY_CSS.wordsSize, lineHeight: TRAY_CSS.wordsLeading }}
                   >
                     {smartApostrophes(words)}

@@ -146,7 +146,9 @@ describe("crops and the focus point", () => {
     expect(slotCrop(slot("what_vesper_is.hero"))?.aspect).toBe(BAND_PHOTO_ASPECT);
     expect(slotCrop(slot("hidden_by_day.night"))?.aspect).toBe(BAND_PHOTO_ASPECT);
     expect(slotCrop(slot("gallery.garage"))?.aspect).toBe(BAND_PHOTO_ASPECT);
-    expect(slotCrop(slot("install_day.hero"))?.aspect).toBe(SPLIT_PHOTO_ASPECT);
+    expect(slotCrop(slot("warranty.hero"))?.aspect).toBe(SPLIT_PHOTO_ASPECT);
+    // What happens next's photo sits on the left 34% (round 9).
+    expect(slotCrop(slot("install_day.hero"))?.aspect).toBeCloseTo((1180 * 0.34) / 820, 6);
     expect(slotCrop(slot("warranty.hero"))?.aspect).toBe(SPLIT_PHOTO_ASPECT);
     expect(slotCrop(slot("what_vesper_is.more"))?.aspect).toBe(SPLIT_PHOTO_ASPECT);
     expect(slotCrop(slot("phone_control.screens"))).toBeNull();

@@ -1,19 +1,22 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { hasDash, hasExclamation, parseDeckWords, parseLooks, WORDS_PAGES, type Look } from "@/lib/deck";
+import { DECK_LINE_DEFAULTS, hasDash, hasExclamation, parseDeckWords, parseLooks, WORDS_PAGES, type Look, type PageWords } from "@/lib/deck";
 import {
   DECK_SEED,
   deckWordIssues,
+  LINES_HELP,
   lookTextWidth,
   lookWrapIssues,
   looksIssues,
   LOOKS_SEED,
   PAGE_HELP,
+  ROUND7_SEED,
   type MeasureLabel,
 } from "@/lib/settings/deck-schema";
 
 // The words and looks Settings marks as Draft are exactly what the seed
-// migration wrote, and they pass every rule Settings enforces.
+// migrations wrote (round 7's, then round 9's changes where the words still
+// match round 7's), and they pass every rule Settings enforces.
 
 const migration = readFileSync(
   new URL("../../supabase/migrations/20261108080527_round7_deck_words_and_looks.sql", import.meta.url),
@@ -25,10 +28,67 @@ const between = (tag: string) => {
   return JSON.parse(match[1]);
 };
 
+// Round 9's seed migration: named TEMP_ until it is applied, then by the
+// version the database records for it.
+const round9File = readdirSync(new URL("../../supabase/migrations/", import.meta.url)).find((name) => /round9_deck_words\.sql$/.test(name));
+const round9 = round9File ? readFileSync(new URL(`../../supabase/migrations/${round9File}`, import.meta.url), "utf8") : "";
+
+const FIELD: Record<string, keyof PageWords> = { headline: "headline", words: "words", more_label: "moreLabel", more_text: "moreText" };
+const stored = (page: PageWords) => ({ headline: page.headline, words: page.words, more_label: page.moreLabel, more_text: page.moreText });
+
 describe("the seeded deck words and looks", () => {
-  it("are word for word what the migration seeded", () => {
-    expect(DECK_SEED).toEqual(parseDeckWords(between("deck")));
+  it("are word for word what the round 7 migration seeded", () => {
+    const pages = between("deck").pages as Record<string, Record<string, string>>;
+    for (const [key, page] of Object.entries(ROUND7_SEED)) expect(stored(page), key).toEqual(pages[key]);
+    expect(Object.keys(ROUND7_SEED).sort()).toEqual(Object.keys(pages).sort());
     expect(LOOKS_SEED).toEqual(parseLooks(between("looks")));
+  });
+
+  it("change in round 9 only where the words still read as round 7 seeded them, to the five seats' words", () => {
+    expect(round9).not.toBe("");
+    const updates = [
+      ...round9.matchAll(
+        /jsonb_set\(deck, '\{pages,(\w+),(\w+)\}', to_jsonb\(\$new\$([\s\S]*?)\$new\$::text\)\)\s+where id = 1\s+and deck #>> '\{pages,(\w+),(\w+)\}' = \$old\$([\s\S]*?)\$old\$;/g,
+      ),
+    ];
+    expect(updates.map((match) => `${match[1]}.${match[2]}`)).toEqual([
+      "what_vesper_is.more_text",
+      "hidden_by_day.more_text",
+      "phone_control.words",
+      "light_picker.words",
+      "mockup.headline",
+      "mockup.words",
+    ]);
+    const after = JSON.parse(JSON.stringify(ROUND7_SEED)) as Record<string, PageWords>;
+    for (const [, page, field, next, wherePage, whereField, old] of updates) {
+      expect(`${wherePage}.${whereField}`).toBe(`${page}.${field}`);
+      expect(old, `${page}.${field}`).toBe(ROUND7_SEED[page][FIELD[field]]);
+      after[page][FIELD[field]] = next;
+    }
+    // The new pages, added only where the deck has none.
+    const house = round9.match(/'\{pages,your_house\}', \$page\$([\s\S]*?)\$page\$::jsonb\)\s+where id = 1[\s\S]*?#> '\{pages,your_house\}' is null;/);
+    expect(house).not.toBeNull();
+    // What happens next carries What we'll need over from How install day works.
+    expect(round9).toMatch(/'\{pages,next_steps\}', jsonb_build_object\(\s+'headline', 'What happens next',\s+'words', '',/);
+    expect(round9).toContain("coalesce(nullif(deck #>> '{pages,install_day,more_label}', ''), $t$What we'll need$t$)");
+    expect(round9).toContain(`coalesce(nullif(deck #>> '{pages,install_day,more_text}', ''), $t$${ROUND7_SEED.install_day.moreText}$t$)`);
+    expect(round9).toMatch(/#> '\{pages,next_steps\}' is null;/);
+    const nextSteps = { headline: "What happens next", words: "", more_label: ROUND7_SEED.install_day.moreLabel, more_text: ROUND7_SEED.install_day.moreText };
+    // Every line, word for word, added only where the deck has none.
+    const lines = round9.match(/'\{lines\}', \$lines\$([\s\S]*?)\$lines\$::jsonb\)\s+where id = 1\s+and deck -> 'lines' is null;/);
+    expect(JSON.parse(lines?.[1] ?? "{}")).toEqual(DECK_LINE_DEFAULTS);
+    const pages = Object.fromEntries(Object.entries(after).map(([key, page]) => [key, stored(page)]));
+    const seeded = parseDeckWords({
+      pages: { ...pages, your_house: JSON.parse(house?.[1] ?? "{}"), next_steps: nextSteps },
+      warranty_lines_up_front: 3,
+      lines: JSON.parse(lines?.[1] ?? "{}"),
+    });
+    expect(seeded).toEqual(DECK_SEED);
+  });
+
+  it("are plain statements the connector runs without asking: no blocks, nothing that takes anything away", () => {
+    expect(round9).not.toMatch(/\bdo\s*\$|\bdrop\b|\bdelete\b|\btruncate\b/i);
+    expect(round9).not.toMatch(/[‒-―]/);
   });
 
   it("pass every rule Settings enforces", () => {
@@ -37,7 +97,7 @@ describe("the seeded deck words and looks", () => {
   });
 
   it("carry no dashes or exclamation marks, and neither does Settings' help", () => {
-    const strings: string[] = [];
+    const strings: string[] = [LINES_HELP, ...Object.values(DECK_SEED.lines)];
     for (const page of WORDS_PAGES) strings.push(...Object.values(DECK_SEED.pages[page]), PAGE_HELP[page]);
     for (const look of LOOKS_SEED) strings.push(look.name, look.words, ...look.colours.map((colour) => colour.name));
     for (const text of strings) {

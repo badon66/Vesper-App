@@ -14,12 +14,11 @@ import {
 } from "react";
 
 import { PickerPage } from "@/components/meeting/picker-page";
-import { ColourPage, type Confirmation, type DeckColour } from "@/components/meeting/colour-page";
+import { ColourPage, confirmedTonight, type Confirmation, type DeckColour } from "@/components/meeting/colour-page";
 import { DeckContext, type DeckContextValue, type EmptySlotRenderer } from "@/components/meeting/deck-parts";
 import {
   CoverPage,
   HiddenByDayPage,
-  InstallDayPage,
   MockupPage,
   PhonePage,
   WarrantyPage,
@@ -29,26 +28,40 @@ import {
 } from "@/components/meeting/deck-pages";
 import { ExitHold } from "@/components/meeting/exit-hold";
 import { GalleryPage } from "@/components/meeting/gallery-page";
+import { NextStepsPage } from "@/components/meeting/next-steps-page";
 import { QuoteScreen } from "@/components/meeting/quote-screen";
+import { YourHousePage } from "@/components/meeting/your-house-page";
 import type { DeckPageKey } from "@/lib/deck";
 import { CUSTOM_CHOICE, leadTrackColour, trackColourText } from "@/lib/leads/track-colour";
 import { coolWhiteOf, warmWhiteOf } from "@/lib/lights/looks";
 import {
+  bottomRowWidth,
   coverLine,
   DECK_CLEAR_CSS,
   DECK_ROW_BOTTOM_CSS,
   DECK_SIZES,
   deckPages,
   entryOf,
+  frontPhotoOf,
   GALLERY_HERO_COUNT,
   galleryItems,
+  houseView,
   isNear,
+  measuredFeet,
+  nextLabelParts,
+  recapLine,
+  shownInstallDay,
   startIndex,
   stepFor,
+  type DeckLead,
   type DeckPage,
 } from "@/lib/meeting/deck-pages";
 import {
+  colourTimingFor,
   quoteFingerprint,
+  quoteInputs,
+  quoteOffers,
+  quoteRushFee,
   startingPoint,
   type DeckPayload,
   type MeetingPayload,
@@ -56,20 +69,28 @@ import {
   type PickerStored,
   type QuoteUIState,
 } from "@/lib/meeting/state";
-import { useReducedMotion } from "@/lib/motion";
+import { EASE_QUIET, useReducedMotion } from "@/lib/motion";
+import { priceOffer } from "@/lib/quotes/offers";
+import { smartApostrophes } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 
-// The deck (round 7, the settled spec): every page in the spec's order, swiped
-// sideways, nothing internal anywhere. Always dark navy, whatever the
-// device's theme. Meeting mode renders it for one lead; the rehearsal view
-// renders the same deck under its own bar.
+// The deck (round 7, the settled spec; round 9, the meeting as one story):
+// every page in the spec's order, swiped sideways, nothing internal
+// anywhere. Always dark navy, whatever the device's theme. Meeting mode
+// renders it for one lead; the rehearsal view renders the same deck under
+// its own bar. The Vesper pages come first, then their house (Your house,
+// the light picker, the colour, the price) and What happens next. A quiet
+// "Next: {headline}" sits right of the forward chevron on every page but
+// the last; the turn from Your house to the light picker (and back)
+// cross-fades the band instead of sliding, so their photo stays put.
 //
 // CONTRACT
 //   <Deck
 //     deck             the deck's payload (MeetingPayload.deck, or the
 //                      rehearsal's own loadDeckPayload with no lead)
 //     meeting          the lead's whole payload; null with no lead (rehearsal
-//                      only), which skips the picker, mockup, colour and price
+//                      only), which skips Your house, the picker, the mockup,
+//                      the colour and the price
 //     mode?            "meeting" (default): keeps the iPad's copy in
 //                      localStorage, guards against an edge swipe back, and
 //                      saves through the meeting's server actions.
@@ -89,7 +110,7 @@ import { cn } from "@/lib/utils";
 //                      opens as #start, #quote or a reload says, and ignores it.
 //     onPage?          told the page in view each time it changes
 //   />
-// Layers (a page's More, the contact sheet, the colour chooser) mount inside
+// Layers (a page's More, the contact sheet, the colour chooser, Pick a day) mount inside
 // the deck, so a frame smaller than the screen keeps them. While one is open
 // the pager is locked, the dots and chevrons hide (Back is the way out), and
 // any page change closes it. The deck's root sets --deck-band (the band's
@@ -153,6 +174,19 @@ function writeStored(leadId: string, value: MeetingStored) {
 
 const subscribeNever = () => () => {};
 
+// Whether the quote on the iPad is the lead's accepted one, read only: its
+// prices and colour timing stay as they were agreed.
+function acceptedQuote(meeting: MeetingPayload | null): boolean {
+  const draft = meeting?.draft as { accepted?: unknown } | null | undefined;
+  return draft?.accepted === true;
+}
+
+// The turn that cross-fades: Your house and the light picker show the same
+// photo in the same place, so only the band changes.
+const isHouseTurn = (a: DeckPageKey | undefined, b: DeckPageKey | undefined) =>
+  (a === "your_house" && b === "light_picker") || (a === "light_picker" && b === "your_house");
+const HOUSE_FADE_MS = 300;
+
 // The iPad's own copy lives in localStorage, which only the browser has. The
 // server and the first browser render both show the cover; the deck then
 // starts from that copy, so the two renders always agree.
@@ -161,7 +195,7 @@ export function Deck(props: DeckProps) {
   if (!inBrowser) {
     return (
       <div className={cn(ROOT_CLASS, props.className ?? "relative h-full w-full")} style={ROOT_STYLE}>
-        <CoverPage line={props.meeting ? coverLine(props.meeting.lead) : null} />
+        <CoverPage line={props.meeting ? coverLine(props.meeting.lead) : null} tagline={props.deck.words.lines.cover_line} />
       </div>
     );
   }
@@ -173,13 +207,7 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
   const persist = mode === "meeting" && meeting !== null;
   const fillEmpty = mode === "rehearsal" && renderEmptySlot !== undefined;
   const readOnly = mode === "rehearsal";
-
-  const pages = useMemo<DeckPage[]>(
-    () => deckPages({ deck, lead: meeting ? { mockupUrl: meeting.mockupUrl } : null, fillEmpty }),
-    [deck, meeting, fillEmpty],
-  );
-  const gallery = useMemo(() => galleryItems(deck, fillEmpty), [deck, fillEmpty]);
-  const galleryCount = Math.min(gallery.length, GALLERY_HERO_COUNT);
+  const accepted = acceptedQuote(meeting);
 
   // Tonight, the Meetings page and the lead page open the deck with #start
   // (a fresh meeting, at the cover); prep's Draft the quote with #quote (on
@@ -188,27 +216,46 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
   const [start] = useState(() =>
     meeting ? startingPoint(meeting, persist ? readStored(meeting.lead.id) : null, Date.now(), entry === "start") : null,
   );
+  const [colour, setColour] = useState<DeckColour>(() =>
+    meeting
+      ? { kind: meeting.lead.colourKind, text: meeting.lead.colourText, choice: meeting.colours.choice, ralCode: meeting.colours.ralCode }
+      : { kind: "none", text: "", choice: null, ralCode: null },
+  );
+  // The quote, with the one colour rule applied to its colour timing (only
+  // White is stock), unless it is the accepted quote, which stays as agreed.
+  const [quote, setQuote] = useState<QuoteUIState | null>(() => {
+    const opened = start?.quote ?? null;
+    if (!opened || accepted) return opened;
+    const timing = colourTimingFor(colour.kind, colour.text, opened.colourTiming);
+    return timing === opened.colourTiming ? opened : { ...opened, colourTiming: timing };
+  });
+
+  const frontPhotoUrl = meeting ? frontPhotoOf(meeting) : null;
+  const measured = quote !== null && measuredFeet(quote.runs) > 0;
+  const lead = useMemo<DeckLead | null>(
+    () => (meeting ? { mockupUrl: meeting.mockupUrl, frontPhotoUrl, measured } : null),
+    [meeting, frontPhotoUrl, measured],
+  );
+  const pages = useMemo<DeckPage[]>(() => deckPages({ deck, lead, fillEmpty }), [deck, lead, fillEmpty]);
+  const gallery = useMemo(() => galleryItems(deck, fillEmpty), [deck, fillEmpty]);
+  const galleryCount = Math.min(gallery.length, GALLERY_HERO_COUNT);
   const [startAt] = useState(() => {
     const asked = mode === "rehearsal" && startPage ? pages.findIndex((page) => page.key === startPage) : -1;
     return asked >= 0 ? asked : startIndex(pages, entry, { index: start?.index ?? 0, screenKey: start?.screenKey ?? null });
   });
   const [index, setIndex] = useState(startAt);
   const [settled, setSettled] = useState(true);
-  const [layer, setLayer] = useState<DeckPageKey | null>(null);
+  // The open layer: a page's key (its More, the contact sheet, the colour
+  // chooser) or "next_steps:day" (Pick a day).
+  const [layer, setLayer] = useState<string | null>(null);
   const [galleryAt, setGalleryAt] = useState(0);
   const [overlay, setOverlay] = useState<HTMLDivElement | null>(null);
 
-  const [quote, setQuote] = useState<QuoteUIState | null>(start?.quote ?? null);
   const [quoteId, setQuoteId] = useState<string | null>(start?.quoteId ?? null);
   const [savedAt, setSavedAt] = useState<string | null>(start?.savedAt ?? null);
   const [savedQuote, setSavedQuote] = useState<string | null>(start?.savedQuote ?? null);
   const [initialsDraft, setInitialsDraft] = useState(start?.initialsDraft ?? "");
   const [picker, setPicker] = useState<PickerStored | null>(start?.picker ?? null);
-  const [colour, setColour] = useState<DeckColour>(() =>
-    meeting
-      ? { kind: meeting.lead.colourKind, text: meeting.lead.colourText, choice: meeting.colours.choice, ralCode: meeting.colours.ralCode }
-      : { kind: "none", text: "", choice: null, ralCode: null },
-  );
   const [confirmation, setConfirmation] = useState<Confirmation>(() =>
     meeting?.lead.initials && meeting.lead.initialledAt ? { initials: meeting.lead.initials, at: meeting.lead.initialledAt } : null,
   );
@@ -223,6 +270,21 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
   useLayoutEffect(() => {
     indexRef.current = current;
   }, [current]);
+
+  // The pages can change mid-meeting (Your house appears once Keenan measures
+  // a house with no photo): stay on the page that was on screen.
+  const keyRef = useRef(currentKey);
+  useLayoutEffect(() => {
+    const box = pager.current;
+    const wanted = keyRef.current ? pages.findIndex((page) => page.key === keyRef.current) : -1;
+    if (!box || wanted < 0 || wanted === indexRef.current) return;
+    box.scrollLeft = wanted * box.clientWidth;
+    indexRef.current = wanted;
+    setIndex(wanted);
+  }, [pages]);
+  useEffect(() => {
+    keyRef.current = currentKey;
+  }, [currentKey]);
 
   useEffect(() => {
     if (currentKey) onPage?.(currentKey);
@@ -296,16 +358,30 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
     [pages.length, reduced],
   );
 
-  // A page turn from code (a swipe on the picker's photo or the mockup, a
-  // chevron, a key, a dot). Changing page closes any open layer.
+  // A page turn from code (a swipe on the picker's photo, Your house or the
+  // mockup, a chevron, a key). Changing page closes any open layer. Between
+  // Your house and the light picker the photo is the same and in the same
+  // place, so the turn is a jump with the band fading in over 300 ms: the
+  // photo stays put and dusk falls on it (instant with Reduce Motion).
   const turnPage = useCallback(
     (delta: number) => {
       const box = pager.current;
       if (!box || box.clientWidth === 0) return;
       setLayer(null);
-      scrollToPage(Math.round(box.scrollLeft / box.clientWidth) + delta);
+      const from = Math.round(box.scrollLeft / box.clientWidth);
+      const to = Math.min(pages.length - 1, Math.max(0, from + delta));
+      const toKey = pages[to]?.key;
+      if (to !== from && isHouseTurn(pages[from]?.key, toKey)) {
+        box.scrollTo({ left: to * box.clientWidth, behavior: "instant" });
+        if (!reduced) {
+          const band = box.querySelector(`section[data-page="${toKey}"] [data-deck-tray]`);
+          band?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: HOUSE_FADE_MS, easing: EASE_QUIET });
+        }
+        return;
+      }
+      scrollToPage(from + delta);
     },
-    [scrollToPage],
+    [scrollToPage, pages, reduced],
   );
 
   const goTo = useCallback(
@@ -362,7 +438,9 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
   }
 
   // A colour changed at the table: named on the iPad, asks for initials
-  // again, and moves the quote's colour line to match.
+  // again, and moves the quote's colour timing to match the one colour rule
+  // (only White is stock; any other colour is spring unless rush was
+  // already chosen). The accepted quote's timing stays as agreed.
   const onColourSaved = useCallback(
     (choice: string | null, ralCode: string | null) => {
       if (!meeting) return;
@@ -374,20 +452,34 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
         new Map(meeting.colours.list.map((item) => [item.id, item])),
         new Map(Object.entries(meeting.colours.ralNames)),
       );
-      setColour({ kind: named.kind, text: trackColourText(named), choice, ralCode });
+      const text = trackColourText(named);
+      setColour({ kind: named.kind, text, choice, ralCode });
       setConfirmation(null);
-      setQuote((now) =>
-        now
-          ? {
-              ...now,
-              colourTiming:
-                named.kind === "custom" ? (now.colourTiming === "rush" ? "rush" : "factory_order") : named.kind === "list" ? "stock" : null,
-            }
-          : now,
-      );
+      if (accepted) return;
+      setQuote((now) => (now ? { ...now, colourTiming: colourTimingFor(named.kind, text, now.colourTiming) } : now));
     },
-    [meeting],
+    [meeting, accepted],
   );
+
+  // The colour page's two timing buttons set the quote's colour timing, so
+  // every option on the price page is already priced with it.
+  const onTiming = useCallback(
+    (timing: "factory_order" | "rush") => {
+      if (accepted) return;
+      setQuote((now) => (now && now.colourTiming !== timing ? { ...now, colourTiming: timing } : now));
+    },
+    [accepted],
+  );
+
+  // What happens next reads back the option chosen on the price page, priced
+  // as the price page prices it.
+  const recap = useMemo(() => {
+    if (!meeting || !quote?.chosenOffer) return null;
+    const offer = quoteOffers(quote).find((item) => item.id === quote.chosenOffer);
+    const totals = offer ? priceOffer(quoteInputs(quote, meeting.pricing), offer) : null;
+    if (!offer || !totals || totals.totalFeet <= 0) return null;
+    return recapLine(deck.words.lines, offer.name, totals.subtotal, meeting.pricing.gstEnabled);
+  }, [meeting, quote, deck.words.lines]);
 
   const context = useMemo<DeckContextValue>(
     () => ({
@@ -400,14 +492,14 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
     [overlay, reduced, fillEmpty, renderEmptySlot, deck.looks],
   );
 
-  const moreOf = (key: DeckPageKey): MoreState => ({ open: layer === key, set: (open) => setLayer(open ? key : null) });
+  const moreOf = (key: string): MoreState => ({ open: layer === key, set: (open) => setLayer(open ? key : null) });
 
   function renderPage(page: DeckPage, at: number): ReactNode {
     const near = isNear(at, current);
     const shared = { deck, near, more: moreOf(page.key), fillEmpty };
     switch (page.key) {
       case "cover":
-        return <CoverPage line={meeting ? coverLine(meeting.lead) : null} />;
+        return <CoverPage line={meeting ? coverLine(meeting.lead) : null} tagline={deck.words.lines.cover_line} />;
       case "what_vesper_is":
         return <WhatVesperPage {...shared} />;
       case "hidden_by_day":
@@ -441,10 +533,23 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             onSheet={(open) => setLayer(open ? "gallery" : null)}
           />
         );
-      case "install_day":
-        return <InstallDayPage {...shared} />;
       case "warranty":
         return <WarrantyPage {...shared} />;
+      case "your_house": {
+        const view = houseView(deck, lead);
+        return view && quote !== null ? (
+          <YourHousePage
+            deck={deck}
+            view={view}
+            words={deck.words.pages.your_house}
+            lines={deck.words.lines}
+            runs={quote.runs}
+            near={near}
+            more={moreOf("your_house")}
+            onSwipe={turnPage}
+          />
+        ) : null;
+      }
       case "mockup":
         return meeting?.mockupUrl ? (
           <MockupPage
@@ -467,6 +572,10 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             onInitialsDraft={setInitialsDraft}
             onConfirmed={setConfirmation}
             onColourSaved={onColourSaved}
+            lines={deck.words.lines}
+            timing={quote?.colourTiming ?? null}
+            rushFee={quote ? quoteRushFee(quote) : null}
+            onTiming={onTiming}
             chooser={moreOf("colour")}
             readOnly={readOnly}
           />
@@ -490,14 +599,48 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             }}
             today={meeting.today}
             readOnly={readOnly}
+            lines={deck.words.lines}
+            edit={moreOf("quote")}
+            locked={accepted}
           />
         ) : null;
+      case "next_steps": {
+        const today = meeting?.today ?? "";
+        return (
+          <NextStepsPage
+            deck={deck}
+            words={deck.words.pages.next_steps}
+            lines={deck.words.lines}
+            near={near}
+            fillEmpty={fillEmpty}
+            recap={recap}
+            colour={colour.kind !== "none" ? colour.text : null}
+            confirmed={confirmedTonight(confirmation, today)}
+            initials={
+              meeting
+                ? { leadId: meeting.lead.id, draft: initialsDraft, onDraft: setInitialsDraft, onConfirmed: setConfirmation, readOnly }
+                : null
+            }
+            installOn={quote ? shownInstallDay(quote.installOn, today) : null}
+            today={today}
+            onInstallOn={
+              meeting && quote && !accepted ? (day) => setQuote((now) => (now ? { ...now, installOn: day } : now)) : null
+            }
+            more={moreOf("next_steps")}
+            dayLayer={moreOf("next_steps:day")}
+          />
+        );
+      }
     }
   }
 
   const onGallery = currentKey === "gallery";
   const canBack = current > 0 || (onGallery && galleryAt > 0);
   const canForward = current < pages.length - 1 || (onGallery && galleryAt < galleryCount - 1);
+  // "Next: Hidden by day", right of the forward chevron, as wide as the row
+  // leaves before the deck's 48 px edge; the page's name takes its own line.
+  const next = nextLabelParts(pages, current, deck.words.lines);
+  const nextRoom = `calc(50cqw - ${bottomRowWidth(pages.length) / 2 + 12 + 48}px)`;
   // Solid Night Background discs with a Night Text chevron, so they read the
   // same wherever they sit. One that can't move keeps its place, unseen, so
   // the dots never shift.
@@ -576,17 +719,29 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
                 </li>
               ))}
             </ol>
-            <button
-              type="button"
-              aria-label="Next"
-              onClick={() => step(1)}
-              disabled={!canForward}
-              aria-hidden={canForward ? undefined : true}
-              tabIndex={canForward ? undefined : -1}
-              className={cn(chevron, !canForward && "invisible")}
-            >
-              <ChevronRight aria-hidden="true" className="size-6" />
-            </button>
+            <span className="relative flex shrink-0">
+              <button
+                type="button"
+                aria-label="Next"
+                onClick={() => step(1)}
+                disabled={!canForward}
+                aria-hidden={canForward ? undefined : true}
+                tabIndex={canForward ? undefined : -1}
+                className={cn(chevron, !canForward && "invisible")}
+              >
+                <ChevronRight aria-hidden="true" className="size-6" />
+              </button>
+              {next ? (
+                <span
+                  data-testid="deck-next-label"
+                  className="pointer-events-none absolute top-1/2 left-full ml-3 hidden -translate-y-1/2 flex-col text-[length:var(--deck-small)] leading-[1.1] text-muted-foreground sm:flex"
+                  style={{ width: "max-content", maxWidth: nextRoom }}
+                >
+                  {next.lead ? <span className="whitespace-nowrap">{smartApostrophes(next.lead)}</span> : null}
+                  <span className="truncate">{smartApostrophes(next.page)}</span>
+                </span>
+              ) : null}
+            </span>
           </div>
         ) : null}
 

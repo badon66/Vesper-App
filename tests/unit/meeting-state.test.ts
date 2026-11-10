@@ -4,7 +4,10 @@ import { COOL_WHITE, WARM_WHITE } from "@/lib/lights/looks";
 import {
   RESUME_MS,
   defaultQuoteState,
+  pickEditableQuote,
   pickerFromStored,
+  quoteMinimum,
+  storedQuote,
   quoteFingerprint,
   quoteInputs,
   quoteStateFromDraft,
@@ -300,5 +303,60 @@ describe("the page and the light picker, picked up again", () => {
     expect(pickerFromStored({ look: "warm_white", effect: "off" }, looks)).toEqual({ look: "warm_white", effect: "off", played: false });
     expect(pickerFromStored("warm_white", looks)).toBeNull();
     expect(pickerFromStored(null, looks)).toBeNull();
+  });
+});
+
+// Round 9 (2026-11-10): the quote the meeting and the lead page's editor
+// open, an accepted quote read only, and the quote's own minimum.
+describe("the quote both screens open", () => {
+  const now = Date.parse("2026-11-03T02:00:00Z");
+
+  it("is the accepted quote while there is one, otherwise the newest draft", () => {
+    const rows = [
+      { id: "new-draft", status: "draft" },
+      { id: "declined", status: "declined" },
+      { id: "accepted", status: "accepted" },
+    ];
+    expect(pickEditableQuote(rows)?.id).toBe("accepted");
+    expect(pickEditableQuote(rows.filter((row) => row.status !== "accepted"))?.id).toBe("new-draft");
+    expect(pickEditableQuote([{ id: "x", status: "cancelled" }])).toBeNull();
+  });
+
+  it("opens an accepted quote from the server, whatever the iPad holds, with the option they said yes to", () => {
+    const draft = {
+      ...serverDraft("2026-11-03T01:00:00+00:00"),
+      offers: [{ id: "full", name: "Full wrap", runs: [0] }],
+      meetingOffer: "full",
+      accepted: true,
+      acceptedOffer: "full",
+    };
+    const iPad = withFeet(defaultQuoteState(payload()), 140);
+    const start = startingPoint(payload(draft), stored(iPad, { savedAt: "2026-11-03T01:30:00Z" }), now);
+    expect(start.quote.runs[0].feet).toBe(100);
+    expect(start.quote.chosenOffer).toBe("full");
+    expect(start.savedQuote).toBe(quoteFingerprint(start.quote));
+  });
+
+  it("reads an iPad copy from before round 9 as one full wrap with no choice", () => {
+    const old = { ...defaultQuoteState(payload()) } as Partial<QuoteUIState>;
+    delete old.offers;
+    delete old.chosenOffer;
+    delete old.installOn;
+    const read = storedQuote(old as QuoteUIState);
+    expect(read.offers).toEqual([]);
+    expect(read.chosenOffer).toBeNull();
+    expect(read.installOn).toBeNull();
+  });
+
+  it("keeps the quote's own minimum once saved, so a later change in Settings never alters it", () => {
+    const draft = { ...serverDraft("2026-11-03T01:00:00+00:00"), minJobTotal: null };
+    const state = quoteStateFromDraft(draft, payload(draft));
+    expect(state.minJobTotal).toBe("");
+    expect(quoteMinimum(state, { minJobTotal: 2500 })).toBeNull();
+    // A draft read without the column, and a new quote, use Settings'.
+    expect(quoteMinimum(quoteStateFromDraft(serverDraft("2026-11-03T01:00:00+00:00"), payload()), { minJobTotal: 2500 })).toBe(2500);
+    expect(quoteMinimum(defaultQuoteState(payload()), { minJobTotal: 2500 })).toBe(2500);
+    const own = quoteStateFromDraft({ ...draft, minJobTotal: 1800 }, payload());
+    expect(priceQuote(quoteInputs(withFeet(own, 10), { ...payload().pricing, minJobTotal: 2500 })).subtotal).toBe(1800);
   });
 });

@@ -8,7 +8,7 @@ import {
   pickerFrom,
   type DeckSettingsRow,
 } from "@/lib/meeting/deck-pages";
-import type { DeckPayload, MeetingPayload } from "@/lib/meeting/state";
+import { pickEditableQuote, type DeckPayload, type MeetingPayload, type QuoteDraft } from "@/lib/meeting/state";
 import { DECK_BUCKET } from "@/lib/photos-deck";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import type { createClient } from "@/lib/supabase/server";
@@ -94,7 +94,7 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
     { data: colourRows },
     { data: ralRows },
     { data: leadPhotos },
-    { data: draft },
+    draft,
     { data: trace },
     deckPhotoRows,
   ] = await Promise.all([
@@ -105,28 +105,13 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
         )
         .eq("id", leadId)
         .maybeSingle(),
-      supabase
-        .from("settings")
-        .select(
-          `${DECK_SETTINGS}, price_per_ft, box_price, neighbour_discount, gst_enabled, gst_rate, gst_number, rush_colour_fee, upper_access_fee, upper_gable_access_fee, price_hold_days, min_job_total`,
-        )
-        .eq("id", 1)
-        .single(),
+      supabase.from("settings").select(`${DECK_SETTINGS}, ${PRICING_SETTINGS}`).eq("id", 1).single(),
       supabase.from("track_colours").select("id, name, ral_code, sort_order, active"),
       // The whole RAL Classic list (216 names), so a colour changed at the
       // table is named on the iPad the moment it is typed.
       supabase.from("ral_classic_colours").select("code, name"),
       supabase.from("lead_photos").select("id, slot, storage_path").eq("lead_id", leadId),
-      supabase
-        .from("quotes")
-        .select(
-          "id, runs, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, financing_offered, valid_until, offers, meeting_offer, meeting_install_on, updated_at",
-        )
-        .eq("lead_id", leadId)
-        .eq("status", "draft")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+      editableQuotes(supabase, leadId),
       supabase.from("roofline_traces").select(TRACE).eq("lead_id", leadId).maybeSingle(),
       deckPhotos(supabase),
     ]);
@@ -178,40 +163,85 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
       ralCode: lead.track_ral_code,
     },
     mockupUrl: mockup ? (signedLeadPhotos.get(mockup.storage_path) ?? null) : null,
-    pricing: {
-      pricePerFt: settings.price_per_ft,
-      boxPrice: settings.box_price,
-      neighbourDiscount: settings.neighbour_discount,
-      gstEnabled: settings.gst_enabled,
-      gstRate: settings.gst_rate,
-      gstNumber: settings.gst_number,
-      rushFee: settings.rush_colour_fee,
-      upperAccessFee: settings.upper_access_fee,
-      upperGableAccessFee: settings.upper_gable_access_fee,
-      priceHoldDays: settings.price_hold_days,
-      minJobTotal: settings.min_job_total,
-    },
-    draft: draft
-      ? {
-          quoteId: draft.id,
-          runs: draft.runs,
-          boxCount: draft.box_count,
-          pricePerFt: draft.price_per_ft,
-          boxPrice: draft.box_price,
-          adders: draft.adders,
-          discounts: draft.discounts,
-          colourTiming: draft.colour_timing,
-          rushFee: draft.rush_fee,
-          upperAccessFee: draft.upper_access_fee,
-          upperGableAccessFee: draft.upper_gable_access_fee,
-          financingOffered: draft.financing_offered,
-          validUntil: draft.valid_until,
-          offers: draft.offers,
-          meetingOffer: draft.meeting_offer,
-          meetingInstallOn: draft.meeting_install_on,
-          updatedAt: draft.updated_at,
-        }
-      : null,
+    pricing: pricingFrom(settings),
+    draft,
     today: calgaryToday(),
+  };
+}
+
+// ---------------------------------------------------------------- the quote
+
+// The prices Settings gives a new quote (shared with the lead page's quote
+// editor, lib/quotes/editor-data.ts).
+export const PRICING_SETTINGS =
+  "price_per_ft, box_price, neighbour_discount, gst_enabled, gst_rate, gst_number, rush_colour_fee, upper_access_fee, upper_gable_access_fee, price_hold_days, min_job_total";
+
+type PricingRow = {
+  price_per_ft: number;
+  box_price: number;
+  neighbour_discount: number;
+  gst_enabled: boolean;
+  gst_rate: number;
+  gst_number: string | null;
+  rush_colour_fee: number | null;
+  upper_access_fee: number | null;
+  upper_gable_access_fee: number | null;
+  price_hold_days: number;
+  min_job_total: number | null;
+};
+
+export function pricingFrom(settings: PricingRow): MeetingPayload["pricing"] {
+  return {
+    pricePerFt: settings.price_per_ft,
+    boxPrice: settings.box_price,
+    neighbourDiscount: settings.neighbour_discount,
+    gstEnabled: settings.gst_enabled,
+    gstRate: settings.gst_rate,
+    gstNumber: settings.gst_number,
+    rushFee: settings.rush_colour_fee,
+    upperAccessFee: settings.upper_access_fee,
+    upperGableAccessFee: settings.upper_gable_access_fee,
+    priceHoldDays: settings.price_hold_days,
+    minJobTotal: settings.min_job_total,
+  };
+}
+
+const QUOTE_COLUMNS =
+  "id, status, runs, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, min_job_total, financing_offered, valid_until, offers, meeting_offer, meeting_install_on, accepted_offer, updated_at";
+
+// The quote meeting mode and the lead page's editor open (round 9): the
+// accepted one while the lead has one, read only, otherwise its draft (one
+// per lead). Null with neither.
+export async function editableQuotes(supabase: Supabase, leadId: string): Promise<QuoteDraft | null> {
+  const { data } = await supabase
+    .from("quotes")
+    .select(QUOTE_COLUMNS)
+    .eq("lead_id", leadId)
+    .in("status", ["draft", "accepted"])
+    .order("created_at", { ascending: false })
+    .limit(10);
+  const row = pickEditableQuote(data ?? []);
+  if (!row) return null;
+  return {
+    quoteId: row.id,
+    runs: row.runs,
+    boxCount: row.box_count,
+    pricePerFt: row.price_per_ft,
+    boxPrice: row.box_price,
+    adders: row.adders,
+    discounts: row.discounts,
+    colourTiming: row.colour_timing,
+    rushFee: row.rush_fee,
+    upperAccessFee: row.upper_access_fee,
+    upperGableAccessFee: row.upper_gable_access_fee,
+    minJobTotal: row.min_job_total,
+    financingOffered: row.financing_offered,
+    validUntil: row.valid_until,
+    offers: row.offers,
+    meetingOffer: row.meeting_offer,
+    meetingInstallOn: row.meeting_install_on,
+    accepted: row.status === "accepted",
+    acceptedOffer: row.status === "accepted" ? row.accepted_offer : null,
+    updatedAt: row.updated_at,
   };
 }

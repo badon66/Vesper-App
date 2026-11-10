@@ -111,10 +111,30 @@ export type MeetingPayload = {
     offers: unknown;
     meetingOffer: string | null;
     meetingInstallOn: string | null;
+    // The quote's own minimum job total (quotes.min_job_total), so a later
+    // change in Settings never alters it; left out, Settings' minimum.
+    minJobTotal?: number | null;
+    // Round 9: the lead's accepted quote stands in for the draft while it is
+    // accepted, read only (its prices are locked until the acceptance is
+    // undone on the lead page), with the option they said yes to.
+    accepted?: boolean;
+    acceptedOffer?: string | null;
     // The database's updated_at for the draft.
     updatedAt: string;
   } | null;
   today: string;
+};
+
+export type QuoteDraft = NonNullable<MeetingPayload["draft"]>;
+
+// What a quote needs from the meeting's payload: the prices from Settings,
+// today, and the lead's track colour. The lead page's quote editor builds
+// the same from its own reads (lib/quotes/editor-data.ts), so both open the
+// same quote the same way.
+export type QuoteContext = {
+  pricing: MeetingPayload["pricing"];
+  today: string;
+  lead: Pick<MeetingPayload["lead"], "colourKind" | "colourText">;
 };
 
 // ---------------------------------------------------------------- the quote
@@ -148,6 +168,9 @@ export type QuoteUIState = {
   // quotes.meeting_install_on and is never written to the lead before
   // Accepted.
   installOn: string | null;
+  // This quote's own minimum job total, as typed ("" is none). Left out
+  // (a new quote, or an iPad copy from before round 9), Settings' minimum.
+  minJobTotal?: string;
 };
 
 // The offers as shown: an empty list is one full wrap over every run.
@@ -189,7 +212,7 @@ function partOf(value: unknown, name: string): RunPart {
   return typeof value === "string" && (RUN_PARTS as readonly string[]).includes(value) ? (value as RunPart) : guessRunPart(name);
 }
 
-export function defaultQuoteState(payload: MeetingPayload): QuoteUIState {
+export function defaultQuoteState(payload: QuoteContext): QuoteUIState {
   return {
     runs: [{ name: "Front", feet: 0, level: "lower", part: "eave" }],
     boxCount: 1,
@@ -213,7 +236,7 @@ export function defaultQuoteState(payload: MeetingPayload): QuoteUIState {
 
 // A saved draft, back into the controls. Unknown jsonb is handled gently:
 // anything unreadable becomes an empty list, never a crash at the table.
-export function quoteStateFromDraft(draft: NonNullable<MeetingPayload["draft"]>, payload: MeetingPayload): QuoteUIState {
+export function quoteStateFromDraft(draft: QuoteDraft, payload: QuoteContext): QuoteUIState {
   const runs: QuoteRun[] = Array.isArray(draft.runs)
     ? draft.runs.flatMap((run) =>
         run && typeof run === "object" && typeof (run as QuoteRun).name === "string"
@@ -265,9 +288,40 @@ export function quoteStateFromDraft(draft: NonNullable<MeetingPayload["draft"]>,
     validUntil: draft.validUntil ?? defaultValidUntil(payload.today, payload.pricing.priceHoldDays),
     // Saved offers as they are; an empty list stays empty (one full wrap).
     offers: Array.isArray(draft.offers) && draft.offers.length > 0 ? parseOffers(draft.offers, runs.length) : [],
-    chosenOffer: typeof draft.meetingOffer === "string" && draft.meetingOffer !== "" ? draft.meetingOffer : null,
+    // An accepted quote shows the option they said yes to as the choice.
+    chosenOffer: chosenFromDraft(draft),
     installOn: typeof draft.meetingInstallOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(draft.meetingInstallOn) ? draft.meetingInstallOn : null,
+    ...(draft.minJobTotal !== undefined ? { minJobTotal: feeString(draft.minJobTotal) } : {}),
   };
+}
+
+function chosenFromDraft(draft: QuoteDraft): string | null {
+  const id = draft.accepted && draft.acceptedOffer ? draft.acceptedOffer : draft.meetingOffer;
+  return typeof id === "string" && id !== "" ? id : null;
+}
+
+// The quote meeting mode and the lead page's editor open (round 9): the
+// lead's accepted quote while it has one (read only), otherwise its newest
+// draft. One draft per lead: every save reuses it. Rows come newest first.
+export function pickEditableQuote<T extends { status: string }>(rows: readonly T[]): T | null {
+  return rows.find((row) => row.status === "accepted") ?? rows.find((row) => row.status === "draft") ?? null;
+}
+
+// An iPad copy as it is read back: one written before round 9 has no
+// offers, choice or install day, and is read as one full wrap with neither.
+export function storedQuote(quote: QuoteUIState): QuoteUIState {
+  return {
+    ...quote,
+    offers: Array.isArray(quote.offers) ? quote.offers : [],
+    chosenOffer: typeof quote.chosenOffer === "string" && quote.chosenOffer !== "" ? quote.chosenOffer : null,
+    installOn: typeof quote.installOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(quote.installOn) ? quote.installOn : null,
+  };
+}
+
+// The minimum job total a quote prices with: its own once it has one, else
+// Settings'.
+export function quoteMinimum(state: Pick<QuoteUIState, "minJobTotal">, pricing: Pick<MeetingPayload["pricing"], "minJobTotal">): number | null {
+  return state.minJobTotal === undefined ? pricing.minJobTotal : moneyOrNone(state.minJobTotal);
 }
 
 // The quote as one stable string, so "changed since the last save" is a
@@ -295,6 +349,7 @@ export function quoteFingerprint(state: QuoteUIState): string {
     offersForSave(state.offers, state.runs.length).map((offer) => [offer.id, offer.name, cleanPositions(state.runs.length, offer.runs), offer.boxes ?? null]),
     state.chosenOffer,
     state.installOn,
+    state.minJobTotal === undefined ? "settings" : moneyOrNone(state.minJobTotal),
   ]);
 }
 
@@ -323,7 +378,7 @@ export function quoteInputs(state: QuoteUIState, pricing: MeetingPayload["pricin
     rushFee: state.colourTiming === "rush" ? moneyOrNone(state.rushFee) : null,
     upperAccessFee: moneyOrNone(state.upperAccessFee),
     upperGableAccessFee: moneyOrNone(state.upperGableAccessFee),
-    minJobTotal: pricing.minJobTotal,
+    minJobTotal: quoteMinimum(state, pricing),
     gstEnabled: pricing.gstEnabled,
     gstRate: pricing.gstRate,
   };
@@ -411,9 +466,11 @@ export function startingPoint(
   const initialsDraft = stored?.initialsDraft ?? "";
   const where = { index, screenKey, picker };
 
-  if (stored && !serverNewer) {
+  // An accepted quote is locked: the server's copy always, whatever the
+  // iPad holds, so the room sees what was agreed.
+  if (stored && !serverNewer && !draft?.accepted) {
     return {
-      quote: stored.quote,
+      quote: storedQuote(stored.quote),
       quoteId: stored.quoteId ?? draft?.quoteId ?? null,
       savedAt: stored.savedAt,
       savedQuote: stored.savedQuote ?? (fromServer ? quoteFingerprint(fromServer) : null),

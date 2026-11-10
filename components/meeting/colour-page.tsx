@@ -1,5 +1,6 @@
 "use client";
 
+import { Check } from "lucide-react";
 import { useState, type CSSProperties } from "react";
 
 import { confirmColourInitials } from "@/app/(app)/meeting/actions";
@@ -8,27 +9,45 @@ import { TrackColourForm } from "@/components/leads/track-colour-form";
 import { DeckButton, DECK_TYPE, MoreLayer, say } from "@/components/meeting/deck-parts";
 import type { MoreState } from "@/components/meeting/deck-pages";
 import { Button } from "@/components/ui/button";
-import { CHOOSER_LINES, COLOUR_LINES, soffitView } from "@/lib/meeting/deck-pages";
+import type { DeckLines } from "@/lib/deck";
+import { CHOOSER_LINES, colourTimingView, soffitView } from "@/lib/meeting/deck-pages";
 import type { MeetingPayload } from "@/lib/meeting/state";
+import type { ColourTiming } from "@/lib/pricing";
 import { sentence } from "@/lib/schedule/meetings";
 import { calgaryDateOf, formatDateTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
-// Your colours (round 7, the settled spec's colour_screen): the track colour
-// settled against their soffit with the real colour book, and their initials
-// confirm what we order. This page exists because white track once went on
-// an off-white soffit. If the colour changes at the table, it changes here,
+// Your track colour (round 7's Your colours; round 9, the meeting as one
+// story): the whole colour decision on one page, before the price because
+// it can change the price. The track colour settled against their soffit
+// with the real colour book, and, for any colour but White, when it is
+// installed and what that costs; then their initials confirm the colour on
+// their quote. This page exists because white track once went on an
+// off-white soffit. If the colour changes at the table, it changes here,
 // without leaving the deck.
 //
-// Split on the 56% line, both columns starting 80 px down, clear of the exit
-// (20 px in, 48 px across). Left: the soffit by name (two names on their own lines for a
-// split soffit, "We'll check it together." for Not sure or unanswered, never
-// the setter's note), the track colour with Change the colour, "One track
-// colour for the whole house." on a split, and the screens line right under
-// them. Right: the eave in section labelled Soffit, Fascia and Track, as
-// wide as the column allows, then the initials and Confirm, 56 px tall and
-// no lower than 400 px from the top at 1180 x 820, so the landscape keyboard
-// never covers them. No swatches, no photos, no More.
+// Split on the 56% line, both columns starting 80 px down, clear of the
+// exit (20 px in, 48 px across). Left, in the five seats' order: the
+// headline, "By day you see the track, so you choose its colour.", the
+// soffit by name (two names on their own lines for a split soffit, "We'll
+// check it together." for Not sure or unanswered, never the setter's note),
+// the track colour with Change the colour, "One track colour for the whole
+// house.", then one colour rule (lib/meeting/deck-pages.ts
+// colourTimingView): White reads "White is in stock and included."; any
+// other colour "{colour} is made to order." with two equal one-tap buttons,
+// Install in spring (Included) and Install this season (the rush colour
+// fee, hidden when the quote has none), which set the quote's colour timing
+// so every option arrives on the price page already priced. Right: the eave
+// in section labelled Soffit, Fascia and Track, as wide as the column
+// allows, then the initials and Confirm, 56 px tall and no lower than 400 px
+// from the top at 1180 x 820, so the landscape keyboard never covers them,
+// then the colour book line under them. (The spec drew the eave on the left
+// and the colour book line before the initials; the eave stays on the
+// right, as built, so the initials keep their place above the keyboard, and
+// the colour book line sits under them, because with a long custom colour,
+// a split soffit and the two timing buttons the left column has no room
+// for it at 1180 x 796.) No swatches, no photos, no More. Every word is
+// settings.deck.lines but the soffit and track labels and the chooser's.
 //
 // On a taller deck (the iPad Pro, over 900 px; round 7 after-review) both
 // columns come down towards the middle of the room above the bottom row,
@@ -38,10 +57,11 @@ import { cn } from "@/lib/utils";
 //
 // Change the colour opens the chooser as one of the deck's layers (round 7
 // review): the pager locks, the dots and chevrons hide, any page change
-// closes it. It is laid out like this page: its heading, the screens line
-// and the colours on the left, the colour number and Save on the right,
-// level with the colours, all above the keyboard. In the rehearsal view the
-// choice and Confirm are acted out on screen and nothing is saved.
+// closes it. It is laid out like this page: its heading, the colour book
+// line and the colours on the left, the colour number and Save on the
+// right, level with the colours, all above the keyboard. In the rehearsal
+// view the choice, the timing and Confirm are acted out on screen and
+// nothing is saved.
 
 export type DeckColour = { kind: "none" | "list" | "custom"; text: string; choice: string | null; ralCode: string | null };
 export type Confirmation = { initials: string; at: string } | null;
@@ -75,6 +95,146 @@ const PAGE_STYLE = {
 const PAGE_CLASS =
   "relative grid h-full w-full grid-cols-[56%_44%] [grid-template-rows:var(--colour-rows-short)] [@container(min-height:900px)]:pb-[var(--deck-clear,78px)] [@container(min-height:900px)]:[grid-template-rows:var(--colour-rows-tall)]";
 
+// The timing buttons, in the light picker's two-line style: an outline, or
+// Night Text fill with navy text and a tick when chosen (never gold: the
+// page the customer watches holds no gold). 72 px tall, as the picker's
+// looks are.
+const CHOICE =
+  "flex min-h-[72px] min-w-0 flex-col items-start justify-center rounded-md border px-4 py-2 text-left outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+
+function TimingButton({
+  label,
+  value,
+  chosen,
+  onChoose,
+  testId,
+}: {
+  label: string;
+  value: string;
+  chosen: boolean;
+  onChoose: () => void;
+  testId: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={chosen}
+      data-testid={testId}
+      onClick={onChoose}
+      className={cn(CHOICE, chosen ? "border-foreground bg-foreground text-background" : "border-input bg-background text-foreground active:bg-secondary")}
+    >
+      <span className="flex max-w-full items-center text-[22px] leading-[26px] font-semibold">
+        <span className="min-w-0 truncate">{say(label)}</span>
+        <Check aria-hidden="true" className={cn("ml-2 size-5 shrink-0", !chosen && "invisible")} strokeWidth={2.5} />
+      </span>
+      <span className={cn("max-w-full truncate text-[20px] leading-[22px]", !chosen && "text-muted-foreground")}>{say(value)}</span>
+    </button>
+  );
+}
+
+// The initials and Confirm (round 7; round 9 shares it with What happens
+// next, where the box appears in step 1 if the colour page was skipped):
+// saved the same way from either page, on the lead with a timeline event,
+// and acted out on screen in the rehearsal view. Saving needs signal, and
+// says so.
+export function InitialsConfirm({
+  leadId,
+  enabled,
+  prompt,
+  draft,
+  onDraft,
+  onConfirmed,
+  readOnly,
+  id,
+  describedBy,
+}: {
+  leadId: string;
+  // A colour is chosen: there is something to initial.
+  enabled: boolean;
+  // The line above the field; empty when the words beside it already say
+  // it (What happens next's step 1), which describedBy then names.
+  prompt: string;
+  describedBy?: string;
+  draft: string;
+  onDraft: (value: string) => void;
+  onConfirmed: (confirmation: Confirmation) => void;
+  readOnly: boolean;
+  // Keeps the two pages' fields apart.
+  id: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const typed = draft.trim() !== "";
+
+  async function confirm() {
+    if (readOnly) {
+      onConfirmed({ initials: draft.trim(), at: new Date().toISOString() });
+      onDraft("");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await confirmColourInitials(leadId, draft);
+      if (!result.ok) {
+        setMessage(result.message);
+        return;
+      }
+      onConfirmed({ initials: draft.trim(), at: result.initialledAt });
+      onDraft("");
+    } catch {
+      setMessage("No signal. The initials were not saved. Try again in a moment.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {prompt ? (
+        <p id={`${id}-label`} className={DECK_TYPE.small}>
+          {say(prompt)}
+        </p>
+      ) : null}
+      <div className="flex items-center gap-3">
+        <input
+          id={id}
+          aria-label="Your initials"
+          aria-describedby={prompt ? `${id}-label` : describedBy}
+          placeholder="Initials"
+          value={draft}
+          onChange={(event) => onDraft(event.target.value.toUpperCase())}
+          maxLength={12}
+          autoCapitalize="characters"
+          autoComplete="off"
+          spellCheck={false}
+          disabled={!enabled}
+          className="h-14 w-40 rounded-md border border-input bg-background px-3 text-center text-[24px] font-bold tracking-widest text-foreground outline-none select-text placeholder:text-[length:var(--deck-small)] placeholder:font-normal placeholder:tracking-normal placeholder:text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        />
+        <Button
+          type="button"
+          variant={typed ? "default" : "outline"}
+          onClick={() => void confirm()}
+          disabled={!enabled || busy || !typed}
+          className="h-14 px-7 text-[20px]"
+        >
+          {busy ? "Saving" : "Confirm"}
+        </Button>
+      </div>
+      {message ? (
+        <p role="alert" className={cn(DECK_TYPE.small, "font-semibold text-destructive")}>
+          {message}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+// Whether the colour was initialled at this meeting (tonight).
+export function confirmedTonight(confirmation: Confirmation, today: string): boolean {
+  return confirmation !== null && calgaryDateOf(confirmation.at) === today;
+}
+
 export function ColourPage({
   lead,
   colour,
@@ -85,6 +245,10 @@ export function ColourPage({
   onInitialsDraft,
   onConfirmed,
   onColourSaved,
+  lines,
+  timing,
+  rushFee,
+  onTiming,
   chooser,
   readOnly = false,
 }: {
@@ -97,67 +261,55 @@ export function ColourPage({
   onInitialsDraft: (value: string) => void;
   onConfirmed: (confirmation: Confirmation) => void;
   onColourSaved: (choice: string | null, ralCode: string | null) => void;
+  // The page's words (settings.deck.lines).
+  lines: DeckLines;
+  // The quote's colour timing and its rush fee, and how the two timing
+  // buttons set it, so every option arrives on the price page already
+  // priced.
+  timing: ColourTiming | null;
+  rushFee: number | null;
+  onTiming: (timing: "factory_order" | "rush") => void;
   // The colour chooser, one of the deck's layers.
   chooser: MoreState;
   // The rehearsal view: Confirm and the colour are acted out on screen and
   // nothing is saved.
   readOnly?: boolean;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const soffit = soffitView(lead);
   const colourSet = colour.kind !== "none";
-  const typed = initialsDraft.trim() !== "";
-  const confirmedTonight = confirmation !== null && calgaryDateOf(confirmation.at) === today;
-
-  async function confirm() {
-    if (readOnly) {
-      onConfirmed({ initials: initialsDraft.trim(), at: new Date().toISOString() });
-      onInitialsDraft("");
-      return;
-    }
-    setBusy(true);
-    setMessage(null);
-    try {
-      const result = await confirmColourInitials(lead.id, initialsDraft);
-      if (!result.ok) {
-        setMessage(result.message);
-        return;
-      }
-      onConfirmed({ initials: initialsDraft.trim(), at: result.initialledAt });
-      onInitialsDraft("");
-    } catch {
-      setMessage("No signal. The initials were not saved. Try again in a moment.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const tonight = confirmedTonight(confirmation, today);
+  const view = colourTimingView({ lines, kind: colour.kind, text: colour.text, timing, rushFee });
 
   const small = cn(DECK_TYPE.small, "text-muted-foreground");
 
   const notes = [
-    !confirmedTonight && confirmation ? (
+    <p key="book" className={cn(small, "max-w-[30rem]")} data-testid="deck-colour-book">
+      {say(lines.colour_book)}
+    </p>,
+    !tonight && confirmation ? (
       <p key="last" className={small}>
         {sentence(`Last confirmed with initials ${confirmation.initials}, ${formatDateTime(confirmation.at)}`)}
       </p>
     ) : null,
-    !confirmedTonight && !colourSet ? (
+    !tonight && !colourSet ? (
       <p key="first" className={small}>
         Choose the colour first, then initial it here.
-      </p>
-    ) : null,
-    message ? (
-      <p key="message" role="alert" className={cn(DECK_TYPE.small, "font-semibold text-destructive")}>
-        {message}
       </p>
     ) : null,
   ].filter(Boolean);
 
   return (
     <div className={PAGE_CLASS} style={PAGE_STYLE}>
-      <div data-deck-box="split" className="col-start-1 row-span-2 row-start-2 flex min-w-0 flex-col overflow-hidden pr-10 pb-28 pl-16">
-        <h2 className={DECK_TYPE.headline}>Your colours</h2>
-        <dl className="mt-8 flex flex-col gap-7">
+      <div
+        data-deck-box="split"
+        className="col-start-1 row-span-2 row-start-2 flex min-w-0 flex-col overflow-hidden pr-10 pl-16"
+        style={{ paddingBottom: "var(--deck-clear, 78px)" }}
+      >
+        <h2 className={DECK_TYPE.headline}>{say(lines.colour_headline)}</h2>
+        <p className={cn(DECK_TYPE.body, "mt-3 max-w-[34rem]")} data-testid="deck-colour-opener">
+          {say(lines.colour_opener)}
+        </p>
+        <dl className="mt-6 flex flex-col gap-5">
           <div className="flex flex-col gap-1">
             <dt className={small}>{soffit.label}</dt>
             {soffit.names.map((name, at) => (
@@ -167,7 +319,7 @@ export function ColourPage({
             ))}
           </div>
           <div className="flex flex-col gap-1">
-            <dt className={small}>Your track colour</dt>
+            <dt className={small}>Your track</dt>
             <dd className="flex flex-wrap items-center gap-x-5 gap-y-2">
               <span className={DECK_TYPE.name} data-testid="deck-track-colour">
                 {colourSet ? say(colour.text) : "Not chosen yet"}
@@ -176,10 +328,37 @@ export function ColourPage({
                 {colourSet ? "Change the colour" : "Choose the colour"}
               </DeckButton>
             </dd>
-            {soffit.split ? <dd className={cn(DECK_TYPE.small, "mt-1")}>{COLOUR_LINES.splitTrack}</dd> : null}
+            <dd className={cn(DECK_TYPE.small, "mt-1")}>{say(lines.colour_one)}</dd>
           </div>
         </dl>
-        <p className={cn(small, "mt-6 max-w-[34rem]")}>{say(COLOUR_LINES.screens)}</p>
+        {view.kind === "stock" ? (
+          <p className={cn(DECK_TYPE.body, "mt-5")} data-testid="deck-colour-timing">
+            {say(view.line)}
+          </p>
+        ) : null}
+        {view.kind === "made" ? (
+          <div className="mt-5 flex max-w-[36rem] flex-col gap-3" data-testid="deck-colour-timing">
+            <p className={DECK_TYPE.body}>{say(view.line)}</p>
+            <div role="group" aria-label={say(view.line)} className={cn("grid gap-3", view.season ? "grid-cols-2" : "grid-cols-1 max-w-[17rem]")}>
+              <TimingButton
+                label={view.spring.label}
+                value={view.spring.value}
+                chosen={view.chosen === "spring"}
+                onChoose={() => onTiming("factory_order")}
+                testId="deck-colour-spring"
+              />
+              {view.season ? (
+                <TimingButton
+                  label={view.season.label}
+                  value={view.season.value}
+                  chosen={view.chosen === "season"}
+                  onChoose={() => onTiming("rush")}
+                  testId="deck-colour-season"
+                />
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {/* The 56% line runs only as far as this column's content. */}
@@ -187,61 +366,43 @@ export function ColourPage({
         <div className="flex flex-col border-l border-border pl-10">
           <EaveSection variant="colour" className="max-w-full" style={EAVE_STYLE} />
           <div className="mt-4 flex flex-col gap-3">
-            {confirmedTonight && confirmation ? (
-              <p className={cn(DECK_TYPE.small, "font-semibold")} data-testid="colour-confirmed">
-                {sentence(`Confirmed with initials ${confirmation.initials}, ${formatDateTime(confirmation.at)}`)}
-              </p>
-            ) : (
-              <>
-                <p id="colour-initials-label" className={DECK_TYPE.small}>
-                  {say(COLOUR_LINES.initials)}
+            {tonight && confirmation ? (
+              <div className="flex flex-col gap-1" data-testid="colour-confirmed">
+                <p className={cn(DECK_TYPE.small, "flex items-center gap-2 font-semibold")}>
+                  <Check aria-hidden="true" className="size-5 shrink-0" strokeWidth={2.5} />
+                  {say(lines.initials_done)}
                 </p>
-                <div className="flex items-center gap-3">
-                  <input
-                    id="colour-initials"
-                    aria-label="Your initials"
-                    aria-describedby="colour-initials-label"
-                    placeholder="Initials"
-                    value={initialsDraft}
-                    onChange={(event) => onInitialsDraft(event.target.value.toUpperCase())}
-                    maxLength={12}
-                    autoCapitalize="characters"
-                    autoComplete="off"
-                    spellCheck={false}
-                    disabled={!colourSet}
-                    className="h-14 w-40 rounded-md border border-input bg-background px-3 text-center text-[24px] font-bold tracking-widest text-foreground outline-none select-text placeholder:text-[length:var(--deck-small)] placeholder:font-normal placeholder:tracking-normal placeholder:text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-                  />
-                  <Button
-                    type="button"
-                    variant={typed ? "default" : "outline"}
-                    onClick={() => void confirm()}
-                    disabled={!colourSet || busy || !typed}
-                    className="h-14 px-7 text-[20px]"
-                  >
-                    {busy ? "Saving" : "Confirm"}
-                  </Button>
-                </div>
-              </>
+                <p className={cn(small, "tracking-widest")}>{confirmation.initials}</p>
+              </div>
+            ) : (
+              <InitialsConfirm
+                id="colour-initials"
+                leadId={lead.id}
+                enabled={colourSet}
+                prompt={lines.initials_prompt}
+                draft={initialsDraft}
+                onDraft={onInitialsDraft}
+                onConfirmed={onConfirmed}
+                readOnly={readOnly}
+              />
             )}
           </div>
         </div>
       </div>
-      {notes.length > 0 ? (
-        <div className="col-start-2 row-start-3 min-w-0 overflow-hidden pr-12">
-          <div className="flex flex-col gap-3 border-l border-border pt-3 pl-10">{notes}</div>
-        </div>
-      ) : null}
+      <div className="col-start-2 row-start-3 min-w-0 overflow-hidden pr-12">
+        <div className="flex flex-col gap-3 border-l border-border pt-4 pl-10">{notes}</div>
+      </div>
 
       <MoreLayer open={chooser.open} onClose={() => chooser.set(false)} label="Choose the track colour">
         <Chooser
           leadId={lead.id}
           colour={colour}
           colours={colours}
+          screensLine={lines.colour_book}
           actOut={readOnly}
           onClose={() => chooser.set(false)}
           onSaved={(choice, ralCode) => {
             onColourSaved(choice, ralCode);
-            setMessage(null);
             chooser.set(false);
           }}
         />
@@ -259,6 +420,7 @@ function Chooser({
   leadId,
   colour,
   colours,
+  screensLine,
   actOut,
   onClose,
   onSaved,
@@ -266,6 +428,7 @@ function Chooser({
   leadId: string;
   colour: DeckColour;
   colours: MeetingPayload["colours"];
+  screensLine: string;
   actOut: boolean;
   onClose: () => void;
   onSaved: (choice: string | null, ralCode: string | null) => void;
@@ -299,7 +462,7 @@ function Chooser({
         intro={
           <>
             <h2 className={DECK_TYPE.moreLabel}>{CHOOSER_LINES.heading}</h2>
-            <p className={cn(DECK_TYPE.small, "max-w-[34rem] text-muted-foreground")}>{say(COLOUR_LINES.screens)}</p>
+            <p className={cn(DECK_TYPE.small, "max-w-[34rem] text-muted-foreground")}>{say(screensLine)}</p>
           </>
         }
       />

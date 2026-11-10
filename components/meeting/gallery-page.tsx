@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { BandPage, BottomRight, DeckButton, DeckImage, DECK_TYPE, MoreLayer, say, SlotExample, useDeck, useSideSwipe } from "@/components/meeting/deck-parts";
+import { BandPage, BottomCorner, DeckButton, DeckImage, DECK_TYPE, MoreLayer, say, SlotExample, useDeck, useSideSwipe } from "@/components/meeting/deck-parts";
 import type { PageWords } from "@/lib/deck";
 import { GALLERY_HERO_COUNT, galleryCounter, seeAllLabel, type GalleryItem } from "@/lib/meeting/deck-pages";
 import { EASE_QUIET, MOTION } from "@/lib/motion";
@@ -95,11 +95,11 @@ function FullPhoto({ items, at, onAt, onBack }: { items: GalleryItem[]; at: numb
       }}
     >
       {item ? <ItemPicture item={item} fit="contain" /> : null}
-      <BottomRight>
+      <BottomCorner>
         <DeckButton ref={back} onClick={onBack}>
           Back
         </DeckButton>
-      </BottomRight>
+      </BottomCorner>
     </div>
   );
 }

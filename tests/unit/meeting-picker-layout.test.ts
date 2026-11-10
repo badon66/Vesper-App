@@ -9,6 +9,7 @@ import {
   TRAY_AT_PRO,
   TRAY_CSS,
   TRAY_HEIGHT_CSS,
+  TRAY_WORDS_LINES,
   bandHeight,
   controlsBottom,
   trayContent,
@@ -43,20 +44,23 @@ describe("the tray", () => {
     expect(DOTS_RESERVE_CSS).toBe("calc(var(--deck-row-bottom, 20px) + 74px)");
   });
 
-  it("fits row 2 (the headline and the line directly under it) in the effects' height, at both iPads", () => {
+  it("fits row 2 (the headline and its line of up to two lines) beside the effects, at both iPads (round 9)", () => {
+    expect(TRAY_WORDS_LINES).toBe(2);
+    // One line was exactly the effects' height; the second adds a line.
     expect(TRAY.headlineLeading + TRAY.wordsLeading).toBe(TRAY.effectHeight);
     expect(TRAY_AT_PRO.headlineLeading + TRAY_AT_PRO.wordsLeading).toBe(TRAY_AT_PRO.effectHeight);
     expect(TRAY.headlineLeading).toBeGreaterThan(TRAY.headlineSize);
     expect(TRAY_AT_PRO.headlineLeading).toBeGreaterThan(TRAY_AT_PRO.headlineSize);
-    // 12 + 72 + 12 + 56 at 1180; 12 + 80 + 12 + 62 at 1366.
-    expect(controlsBottom()).toBe(152);
-    expect(trayContent(AIR.width)).toBeCloseTo(152, 6);
-    expect(trayContent(PRO.width)).toBeCloseTo(166, 6);
+    // 12 + 72 + 12 + (34 + 2 x 22) at 1180; 12 + 80 + 12 + (38 + 2 x 24) at 1366.
+    expect(controlsBottom()).toBe(174);
+    expect(trayContent(AIR.width)).toBeCloseTo(174, 6);
+    expect(trayContent(PRO.width)).toBeCloseTo(190, 6);
   });
 
-  it("is exactly the band at 1180 x 820, with no room lost", () => {
-    expect(trayFloor(AIR.width)).toBeCloseTo(246, 6);
-    expect(deckBand(AIR.height)).toBeCloseTo(trayFloor(AIR.width), 6);
+  it("is its floor at 1180 x 820, 22 px over the band, the photo giving way; the band again at 1366 x 1024", () => {
+    expect(trayFloor(AIR.width)).toBeCloseTo(268, 6);
+    expect(trayFloor(AIR.width) - deckBand(AIR.height)).toBeCloseTo(22, 6);
+    expect(trayFloor(PRO.width)).toBeLessThanOrEqual(deckBand(PRO.height));
   });
 
   it("keeps a floor on a shorter deck, so the photo gives way and never the tray's contents", () => {
@@ -75,7 +79,7 @@ describe("the tray", () => {
       // The photo keeps most of the page.
       expect(deck.height - tray, JSON.stringify(deck)).toBeGreaterThan(deck.height * 0.6);
     }
-    // At 1180 x 796 the band alone (241 px) would cut 5 px from the controls.
+    // At 1180 x 796 the band alone (241 px) would cut 27 px from the controls.
     expect(deckBand(796)).toBeLessThan(trayFloor(1180));
     expect(TRAY_HEIGHT_CSS).toMatch(/^max\(var\(--deck-band/);
     expect(TRAY_HEIGHT_CSS).toContain(DOTS_RESERVE_CSS);
@@ -110,7 +114,7 @@ describe("the tray", () => {
     expect(TRAY_CSS.lookHeight).toContain("cqw");
     expect(fluidValue(TRAY.lookHeight, TRAY_AT_PRO.lookHeight, AIR.width)).toBeCloseTo(72, 6);
     expect(fluidValue(TRAY.lookHeight, TRAY_AT_PRO.lookHeight, PRO.width)).toBeCloseTo(80, 6);
-    const rowTwo = Math.max(TRAY_AT_PRO.effectHeight, TRAY_AT_PRO.headlineLeading + TRAY_AT_PRO.wordsLeading);
+    const rowTwo = Math.max(TRAY_AT_PRO.effectHeight, TRAY_AT_PRO.headlineLeading + TRAY_WORDS_LINES * TRAY_AT_PRO.wordsLeading);
     const content = TRAY.padTop + TRAY_AT_PRO.lookHeight + TRAY.rowGap + rowTwo;
     const reserve = DOTS.target + DOTS.clearance + Math.max(DOTS.inset, HOME_INDICATOR);
     expect(content + reserve).toBeLessThanOrEqual(bandHeight(PRO.height));
@@ -128,11 +132,14 @@ describe("the tray", () => {
     }
   });
 
-  it("leaves the seeded line under the headline one line at 1180 wide", () => {
-    // "A preview drawn on our photo of your house. Tap a look." at 20 px
-    // Manrope 400 measures 505 px in Chromium.
+  it("leaves the seeded line under the headline two lines at 1180 wide", () => {
+    // Round 7's "A preview drawn on our photo of your house. Tap a look."
+    // measured 505 px at 20 px Manrope 400 in Chromium; round 9 adds "Most
+    // nights, warm white." (about 230 px at the same rate), so about 735 px
+    // in two lines of 535.
     const effects = 4 * TRAY.effectSegment - 3;
     const column = AIR.width - 2 * TRAY.sidePadding - TRAY.columnGap - effects;
     expect(column).toBeGreaterThanOrEqual(505);
+    expect(TRAY_WORDS_LINES * column).toBeGreaterThan(735 + column * 0.25);
   });
 });

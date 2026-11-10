@@ -74,7 +74,9 @@ export async function saveDeck(input: { words?: unknown; looks?: unknown }): Pro
   if (input.words !== undefined) {
     const parsed = parseDeckWordsInput(input.words, current.warranty_text);
     if (!parsed.ok) return { ok: false, error: "Some words need fixing. They're marked below.", wordErrors: parsed.errors };
-    update.deck = deckWordsToJson(mergeEditableWords(parseDeckWords(current.deck), parsed.words));
+    // Over what is stored, keeping whatever this editor doesn't show (round
+    // 7's How install day works, which the customer's link still reads).
+    update.deck = deckWordsToJson(mergeEditableWords(parseDeckWords(current.deck), parsed.words), current.deck);
   }
   if (input.looks !== undefined) {
     const parsed = parseLooksInput(input.looks);
