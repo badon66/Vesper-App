@@ -260,6 +260,12 @@ describe("what a token shows", () => {
         "christmas",
         "product_points",
         "install_day",
+        // Round 9 (2026-11-10): the offers branch's fields, live in the
+        // database ahead of its page (it waits for Keenan's preview).
+        "install_day_deck",
+        "next_steps",
+        "selection_offer",
+        "booked_offer",
         "gallery",
       ].sort(),
     );
@@ -281,6 +287,12 @@ describe("what a token shows", () => {
         "upper_gable_access_fee",
         "track_colour_name",
         "track_custom",
+        // Round 9: the offers and what the meeting chose or the quote agreed.
+        "offers",
+        "financing_offered",
+        "meeting_offer",
+        "accepted",
+        "accepted_offer",
       ].sort(),
     );
     const text = JSON.stringify(view);
