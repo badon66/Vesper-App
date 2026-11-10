@@ -76,9 +76,9 @@ describe("the price page's options", () => {
   });
 
   it("names what an option covers from its measured runs only", () => {
-    expect(coverageLine(RUNS, FULL)).toBe("Front, Garage, Upper front and Upper gable, 150 ft");
+    expect(coverageLine(RUNS, FULL)).toBe("Front, garage and gable, upper and lower: 150 ft");
     const runs = [...RUNS, { name: "Porch", feet: 0, level: "lower" as const }];
-    expect(coverageLine(runs, { runs: [0, 4] })).toBe("Front, 60 ft");
+    expect(coverageLine(runs, { runs: [0, 4] })).toBe("Front, lower: 60 ft");
     expect(coverageLine(RUNS, { runs: [] })).toBe("");
   });
 
@@ -116,11 +116,11 @@ describe("the quote editor", () => {
     expect(editorOffers(RUNS, [MAIN])).toEqual([MAIN]);
   });
 
-  it("adds quick starts: Main floor for the lower runs, Front only and Blank with none, at most four", () => {
-    const withMain = addQuickStart([FULL], "lower", RUNS, 1);
-    expect(withMain[1]).toMatchObject({ name: "Main floor", runs: [0, 1], boxes: null });
+  it("adds quick starts: Front lower, Front and Blank, at most four", () => {
+    const withMain = addQuickStart([FULL], "front_lower", RUNS, 1);
+    expect(withMain[1]).toMatchObject({ name: "Front lower", runs: [0, 1], boxes: null });
     const withFront = addQuickStart(withMain, "front", RUNS, 2);
-    expect(withFront[2]).toMatchObject({ name: "Front only", runs: [] });
+    expect(withFront[2]).toMatchObject({ name: "Front", runs: [0, 1, 2] });
     const withBlank = addQuickStart(withFront, "blank", RUNS, 3);
     expect(withBlank[3]).toMatchObject({ name: "", runs: [] });
     expect(new Set(withBlank.map((offer) => offer.id)).size).toBe(4);

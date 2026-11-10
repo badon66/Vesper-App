@@ -220,11 +220,11 @@ describe("the offers Accepted lists", () => {
     expect(options).toEqual([
       // 150 ft x $23 + $500 - $150 = $3,800; 5% is $190. Upper access and
       // the minimum never count.
-      { id: "full", positions: null, boxes: null, label: "Full wrap", detail: "Front, Garage, Upper front and Upper gable, 150 ft", total: "$4,200", booked: false, meeting: false, commission: earningOf(190) },
+      { id: "full", positions: null, boxes: null, label: "Full wrap", detail: "Front, garage and gable, upper and lower: 150 ft", total: "$4,200", booked: false, meeting: false, commission: earningOf(190) },
       // 90 ft x $23 + $500 - $150 = $2,420; 5% is $121.
-      { id: "lower", positions: [0, 1], boxes: null, label: "Lower level", detail: "Front and Garage, 90 ft", total: "$2,500", booked: false, meeting: false, commission: earningOf(121) },
+      { id: "lower", positions: [0, 1], boxes: null, label: "Lower level", detail: "Front and garage, lower: 90 ft", total: "$2,500", booked: false, meeting: false, commission: earningOf(121) },
       // 30 ft x $23 + $500 - $150 = $1,040; 5% is $52.
-      { id: "garage", positions: [1], boxes: null, label: "Garage", detail: "Garage, 30 ft", total: "$2,500", booked: false, meeting: false, commission: earningOf(52) },
+      { id: "garage", positions: [1], boxes: null, label: "Garage", detail: "Garage, lower: 30 ft", total: "$2,500", booked: false, meeting: false, commission: earningOf(52) },
     ]);
     // The database's way: the same runs give the same amount.
     expect(commissionFor(commissionQuoteFromRow(offerQuote, [0, 1]), 0.05).amount).toBe(121);
@@ -272,7 +272,7 @@ describe("the offers Accepted lists", () => {
   it("read a quote made before offers as one full wrap", () => {
     const options = acceptOptions({ quote: { ...offerQuote, offers: [] }, link: null, commission: preview });
     expect(options).toEqual([
-      { id: "full", positions: null, boxes: null, label: "Full wrap", detail: "Front, Garage, Upper front and Upper gable, 150 ft", total: "$4,200", booked: false, meeting: false, commission: earningOf(190) },
+      { id: "full", positions: null, boxes: null, label: "Full wrap", detail: "Front, garage and gable, upper and lower: 150 ft", total: "$4,200", booked: false, meeting: false, commission: earningOf(190) },
     ]);
   });
 
@@ -290,9 +290,9 @@ describe("the offers Accepted lists", () => {
 
 describe("what they said yes to, on the card", () => {
   it("is the offer whose runs they accepted, by its name", () => {
-    expect(acceptedOption(offerQuote, [0, 1])).toEqual({ label: "Lower level", detail: "Front and Garage, 90 ft" });
-    expect(acceptedOption(offerQuote, null)).toEqual({ label: "Full wrap", detail: "Front, Garage, Upper front and Upper gable, 150 ft" });
-    expect(acceptedOption({ ...offerQuote, offers: [] }, null)).toEqual({ label: "Full wrap", detail: "Front, Garage, Upper front and Upper gable, 150 ft" });
+    expect(acceptedOption(offerQuote, [0, 1])).toEqual({ label: "Lower level", detail: "Front and garage, lower: 90 ft" });
+    expect(acceptedOption(offerQuote, null)).toEqual({ label: "Full wrap", detail: "Front, garage and gable, upper and lower: 150 ft" });
+    expect(acceptedOption({ ...offerQuote, offers: [] }, null)).toEqual({ label: "Full wrap", detail: "Front, garage and gable, upper and lower: 150 ft" });
   });
 
   it("falls back to the runs in words when no offer matches", () => {
