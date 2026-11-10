@@ -52,6 +52,7 @@ import {
   type LookField,
   type WordsField,
 } from "@/lib/settings/deck-schema";
+import { sameTalking, TALKING_PAGES, talkingIssue, type TalkingPoints } from "@/lib/meeting/talking-points";
 import { calgaryToday, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { saveDeck } from "./actions";
@@ -60,6 +61,7 @@ import { LooksEditor, lookFieldId } from "./looks-editor";
 import { labelMeasure, useTextMeasure } from "./measure-labels";
 import { LINES_UP_FRONT_ID, PageWords, wordsFieldId } from "./page-words";
 import { GalleryOrder, ShotRow, SlotCard, slotAnchor, type DeckPhotoView, type PhotosUpdate } from "./slot-card";
+import { TalkingField } from "./talking-field";
 
 export type { DeckPhotoView } from "./slot-card";
 
@@ -92,20 +94,24 @@ type Section =
   | { kind: "built"; page: "cover" | "colour" | "quote"; lines: LineGroup }
   | { kind: "lines"; lines: LineGroup };
 
+// Round 10 (Keenan, 2026-11-10): the meeting's eight pages first, in their
+// order, the colour's lines just before Your price (where they show now),
+// then the round 9 pages that left the meeting, whose words and photos are
+// kept.
 const SECTIONS: Section[] = [
   { kind: "built", page: "cover", lines: "cover" },
   { kind: "page", page: "what_vesper_is" },
   { kind: "page", page: "hidden_by_day" },
   { kind: "page", page: "phone_control" },
-  { kind: "page", page: "gallery" },
   { kind: "page", page: "warranty" },
-  { kind: "page", page: "your_house", lines: "your_house" },
-  { kind: "page", page: "mockup" },
   { kind: "page", page: "light_picker" },
-  { kind: "page", page: "whites_first" },
   { kind: "built", page: "colour", lines: "colour" },
   { kind: "built", page: "quote", lines: "price" },
   { kind: "page", page: "next_steps", lines: "next_steps" },
+  { kind: "page", page: "gallery" },
+  { kind: "page", page: "your_house", lines: "your_house" },
+  { kind: "page", page: "mockup" },
+  { kind: "page", page: "whites_first" },
   { kind: "lines", lines: "every_page" },
   { kind: "lines", lines: "link" },
 ];
@@ -113,10 +119,13 @@ const SECTIONS: Section[] = [
 const sectionId = (section: Section) => (section.kind === "lines" ? `lines-${section.lines}` : `page-${section.page}`);
 const groupOf = (group: LineGroup) => LINE_GROUPS.find((item) => item.key === group);
 
-// "Page 7 of 11", or which page a stand-in stands in for.
+// "Page 7 of 8"; for the colour, where its lines show; for a page that left
+// the meeting, that it did; or which page a stand-in stands in for.
 function sectionNumber(section: Section): string | null {
   if (section.kind === "lines") return null;
   const key: DeckPageKey = section.page;
+  if (key === "colour" && !STORY_PAGES.includes(key)) return "On Your price";
+  if (!STORY_PAGES.includes(key)) return "Not in the meeting now. Its words and photos are kept.";
   if (Object.hasOwn(STAND_INS, key)) {
     const target = STAND_INS[key as StandInKey];
     return `Stands in for page ${STORY_PAGES.indexOf(target) + 1}`;
@@ -142,7 +151,12 @@ type Props = {
   companyLines: string[];
   photos: DeckPhotoView[];
   references: ReferenceRow[];
+  // Keenan's talking points per page (round 10), settings.deck.talking.
+  talking: TalkingPoints;
 };
+
+// The pages that take talking points, and what the field calls each.
+const TALKING_NAME = new Map<DeckPageKey, string>(TALKING_PAGES.map((page) => [page.key, page.name]));
 
 type Status = { kind: "saved" | "error"; text: string } | null;
 
@@ -153,15 +167,19 @@ const LAYOUT_WORDS: Record<(typeof PAGE_LAYOUT)[WordsPageKey], string> = {
 };
 
 const PAGE_LAYOUT_WORDS: Partial<Record<WordsPageKey, string>> = {
+  what_vesper_is: "Their Main mockup, full screen, with the lights on. Skipped until the lead has a Main mockup.",
+  hidden_by_day: "Their Day and Night mockups, with the slider between them. Skipped unless the lead has both.",
+  phone_control: "A phone on screen with their scene mockups as buttons; a tap swaps the house picture. Skipped without a scene.",
+  warranty: "The ten years on a timeline, what it covers and that it transfers with the home. The full warranty is one tap away.",
   your_house: "Their house by day above, unlit, exactly where the light picker will light it; the words in the band under it.",
   mockup: "Their mockup above, the title and its line in the band under it.",
-  next_steps: "The four steps, with your install day photo on the left once it's in.",
+  next_steps: "Their choice and total, the install day if they picked one, no payment until it's done, and thanks.",
 };
 
 const BUILT_LAYOUT_WORDS: Record<"cover" | "colour" | "quote", string> = {
   cover: "The wordmark, their address and this line, on navy.",
-  colour: "The colour decision on one page: the soffit, the track colour and its timing, then their initials.",
-  quote: "Every option at once, biggest first, with the one on screen lit on the house and its breakdown.",
+  colour: "Not a page now: one line on Your price with their colour, in stock or made to order and its timing, then their initials when they say yes.",
+  quote: "Every option with its total and what it covers, the chosen one's mockup big beside them, and the breakdown one tap away.",
 };
 
 const layoutWords = (section: Section) => {
@@ -173,7 +191,9 @@ const layoutWords = (section: Section) => {
 export function DeckEditor(props: Props) {
   const [words, setWords] = useState(props.words);
   const [looks, setLooks] = useState(props.looks);
-  const [saved, setSaved] = useState({ words: props.words, looks: props.looks });
+  const [talking, setTalking] = useState<TalkingPoints>(props.talking);
+  const [saved, setSaved] = useState({ words: props.words, looks: props.looks, talking: props.talking });
+  const [talkingErrors, setTalkingErrors] = useState<Record<string, string>>({});
   const [photos, setPhotos] = useState(props.photos);
   const [references, setReferences] = useState(props.references);
   const [touched, setTouched] = useState<Set<string>>(() => new Set());
@@ -201,7 +221,8 @@ export function DeckEditor(props: Props) {
   const wrap = useMemo(() => (labels ? lookWrapIssues(looks, labels) : {}), [looks, labels]);
   const wordsDirty = !sameWords(words, saved.words);
   const looksDirty = !sameLooks(looks, saved.looks);
-  const dirty = wordsDirty || looksDirty;
+  const talkingDirty = !sameTalking(talking, saved.talking);
+  const dirty = wordsDirty || looksDirty || talkingDirty;
 
   // Photos uploaded here show from a local copy until the page reloads.
   useEffect(() => {
@@ -263,6 +284,19 @@ export function DeckEditor(props: Props) {
       });
     }
   };
+  const setTalkingFor = (page: DeckPageKey, text: string) => {
+    edited();
+    setTalking((previous) => ({ ...previous, [page]: text }));
+    if (talkingErrors[page]) {
+      setTalkingErrors((previous) => {
+        const next = { ...previous };
+        delete next[page];
+        return next;
+      });
+    }
+  };
+  const talkingTooLong = TALKING_PAGES.some(({ key }) => talkingIssue(talking[key] ?? "") !== null);
+
   const updateLooks = (update: (looks: Look[]) => Look[]) => {
     edited();
     setLooks(update);
@@ -348,32 +382,58 @@ export function DeckEditor(props: Props) {
     );
   }
 
+  // To a talking points box that needs fixing, on its page.
+  function focusTalking(page: DeckPageKey | undefined) {
+    if (!page) return;
+    setGroupBy("page");
+    window.requestAnimationFrame(() =>
+      window.requestAnimationFrame(() => {
+        const element = document.getElementById(`talking-${page}`);
+        element?.scrollIntoView({ block: "center" });
+        if (element instanceof HTMLTextAreaElement) element.focus({ preventScroll: true });
+      }),
+    );
+  }
+
   function save() {
     setShowAll(true);
     const wordsBlocked = wordsDirty && Object.keys(wordErrors).length > 0;
     const looksBlocked = looksDirty && (hasLooksIssues(lookIssues) || Object.keys(wrap).length > 0);
-    if (wordsBlocked || looksBlocked) {
+    const talkingBlocked = talkingDirty && talkingTooLong;
+    if (wordsBlocked || looksBlocked || talkingBlocked) {
       setStatus({ kind: "error", text: "Some fields need fixing. They're marked below." });
-      focusFirstProblem(wordsBlocked ? wordErrors : {});
+      if (wordsBlocked) focusFirstProblem(wordErrors);
+      else if (talkingBlocked) focusTalking(TALKING_PAGES.find(({ key }) => talkingIssue(talking[key] ?? "") !== null)?.key);
+      else focusFirstProblem({});
       return;
     }
     const sentWords = wordsDirty ? tidyDeckWords(words) : null;
     const sentLooks = looksDirty ? looks.map(tidyLook) : null;
+    const sentTalking = talkingDirty ? tidyTalking(talking) : null;
     const wordsAtSend = words;
     const looksAtSend = looks;
+    const talkingAtSend = talking;
     setStatus(null);
     startTransition(async () => {
-      const result = await saveDeck({ words: sentWords ?? undefined, looks: sentLooks ?? undefined });
+      const result = await saveDeck({ words: sentWords ?? undefined, looks: sentLooks ?? undefined, talking: sentTalking ?? undefined });
       if (!result.ok) {
         setServerErrors(result.wordErrors ?? {});
+        setTalkingErrors(result.talkingErrors ?? {});
         setStatus({ kind: "error", text: result.error });
         if (result.wordErrors) focusFirstProblem(result.wordErrors);
+        else if (result.talkingErrors) focusTalking(TALKING_PAGES.find(({ key }) => result.talkingErrors?.[key])?.key);
         return;
       }
       // Show what was stored (tidied), unless more was typed meanwhile.
       if (sentWords) setWords((current) => (current === wordsAtSend ? sentWords : current));
       if (sentLooks) setLooks((current) => (current === looksAtSend ? sentLooks : current));
-      setSaved((previous) => ({ words: sentWords ?? previous.words, looks: sentLooks ?? previous.looks }));
+      if (sentTalking) setTalking((current) => (current === talkingAtSend ? sentTalking : current));
+      setSaved((previous) => ({
+        words: sentWords ?? previous.words,
+        looks: sentLooks ?? previous.looks,
+        talking: sentTalking ?? previous.talking,
+      }));
+      setTalkingErrors({});
       setShowAll(false);
       setTouched(new Set());
       setServerErrors({});
@@ -384,6 +444,8 @@ export function DeckEditor(props: Props) {
   function discard() {
     setWords(saved.words);
     setLooks(saved.looks);
+    setTalking(saved.talking);
+    setTalkingErrors({});
     setShowAll(false);
     setTouched(new Set());
     setServerErrors({});
@@ -470,6 +532,15 @@ export function DeckEditor(props: Props) {
                     </CardContent>
                   </Card>
                 ) : null}
+                {section.kind !== "lines" && TALKING_NAME.has(section.page) ? (
+                  <TalkingField
+                    page={section.page}
+                    pageName={TALKING_NAME.get(section.page) ?? sectionTitle(section, words)}
+                    value={talking[section.page] ?? ""}
+                    onChange={(text) => setTalkingFor(section.page, text)}
+                    error={talkingErrors[section.page] ?? (showAll ? (talkingIssue(talking[section.page] ?? "") ?? undefined) : undefined)}
+                  />
+                ) : null}
                 {page === "light_picker" ? (
                   <LooksEditor
                     looks={looks}
@@ -511,7 +582,7 @@ export function DeckEditor(props: Props) {
             role={status?.kind === "error" ? "alert" : "status"}
             className={cn("text-sm font-semibold", status?.kind === "error" ? "text-destructive" : "text-muted-foreground")}
           >
-            {pending ? "Saving" : status ? status.text : "Unsaved changes to the words or looks."}
+            {pending ? "Saving" : status ? status.text : "Unsaved changes to the words, talking points or looks."}
           </p>
           {dirty ? (
             <div className="flex items-center gap-2">
@@ -763,4 +834,14 @@ function ShotsByWhen({
       ))}
     </div>
   );
+}
+
+// The talking points as they are saved: each trimmed, empty ones left out.
+function tidyTalking(talking: TalkingPoints): TalkingPoints {
+  const out: TalkingPoints = {};
+  for (const { key } of TALKING_PAGES) {
+    const text = talking[key]?.trim();
+    if (text) out[key] = text;
+  }
+  return out;
 }
