@@ -506,6 +506,7 @@ export type Database = {
       leads: {
         Row: {
           address_line: string
+          address_to_come: boolean
           answer_notes: Json
           areas_wanted: Database["public"]["Enums"]["roofline_areas"] | null
           assigned_to: string | null
@@ -537,6 +538,7 @@ export type Database = {
             | null
           lost_at: string | null
           lost_reason: string | null
+          name_to_come: boolean
           neighbourhood: string | null
           not_collected: string[]
           notes: string | null
@@ -568,6 +570,7 @@ export type Database = {
         }
         Insert: {
           address_line: string
+          address_to_come?: boolean
           answer_notes?: Json
           areas_wanted?: Database["public"]["Enums"]["roofline_areas"] | null
           assigned_to?: string | null
@@ -599,6 +602,7 @@ export type Database = {
             | null
           lost_at?: string | null
           lost_reason?: string | null
+          name_to_come?: boolean
           neighbourhood?: string | null
           not_collected?: string[]
           notes?: string | null
@@ -630,6 +634,7 @@ export type Database = {
         }
         Update: {
           address_line?: string
+          address_to_come?: boolean
           answer_notes?: Json
           areas_wanted?: Database["public"]["Enums"]["roofline_areas"] | null
           assigned_to?: string | null
@@ -661,6 +666,7 @@ export type Database = {
             | null
           lost_at?: string | null
           lost_reason?: string | null
+          name_to_come?: boolean
           neighbourhood?: string | null
           not_collected?: string[]
           notes?: string | null

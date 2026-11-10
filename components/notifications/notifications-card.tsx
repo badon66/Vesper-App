@@ -49,7 +49,7 @@ export function Notifications({
   readOnly?: boolean;
 }) {
   return (
-    <Card id="notifications" className="scroll-mt-24" data-testid="notifications">
+    <Card id="notifications" className="scroll-mt-28" data-testid="notifications">
       <CardHeader>
         <CardTitle>Notifications</CardTitle>
         <CardDescription className="text-pretty">

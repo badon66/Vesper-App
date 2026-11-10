@@ -15,6 +15,7 @@ import {
 import { notifyCancelled, notifyMoved, notifyOutcome } from "@/lib/push/setter-notices";
 import { bookingMessage, errorCode } from "@/lib/schedule/messages";
 import { OUTCOMES } from "@/lib/schedule/meetings";
+import { bookingSkip } from "@/lib/schedule/readiness";
 import { createClient } from "@/lib/supabase/server";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 
@@ -175,13 +176,16 @@ export async function bookMeeting(_previous: BookState, formData: FormData): Pro
   });
   if (!parsed.success) return { ok: false, code: "invalid", message: "Pick a time and a lead first." };
   const values = parsed.data;
+  // A skip reason goes only when it's complete (2026-11-10: the photos can
+  // be finished later).
+  const skip = bookingSkip(values.photos_skipped || null, values.photos_skip_note);
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("book_meeting", {
     p_lead_id: values.lead_id,
     p_starts_at: values.starts_at,
     p_everyone_deciding_present: values.everyone === "yes",
-    ...(values.photos_skipped ? { p_photos_skipped: values.photos_skipped } : {}),
-    ...(values.photos_skip_note ? { p_photos_skip_note: values.photos_skip_note } : {}),
+    ...(skip.skip ? { p_photos_skipped: skip.skip } : {}),
+    ...(skip.note ? { p_photos_skip_note: skip.note } : {}),
   });
   if (error) {
     return {

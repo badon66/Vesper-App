@@ -247,7 +247,7 @@ function StartKnocking({
             autoCapitalize="words"
             enterKeyHint="go"
             // Clear of the sticky app header when it scrolls up on focus.
-            className="h-12 scroll-mt-[calc(4.5rem+env(safe-area-inset-top))] pr-12 text-base"
+            className="h-12 scroll-mt-[calc(7.5rem+env(safe-area-inset-top))] pr-12 text-base"
           />
           {value ? (
             <button

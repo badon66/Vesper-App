@@ -5,7 +5,8 @@
 // step notes, Track colours list and track colour card (looked at, never
 // saved), and View as compared screen by screen with what a real test
 // setter sees, including a lead with Find out answers, guided photos and a
-// track colour and the Schedule without Keenan's tools. Then View as you can
+// track colour, the Schedule without Keenan's tools, and the reminder bar
+// for a booking still to finish with its panel (2026-11-10). Then View as you can
 // click through (round 2): the booking sheet from a tapped time to Book,
 // its time menu, a photo, the knock counters, New lead's Save, a status,
 // Notifications and the welcome, every write refused or acted out, and a
@@ -673,6 +674,41 @@ try {
   await checkTapTargets(op, "the owner's track colour card");
   await op.screenshot({ path: `${out}/m26-owner-track-colour.png`, fullPage: true });
 
+  // Book now, finish later (2026-11-10): an upcoming booking of A's with
+  // things still to finish, so A's screens carry the reminder bar, which
+  // View as must show the same. It sits on B's evenings as a stand-in host,
+  // never on Keenan's board, and goes with B at the end.
+  leads.toFinish = await add(a, { address_line: "8 Attention Way NW (TEST)" });
+  const soon = new Date(Date.now() + 2 * 86_400_000);
+  soon.setUTCMinutes(0, 0, 0);
+  const toFinishMeeting = await admin.from("meetings").insert({
+    lead_id: leads.toFinish,
+    host_id: people.b.id,
+    setter_id: a.id,
+    booked_by: a.id,
+    starts_at: soon.toISOString(),
+    ends_at: new Date(soon.getTime() + 45 * 60_000).toISOString(),
+    everyone_deciding_present: true,
+  });
+  if (toFinishMeeting.error) throw new Error(`meeting to finish: ${toFinishMeeting.error.message}`);
+  const barText = (target) =>
+    target.evaluate(() => {
+      const bar = document.querySelector('[data-testid="to-finish-bar"]');
+      return bar ? `${bar.getAttribute("data-count")}: ${(bar.querySelector('[data-testid="to-finish-open"]')?.textContent ?? "").replace(/\s+/g, " ").trim()}` : "none";
+    });
+  const panelOf = async (target) => {
+    await target.getByTestId("to-finish-open").click();
+    const panel = target.getByTestId("to-finish-panel");
+    await panel.getByTestId("to-finish-booking").first().waitFor({ timeout: 10000 }).catch(() => {});
+    const shown = await panel.evaluate((dialog) => ({
+      text: dialog.innerText.replace(/\s+/g, " ").trim(),
+      items: [...dialog.querySelectorAll('[data-testid="to-finish-item"]')].map((item) => `${item.getAttribute("data-item")} ${item.getAttribute("href")}`),
+    }));
+    await target.keyboard.press("Escape");
+    return shown;
+  };
+  const barMismatches = [];
+
   // View as A.
   await op.goto(`${base}/app/admin/people`);
   await settle(op);
@@ -717,6 +753,30 @@ try {
     await settle(op);
     await settleDevice(op);
     const viewed = await capture(op);
+    // The reminder bar sits above main, in the app's header: compared on
+    // its own. The welcome never has it.
+    if (!path.startsWith("/app/welcome")) {
+      await page.getByTestId("to-finish-bar").waitFor({ timeout: 8000 }).catch(() => {});
+      await op.getByTestId("to-finish-bar").waitFor({ timeout: 8000 }).catch(() => {});
+    }
+    const realBar = await barText(page);
+    const viewedBar = await barText(op);
+    if (realBar !== viewedBar) barMismatches.push(`${label}: ${realBar} vs ${viewedBar}`);
+    if (label === "Home") {
+      check("the setter's own Home carries the reminder bar for their booking still to finish: 1 booking to finish", realBar.startsWith("1: 1 booking to finish"), realBar);
+      const realPanel = await panelOf(page);
+      const viewedPanel = await panelOf(op);
+      check(
+        "View as opens the same reminder panel as the setter: the booking, what it's missing and where each item goes",
+        realPanel.text === viewedPanel.text &&
+          JSON.stringify(realPanel.items) === JSON.stringify(viewedPanel.items) &&
+          realPanel.items.length > 0 &&
+          realPanel.items.every((item) => item.includes(`/app/leads/${leads.toFinish}`)),
+        `${firstDifference(realPanel.text, viewedPanel.text)} ${viewedPanel.items.join(", ").slice(0, 160)}`,
+      );
+      check("the panel names no other setter and shows no phone or email", !/Nav Test B|tel:|mailto:/.test(`${viewedPanel.text} ${viewedPanel.items.join(" ")}`));
+      await op.screenshot({ path: `${out}/bn-view-as-bar.png` });
+    }
     const named = (controls) => JSON.stringify(controls.filter((c) => !c.device).map((c) => c.label));
     const sameControls = named(real.controls) === named(viewed.controls);
     const sameImages = JSON.stringify(real.images) === JSON.stringify(viewed.images);
@@ -837,6 +897,7 @@ try {
       );
     }
   }
+  check("View as shows the same reminder bar as the setter on every screen, and none on the welcome", barMismatches.length === 0, barMismatches.join(" | "));
   check("View as keeps owner screens from the setter's view", (await op.getByRole("heading", { name: "Not for your role" }).count()) === 1);
 
   // Contact privacy on their own lead and in search (Keenan, 2026-11-04): the
@@ -939,7 +1000,10 @@ try {
   await pickIn("Everyone who decides will be there", "Yes");
   await sheetNext();
   await sheetView("learned");
-  await op.getByTestId("mark-rest").click();
+  // Answered, not marked Not collected: since 2026-11-10 Book lists a Not
+  // collected to finish later, and this run wants everything in.
+  await pickIn("Christmas lights now", "None");
+  await pickIn("Looked into it before", "Thought about it");
   await sheetNext();
   await sheetView("address");
   check("every step of the sheet works while viewing, with nothing saved between them", true);
@@ -964,8 +1028,8 @@ try {
   await op.fill("#sheet-phone", "403 555 0101");
   const actedReady = ((await sheetOf.getByTestId("readiness").innerText().catch(() => "")) ?? "").trim();
   check(
-    "Book reads as it would for the setter, the acted-out photos included: everything is answered",
-    (await sheetOf.getByTestId("readiness").getAttribute("data-ok")) === "yes" && actedReady === "Everything is answered.",
+    "Book reads as it would for the setter, the acted-out photos included: nothing left to finish later",
+    (await sheetOf.getByTestId("readiness").getAttribute("data-ok")) === "yes" && actedReady === "Nothing. Everything is in.",
     actedReady,
   );
   // The time's menu: Add 5 minutes is acted out too.
@@ -995,8 +1059,8 @@ try {
   await op.fill("#sheet-first-name", "View as keep (test)");
   await sheetNext();
   await sheetView("door");
-  await pickIn("Owns the home", "Yes");
-  await pickIn("Wants a price", "Not yet");
+  // Since 2026-11-10 only a No on owns the home rules a booking out.
+  await pickIn("Owns the home", "No");
   await sheetOf.getByTestId("keep-as-lead").click();
   await op.waitForURL("**/app/leads/new", { timeout: 30000 });
   await settle(op);

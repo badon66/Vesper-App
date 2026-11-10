@@ -100,14 +100,22 @@ describe("Not collected", () => {
     expect(fields).toEqual(expect.arrayContaining(["both_decision_makers", "not_collected"]));
   });
 
-  it("never counts as an answer when booking: a Not collected phone blocks it", async () => {
-    await admin.from("leads").update({ phone: null, not_collected: ["phone"] }).eq("id", leadId);
-    const { data } = await admin.rpc("booking_problems", {
-      p_lead_id: leadId,
-      p_everyone_deciding_present: true,
-      p_photos_skipped: "homeowner_said_no",
-      p_photos_skip_note: "",
-    });
-    expect(data as string[]).toEqual(expect.arrayContaining(["phone"]));
+  // Book now, finish later (Keenan, 2026-11-10): Not collected stays Not
+  // collected on the lead, and it is finished later rather than ruling a
+  // booking out. Only a No on owns the home does that.
+  it("is kept as Not collected, and never rules a booking out; a No on owns the home does", async () => {
+    await admin.from("leads").update({ phone: null, owns_home: null, not_collected: ["phone", "owns_home"] }).eq("id", leadId);
+    const { data: lead } = await admin.from("leads").select("not_collected, phone_saved, owns_home").eq("id", leadId).single();
+    expect(lead).toEqual({ not_collected: ["owns_home", "phone"], phone_saved: false, owns_home: null });
+    const problems = () =>
+      admin.rpc("booking_problems", {
+        p_lead_id: leadId,
+        p_everyone_deciding_present: false,
+        p_photos_skipped: null as unknown as string,
+        p_photos_skip_note: "",
+      });
+    expect((await problems()).data).toEqual([]);
+    await admin.from("leads").update({ owns_home: false }).eq("id", leadId);
+    expect((await problems()).data).toEqual(["owns_home"]);
   });
 });

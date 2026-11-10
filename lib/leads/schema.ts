@@ -204,8 +204,13 @@ export type LeadFormErrors = Partial<Record<LeadFormField, string>>;
 
 export const ANSWER_OR_NOT_COLLECTED = "Answer this, or mark it Not collected.";
 
+// Book now, finish later (Keenan, 2026-11-10): New lead still needs every
+// answer (or Not collected); the edit page of a lead already saved does not,
+// so a setter can finish what is missing one piece at a time. A question
+// left open stays empty, and the lead's To be completed list shows it.
 export function parseLeadForm(
   input: Record<string, unknown>,
+  { requireAnswers = true }: { requireAnswers?: boolean } = {},
 ): { ok: true; values: LeadFormValues } | { ok: false; errors: LeadFormErrors } {
   // Not collected travels as its own word (and the phone as its own flag):
   // it becomes an empty answer plus a mark, before the answers are checked.
@@ -228,7 +233,7 @@ export function parseLeadForm(
     const errors: LeadFormErrors = {};
     for (const question of COUNTED_QUESTIONS) {
       const value = values[question];
-      if ((value === null || value === undefined) && !marked.has(question)) errors[question] = ANSWER_OR_NOT_COLLECTED;
+      if (requireAnswers && (value === null || value === undefined) && !marked.has(question)) errors[question] = ANSWER_OR_NOT_COLLECTED;
     }
     if (Object.keys(errors).length > 0) return { ok: false, errors };
     const notCollected = COUNTED_QUESTIONS.filter((question) => marked.has(question) && (values[question] === null || values[question] === undefined));

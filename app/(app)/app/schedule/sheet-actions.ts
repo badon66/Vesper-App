@@ -10,6 +10,7 @@ import {
   type SessionProfile,
 } from "@/lib/auth/profile";
 import type { SheetDraft } from "@/lib/booking/sheet";
+import { addressToCome, nameToCome, parseSheetLead } from "@/lib/booking/sheet-lead";
 import { type PhotoSlot } from "@/lib/leads/door";
 import { COUNTED_QUESTIONS, type CountedQuestion } from "@/lib/leads/questions";
 import { followUpLabel } from "@/lib/leads/attention";
@@ -18,7 +19,7 @@ import { contactFor } from "@/lib/leads/contacts";
 import { notesFor } from "@/lib/leads/notes";
 import { LEAD_FIELDS } from "@/lib/leads/fields";
 import { insertLeadOnce, NOT_SAVED, readSaveKey } from "@/lib/leads/save-key";
-import { leadColumnsFromValues, parseLeadForm, type LeadFormErrors } from "@/lib/leads/schema";
+import { leadColumnsFromValues, parseLeadForm, type LeadFormErrors, type LeadFormValues } from "@/lib/leads/schema";
 import { leadName, STATUS_LABELS } from "@/lib/leads/status";
 import { isOwnPhotoPath, PHOTO_BUCKET } from "@/lib/photos";
 import type { BoardSlot } from "@/lib/schedule/board";
@@ -26,9 +27,13 @@ import { distanceWarnings, formatKm } from "@/lib/schedule/distance";
 import { isLive, LIVE_STATUSES } from "@/lib/schedule/meetings";
 import { bookingMessage, errorCode } from "@/lib/schedule/messages";
 import { bookingSettings, fetchBoard, meetingsOnDay } from "@/lib/schedule/queries";
+import { bookingSkip } from "@/lib/schedule/readiness";
 import { createClient } from "@/lib/supabase/server";
 import { calgaryDateOf, calgaryToday, formatTime } from "@/lib/time";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
+import type { Database } from "@/types/database";
+
+type LeadUpdate = Database["public"]["Tables"]["leads"]["Update"];
 
 // The booking sheet's reads and writes (Keenan, 2026-11-02). Every one runs
 // with the signed-in person's own session, so Row Level Security and the
@@ -154,6 +159,11 @@ export async function sheetLead(leadId: string): Promise<SheetLead> {
       ? "This lead already has a meeting booked. Move that booking instead."
       : null;
 
+  // A name or an address still to come (2026-11-10) opens blank on the
+  // sheet, so it can be typed in, and Book lists it to finish later.
+  const noName = nameToCome(lead);
+  const noAddress = addressToCome(lead);
+
   return {
     ok: true,
     name: leadName(lead),
@@ -162,7 +172,7 @@ export async function sheetLead(leadId: string): Promise<SheetLead> {
     photos,
     draft: {
       leadId: lead.id,
-      first_name: lead.first_name,
+      first_name: noName ? "" : lead.first_name,
       last_name: lead.last_name ?? "",
       phone: contact.phone ?? "",
       owns_home: lead.owns_home,
@@ -173,7 +183,7 @@ export async function sheetLead(leadId: string): Promise<SheetLead> {
       not_collected: (lead.not_collected ?? []).filter((item): item is CountedQuestion =>
         (COUNTED_QUESTIONS as string[]).includes(item),
       ),
-      address_line: lead.address_line,
+      address_line: noAddress ? "" : lead.address_line,
       city: lead.city,
       postal_code: lead.postal_code ?? "",
       neighbourhood: lead.neighbourhood ?? "",
@@ -239,17 +249,25 @@ export async function sheetBookableLeads(): Promise<{ ok: true; leads: BookableL
 export type SheetSave = { ok: true; leadId: string } | { ok: false; error: string; errors?: LeadFormErrors };
 
 
-// Saves the person as a lead the moment they have a first name and an
-// address, and every screen after that. The same validation as New lead.
-export async function saveSheetLead(leadId: string | null, input: Record<string, unknown>): Promise<SheetSave> {
+// Saves the person as a lead. On Next, once they have what New lead asks
+// for, with New lead's own validation, so a lead saved without a booking is
+// one New lead could have saved. At Book (2026-11-10: book now, finish
+// later), with the sheet's own: a first name or the address is enough, the
+// other saved as Name to come or Address to come with its flag, and any
+// question not asked yet stays open, to finish later.
+export async function saveSheetLead(
+  leadId: string | null,
+  input: Record<string, unknown>,
+  opts: { booking?: boolean } = {},
+): Promise<SheetSave> {
   const me = await salesSide();
   if (refused(me)) return me;
-  const parsed = parseLeadForm(input);
+  const parsed = parseSave(input, opts.booking === true);
   if (!parsed.ok) {
     const first = Object.values(parsed.errors)[0];
     return { ok: false, error: first ?? "Some answers need a look.", errors: parsed.errors };
   }
-  const columns = leadColumnsFromValues(parsed.values);
+  const columns: LeadUpdate = { ...leadColumnsFromValues(parsed.values), ...parsed.toCome };
   const supabase = await createClient();
 
   if (!leadId) {
@@ -286,6 +304,24 @@ export async function saveSheetLead(leadId: string | null, input: Record<string,
   return updateSheetLead(supabase, existing.data, columns);
 }
 
+// The values a save writes, with the two flags: set by a save at Book that
+// had no name or no address, and off for a save on Next, which has both.
+function parseSave(
+  input: Record<string, unknown>,
+  booking: boolean,
+):
+  | { ok: true; values: LeadFormValues; toCome: { name_to_come: boolean; address_to_come: boolean } }
+  | { ok: false; errors: LeadFormErrors } {
+  if (!booking) {
+    const parsed = parseLeadForm(input);
+    return parsed.ok ? { ok: true, values: parsed.values, toCome: { name_to_come: false, address_to_come: false } } : parsed;
+  }
+  const parsed = parseSheetLead(input);
+  if (!parsed.ok) return parsed;
+  const { name_to_come, address_to_come, ...values } = parsed.values;
+  return { ok: true, values, toCome: { name_to_come, address_to_come } };
+}
+
 async function attachSlotPhotos(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
@@ -308,7 +344,7 @@ async function attachSlotPhotos(
 async function updateSheetLead(
   supabase: Awaited<ReturnType<typeof createClient>>,
   leadId: string,
-  columns: ReturnType<typeof leadColumnsFromValues>,
+  columns: LeadUpdate,
 ): Promise<SheetSave> {
   const { email: _email, notes: _notes, source: _source, ...update } = columns;
   void _email;
@@ -350,13 +386,16 @@ export async function bookFromSheet(input: {
   const parsed = bookSchema.safeParse(input);
   if (!parsed.success) return { ok: false, code: "invalid", message: "Pick a time and a lead first." };
   const values = parsed.data;
+  // Photos are finished later now (2026-11-10): a skip reason goes only
+  // when it's complete, Other with its note.
+  const skip = bookingSkip(values.skip, values.skipNote);
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("book_meeting", {
     p_lead_id: values.leadId,
     p_starts_at: values.startsAt,
     p_everyone_deciding_present: values.everyone,
-    ...(values.skip ? { p_photos_skipped: values.skip } : {}),
-    ...(values.skipNote ? { p_photos_skip_note: values.skipNote } : {}),
+    ...(skip.skip ? { p_photos_skipped: skip.skip } : {}),
+    ...(skip.note ? { p_photos_skip_note: skip.note } : {}),
   });
   if (error || !data) {
     const code = error ? errorCode(error) : "unknown";

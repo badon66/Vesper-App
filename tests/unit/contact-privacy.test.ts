@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { maySeeContact, NO_CONTACT, withContact } from "@/lib/leads/contact-rules";
 import { leadAnswerList, PHONE_HIDDEN } from "@/lib/leads/door";
 import { completenessLabel, questionState } from "@/lib/leads/questions";
-import { leadReadiness } from "@/lib/schedule/readiness";
 
 // Contact privacy (Keenan, 2026-11-04): a setter sees a lead's phone and
 // email only on their own leads; Keenan sees every lead's. A number saved on
@@ -63,10 +62,5 @@ describe("a number saved but not shown", () => {
     const phone = leadAnswerList(hidden).find((row) => row.key === "phone");
     expect(phone?.answer).toBe(PHONE_HIDDEN);
     expect(phone?.state).toBe("answered");
-  });
-
-  it("meets Before you book's phone line", () => {
-    expect(leadReadiness(hidden, 3).find((item) => item.key === "phone")?.ok).toBe(true);
-    expect(leadReadiness({ ...hidden, phone_saved: false }, 3).find((item) => item.key === "phone")?.ok).toBe(false);
   });
 });
