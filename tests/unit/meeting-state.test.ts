@@ -71,6 +71,9 @@ const serverDraft = (updatedAt: string): NonNullable<MeetingPayload["draft"]> =>
   upperGableAccessFee: null,
   financingOffered: false,
   validUntil: "2026-11-17",
+  offers: [],
+  meetingOffer: null,
+  meetingInstallOn: null,
   updatedAt,
 });
 

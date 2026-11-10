@@ -7,6 +7,7 @@ import type { SoffitColour } from "@/lib/leads/status";
 import type { TrackColour } from "@/lib/leads/track-colour";
 import { defaultValidUntil, guessRunPart, RUN_PARTS, type ColourTiming, type QuoteInputs, type QuoteRun, type RunPart } from "@/lib/pricing";
 import { EFFECTS, type DeckWords, type Effect, type Look, type Trace } from "@/lib/deck";
+import { cleanPositions, offersForSave, parseOffers, type QuoteOffer } from "@/lib/quotes/offers";
 
 // Round 7 (Keenan, 2026-11-08): the deck's own part of the payload. Keenan's
 // photos come as short-lived signed storage links, so Get tonight ready keeps
@@ -104,6 +105,12 @@ export type MeetingPayload = {
     upperGableAccessFee: number | null;
     financingOffered: boolean;
     validUntil: string | null;
+    // Round 9 (2026-11-10): the offers (quotes.offers, raw), the option
+    // chosen at the table (quotes.meeting_offer) and the install day picked
+    // at the table (quotes.meeting_install_on).
+    offers: unknown;
+    meetingOffer: string | null;
+    meetingInstallOn: string | null;
     // The database's updated_at for the draft.
     updatedAt: string;
   } | null;
@@ -130,7 +137,36 @@ export type QuoteUIState = {
   upperGableAccessFee: string;
   financingOffered: boolean;
   validUntil: string;
+  // Round 9 (Keenan, 2026-11-10): the offers on this quote, each picking
+  // which runs it covers (lib/quotes/offers.ts). Empty means one full wrap
+  // covering every run; read them through quoteOffers().
+  offers: QuoteOffer[];
+  // The option the customer chose at the table (an offer id), or null; it
+  // saves as quotes.meeting_offer and prefills round 8's Accepted sheet.
+  chosenOffer: string | null;
+  // The install day picked at the table (YYYY-MM-DD), or null; it saves as
+  // quotes.meeting_install_on and is never written to the lead before
+  // Accepted.
+  installOn: string | null;
 };
+
+// The offers as shown: an empty list is one full wrap over every run.
+export function quoteOffers(state: Pick<QuoteUIState, "offers" | "runs">): QuoteOffer[] {
+  return parseOffers(state.offers, state.runs.length);
+}
+
+// One colour rule (CLAUDE.md, and the five seats, 2026-11-10): White is the
+// only stock colour. Any other list colour, and Custom, is made to order:
+// spring (factory_order) unless rush was already chosen. No colour: none.
+export function colourTimingFor(
+  kind: "list" | "custom" | "none",
+  colourText: string,
+  current: ColourTiming | null,
+): ColourTiming | null {
+  if (kind === "none") return null;
+  if (kind === "list" && /^white\b/i.test(colourText.trim())) return "stock";
+  return current === "rush" ? "rush" : "factory_order";
+}
 
 const moneyString = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(2));
 const parseMoney = (value: string) => {
@@ -163,12 +199,15 @@ export function defaultQuoteState(payload: MeetingPayload): QuoteUIState {
     neighbourOn: false,
     neighbourAmount: moneyString(payload.pricing.neighbourDiscount),
     customDiscounts: [],
-    colourTiming: payload.lead.colourKind === "custom" ? "factory_order" : payload.lead.colourKind === "list" ? "stock" : null,
+    colourTiming: colourTimingFor(payload.lead.colourKind, payload.lead.colourText, null),
     rushFee: feeString(payload.pricing.rushFee),
     upperAccessFee: feeString(payload.pricing.upperAccessFee),
     upperGableAccessFee: feeString(payload.pricing.upperGableAccessFee),
     financingOffered: false,
     validUntil: defaultValidUntil(payload.today, payload.pricing.priceHoldDays),
+    offers: [],
+    chosenOffer: null,
+    installOn: null,
   };
 }
 
@@ -224,6 +263,10 @@ export function quoteStateFromDraft(draft: NonNullable<MeetingPayload["draft"]>,
     upperGableAccessFee: feeString(draft.upperGableAccessFee),
     financingOffered: draft.financingOffered,
     validUntil: draft.validUntil ?? defaultValidUntil(payload.today, payload.pricing.priceHoldDays),
+    // Saved offers as they are; an empty list stays empty (one full wrap).
+    offers: Array.isArray(draft.offers) && draft.offers.length > 0 ? parseOffers(draft.offers, runs.length) : [],
+    chosenOffer: typeof draft.meetingOffer === "string" && draft.meetingOffer !== "" ? draft.meetingOffer : null,
+    installOn: typeof draft.meetingInstallOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(draft.meetingInstallOn) ? draft.meetingInstallOn : null,
   };
 }
 
@@ -249,6 +292,9 @@ export function quoteFingerprint(state: QuoteUIState): string {
     moneyOrNone(state.upperGableAccessFee),
     state.financingOffered,
     state.validUntil,
+    offersForSave(state.offers, state.runs.length).map((offer) => [offer.id, offer.name, cleanPositions(state.runs.length, offer.runs), offer.boxes ?? null]),
+    state.chosenOffer,
+    state.installOn,
   ]);
 }
 

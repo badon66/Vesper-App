@@ -12,23 +12,47 @@
 
 import { priceQuote, selectRuns, totalFeet, type QuoteInputs, type QuoteRun, type QuoteTotals } from "@/lib/pricing";
 
-export type QuoteOffer = { id: string; name: string; runs: number[] };
+// boxes: this offer's control box count, 1 to 9; null uses the quote's
+// box count (the five seats, 2026-11-10).
+export type QuoteOffer = { id: string; name: string; runs: number[]; boxes?: number | null };
 
 export const OFFER_NAME_MAX = 60;
+// What the editor lets Keenan type, so an iPad button never wraps at three
+// options; the database's 60 stays as a backstop.
+export const OFFER_NAME_EDITOR_MAX = 20;
 export const OFFER_ID_MAX = 40;
-export const OFFERS_MAX = 6;
+// The meeting and the link show up to four.
+export const OFFERS_MAX = 4;
 
 // The id and name of the offer an empty list stands for: every run.
 export const FULL_WRAP_ID = "full";
 export const FULL_WRAP_NAME = "Full wrap";
 
-export type QuickStart = "full" | "lower" | "front";
+export type QuickStart = "full" | "lower" | "front" | "blank";
 
-export const QUICK_STARTS: readonly { kind: QuickStart; name: string; hint: string }[] = [
-  { kind: "full", name: "Full wrap", hint: "Every run" },
-  { kind: "lower", name: "Lower level", hint: "Every lower run" },
-  { kind: "front", name: "Front only", hint: "You pick the runs" },
+// The "+ Offer" choices. label is the button Keenan taps (his words);
+// name is what the offer it makes is called, which customers read: the
+// Lower level quick start names its offer "Main floor", because customers
+// read "lower level" as the basement (the five seats, 2026-11-10; Keenan
+// can rename it). Lower level is offered only when the house has an upper
+// run, since otherwise it would match the full wrap.
+export const QUICK_STARTS: readonly { kind: QuickStart; label: string; name: string; hint: string }[] = [
+  { kind: "full", label: "Full wrap", name: "Full wrap", hint: "Every run" },
+  { kind: "lower", label: "Lower level", name: "Main floor", hint: "Every lower run" },
+  { kind: "front", label: "Front only", name: "Front only", hint: "Tap the runs it covers." },
+  { kind: "blank", label: "Blank", name: "", hint: "Name it" },
 ];
+
+export function quickStartsFor(runs: QuoteRun[]): typeof QUICK_STARTS {
+  const upper = runs.some((run) => run.level === "upper");
+  return QUICK_STARTS.filter((start) => start.kind !== "lower" || upper);
+}
+
+// A box count as saved: a whole number from 1 to 9, else null (the quote's).
+export function cleanBoxes(value: unknown): number | null {
+  const n = typeof value === "string" && /^[0-9]+$/.test(value) ? Number(value) : value;
+  return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= 9 ? n : null;
+}
 
 // Positions on a quote with runCount runs: whole numbers in range, sorted,
 // without repeats.
@@ -62,14 +86,14 @@ export function parseOffers(value: unknown, runCount: number): QuoteOffer[] {
     const id = typeof record.id === "string" ? record.id.trim().slice(0, OFFER_ID_MAX) : "";
     if (id === "" || seen.has(id)) continue;
     seen.add(id);
-    offers.push({ id, name: cleanOfferName(record.name), runs: cleanPositions(runCount, record.runs) });
+    offers.push({ id, name: cleanOfferName(record.name), runs: cleanPositions(runCount, record.runs), boxes: cleanBoxes(record.boxes) });
   }
   if (offers.length > 0) return offers;
   return runCount > 0 ? [fullWrap(runCount)] : [];
 }
 
 export function fullWrap(runCount: number): QuoteOffer {
-  return { id: FULL_WRAP_ID, name: FULL_WRAP_NAME, runs: Array.from({ length: runCount }, (_, at) => at) };
+  return { id: FULL_WRAP_ID, name: FULL_WRAP_NAME, runs: Array.from({ length: runCount }, (_, at) => at), boxes: null };
 }
 
 // What a quick start covers: every run, every lower run, or none yet (Keenan
@@ -78,6 +102,22 @@ export function quickStartRuns(kind: QuickStart, runs: QuoteRun[]): number[] {
   if (kind === "full") return runs.map((_, at) => at);
   if (kind === "lower") return runs.flatMap((run, at) => (run.level === "lower" ? [at] : []));
   return [];
+}
+
+// A run's name, never blank, the way the customer's link and the database
+// name it (quote_link_run_name).
+export function offerRunName(run: QuoteRun, position: number): string {
+  return run.name.trim() || `Run ${position + 1}`;
+}
+
+// What an offer covers, built from its runs, never typed: "Front, Front
+// upper, Garage and Left gable, 166 ft". Empty when it covers no run.
+export function offerCoverage(runs: QuoteRun[], offer: Pick<QuoteOffer, "runs">): string {
+  const picked = [...new Set(offer.runs)].filter((p) => p >= 0 && p < runs.length).sort((a, b) => a - b);
+  if (picked.length === 0) return "";
+  const names = picked.map((p) => offerRunName(runs[p], p));
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `${list}, ${totalFeet(selectRuns(runs, picked))} ft`;
 }
 
 // A new offer's id: short, unique on the quote, never reused.
@@ -132,7 +172,7 @@ export function addRunToOffers(offers: readonly QuoteOffer[], runsBefore: QuoteR
 // when the offer covers no run yet (it shows "Pick the runs" instead).
 export function priceOffer(inputs: QuoteInputs, offer: QuoteOffer): QuoteTotals | null {
   if (offer.runs.length === 0) return null;
-  return priceQuote({ ...inputs, runs: selectRuns(inputs.runs, offer.runs) });
+  return priceQuote({ ...inputs, runs: selectRuns(inputs.runs, offer.runs), boxCount: offer.boxes ?? inputs.boxCount });
 }
 
 export type PricedOffer = {
@@ -193,7 +233,7 @@ export function offersForSave(offers: readonly QuoteOffer[], runCount: number): 
     const id = offer.id.trim().slice(0, OFFER_ID_MAX);
     if (id === "" || seen.has(id)) continue;
     seen.add(id);
-    out.push({ id, name: cleanOfferName(offer.name), runs: cleanPositions(runCount, offer.runs) });
+    out.push({ id, name: cleanOfferName(offer.name), runs: cleanPositions(runCount, offer.runs), boxes: cleanBoxes(offer.boxes) });
     if (out.length === OFFERS_MAX) break;
   }
   return out;

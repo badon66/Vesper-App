@@ -4,12 +4,11 @@ import type { QuoteOutcomeData } from "@/components/quotes/quote-outcome";
 import { namesById } from "@/lib/leads/queries";
 import type { LeadStatus } from "@/lib/leads/status";
 import {
-  bookedStartSmaller,
+  acceptedOption,
+  acceptOptions,
   currentCommission,
-  optionWords,
   pickOutcomeQuote,
   previewCommission,
-  runsFromJson,
   standingCommission,
   type CommissionRow,
 } from "@/lib/quotes/outcome-card";
@@ -19,6 +18,8 @@ import { createClient } from "@/lib/supabase/server";
 // 2026-11-09). Owner only: the page loads it only for the owner, never
 // under View as. The quote is the lead's accepted one while it has one,
 // otherwise its newest of any status. Null when the lead has no quote.
+// Accepted lists the quote's offers biggest first, with the one the
+// customer booked on their link chosen to start (round 9, 2026-11-10).
 
 type Client = Awaited<ReturnType<typeof createClient>>;
 
@@ -45,14 +46,14 @@ export async function loadQuoteOutcome(supabase: Client, lead: LeadForOutcome): 
     supabase
       .from("quotes")
       .select(
-        "id, status, created_at, runs, box_count, price_per_ft, box_price, discounts, accepted_at, accepted_runs, declined_at, decline_reason, cancelled_at, cancel_reason, outcome_note",
+        "id, status, created_at, runs, offers, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, min_job_total, gst_enabled, gst_rate, accepted_at, accepted_runs, declined_at, decline_reason, cancelled_at, cancel_reason, outcome_note",
       )
       .eq("lead_id", lead.id)
       .order("created_at", { ascending: false })
       .limit(50),
     supabase
       .from("quote_links")
-      .select("booked_at, booked_option, booked_selection")
+      .select("booked_at, booked_option, booked_offer, booked_selection")
       .eq("lead_id", lead.id)
       .not("booked_at", "is", null)
       .order("booked_at", { ascending: false })
@@ -78,26 +79,27 @@ export async function loadQuoteOutcome(supabase: Client, lead: LeadForOutcome): 
   const earning = currentCommission(earnings, quote.id);
   const names = await namesById(supabase, [receiverId, earning?.profile_id]);
   const receiver = { name: names.get(receiverId) ?? "the setter", role: receiverRow?.role ?? null };
-  const runs = runsFromJson(quote.runs);
   const rate = Number(settings?.commission_rate ?? 0);
-  // The commission reads only these, never a total (lib/pay/commission.ts).
+  // The quote's own prices as numbers. The commission reads only the runs,
+  // the boxes, the two prices and the discounts, never a total
+  // (lib/pay/commission.ts); the offers' prices read the rest.
   const priced = {
-    runs: quote.runs,
-    box_count: quote.box_count,
+    ...quote,
+    box_count: Number(quote.box_count),
     price_per_ft: Number(quote.price_per_ft),
     box_price: Number(quote.box_price),
-    discounts: quote.discounts,
+    gst_rate: Number(quote.gst_rate),
   };
-  // What accepting would pay, per option: the customer's booked Start
-  // smaller first when it still matches, then the full quote.
+  // What accepting would pay, per offer: the offer's own runs, or every
+  // run (null) for the offer that covers them all, and its own box count
+  // when it has one, the database's way.
   const standing = earning && earning.status !== "void" ? earning : null;
-  const booked = bookedStartSmaller(runs, linkRow ?? null);
-  const options = [...(booked ? [booked] : []), null].map((positions) => ({
-    positions,
-    ...optionWords(runs, positions),
-    booked: positions !== null,
-    commission: previewCommission({ receiver, existing: standing, quote: priced, positions, rate }),
-  }));
+  const options = acceptOptions({
+    quote: priced,
+    link: linkRow ?? null,
+    commission: (positions, boxes) =>
+      previewCommission({ receiver, existing: standing, quote: priced, positions, boxes, rate }),
+  });
 
   return {
     leadId: lead.id,
@@ -114,7 +116,7 @@ export async function loadQuoteOutcome(supabase: Client, lead: LeadForOutcome): 
       cancelReason: quote.cancel_reason,
       note: quote.outcome_note,
       option:
-        quote.status === "accepted" || quote.status === "cancelled" ? optionWords(runs, quote.accepted_runs) : null,
+        quote.status === "accepted" || quote.status === "cancelled" ? acceptedOption(quote, quote.accepted_runs) : null,
     },
     options,
     commission: standingCommission(earning, receiver, names),

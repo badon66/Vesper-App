@@ -120,7 +120,7 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
       supabase
         .from("quotes")
         .select(
-          "id, runs, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, financing_offered, valid_until, updated_at",
+          "id, runs, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, financing_offered, valid_until, offers, meeting_offer, meeting_install_on, updated_at",
         )
         .eq("lead_id", leadId)
         .eq("status", "draft")
@@ -206,6 +206,9 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
           upperGableAccessFee: draft.upper_gable_access_fee,
           financingOffered: draft.financing_offered,
           validUntil: draft.valid_until,
+          offers: draft.offers,
+          meetingOffer: draft.meeting_offer,
+          meetingInstallOn: draft.meeting_install_on,
           updatedAt: draft.updated_at,
         }
       : null,

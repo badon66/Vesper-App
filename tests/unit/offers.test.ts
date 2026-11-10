@@ -6,12 +6,14 @@ import {
   cleanPositions,
   hasPricedOffer,
   newOfferId,
+  offerCoverage,
   offerForRuns,
   offersForSave,
   parseOffers,
   pricedOffers,
   priceOffer,
   quickStartRuns,
+  quickStartsFor,
   removeRunFromOffers,
   shownOffers,
   uniqueOfferName,
@@ -43,7 +45,7 @@ const inputs = (over: Partial<QuoteInputs> = {}): QuoteInputs => ({
 
 describe("offers", () => {
   it("reads an empty list as one full wrap, and cleans what is stored", () => {
-    expect(parseOffers([], 4)).toEqual([{ id: "full", name: "Full wrap", runs: [0, 1, 2, 3] }]);
+    expect(parseOffers([], 4)).toEqual([{ id: "full", name: "Full wrap", runs: [0, 1, 2, 3], boxes: null }]);
     expect(parseOffers(null, 0)).toEqual([]);
     expect(
       parseOffers(
@@ -57,9 +59,10 @@ describe("offers", () => {
         4,
       ),
     ).toEqual([
-      { id: "a", name: "Lower level", runs: [0, 1, 2] },
-      { id: "b", name: "Offer", runs: [] },
+      { id: "a", name: "Lower level", runs: [0, 1, 2], boxes: null },
+      { id: "b", name: "Offer", runs: [], boxes: null },
     ]);
+    expect(parseOffers([{ id: "c", name: "Two boxes", runs: [0], boxes: 2 }, { id: "d", name: "Bad", runs: [0], boxes: 12 }], 4).map((o) => o.boxes)).toEqual([2, null]);
   });
 
   it("never lets a name carry a price", () => {
@@ -166,9 +169,29 @@ describe("offers", () => {
     expect(offerForRuns(offers, 4, [2])).toBeNull();
   });
 
-  it("saves at most six offers, cleaned", () => {
+  it("saves at most four offers, cleaned", () => {
     const many = Array.from({ length: 8 }, (_, i) => ({ id: `o${i}`, name: `Offer ${i}`, runs: [i % 4] }));
-    expect(offersForSave(many, 4)).toHaveLength(6);
-    expect(offersForSave([{ id: " a ", name: "Lower $", runs: [3, 3, 7] }], 4)).toEqual([{ id: "a", name: "Lower", runs: [3] }]);
+    expect(offersForSave(many, 4)).toHaveLength(4);
+    expect(offersForSave([{ id: " a ", name: "Lower $", runs: [3, 3, 7], boxes: 2 }], 4)).toEqual([{ id: "a", name: "Lower", runs: [3], boxes: 2 }]);
+  });
+
+  it("prices an offer with its own box count, or the quote's", () => {
+    const two = priceOffer(inputs(), { id: "f", name: "Full wrap", runs: [0, 1, 2, 3], boxes: 2 })!;
+    expect(two.lines.find((line) => line.label.startsWith("Control boxes"))?.amount).toBe(1000);
+    expect(two.subtotal).toBe(4700);
+    expect(priceOffer(inputs(), { id: "f", name: "Full wrap", runs: [0, 1, 2, 3], boxes: null })!.subtotal).toBe(4200);
+  });
+
+  it("says what an offer covers from its runs, never typed", () => {
+    expect(offerCoverage(RUNS, { runs: [0, 2, 1, 3] })).toBe("Front, Garage, Upper front and Upper gable, 150 ft");
+    expect(offerCoverage(RUNS, { runs: [1] })).toBe("Garage, 30 ft");
+    expect(offerCoverage(RUNS, { runs: [0, 1] })).toBe("Front and Garage, 90 ft");
+    expect(offerCoverage(RUNS, { runs: [] })).toBe("");
+  });
+
+  it("offers Lower level only when the house has an upper run, and names its offer Main floor", () => {
+    expect(quickStartsFor(RUNS).map((s) => s.kind)).toEqual(["full", "lower", "front", "blank"]);
+    expect(quickStartsFor(RUNS.filter((r) => r.level === "lower")).map((s) => s.kind)).toEqual(["full", "front", "blank"]);
+    expect(quickStartsFor(RUNS).find((s) => s.kind === "lower")).toMatchObject({ label: "Lower level", name: "Main floor" });
   });
 });

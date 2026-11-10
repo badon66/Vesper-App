@@ -1202,6 +1202,8 @@ export type Database = {
         Row: {
           accepted_at: string | null
           accepted_by: string | null
+          accepted_boxes: number | null
+          accepted_offer: string | null
           accepted_runs: number[] | null
           adders: Json
           box_count: number
@@ -1222,6 +1224,8 @@ export type Database = {
           id: string
           lead_id: string
           lead_status_before: Database["public"]["Enums"]["lead_status"] | null
+          meeting_install_on: string | null
+          meeting_offer: string | null
           min_job_total: number | null
           notes: string | null
           offers: Json
@@ -1247,6 +1251,8 @@ export type Database = {
         Insert: {
           accepted_at?: string | null
           accepted_by?: string | null
+          accepted_boxes?: number | null
+          accepted_offer?: string | null
           accepted_runs?: number[] | null
           adders?: Json
           box_count?: number
@@ -1267,6 +1273,8 @@ export type Database = {
           id?: string
           lead_id: string
           lead_status_before?: Database["public"]["Enums"]["lead_status"] | null
+          meeting_install_on?: string | null
+          meeting_offer?: string | null
           min_job_total?: number | null
           notes?: string | null
           offers?: Json
@@ -1292,6 +1300,8 @@ export type Database = {
         Update: {
           accepted_at?: string | null
           accepted_by?: string | null
+          accepted_boxes?: number | null
+          accepted_offer?: string | null
           accepted_runs?: number[] | null
           adders?: Json
           box_count?: number
@@ -1312,6 +1322,8 @@ export type Database = {
           id?: string
           lead_id?: string
           lead_status_before?: Database["public"]["Enums"]["lead_status"] | null
+          meeting_install_on?: string | null
+          meeting_offer?: string | null
           min_job_total?: number | null
           notes?: string | null
           offers?: Json
@@ -2231,6 +2243,10 @@ export type Database = {
           id: string
           sealed: string
         }[]
+      }
+      quote_accept_offer: {
+        Args: { p_install_on?: string; p_offer: string; p_quote: string }
+        Returns: Json
       }
       quote_accept: {
         Args: { p_install_on?: string; p_quote: string; p_runs?: number[] }
