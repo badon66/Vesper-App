@@ -493,7 +493,7 @@ function OptionButton({
           {gstEnabled ? <span className="ml-1.5 text-[18px] font-normal">+ GST</span> : null}
         </span>
       </span>
-      <span className={cn("line-clamp-2 text-[19px] leading-snug", chosen ? "text-background/85" : "text-muted-foreground")} data-testid="price-option-coverage">
+      <span className={cn("line-clamp-2 text-pretty text-[19px] leading-snug", chosen ? "text-background/85" : "text-muted-foreground")} data-testid="price-option-coverage">
         {say(coverage)}
       </span>
     </button>
