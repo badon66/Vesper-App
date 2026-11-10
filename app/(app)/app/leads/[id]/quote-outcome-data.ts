@@ -46,7 +46,7 @@ export async function loadQuoteOutcome(supabase: Client, lead: LeadForOutcome): 
     supabase
       .from("quotes")
       .select(
-        "id, status, created_at, runs, offers, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, min_job_total, gst_enabled, gst_rate, accepted_at, accepted_runs, declined_at, decline_reason, cancelled_at, cancel_reason, outcome_note",
+        "id, status, created_at, runs, offers, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, min_job_total, gst_enabled, gst_rate, accepted_at, accepted_runs, accepted_offer, meeting_offer, meeting_install_on, declined_at, decline_reason, cancelled_at, cancel_reason, outcome_note",
       )
       .eq("lead_id", lead.id)
       .order("created_at", { ascending: false })
@@ -99,12 +99,15 @@ export async function loadQuoteOutcome(supabase: Client, lead: LeadForOutcome): 
     link: linkRow ?? null,
     commission: (positions, boxes) =>
       previewCommission({ receiver, existing: standing, quote: priced, positions, boxes, rate }),
+    meetingOffer: quote.meeting_offer,
   });
 
   return {
     leadId: lead.id,
     leadStatus: lead.status,
     installOn: planned?.install_on ?? null,
+    // The day picked at the table, to prefill Accepted when no day is set.
+    meetingInstallOn: quote.meeting_install_on,
     installedAt: lead.installed_at,
     quote: {
       id: quote.id,
@@ -116,7 +119,7 @@ export async function loadQuoteOutcome(supabase: Client, lead: LeadForOutcome): 
       cancelReason: quote.cancel_reason,
       note: quote.outcome_note,
       option:
-        quote.status === "accepted" || quote.status === "cancelled" ? acceptedOption(quote, quote.accepted_runs) : null,
+        quote.status === "accepted" || quote.status === "cancelled" ? acceptedOption(quote, quote.accepted_runs, quote.accepted_offer) : null,
     },
     options,
     commission: standingCommission(earning, receiver, names),

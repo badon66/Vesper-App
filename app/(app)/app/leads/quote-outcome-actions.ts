@@ -11,6 +11,7 @@ import {
   parseAcceptResult,
   type AcceptResult,
 } from "@/lib/quotes/outcome";
+import { FULL_WRAP_ID } from "@/lib/quotes/offers";
 import { createClient } from "@/lib/supabase/server";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 
@@ -52,6 +53,8 @@ function refresh(leadId: string) {
 const acceptSchema = z.object({
   quoteId: id,
   leadId: id,
+  // The option they said yes to (an offer id on the quote, round 9).
+  offerId: z.string().trim().min(1).max(40),
   // 0-based positions into the quote's runs; null is the full quote.
   runs: z.array(z.number().int().min(0).max(999)).min(1).max(200).nullable(),
   installOn: day.nullable(),
@@ -69,13 +72,24 @@ export async function acceptQuote(input: z.input<typeof acceptSchema>): Promise<
     if (field === "installOn") return { ok: false, code: "bad_install_on", message: "Pick the planned install day, or leave it empty." };
     return notFound;
   }
-  const { quoteId, leadId, runs, installOn } = parsed.data;
+  const { quoteId, leadId, offerId, runs, installOn } = parsed.data;
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("quote_accept", {
+  // Round 9: accept the option by its id, so the database records it with
+  // its runs and boxes and works the commission out on that option's lights
+  // and boxes. A quote whose offers cover no run offers the full quote as
+  // round 8 did; that one goes through round 8's function.
+  let { data, error } = await supabase.rpc("quote_accept_offer", {
     p_quote: quoteId,
-    p_runs: runs ?? undefined,
+    p_offer: offerId,
     p_install_on: installOn ?? undefined,
   });
+  if (error && error.hint === "bad_offer" && offerId === FULL_WRAP_ID && runs === null) {
+    ({ data, error } = await supabase.rpc("quote_accept", {
+      p_quote: quoteId,
+      p_runs: undefined,
+      p_install_on: installOn ?? undefined,
+    }));
+  }
   if (error) return outcomeFailure(error);
   refresh(leadId);
   return { ok: true, ...parseAcceptResult(data) };

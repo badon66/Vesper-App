@@ -192,6 +192,8 @@ export type AcceptOption = {
   total: string;
   // The one the customer booked on their link.
   booked: boolean;
+  // The one the customer chose at the table (quotes.meeting_offer).
+  meeting: boolean;
   // What accepting it would pay the setter.
   commission: CommissionLine;
 };
@@ -204,10 +206,13 @@ export function acceptOptions({
   quote,
   link,
   commission,
+  meetingOffer = null,
 }: {
   quote: OfferQuoteRow;
   link: BookedLink | null;
   commission: (positions: number[] | null, boxes: number | null) => CommissionLine;
+  // The option chosen at the table (quotes.meeting_offer), if any.
+  meetingOffer?: string | null;
 }): AcceptOption[] {
   const runs = runsFromJson(quote.runs);
   const inputs = quoteInputsFromRow(quote, runs);
@@ -223,6 +228,7 @@ export function acceptOptions({
         ...optionWords(runs, null),
         total: screenTotal(priceQuote(inputs).subtotal, inputs.gstEnabled),
         booked: false,
+        meeting: false,
         commission: commission(null, null),
       },
     ];
@@ -238,6 +244,7 @@ export function acceptOptions({
       detail: offerCoverage(runs, offer),
       total: totals ? screenTotal(totals.subtotal, inputs.gstEnabled) : "",
       booked: offer.id === bookedId,
+      meeting: meetingOffer !== null && offer.id === meetingOffer,
       commission: commission(positions, boxes),
     };
   });
@@ -245,8 +252,25 @@ export function acceptOptions({
 
 // The option to start on when Accepted opens: the one they booked on their
 // link, else the biggest.
-export function startingChoice(options: readonly Pick<AcceptOption, "booked">[]): number {
+// The option to start on when Accepted opens: the one chosen at the table,
+// else the one booked on their link, else the biggest (the five seats,
+// 2026-11-10).
+export function startingChoice(options: readonly Pick<AcceptOption, "booked" | "meeting">[]): number {
+  const meeting = options.findIndex((option) => option.meeting);
+  if (meeting >= 0) return meeting;
   return Math.max(0, options.findIndex((option) => option.booked));
+}
+
+// Where the starting choice came from, for the line above the list: "Chosen
+// at the meeting: Main floor", "Booked on their link: Main floor"; both
+// when they differ.
+export function choiceSources(options: readonly Pick<AcceptOption, "booked" | "meeting" | "label">[]): string[] {
+  const meeting = options.find((option) => option.meeting);
+  const booked = options.find((option) => option.booked);
+  const lines: string[] = [];
+  if (meeting) lines.push(`Chosen at the meeting: ${meeting.label}`);
+  if (booked) lines.push(`Booked on their link: ${booked.label}`);
+  return lines;
 }
 
 // The commission an offer would make, short, for its row on the sheet; the
@@ -258,9 +282,16 @@ export function offerCommissionWords(line: CommissionLine): string {
 // What they said yes to, for the card once accepted (and after a cancel):
 // the offer whose runs are the accepted runs, by its name and what it
 // covers; else the runs in words.
-export function acceptedOption(quote: Pick<OfferQuoteRow, "runs" | "offers">, acceptedRuns: readonly number[] | null) {
+export function acceptedOption(
+  quote: Pick<OfferQuoteRow, "runs" | "offers">,
+  acceptedRuns: readonly number[] | null,
+  acceptedOffer: string | null = null,
+) {
   const runs = runsFromJson(quote.runs);
   const offers = parseOffers(quote.offers, runs.length).filter((offer) => offer.runs.length > 0);
+  // The option the sheet recorded, while it is still on the quote.
+  const recorded = acceptedOffer ? offers.find((offer) => offer.id === acceptedOffer) : undefined;
+  if (recorded) return { label: recorded.name, detail: offerCoverage(runs, recorded) };
   const part = partOfQuote(runs.length, acceptedRuns);
   const offer = offerForRuns(offers, runs.length, part);
   return offer ? { label: offer.name, detail: offerCoverage(runs, offer) } : optionWords(runs, acceptedRuns);

@@ -17,6 +17,7 @@ import {
   runsFromJson,
   standingCommission,
   startingChoice,
+  choiceSources,
   voidWords,
   type BookedLink,
   type CommissionRow,
@@ -219,11 +220,11 @@ describe("the offers Accepted lists", () => {
     expect(options).toEqual([
       // 150 ft x $23 + $500 - $150 = $3,800; 5% is $190. Upper access and
       // the minimum never count.
-      { id: "full", positions: null, boxes: null, label: "Full wrap", detail: "Front, Garage, Upper front and Upper gable, 150 ft", total: "$4,200", booked: false, commission: earningOf(190) },
+      { id: "full", positions: null, boxes: null, label: "Full wrap", detail: "Front, Garage, Upper front and Upper gable, 150 ft", total: "$4,200", booked: false, meeting: false, commission: earningOf(190) },
       // 90 ft x $23 + $500 - $150 = $2,420; 5% is $121.
-      { id: "lower", positions: [0, 1], boxes: null, label: "Lower level", detail: "Front and Garage, 90 ft", total: "$2,500", booked: false, commission: earningOf(121) },
+      { id: "lower", positions: [0, 1], boxes: null, label: "Lower level", detail: "Front and Garage, 90 ft", total: "$2,500", booked: false, meeting: false, commission: earningOf(121) },
       // 30 ft x $23 + $500 - $150 = $1,040; 5% is $52.
-      { id: "garage", positions: [1], boxes: null, label: "Garage", detail: "Garage, 30 ft", total: "$2,500", booked: false, commission: earningOf(52) },
+      { id: "garage", positions: [1], boxes: null, label: "Garage", detail: "Garage, 30 ft", total: "$2,500", booked: false, meeting: false, commission: earningOf(52) },
     ]);
     // The database's way: the same runs give the same amount.
     expect(commissionFor(commissionQuoteFromRow(offerQuote, [0, 1]), 0.05).amount).toBe(121);
@@ -271,7 +272,7 @@ describe("the offers Accepted lists", () => {
   it("read a quote made before offers as one full wrap", () => {
     const options = acceptOptions({ quote: { ...offerQuote, offers: [] }, link: null, commission: preview });
     expect(options).toEqual([
-      { id: "full", positions: null, boxes: null, label: "Full wrap", detail: "Front, Garage, Upper front and Upper gable, 150 ft", total: "$4,200", booked: false, commission: earningOf(190) },
+      { id: "full", positions: null, boxes: null, label: "Full wrap", detail: "Front, Garage, Upper front and Upper gable, 150 ft", total: "$4,200", booked: false, meeting: false, commission: earningOf(190) },
     ]);
   });
 
@@ -282,7 +283,7 @@ describe("the offers Accepted lists", () => {
       commission: preview,
     });
     expect(options).toEqual([
-      { id: "full", positions: null, boxes: null, label: "Full quote", detail: "4 runs, 150 ft", total: "$4,200", booked: false, commission: earningOf(190) },
+      { id: "full", positions: null, boxes: null, label: "Full quote", detail: "4 runs, 150 ft", total: "$4,200", booked: false, meeting: false, commission: earningOf(190) },
     ]);
   });
 });
@@ -418,5 +419,26 @@ describe("what a tap does to the commission", () => {
     );
     expect(notInstalledWords(line({ status: "void" }))).toBeNull();
     expect(notInstalledWords({ kind: "none", reason: "owner_lead" })).toBeNull();
+  });
+});
+
+describe("where Accepted starts", () => {
+  const option = (label: string, booked: boolean, meeting: boolean) => ({ label, booked, meeting });
+  it("starts on the option chosen at the table, else the one booked on the link, else the biggest", () => {
+    expect(startingChoice([option("Full wrap", false, false), option("Main floor", true, false), option("Front only", false, true)])).toBe(2);
+    expect(startingChoice([option("Full wrap", false, false), option("Main floor", true, false)])).toBe(1);
+    expect(startingChoice([option("Full wrap", false, false), option("Main floor", false, false)])).toBe(0);
+  });
+
+  it("says where the choice came from, both when they differ", () => {
+    expect(choiceSources([option("Full wrap", false, false), option("Main floor", true, true)])).toEqual([
+      "Chosen at the meeting: Main floor",
+      "Booked on their link: Main floor",
+    ]);
+    expect(choiceSources([option("Full wrap", true, false), option("Main floor", false, true)])).toEqual([
+      "Chosen at the meeting: Main floor",
+      "Booked on their link: Full wrap",
+    ]);
+    expect(choiceSources([option("Full wrap", false, false)])).toEqual([]);
   });
 });

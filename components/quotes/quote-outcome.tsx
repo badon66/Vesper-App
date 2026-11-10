@@ -26,6 +26,7 @@ import {
   notInstalledWords,
   offerCommissionWords,
   startingChoice,
+  choiceSources,
   voidWords,
   type AcceptOption,
 } from "@/lib/quotes/outcome-card";
@@ -70,6 +71,9 @@ export type QuoteOutcomeData = {
   leadStatus: LeadStatus;
   // The planned install day (leads.install_on), YYYY-MM-DD.
   installOn: string | null;
+  // The day picked at the table (quotes.meeting_install_on), which
+  // prefills Accepted when no day is set yet.
+  meetingInstallOn: string | null;
   installedAt: string | null;
   quote: {
     id: string;
@@ -111,6 +115,7 @@ export function QuoteOutcome({
   leadId,
   leadStatus,
   installOn,
+  meetingInstallOn,
   installedAt,
   quote,
   options,
@@ -169,7 +174,7 @@ export function QuoteOutcome({
     setMessage(null);
     if (next === "accept") {
       setChoice(startingChoice(options));
-      setPlannedOn(installOn ?? "");
+      setPlannedOn(installOn ?? meetingInstallOn ?? "");
       setTrackSaved(false);
     }
     if (next === "decline" || next === "cancel") {
@@ -386,6 +391,7 @@ export function QuoteOutcome({
                   acceptQuote({
                     quoteId: quote.id,
                     leadId,
+                    offerId: chosen.id,
                     runs: chosen.positions,
                     installOn: plannedOn || null,
                   }),
@@ -421,7 +427,12 @@ export function QuoteOutcome({
 
           {options.length > 1 ? (
             <fieldset className="flex flex-col gap-2">
-              <legend className="mb-2 font-semibold">Which offer did they say yes to?</legend>
+              <legend className="mb-2 font-semibold">Which option did they say yes to?</legend>
+              {choiceSources(options).map((line) => (
+                <p key={line} className="text-muted-foreground" data-testid="outcome-choice-source">
+                  {line}
+                </p>
+              ))}
               {options.map((option, index) => (
                 <label
                   key={option.id}
@@ -433,6 +444,7 @@ export function QuoteOutcome({
                   data-testid="outcome-option"
                   data-offer={option.id}
                   data-booked={option.booked ? "yes" : "no"}
+                  data-meeting={option.meeting ? "yes" : "no"}
                 >
                   <input
                     type="radio"

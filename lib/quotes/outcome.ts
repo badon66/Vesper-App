@@ -248,6 +248,7 @@ export const OUTCOME_MESSAGES = {
   already_accepted: "Another quote on this lead is already accepted. Undo that one first.",
   track_colour_needed: "Set the track colour first. It goes on the accepted quote.",
   bad_runs: "Pick the option they said yes to.",
+  bad_offer: "That option isn't on this quote any more. Refresh to see the quote as it is now.",
   bad_reason: "Pick a reason.",
   bad_note: `A note goes with Other only, up to ${OUTCOME_NOTE_MAX} characters.`,
   not_accepted: "Only an accepted quote can be cancelled. Refresh to see it.",
