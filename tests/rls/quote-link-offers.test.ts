@@ -132,6 +132,7 @@ const PAGE_KEYS = [
   "gallery",
   "install_day",
   "install_day_deck",
+  "lines",
   "last_name",
   "mockup_path",
   "product_points",

@@ -815,7 +815,8 @@ describe("accepting an option", () => {
     // The timeline names the option, never an amount.
     const event = await lastEvent(lead, "quote_accepted");
     expect(event).toMatchObject({ quote_id: quote, option: "Front and gable" });
-    expect(JSON.stringify(event)).not.toMatch(/\$|\d{3}/);
+    expect(Object.keys(event as object).sort()).toEqual(["install_on", "option", "quote_id"]);
+    expect(JSON.stringify(event)).not.toContain("$");
 
     // Undo clears what was accepted.
     expect((await undo(quote)).error).toBeNull();
@@ -900,7 +901,8 @@ describe("who reads what", () => {
     expect(error).toBeNull();
     const outcomeEvents = (events ?? []).filter((event) => event.type !== "status_change");
     expect(outcomeEvents.length).toBeGreaterThan(5);
-    const allowed = new Set(["quote_id", "install_on", "reason", "inside_window", "follow_up_on"]);
+    // option: the accepted option's name (round 9), a name Keenan gave it, never an amount.
+    const allowed = new Set(["quote_id", "install_on", "reason", "inside_window", "follow_up_on", "option"]);
     for (const event of events ?? []) {
       const payload = (event.payload ?? {}) as Record<string, unknown>;
       expect(Object.keys(payload).filter((key) => !allowed.has(key))).toEqual([]);
