@@ -198,3 +198,20 @@ export async function markInstalled(input: z.input<typeof installedSchema>): Pro
   refresh(parsed.data.leadId);
   return { ok: true };
 }
+
+const notInstalledSchema = z.object({ leadId: id });
+
+// Not installed yet: a wrong Installed tap or day put right. The lead goes
+// back to Sold and its install date comes off; a commission not yet paid
+// waits for the install again, and a paid one stays paid.
+export async function markNotInstalled(input: z.input<typeof notInstalledSchema>): Promise<OutcomeResult> {
+  const refused = await owner();
+  if (refused) return refused;
+  const parsed = notInstalledSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: "no_lead", message: OUTCOME_MESSAGES.no_lead };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("lead_undo_installed", { p_lead: parsed.data.leadId });
+  if (error) return outcomeFailure(error);
+  refresh(parsed.data.leadId);
+  return { ok: true };
+}

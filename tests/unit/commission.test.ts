@@ -125,7 +125,7 @@ describe("commission base", () => {
       minJobTotal: 5_000,
       gstEnabled: true,
       gstRate: 0.05,
-    } as QuoteInputs);
+    } as unknown as QuoteInputs);
     expect(priced.minimumApplied).toBe(true);
     expect(priced.subtotal).toBe(5_000);
     // 80 ft x $23 = $1,840, plus $500, less $150: $2,190. 5% is $109.50.

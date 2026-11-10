@@ -105,13 +105,15 @@ describe("the outcome card", () => {
     expect(outcomeState("cancelled", "lost")).toBe("cancelled");
   });
 
-  it("offers Accepted and Declined before an answer, Accept again after a no, and the rest while Sold", () => {
-    expect(outcomeActions("open")).toEqual({ accept: true, decline: true, installed: false, cancel: false, undo: false });
-    expect(outcomeActions("declined")).toEqual({ accept: true, decline: false, installed: false, cancel: false, undo: false });
-    expect(outcomeActions("cancelled")).toEqual({ accept: true, decline: false, installed: false, cancel: false, undo: false });
-    expect(outcomeActions("accepted")).toEqual({ accept: false, decline: false, installed: true, cancel: true, undo: true });
-    // Undo is offered while Sold, never after Installed.
-    expect(outcomeActions("installed")).toEqual({ accept: false, decline: false, installed: false, cancel: false, undo: false });
+  it("offers Accepted and Declined before an answer, Accept again after a no, the rest while Sold, and a way back after Installed", () => {
+    const none = { accept: false, decline: false, installed: false, notInstalled: false, cancel: false, undo: false };
+    expect(outcomeActions("open")).toEqual({ ...none, accept: true, decline: true });
+    expect(outcomeActions("declined")).toEqual({ ...none, accept: true });
+    expect(outcomeActions("cancelled")).toEqual({ ...none, accept: true });
+    expect(outcomeActions("accepted")).toEqual({ ...none, installed: true, cancel: true, undo: true });
+    // Undo is offered while Sold, never after Installed; after Installed a
+    // cancel still can come, and Not installed yet puts a wrong tap right.
+    expect(outcomeActions("installed")).toEqual({ ...none, notInstalled: true, cancel: true });
   });
 
   it("names short days in Calgary", () => {

@@ -83,8 +83,11 @@ export function commissionStatusText(line: CommissionPayLine): string {
 }
 
 // Home's line for one of the setter's own commissions, in whole dollars when
-// there are no cents ("$142"), as Keenan wrote it.
-export function homeCommissionText(line: PayLine): string {
+// there are no cents ("$142"), as Keenan wrote it. A voided one says why
+// from the database's fixed note, never typed words: a cancel, an
+// acceptance undone (the sale is reopened, not cancelled), or the lead
+// leaving Sold another way.
+export function homeCommissionText(line: PayLine & { note?: string | null }): string {
   const amount = roundedMoney(line.amount);
   switch (commissionStage(line)) {
     case "coming":
@@ -93,8 +96,12 @@ export function homeCommissionText(line: PayLine): string {
       return `Installed. ${amount} commission to be paid.`;
     case "paid":
       return `Paid. ${amount} commission.`;
-    default:
-      return "Cancelled. No commission.";
+    default: {
+      const note = (line.note ?? "").trim();
+      if (/^Cancelled:/i.test(note)) return "Cancelled. No commission.";
+      if (/^Acceptance undone$/i.test(note)) return "Sale reopened. No commission for now.";
+      return "No longer sold. No commission.";
+    }
   }
 }
 

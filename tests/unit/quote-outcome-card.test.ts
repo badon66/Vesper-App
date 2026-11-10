@@ -3,6 +3,7 @@ import {
   bookedStartSmaller,
   currentCommission,
   installedWords,
+  notInstalledWords,
   optionWords,
   pickOutcomeQuote,
   previewCommission,
@@ -205,5 +206,16 @@ describe("what a tap does to the commission", () => {
     expect(installedWords(line({ payable_at: "2026-11-20T18:00:00Z" }))).toBeNull();
     expect(installedWords(line({ status: "paid" }))).toBeNull();
     expect(installedWords({ kind: "none", reason: null })).toBeNull();
+  });
+
+  it("makes an owed one wait for the install again on Not installed yet, and leaves a paid one paid", () => {
+    expect(notInstalledWords(line({ payable_at: "2026-11-20T18:00:00Z" }))).toBe(
+      "The $201.50 commission to Zane waits for the install again.",
+    );
+    expect(notInstalledWords(line({ status: "paid", paid_at: "2026-11-27T18:00:00Z" }))).toBe(
+      "The $201.50 commission to Zane is already paid, so it stays paid.",
+    );
+    expect(notInstalledWords(line({ status: "void" }))).toBeNull();
+    expect(notInstalledWords({ kind: "none", reason: "owner_lead" })).toBeNull();
   });
 });

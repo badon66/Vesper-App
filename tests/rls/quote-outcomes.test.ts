@@ -230,6 +230,7 @@ async function removeEverything() {
   const allLeads = [...leadIds];
   if (allLeads.length > 0) await admin.from("earnings").delete().in("lead_id", allLeads);
   if (ids.length > 0) await admin.from("earnings").delete().in("profile_id", ids);
+  if (allLeads.length > 0) await admin.from("quote_links").delete().in("lead_id", allLeads);
   if (allLeads.length > 0) await admin.from("quotes").delete().in("lead_id", allLeads);
   for (const id of ids) {
     await admin.from("leads").delete().eq("created_by", id);
@@ -661,6 +662,123 @@ describe("the safety net on a lead's status", () => {
     expect(await commissions(lead)).toMatchObject([
       { status: "void", note: "The lead left Sold", quote_id: null, source_quote_id: quote },
     ]);
+  });
+});
+
+// The review's fixes (2026-11-10): a way back from Installed, the customer's
+// link closing with a no or a cancel, no second quote while one stands for
+// the sale, Undo after the meeting has happened, and the planned install
+// day on the timeline.
+const TOKEN_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
+async function liveLink(leadId: string): Promise<string> {
+  const token = Array.from({ length: 24 }, () => TOKEN_CHARS[Math.floor(Math.random() * TOKEN_CHARS.length)]).join("");
+  const { data, error } = await admin
+    .from("quote_links")
+    .insert({ lead_id: leadId, token, created_by: users.a.id })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(`link: ${error?.message}`);
+  return data.id;
+}
+async function linkRevoked(linkId: string): Promise<boolean> {
+  const { data } = await admin.from("quote_links").select("revoked_at").eq("id", linkId).single();
+  return Boolean(data?.revoked_at);
+}
+
+describe("after the review", () => {
+  it("Not installed yet puts an Installed lead back to Sold, for Keenan only; an owed commission waits for the install again", async () => {
+    const lead = await newLead(users.a);
+    const quote = await newQuote(lead);
+    expect((await accept(quote)).error).toBeNull();
+    expect(hintOf((await admin.rpc("lead_undo_installed", { p_lead: lead })).error)).toBe("not_installed");
+    expect((await markInstalled(lead, calgaryDay(-1))).error).toBeNull();
+    expect((await commissions(lead))[0].payable_at).not.toBeNull();
+
+    expect(hintOf((await users.a.client.rpc("lead_undo_installed", { p_lead: lead })).error)).toBe("not_allowed");
+    expect(hintOf((await users.b.client.rpc("lead_undo_installed", { p_lead: lead })).error)).toBe("not_allowed");
+    expect((await anon.rpc("lead_undo_installed", { p_lead: lead })).error).not.toBeNull();
+    expect((await leadRow(lead)).status).toBe("installed");
+
+    expect((await admin.rpc("lead_undo_installed", { p_lead: lead })).error).toBeNull();
+    const back = await leadRow(lead);
+    expect(back.status).toBe("sold");
+    expect(back.installed_at).toBeNull();
+    expect(back.sold_at).not.toBeNull();
+    expect(await commissions(lead)).toMatchObject([{ status: "pending", payable_at: null }]);
+    const { data: logged } = await admin
+      .from("lead_events")
+      .select("from_status, to_status")
+      .eq("lead_id", lead)
+      .eq("type", "status_change")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+    expect(logged).toEqual({ from_status: "installed", to_status: "sold" });
+
+    // Installed again on the right day: owed again.
+    expect((await markInstalled(lead, calgaryDay(0))).error).toBeNull();
+    expect((await commissions(lead))[0].payable_at).not.toBeNull();
+  });
+
+  it("a cancel after Installed voids the owed commission, and the customer's link closes", async () => {
+    const lead = await newLead(users.a);
+    const quote = await newQuote(lead);
+    const link = await liveLink(lead);
+    expect((await accept(quote)).error).toBeNull();
+    expect(await linkRevoked(link)).toBe(false);
+    expect((await markInstalled(lead, calgaryDay(-1))).error).toBeNull();
+
+    expect((await cancel(quote, "timing")).error).toBeNull();
+    expect(await commissions(lead)).toMatchObject([{ status: "void", note: "Cancelled: timing", quote_id: null }]);
+    expect(await leadRow(lead)).toMatchObject({ status: "lost", lost_reason: "cancelled, timing", installed_at: null });
+    expect(await linkRevoked(link)).toBe(true);
+    expect(await lastEvent(lead, "quote_link_revoked")).toEqual({ link_id: link });
+  });
+
+  it("a decline closes the customer's link too", async () => {
+    const lead = await newLead(users.a);
+    const quote = await newQuote(lead);
+    const link = await liveLink(lead);
+    expect((await decline(quote, "price")).error).toBeNull();
+    expect(await linkRevoked(link)).toBe(true);
+  });
+
+  it("no new quote starts on a lead whose quote is accepted, until the acceptance is undone", async () => {
+    const lead = await newLead(users.a);
+    const quote = await newQuote(lead);
+    expect((await accept(quote)).error).toBeNull();
+    const { error } = await admin
+      .from("quotes")
+      .insert({ lead_id: lead, created_by: ownerId, price_per_ft: 23, box_price: 500, box_count: 1, total_feet: 10, subtotal: 730, total: 730 } as QuoteInsert);
+    expect(error?.code).toBe("42501");
+    expect(hintOf(error)).toBe("quote_locked");
+    expect((await undo(quote)).error).toBeNull();
+    await expect(newQuote(lead)).resolves.toBeTruthy();
+  });
+
+  it("Undo sends a lead whose meeting has passed back to Met, not Meeting booked", async () => {
+    const lead = await newLead(users.a);
+    await setStatus(lead, "meeting_booked");
+    const quote = await newQuote(lead);
+    expect((await accept(quote)).error).toBeNull();
+    expect((await quoteRow(quote)).lead_status_before).toBe("meeting_booked");
+    expect((await undo(quote)).error).toBeNull();
+    expect((await leadRow(lead)).status).toBe("met");
+  });
+
+  it("a change to the planned install day goes on the timeline; the day set with Accepted does not add a second line", async () => {
+    const lead = await newLead(users.a);
+    const quote = await newQuote(lead);
+    const edits = async () => {
+      const { data } = await admin.from("lead_events").select("payload").eq("lead_id", lead).eq("type", "edited");
+      return (data ?? []).filter((row) => JSON.stringify(row.payload).includes("install_on"));
+    };
+    expect((await accept(quote, { installOn: calgaryDay(7) })).error).toBeNull();
+    expect(await edits()).toHaveLength(0);
+    expect((await admin.from("leads").update({ install_on: calgaryDay(9) }).eq("id", lead)).error).toBeNull();
+    const after = await edits();
+    expect(after).toHaveLength(1);
+    expect(after[0].payload).toEqual({ fields: ["install_on"] });
   });
 });
 

@@ -91,6 +91,9 @@ describe("commission on the pay screens (round 8)", () => {
     expect(homeCommissionText(owed)).toBe("Installed. $142 commission to be paid.");
     expect(homeCommissionText(paid)).toBe("Paid. $142 commission.");
     expect(homeCommissionText(voided)).toBe("Cancelled. No commission.");
+    expect(homeCommissionText({ ...voided, note: "Acceptance undone" })).toBe("Sale reopened. No commission for now.");
+    expect(homeCommissionText({ ...voided, note: "The lead left Sold" })).toBe("No longer sold. No commission.");
+    expect(homeCommissionText({ ...voided, note: null })).toBe("No longer sold. No commission.");
     expect(homeCommissionText({ ...coming, amount: 142.5 })).toBe("Sold. $142.50 commission once it's installed.");
     expect(homeCommissionText({ ...owed, amount: 1234.05 })).toBe("Installed. $1,234.05 commission to be paid.");
   });

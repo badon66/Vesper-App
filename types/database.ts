@@ -2037,6 +2037,7 @@ export type Database = {
         Args: { p_lead: string; p_on: string }
         Returns: undefined
       }
+      lead_undo_installed: { Args: { p_lead: string }; Returns: undefined }
       lock_evening: {
         Args: { p_at: string; p_host: string }
         Returns: undefined

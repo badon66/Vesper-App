@@ -685,8 +685,11 @@ try {
       `${await textOf(op.getByTestId("quote-outcome-title"))} | ${await textOf(op.getByTestId("quote-outcome-commission"))}`,
     );
     check(
-      "once installed there is no Undo, Cancelled or Installed to tap",
-      (await op.getByTestId("outcome-undo").count()) === 0 && (await op.getByTestId("outcome-cancel").count()) === 0 && (await op.getByTestId("outcome-installed").count()) === 0,
+      "once installed: Cancelled and Not installed yet stay on offer, and there is no Undo or Installed to tap",
+      (await op.getByTestId("outcome-undo").count()) === 0 &&
+        (await op.getByTestId("outcome-installed").count()) === 0 &&
+        (await op.getByTestId("outcome-cancel").count()) === 1 &&
+        (await textOf(op.getByTestId("outcome-not-installed"))) === "Not installed yet",
     );
     await op.getByTestId("quote-outcome").screenshot({ path: `${out}/outcome-owner-installed-1180.png` }).catch(() => {});
     await open(op, "/app/admin/pay");

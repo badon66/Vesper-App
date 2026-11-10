@@ -122,11 +122,15 @@ export function outcomeState(quoteStatus: QuoteStatus, leadStatus: string): Outc
 
 // Whether each action is offered in a state (the database checks again).
 // Accept works from no answer yet, a no or a cancel (a customer who comes
-// back); Undo while Sold, never after Installed.
+// back); Undo while Sold, never after Installed. Cancelled stays on offer
+// after Installed (a yes taken back after the crew was there), and Not
+// installed yet puts a wrong Installed tap or day right (review,
+// 2026-11-10).
 export function outcomeActions(state: OutcomeState): {
   accept: boolean;
   decline: boolean;
   installed: boolean;
+  notInstalled: boolean;
   cancel: boolean;
   undo: boolean;
 } {
@@ -134,7 +138,8 @@ export function outcomeActions(state: OutcomeState): {
     accept: state === "open" || state === "declined" || state === "cancelled",
     decline: state === "open",
     installed: state === "accepted",
-    cancel: state === "accepted",
+    notInstalled: state === "installed",
+    cancel: state === "accepted" || state === "installed",
     undo: state === "accepted",
   };
 }
@@ -248,6 +253,7 @@ export const OUTCOME_MESSAGES = {
   not_accepted: "Only an accepted quote can be cancelled. Refresh to see it.",
   not_undoable: "Only an accepted quote on a Sold lead can be undone. Refresh to see it.",
   not_sold: "Only a Sold lead with an accepted quote can be marked installed.",
+  not_installed: "Only an Installed lead can go back to Sold. Refresh to see it.",
   bad_date: "Pick the install day: today or earlier.",
   outcome_only: "A quote is accepted, declined or cancelled from its outcome card only.",
   quote_locked: "This quote is accepted, so its numbers are locked. Undo the acceptance to change them.",

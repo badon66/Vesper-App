@@ -155,6 +155,14 @@ export function voidWords(line: CommissionLine): string | null {
   return line.status === "paid" ? `${what} is already paid, so it stays paid.` : `${what} is voided.`;
 }
 
+// What Not installed yet does to it: an owed commission waits for the
+// install again; a paid one stays paid.
+export function notInstalledWords(line: CommissionLine): string | null {
+  if (line.kind !== "earning" || line.status === "void") return null;
+  const what = `The ${formatMoney(line.amount)} commission to ${line.setterName}`;
+  return line.status === "paid" ? `${what} is already paid, so it stays paid.` : `${what} waits for the install again.`;
+}
+
 // What Installed does to it: a commission still coming becomes owed.
 export function installedWords(line: CommissionLine): string | null {
   if (line.kind !== "earning" || line.status !== "pending" || line.payableAt) return null;

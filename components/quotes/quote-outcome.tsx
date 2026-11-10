@@ -7,6 +7,7 @@ import {
   cancelSale,
   declineQuote,
   markInstalled,
+  markNotInstalled,
   setInstallDay,
   undoAcceptance,
 } from "@/app/(app)/app/leads/quote-outcome-actions";
@@ -19,8 +20,8 @@ import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { LeadStatus } from "@/lib/leads/status";
-import { installedWords, voidWords } from "@/lib/quotes/outcome-card";
+import { STATUS_LABELS, type LeadStatus } from "@/lib/leads/status";
+import { installedWords, notInstalledWords, voidWords } from "@/lib/quotes/outcome-card";
 import {
   cancelWindowEndsAt,
   cancelWindowWords,
@@ -99,7 +100,7 @@ export type QuoteOutcomeProps = QuoteOutcomeData & {
   today: string;
 };
 
-type Sheet = "accept" | "decline" | "cancel" | "undo" | "installed" | "install_on" | null;
+type Sheet = "accept" | "decline" | "cancel" | "undo" | "installed" | "not_installed" | "install_on" | null;
 type Answer = { ok: true } | { ok: false; message: string };
 
 const OPEN_FOR_ACCEPT: readonly QuoteStatus[] = ["draft", "presented", "declined", "cancelled"];
@@ -135,6 +136,7 @@ export function QuoteOutcome({
     accept: offered.accept && OPEN_FOR_ACCEPT.includes(quote.status),
     decline: offered.decline && (quote.status === "draft" || quote.status === "presented"),
     installed: offered.installed && sold,
+    notInstalled: offered.notInstalled && leadStatus === "installed",
     cancel: offered.cancel,
     undo: offered.undo && sold,
   };
@@ -207,9 +209,13 @@ export function QuoteOutcome({
         return commission.kind === "earning" && commission.status === "pending"
           ? "Installed. The setter's commission is owed until you mark it paid in Pay."
           : "Installed. The job is done.";
+      // Lost with the reason, until Keenan moves the lead on (Follow up
+      // for spring, say); then the card says where it is now.
       case "declined":
+        if (leadStatus !== "lost") return `They said no. The lead is now ${STATUS_LABELS[leadStatus]}.`;
         return declinedFor ? `The lead is Lost: ${lostReasonFor("declined", declinedFor)}.` : "The lead is Lost.";
       case "cancelled":
+        if (leadStatus !== "lost") return `The sale was cancelled. The lead is now ${STATUS_LABELS[leadStatus]}.`;
         return cancelledFor ? `The lead is Lost: ${lostReasonFor("cancelled", cancelledFor)}.` : "The lead is Lost.";
     }
   })();
@@ -314,7 +320,7 @@ export function QuoteOutcome({
           </dl>
         ) : null}
 
-        {can.accept || can.decline || can.installed || can.cancel || can.undo ? (
+        {can.accept || can.decline || can.installed || can.notInstalled || can.cancel || can.undo ? (
           <div className="flex flex-wrap gap-3">
             {can.accept ? (
               <Button type="button" variant="outline" onClick={() => open("accept")} data-testid="outcome-accept">
@@ -339,6 +345,16 @@ export function QuoteOutcome({
             {can.undo ? (
               <Button type="button" variant="ghost" onClick={() => open("undo")} data-testid="outcome-undo">
                 Undo acceptance
+              </Button>
+            ) : null}
+            {can.notInstalled ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => open("not_installed")}
+                data-testid="outcome-not-installed"
+              >
+                Not installed yet
               </Button>
             ) : null}
           </div>
@@ -620,6 +636,38 @@ export function QuoteOutcome({
           </ul>
           <ActionMessage text={message} />
         </div>
+      </DialogPanel>
+
+      {/* Not installed yet: a wrong Installed tap or day put right. */}
+      <DialogPanel
+        open={sheet === "not_installed"}
+        onClose={close}
+        title="Not installed yet?"
+        testId="outcome-not-installed-sheet"
+        actions={
+          <>
+            <Button type="button" variant="outline" onClick={close} disabled={pending}>
+              Keep it installed
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={pending}
+              data-testid="outcome-not-installed-confirm"
+              onClick={() => run(() => markNotInstalled({ leadId }))}
+            >
+              {pending ? "Saving" : "Back to Sold"}
+            </Button>
+          </>
+        }
+      >
+        <ul className="flex list-disc flex-col gap-1 pl-5 text-sm text-pretty">
+          <li>The lead goes back to Sold and its install day comes off, so you can mark it Installed again on the right day.</li>
+          {notInstalledWords(commission) ? (
+            <li data-testid="outcome-not-installed-commission">{notInstalledWords(commission)}</li>
+          ) : null}
+        </ul>
+        <ActionMessage text={message} className="mt-4" />
       </DialogPanel>
 
       {/* The planned install day, added or changed after the yes. */}
