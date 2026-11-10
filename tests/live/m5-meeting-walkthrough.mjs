@@ -13,14 +13,24 @@
 // left to answer it. A deployed site can't be stopped, so run against one,
 // this part still uses the local build of the same code.
 //
-// The deck (round 7) reads its words from settings.deck and Keenan's own
-// photos from deck_photos, which are never staged here: the deck shows his
-// photos where he has uploaded them and the drawings where he has not, and
-// the gallery is checked when he has install photos, and named as not
-// reached when he has not. The test lead is never traced, so the light
-// picker is skipped (prep's tracer and the picker have their own checks).
+// The deck (round 7; round 9, the meeting as one story) reads its words from
+// settings.deck and Keenan's own photos from deck_photos, which are never
+// staged here: the deck shows his photos where he has uploaded them and the
+// drawings where he has not, and the gallery is checked when he has install
+// photos, and named as not reached when he has not. The test lead has a
+// mockup and is never traced, so Your house, lit stands in for Your house
+// and neither the light picker nor Warm white shows (the spec's table; the
+// traced story has its own walk-through, meeting-story-walkthrough.mjs).
 // The test lead carries a split soffit with a setter's note, to prove the
 // note never reaches the deck.
+//
+// Round 9: a quiet "Next: {page}" beside the forward chevron names the page
+// that comes next; the price page is a presentation (the options, biggest
+// first, with Choose), and the builder's inputs live behind Keenan's Edit,
+// in the shared quote editor. Choose, the colour page's timing buttons and
+// a picked install day save the quote quietly, so the owner's session never
+// taps them; Edit is typed into but never saved. What happens next closes
+// the meeting: four steps, and Pick a day opens its layer (never a day).
 //
 // The layout check (round 7 review; the spec's "every seeded page fits at
 // 1180x820 and 1366x1024"): at both sizes, every page and every layer it
@@ -32,13 +42,15 @@
 // At 1180 x 820 the colour chooser is measured with Custom chosen, so its
 // colour number and Save are checked against the keyboard's 400 px line as
 // the initials are; at 1366 x 1024 the initials end by 55% of the height;
-// and the price page's builder never scrolls at either size.
+// and the price page's Choose and Edit sit clear of the bottom row at
+// either size.
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createClient } from "@supabase/supabase-js";
 import { chromium } from "playwright";
 import sharp from "sharp";
+import { deckLine, deckOrder, fillLine, nextLabelText, pageLabel as deckPageLabel } from "./deck-order.mjs";
 import { openOwnerSession } from "./owner-session.mjs";
 
 const base = process.env.BASE ?? "http://localhost:3300";
@@ -77,34 +89,12 @@ const LAYOUT_SIZES = [
 // The deck draws customer words with typographic apostrophes (lib/typography.ts).
 const smart = (text) => text.replace(/(\p{L})'(?=\p{L})/gu, "$1\u2019");
 const phone = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true };
-
-// The deck's pages as lib/meeting/deck-pages.ts builds them: in the spec's
-// order, each labelled by its headline from settings.deck (or its built
-// name), skipping a page with nothing to show. The light picker needs a
-// traced roofline, which the test lead never has.
-const PAGE_NAMES = {
-  what_vesper_is: "What Vesper is",
-  hidden_by_day: "Hidden by day",
-  whites_first: "Warm white",
-  phone_control: "Run it from your phone",
-  gallery: "Homes we've lit",
-  install_day: "How install day works",
-  warranty: "The warranty",
-  mockup: "Where your lights would go",
-};
-function deckLabels(settings, galleryCount) {
-  const pages = settings.deck && typeof settings.deck === "object" && settings.deck.pages ? settings.deck.pages : {};
-  const text = (key, field) => (typeof pages[key]?.[field] === "string" ? pages[key][field].trim() : "");
-  const label = (key) => text(key, "headline") || PAGE_NAMES[key];
-  const hasWords = (key) => text(key, "headline") !== "" || text(key, "words") !== "";
-  const labels = ["Vesper"];
-  for (const key of ["what_vesper_is", "hidden_by_day", "whites_first", "phone_control"]) if (hasWords(key)) labels.push(label(key));
-  if (galleryCount > 0) labels.push(label("gallery"));
-  if (hasWords("install_day")) labels.push(label("install_day"));
-  if (settings.warranty_text.trim() !== "") labels.push(label("warranty"));
-  labels.push(label("mockup"), "Your colours", "Your price");
-  return { labels, label };
-}
+const flat = (text) => (text ?? "").replace(/\s+/g, " ").trim();
+// Calgary's date, as meeting mode's today: Alberta has stayed on UTC-6 since November 1, 2026.
+const calgaryZone = (moment) => (moment.getTime() >= Date.UTC(2026, 10, 1, 8) ? "Etc/GMT+6" : "America/Edmonton");
+const calgaryDay = (moment = new Date()) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: calgaryZone(moment), year: "numeric", month: "2-digit", day: "2-digit" }).format(moment);
+const tight = (text) => (text ?? "").replace(/\s+/g, "");
 
 // The same as lib/pricing.ts formatMoney.
 function money(amount) {
@@ -261,7 +251,7 @@ try {
   const ownerId = ownerRow.id;
   const { data: settings } = await admin
     .from("settings")
-    .select("deck, warranty_text, price_per_ft, box_price, gst_enabled, upper_access_fee, upper_gable_access_fee")
+    .select("deck, light_looks, warranty_text, price_per_ft, box_price, gst_enabled, upper_access_fee, upper_gable_access_fee, min_job_total")
     .eq("id", 1)
     .single();
   const { data: colour } = await admin.from("track_colours").select("id, name").eq("active", true).order("sort_order").limit(1).single();
@@ -292,8 +282,13 @@ try {
   // Keenan's gallery photos, if he has uploaded any (never staged here).
   const { data: galleryRows } = await admin.from("deck_photos").select("slot").like("slot", "gallery.%");
   const galleryCount = (galleryRows ?? []).length;
-  const { labels: expected, label: pageLabel } = deckLabels(settings, galleryCount);
+  const order = deckOrder(settings, { gallery: galleryCount, lead: { mockup: true } });
+  const expected = order.map((p) => p.label);
+  const pageLabel = (key) => deckPageLabel(settings.deck, key);
   const MOCKUP = pageLabel("mockup");
+  const COLOUR = pageLabel("colour");
+  const PRICE = pageLabel("quote");
+  const NEXT = pageLabel("next_steps");
   const before = await ownerFootprint(ownerId);
 
   // ---------------------------------------------------------------- Keenan opens it from the lead
@@ -316,26 +311,48 @@ try {
 
   const labels = await dots(page).getByRole("button").evaluateAll((buttons) => buttons.map((b) => b.getAttribute("aria-label")));
   check(
-    "the deck shows its pages in the spec's order, skipping the picker (not traced) and any page with nothing to show",
+    "the deck shows its pages in the story's order (the Vesper pages, then their house, then What happens next), skipping any page with nothing to show",
     JSON.stringify(labels) === JSON.stringify(expected),
-    labels.join(" | "),
+    `${labels.join(" | ")}${JSON.stringify(labels) === JSON.stringify(expected) ? "" : ` (expected ${expected.join(" | ")})`}`,
+  );
+  const keys = await page.locator("section[data-page]").evaluateAll((sections) => sections.map((s) => s.getAttribute("data-page")));
+  check(
+    "a mockup and no trace: Your house, lit stands in for Your house, and neither the light picker nor Warm white shows",
+    keys.includes("mockup") && !keys.includes("your_house") && !keys.includes("light_picker") && !keys.includes("whites_first") && MOCKUP === "Your house, lit",
+    `${keys.join(", ")}; the mockup page reads "${MOCKUP}"`,
+  );
+  check(
+    "the story closes on What happens next, straight after the price",
+    keys.at(-1) === "next_steps" && keys.at(-2) === "quote" && keys.at(-3) === "colour",
+    keys.slice(-3).join(", "),
   );
   check("meeting mode is full screen, with no tabs and no side rail", (await page.locator('nav[aria-label="Tabs"]').count()) === 0);
   check("it opens on the cover, with the address", (await currentScreen(page)) === "Vesper" && (await page.getByRole("region", { name: "Vesper" }).innerText()).includes("1 Test Crescent SW"));
+  check(
+    "the cover says what's coming, in the line from Settings",
+    flat(await page.getByTestId("deck-cover-line").innerText().catch(() => "")) === smart(deckLine(settings.deck, "cover_line")),
+    await page.getByTestId("deck-cover-line").innerText().catch(() => "no line"),
+  );
   const deckText = await page.locator("body").innerText();
   check(
     "nothing internal anywhere in the deck: no setter, no status, no pipeline",
     !deckText.includes(setter.name) && !deckText.includes(setter.email) && !/meeting_booked|Follow up|Qualified|Pipeline/i.test(deckText),
   );
   const sectionsEmpty = [];
-  for (const label of expected) {
+  const wrongNext = [];
+  for (const [at, label] of expected.entries()) {
     await goToScreen(page, label);
     const empty = await page
       .getByRole("region", { name: label })
       .evaluate((s) => s.innerText.trim() === "" && s.querySelectorAll("img, canvas, svg").length === 0);
     if (empty) sectionsEmpty.push(label);
+    // The quiet Next label names the page that actually comes next; none on the last.
+    const shown = (await page.getByTestId("deck-next-label").count()) > 0 ? flat(await page.getByTestId("deck-next-label").innerText()) : null;
+    const want = at < expected.length - 1 ? smart(nextLabelText(settings.deck, expected[at + 1])) : null;
+    if (shown !== want) wrongNext.push(`${label}: "${shown}" (expected "${want}")`);
   }
   check("no screen is empty", sectionsEmpty.length === 0, sectionsEmpty.join(", "));
+  check("every page but the last says what comes next, \"Next: {page}\", skipped pages left out", wrongNext.length === 0, wrongNext.slice(0, 4).join("; "));
   const allText = await page.locator("body").innerText();
   check("the setter's soffit note never reaches the deck", !allText.includes(SOFFIT_NOTE) && !(await page.content()).includes(SOFFIT_NOTE));
   await goToScreen(page, "Vesper");
@@ -418,29 +435,51 @@ try {
     note("the gallery was not reached: no install photos are uploaded yet, so the deck skips it");
   }
 
-  // ---------------------------------------------------------------- Where your lights would go
+  // ---------------------------------------------------------------- Your house, lit (the mockup, standing in for Your house)
   await goToScreen(page, MOCKUP);
   const house = page.getByRole("region", { name: MOCKUP });
   const mockupLoaded = await house
     .locator("img")
     .evaluate((img) => (img.complete ? img.naturalWidth > 0 : new Promise((done) => img.addEventListener("load", () => done(img.naturalWidth > 0)))));
-  check("Where your lights would go shows the customer's mockup", mockupLoaded);
+  const mockupWords = (settings.deck?.pages?.mockup?.words ?? "").trim();
+  check(
+    `${MOCKUP} shows the customer's mockup, with its words from Settings`,
+    mockupLoaded && (mockupWords === "" || flat(await house.innerText()).includes(smart(mockupWords))),
+    mockupWords,
+  );
   const hb = await house.boundingBox();
   await touchSwipe(page, cdp, Math.round(hb.x + hb.width * 0.8), Math.round(hb.y + hb.height * 0.6), -700);
-  check("a one-finger swipe on the mockup turns the page, like everywhere else", (await currentScreen(page)) === "Your colours", await currentScreen(page));
+  check("a one-finger swipe on the mockup turns the page, like everywhere else", (await currentScreen(page)) === COLOUR, await currentScreen(page));
   await cdp.detach();
 
-  // ---------------------------------------------------------------- Your colours
-  await goToScreen(page, "Your colours");
-  const colourScreen = page.getByRole("region", { name: "Your colours" });
-  const colourText = await colourScreen.innerText();
+  // ---------------------------------------------------------------- Your track colour
+  await goToScreen(page, COLOUR);
+  const colourScreen = page.getByRole("region", { name: COLOUR });
+  const colourText = flat(await colourScreen.innerText());
   check(
-    "Your colours names the split soffit's two colours on their own lines, and the track colour by name",
+    `${COLOUR} names the split soffit's two colours on their own lines, and the track colour by name`,
     colourText.includes("Your soffit, two colours") &&
       JSON.stringify(await colourScreen.getByTestId("deck-soffit-colour").allInnerTexts()) === JSON.stringify(["Off-white or cream", "White"]) &&
-      colourText.includes("One track colour for the whole house.") &&
+      colourText.includes(smart(deckLine(settings.deck, "colour_one"))) &&
       colourText.includes(colour.name),
     colour.name,
+  );
+  // One colour rule (round 9): White is in stock and included; any other
+  // colour is made to order, with Install in spring and, when the quote has
+  // a rush fee, Install this season (never tapped here: it saves the quote).
+  const isWhite = /^white\b/i.test(colour.name.trim());
+  const timing = flat(await colourScreen.getByTestId("deck-colour-timing").innerText().catch(() => ""));
+  check(
+    "the page opens on why the colour matters, then one colour rule for the track",
+    flat(await colourScreen.getByTestId("deck-colour-opener").innerText().catch(() => "")) === smart(deckLine(settings.deck, "colour_opener")) &&
+      (isWhite
+        ? timing === smart(deckLine(settings.deck, "colour_stock")) && (await colourScreen.getByTestId("deck-colour-spring").count()) === 0
+        : timing.startsWith(smart(fillLine(deckLine(settings.deck, "colour_made"), { colour: colour.name }))) && (await colourScreen.getByTestId("deck-colour-spring").count()) === 1),
+    timing,
+  );
+  check(
+    "the colour book line sits under the initials",
+    flat(await colourScreen.getByTestId("deck-colour-book").innerText().catch(() => "")) === smart(deckLine(settings.deck, "colour_book")),
   );
   check("never the setter's which-is-where note", !colourText.includes(SOFFIT_NOTE));
   const initialsBox = await colourScreen.locator("#colour-initials").boundingBox();
@@ -549,66 +588,186 @@ try {
     (await chooser.count()) === 0 && (await colourScreen.getByTestId("deck-track-colour").innerText()).includes(colour.name) && (await dots(page).count()) === 1,
   );
 
-  // ---------------------------------------------------------------- Your price
-  await goToScreen(page, "Your price");
-  const priceScreen = page.getByRole("region", { name: "Your price" });
-  const save = priceScreen.getByRole("button", { name: /^Save/ });
-  check("Save waits until there are feet to price", await save.isDisabled());
+  // ---------------------------------------------------------------- What happens next (the last page, at every meeting)
+  await goToScreen(page, NEXT);
+  const nextScreen = page.getByRole("region", { name: NEXT });
+  const stepLabels = [];
+  for (const n of [1, 2, 3, 4]) stepLabels.push(flat(await nextScreen.getByTestId(`next-step-${n}`).innerText().catch(() => "")));
   check(
-    "a fresh quote shows no price until something is measured",
-    (await priceScreen.getByTestId("quote-waiting").count()) === 1 && (await priceScreen.getByTestId("quote-total").count()) === 0,
+    "What happens next: four numbered steps, Your colour, Your install day, On the day and Paying, with No payment until your install is complete. word for word",
+    (await nextScreen.getByTestId("next-steps-page").count()) === 1 &&
+      stepLabels[0].includes(deckLine(settings.deck, "step_colour_label")) &&
+      stepLabels[1].includes(deckLine(settings.deck, "step_day_label")) &&
+      stepLabels[2].includes(deckLine(settings.deck, "step_on_day_label")) &&
+      stepLabels[3].includes(deckLine(settings.deck, "step_pay_label")) &&
+      stepLabels[3].includes("No payment until your install is complete."),
+    stepLabels.join(" | ").slice(0, 300),
   );
-  await priceScreen.getByLabel("Run 1 feet").fill("120");
+  check(
+    "with nothing chosen there's no recap, and with no initials step 1 asks for them right there (never confirmed here)",
+    (await nextScreen.getByTestId("next-steps-recap").count()) === 0 &&
+      stepLabels[0].includes(smart(deckLine(settings.deck, "step_colour_todo"))) &&
+      (await nextScreen.locator("#next-steps-initials").count()) === 1 &&
+      (await nextScreen.getByTestId("next-step-colour-done").count()) === 0,
+  );
+  check(
+    "step 2 says We pick the day together., with Pick a day always there; the closing line hands over to the link",
+    flat(await nextScreen.getByTestId("next-step-day").innerText().catch(() => "")) === smart(deckLine(settings.deck, "step_day_none")) &&
+      flat(await nextScreen.getByTestId("next-step-pick-day").innerText().catch(() => "")) === deckLine(settings.deck, "step_day_button") &&
+      flat(await nextScreen.getByTestId("next-steps-closing").innerText().catch(() => "")) === smart(deckLine(settings.deck, "closing")),
+  );
+  check("the last page has no Next label and no forward chevron", (await page.getByTestId("deck-next-label").count()) === 0 && !(await page.getByRole("button", { name: "Next", exact: true }).isVisible().catch(() => false)));
+  check("no Book button, acceptance or amount on What happens next", !/Book|Accept|\$\d/.test(await nextScreen.innerText()));
+  await page.screenshot({ path: `${out}/m5-next-steps.png` });
+  await nextScreen.getByTestId("next-step-pick-day").click();
+  const dayPicker = page.getByTestId("install-day-picker");
+  await dayPicker.waitFor({ timeout: 5000 }).catch(() => {});
+  const days = await dayPicker.locator("button[data-day]").evaluateAll((buttons) => buttons.map((b) => b.getAttribute("data-day")));
+  const tomorrow = (() => {
+    const [y, m, d] = calgaryDay().split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  })();
+  check(
+    "Pick a day opens a layer of three weeks of days from tomorrow, one tap each, and No day yet (no day tapped here: it saves the quote)",
+    days.length === 21 && days[0] === tomorrow && (await page.getByTestId("install-day-none").count()) === 1 && (await dots(page).count()) === 0,
+    `${days.length} days from ${days[0]}, tomorrow ${tomorrow}`,
+  );
+  await page.screenshot({ path: `${out}/m5-pick-a-day.png` });
+  await page.keyboard.press("Escape");
+  await dayPicker.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  check("Escape closes the day layer with no day picked", (await dayPicker.count()) === 0 && flat(await nextScreen.getByTestId("next-step-day").innerText()) === smart(deckLine(settings.deck, "step_day_none")));
+
+  // ---------------------------------------------------------------- Your price (a presentation; the builder is behind Edit)
+  await goToScreen(page, PRICE);
+  const priceScreen = page.getByRole("region", { name: PRICE });
+  check(
+    "a fresh quote shows no options until something is measured, in the line from Settings",
+    (await priceScreen.getByTestId("price-empty").count()) === 1 &&
+      flat(await priceScreen.getByTestId("price-empty").innerText()) === smart(deckLine(settings.deck, "price_empty")) &&
+      (await priceScreen.getByTestId("price-option").count()) === 0 &&
+      (await priceScreen.getByTestId("price-choose").count()) === 0,
+  );
+  const editButton = priceScreen.getByTestId("price-edit");
+  const editBox = await editButton.boundingBox();
+  check("Keenan's Edit is small, outlined, at the bottom left", editBox !== null && editBox.x < 120 && editBox.y > 834 - 140 && editBox.height >= 44, JSON.stringify(editBox));
+  await editButton.click();
+  const editLayer = page.getByTestId("quote-edit-layer");
+  await editLayer.waitFor({ timeout: 5000 }).catch(() => {});
+  const editSave = editLayer.getByTestId("quote-edit-save");
+  check(
+    "Edit opens the quote editor as a full-screen layer over the deck, the dots hidden; Save waits until there are feet to price",
+    (await editLayer.getByTestId("quote-editor").count()) === 1 && (await dots(page).count()) === 0 && (await editSave.isDisabled()),
+  );
+  await editLayer.getByLabel("Run 1 feet", { exact: true }).fill("120");
   await page.waitForTimeout(300);
-  const subtotal = 120 * Number(settings.price_per_ft) + Number(settings.box_price);
-  const wanted = settings.gst_enabled ? `${money(subtotal)} + GST` : money(subtotal);
-  const total = (await priceScreen.getByTestId("quote-total").innerText()).trim();
-  check("the total moves as Keenan types, priced from Settings", total === wanted, `${total}, expected ${wanted}`);
+  const ppf = Number(settings.price_per_ft);
+  const minimum = Number(settings.min_job_total ?? 0) || 0;
+  const priced = (extra = 0) => Math.max(120 * ppf + Number(settings.box_price) + extra, minimum);
+  const withGst = (amount) => (settings.gst_enabled ? `${money(amount)} + GST` : money(amount));
+  const wanted = withGst(priced());
+  const offerTotal = flat(await editLayer.getByTestId("offer-total").first().innerText().catch(() => ""));
   check(
-    "the quote says it is not saved yet, and Save is ready (never tapped here)",
-    (await priceScreen.getByTestId("quote-unsaved").innerText()).includes("Not saved yet") && (await save.isEnabled()),
+    "the editor's one Full wrap prices as Keenan types, from Settings",
+    (await editLayer.getByTestId("offer-card").count()) === 1 && tight(offerTotal) === tight(wanted),
+    `${offerTotal}, expected ${wanted}`,
   );
-  const bill = await priceScreen.getByTestId("quote-bill").innerText();
-  check("No payment until your install is complete, on the bill", bill.includes("No payment until your install is complete."));
-  check("price held until reads as a written-out date", /Price held until [A-Z][a-z]+ \d{1,2}, \d{4}\./.test(bill));
-  if (!settings.gst_enabled) check("with GST off, the price never mentions GST", !/GST/.test(await priceScreen.innerText()));
-  check("no note to Keenan on the customer's screen", !(await priceScreen.innerText()).includes("apply to this quote only"));
-  await priceScreen.getByLabel("Run 1 feet").press("ArrowLeft");
+  check(
+    "the Edit layer says the quote is not saved yet, and Save is ready (never tapped here); saving needs signal",
+    (await editLayer.getByTestId("quote-edit-status").innerText()).includes("Not saved yet") &&
+      (await editLayer.getByTestId("quote-edit-status").innerText()).includes("Saving needs signal.") &&
+      (await editSave.isEnabled()),
+  );
+  await editLayer.getByLabel("Run 1 feet", { exact: true }).press("ArrowLeft");
   await page.waitForTimeout(500);
-  check("arrow keys stay with the field being typed in", (await currentScreen(page)) === "Your price");
+  check(
+    "arrow keys stay with the field being typed in",
+    (await page.locator('section[data-page="quote"]:not([inert])').count()) === 1 && (await editLayer.count()) === 1,
+  );
   // Run parts and upper access (2026-11-04): the part follows the name, and
   // upper access follows the runs, from this quote's own two amounts.
-  const part = priceScreen.getByLabel("Run 1 part of the house");
-  check("a run's part of the house is guessed from its name", (await part.inputValue()) === "eave");
+  const partGroup = editLayer.getByRole("group", { name: "Run 1 part of the house" });
+  check("a run's part of the house is guessed from its name", (await partGroup.getByRole("button", { name: "Eave" }).getAttribute("aria-pressed")) === "true");
   const upperAmount = Number(settings.upper_access_fee ?? 0);
   const gableAmount = Number(settings.upper_gable_access_fee ?? 0);
-  const upperField = await priceScreen.locator("#quote-upper").inputValue().catch((e) => `error: ${e.message.slice(0, 80)}`);
-  const gableField = await priceScreen.locator("#quote-upper-gable").inputValue().catch((e) => `error: ${e.message.slice(0, 80)}`);
+  await editLayer.getByTestId("editor-prices-toggle").click();
+  const upperField = await editLayer.locator("#editor-upper").inputValue().catch((e) => `error: ${e.message.slice(0, 80)}`);
+  const gableField = await editLayer.locator("#editor-upper-gable").inputValue().catch((e) => `error: ${e.message.slice(0, 80)}`);
   check(
-    "this quote's upper access amounts come from Settings and can be changed here",
+    "Prices for this quote, collapsed until opened: the upper access amounts come from Settings and can be changed here",
     Number(upperField) === upperAmount && Number(gableField) === gableAmount,
     `fields ${upperField} and ${gableField}, Settings ${settings.upper_access_fee} and ${settings.upper_gable_access_fee}`,
   );
-  const billText = async () => (await priceScreen.getByTestId("quote-bill").innerText()).replace(/\s+/g, " ");
-  check("no upper run, no upper access line", !(await billText()).includes("Upper roof access"));
-  await priceScreen.getByRole("button", { name: /^Run 1 level/ }).click();
-  await page.waitForTimeout(300);
-  const withUpper = await billText();
-  await part.selectOption("gable");
-  await page.waitForTimeout(300);
-  const withGable = await billText();
+  await page.screenshot({ path: `${out}/m5-edit.png` });
+  await editLayer.getByTestId("quote-edit-done").click();
+  await editLayer.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+
+  const option = priceScreen.getByTestId("price-option");
+  const breakdown = async () => flat(await priceScreen.getByTestId("price-breakdown").innerText());
+  const priceTotal = async () => tight(await priceScreen.getByTestId("price-total").innerText().catch(() => ""));
   check(
-    "an upper run adds upper access, and an upper gable the gable amount instead",
-    (upperAmount > 0 ? withUpper.includes(`Upper roof access`) && withUpper.includes(money(upperAmount)) : true) &&
-      (gableAmount > 0 ? withGable.includes(money(gableAmount)) : true) &&
+    "Done goes back to the price page: one option, Full wrap, on screen and not chosen, its total from Settings",
+    (await option.count()) === 1 &&
+      (await option.getAttribute("data-on-screen")) === "yes" &&
+      (await option.getAttribute("data-chosen")) === "no" &&
+      flat(await option.innerText()).includes("Full wrap") &&
+      tight(await option.innerText()).includes(tight(wanted)) &&
+      (await priceTotal()).includes(tight(money(priced()))),
+    flat(await option.innerText().catch(() => "")),
+  );
+  check(
+    "the sub-line names the track colour; What's in it and Choose name the option (Choose never tapped here: it saves the quote)",
+    flat(await priceScreen.getByTestId("price-sub").innerText().catch(() => "")) === fillLine(deckLine(settings.deck, "price_sub_one"), { colour: colour.name }) &&
+      (await breakdown()).startsWith(smart(fillLine(deckLine(settings.deck, "whats_in"), { name: "Full wrap" }))) &&
+      flat(await priceScreen.getByTestId("price-choose").innerText()) === fillLine(deckLine(settings.deck, "choose"), { name: "Full wrap" }) &&
+      (await priceScreen.getByTestId("price-choose").getAttribute("aria-pressed")) === "false",
+    flat(await priceScreen.getByTestId("price-sub").innerText().catch(() => "")),
+  );
+  check(
+    "the breakdown, line by line: the lights at \"$X a foot\", the control box always included",
+    (await breakdown()).includes(`Track and lights ${money(120 * ppf)} 120 ft at ${money(ppf)} a foot`) && (await breakdown()).includes(`Control box ${money(Number(settings.box_price))} Always included`),
+    (await breakdown()).slice(0, 200),
+  );
+  const pageText = flat(await priceScreen.innerText());
+  check("No payment until your install is complete., on the price page", pageText.includes("No payment until your install is complete."));
+  check("price held until reads as a written-out date", /Price held until [A-Z][a-z]+ \d{1,2}, \d{4}\./.test(pageText));
+  if (!settings.gst_enabled) check("with GST off, the price never mentions GST", !/GST/.test(pageText));
+  check(
+    "no note to Keenan on the customer's page: the save's state and the signal note live in the Edit layer only",
+    !/Saving needs signal|Not saved yet|Save quote|apply to this quote only/.test(pageText),
+  );
+  check(
+    "the page the customer watches holds no gold: the total is Night Text and Choose is outlined",
+    await priceScreen.evaluate((root) => {
+      const gold = (el) => /185, 146, 87/.test(getComputedStyle(el).color) || /185, 146, 87/.test(getComputedStyle(el).backgroundColor);
+      return ![...root.querySelectorAll("*")].some((el) => el.getBoundingClientRect().width > 0 && gold(el));
+    }),
+  );
+  await page.screenshot({ path: `${out}/m5-price.png` });
+
+  // Upper access follows the runs: an upper run, then an upper gable, then back.
+  const setRun = async (level, part) => {
+    await editButton.click();
+    await editLayer.waitFor({ timeout: 5000 }).catch(() => {});
+    if (level) await editLayer.getByRole("group", { name: "Run 1 level" }).getByRole("button", { name: level }).click();
+    if (part) await editLayer.getByRole("group", { name: "Run 1 part of the house" }).getByRole("button", { name: part }).click();
+    await editLayer.getByTestId("quote-edit-done").click();
+    await editLayer.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(300);
+  };
+  check("no upper run, no upper access line", !(await breakdown()).includes("Upper roof access"));
+  await setRun("Upper", null);
+  const withUpper = await breakdown();
+  await setRun(null, "Gable");
+  const withGable = await breakdown();
+  check(
+    "an upper run adds upper access, and an upper gable the gable amount instead, with its reason",
+    (upperAmount > 0 ? withUpper.includes("Upper roof access") && withUpper.includes(money(upperAmount)) : true) &&
+      (gableAmount > 0 ? withGable.includes(money(gableAmount)) && withGable.includes("For work up high") : true) &&
       withGable.split("Upper roof access").length === 2,
     `${withUpper.slice(0, 160)} | ${withGable.slice(0, 160)}`,
   );
-  await part.selectOption("eave");
-  await priceScreen.getByRole("button", { name: /^Run 1 level/ }).click();
-  await page.waitForTimeout(300);
-  check("back to a lower eave, the line goes and the total is as before", !(await billText()).includes("Upper roof access") && (await priceScreen.getByTestId("quote-total").innerText()).trim() === wanted);
-  await page.screenshot({ path: `${out}/m5-price.png` });
+  await setRun("Lower", "Eave");
+  check("back to a lower eave, the line goes and the total is as before", !(await breakdown()).includes("Upper roof access") && (await priceTotal()).includes(tight(money(priced()))));
 
   // ---------------------------------------------------------------- a reload mid-meeting
   await page.reload();
@@ -616,8 +775,8 @@ try {
   await page.waitForTimeout(1000);
   check(
     "a reload picks up on the same screen, with the quote as typed",
-    (await currentScreen(page)) === "Your price" &&
-      (await page.getByRole("region", { name: "Your price" }).getByLabel("Run 1 feet").inputValue()) === "120",
+    (await currentScreen(page)) === PRICE &&
+      tight(await page.getByRole("region", { name: PRICE }).getByTestId("price-option").first().innerText().catch(() => "")).includes(tight(wanted)),
     await currentScreen(page),
   );
 
@@ -626,7 +785,7 @@ try {
   await page.waitForTimeout(800);
   check(
     "going back (an edge swipe) stays in the deck, on the same page",
-    page.url().split("#")[0] === `${base}/meeting/${leadId}` && (await currentScreen(page)) === "Your price",
+    page.url().split("#")[0] === `${base}/meeting/${leadId}` && (await currentScreen(page)) === PRICE,
     page.url(),
   );
 
@@ -643,7 +802,7 @@ try {
   await page.goto(`${base}/meeting/${leadId}#quote`);
   await dots(page).waitFor({ timeout: 30000 });
   await page.waitForTimeout(800);
-  check("#start opens at the cover, #quote on the price page", fromStart === "Vesper" && (await currentScreen(page)) === "Your price", `${fromStart}, ${await currentScreen(page)}`);
+  check("#start opens at the cover, #quote on the price page", fromStart === "Vesper" && (await currentScreen(page)) === PRICE, `${fromStart}, ${await currentScreen(page)}`);
 
   // ---------------------------------------------------------------- the layout check, at 1180 x 820 and 1366 x 1024
   // Every page and every layer it opens, measured as it stands (nothing is
@@ -668,15 +827,35 @@ try {
       await lp.waitForTimeout(500);
       const onPage = await lp.evaluate(measureDeck);
       found.push(...onPage.problems.map((problem) => `${label}: ${problem}`));
-      if (label === "Your colours") {
+      if (label === COLOUR) {
         const initials = await lp.locator("#colour-initials").boundingBox();
         const foot = Math.round((initials?.y ?? 0) + (initials?.height ?? 0));
-        if (size.height === 820 && !(initials && foot <= 400)) found.push(`Your colours: the initials end at ${foot}, below 400 px`);
-        if (size.height === 1024 && !(initials && foot <= Math.ceil(0.55 * size.height))) found.push(`Your colours: the initials end at ${foot}, below 55% of the height`);
+        if (size.height === 820 && !(initials && foot <= 400)) found.push(`${COLOUR}: the initials end at ${foot}, below 400 px`);
+        if (size.height === 1024 && !(initials && foot <= Math.ceil(0.55 * size.height))) found.push(`${COLOUR}: the initials end at ${foot}, below 55% of the height`);
       }
-      if (label === "Your price") {
-        const builder = await lp.getByTestId("quote-builder").evaluate((el) => [el.scrollHeight, el.clientHeight]);
-        if (builder[0] > builder[1] + 1) found.push(`Your price: the builder scrolls (${builder[0]} > ${builder[1]}), its last row cut off`);
+      if (label === PRICE) {
+        // Choose and the total stay above the bottom row (the dots, the
+        // chevrons and the Next label), and Edit keeps clear of Choose.
+        const boxes = await lp.evaluate(() => {
+          const rect = (el) => {
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+          };
+          const section = document.querySelector('section[data-page="quote"]');
+          const nav = document.querySelector('[data-deck-row="nav"]');
+          return {
+            choose: rect(section?.querySelector('[data-testid="price-choose"]')),
+            total: rect(section?.querySelector('[data-testid="price-total"]')),
+            edit: rect(section?.querySelector('[data-testid="price-edit"]')),
+            row: rect(nav?.querySelector("ol")),
+            next: rect(nav?.querySelector('[data-testid="deck-next-label"]')),
+          };
+        });
+        const rowTop = Math.min(boxes.row?.top ?? Infinity, boxes.next?.top ?? Infinity);
+        if (!boxes.choose || boxes.choose.bottom > rowTop + 0.5) found.push(`${PRICE}: Choose ends at ${Math.round(boxes.choose?.bottom ?? 0)}, below the bottom row's top (${Math.round(rowTop)})`);
+        if (!boxes.total || boxes.total.bottom > rowTop + 0.5) found.push(`${PRICE}: the total runs into the bottom row`);
+        if (boxes.edit && boxes.choose && boxes.edit.right > boxes.choose.left - 24) found.push(`${PRICE}: Edit sits near Choose`);
       }
       const openers = await lp.getByRole("region", { name: label }).locator('button[aria-haspopup="dialog"]').all();
       for (const opener of openers) {
@@ -684,7 +863,7 @@ try {
         await opener.click();
         await lp.locator("[data-deck-layer]").waitFor({ timeout: 5000 }).catch(() => {});
         await lp.waitForTimeout(400);
-        if (label === "Your colours") {
+        if (label === COLOUR) {
           // Custom shows the colour number (a tap, nothing saved): measured with it.
           const chooser = lp.locator("[data-deck-layer]");
           await chooser.locator("label").filter({ hasText: /^Custom$/ }).click();
@@ -695,7 +874,7 @@ try {
               ["Save", await chooser.getByRole("button", { name: "Save track colour" }).boundingBox()],
             ]) {
               const foot = Math.round((box?.y ?? 0) + (box?.height ?? 0));
-              if (!box || foot > 400) found.push(`Your colours > ${name}: ${what} ends at ${foot}, below 400 px`);
+              if (!box || foot > 400) found.push(`${COLOUR} > ${name}: ${what} ends at ${foot}, below 400 px`);
             }
           }
         }
@@ -706,7 +885,8 @@ try {
         await lp.keyboard.press("Escape");
         await lp.waitForTimeout(400);
         if ((await lp.locator("[data-deck-layer]").count()) > 0) {
-          await lp.locator("[data-deck-layer]").getByRole("button", { name: "Back" }).last().click();
+          // Back closes a page's layer; Done closes Keenan's Edit layer (never Save).
+          await lp.locator("[data-deck-layer]").getByRole("button", { name: /^(Back|Done)$/ }).last().click();
           await lp.waitForTimeout(400);
         }
       }

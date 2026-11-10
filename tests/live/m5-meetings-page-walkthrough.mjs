@@ -296,7 +296,13 @@ try {
     "each item has its button right there: upload, the colour, the quote",
     (await page.getByTestId("prep-item-mockup").getByRole("button", { name: "Upload the mockup" }).count()) === 1 &&
       (await page.getByTestId("prep-item-track_colour").locator("select, [role=radiogroup], input").count()) > 0 &&
-      (await page.getByTestId("prep-quote").getAttribute("href")) === `/meeting/${laterLead}#quote`,
+      (await page.getByTestId("prep-quote").getAttribute("href")) === `/app/leads/${laterLead}#edit-quote`,
+    (await page.getByTestId("prep-quote").getAttribute("href")) ?? "no quote link",
+  );
+  check(
+    "round 9: prep's quote button opens Keenan's quote editor on the lead page (the quote meeting mode opens with), named for what's left",
+    (await page.getByTestId("prep-quote").innerText()).trim() === "Draft the quote",
+    (await page.getByTestId("prep-quote").innerText()).trim(),
   );
   const smsHref = (await page.getByTestId("prep-text").getAttribute("href").catch(() => null)) ?? "";
   const smsBody = smsHref.includes("body=") ? decodeURIComponent(smsHref.split("body=")[1]) : "";
@@ -456,10 +462,17 @@ try {
   );
   await ready.getByRole("link", { name: `Start the meeting with ${TEST_LEAD} Tonight` }).click().catch(() => {});
   await ready.locator('ol[aria-label="Where you are"]').waitFor({ timeout: 30000 }).catch(() => {});
-  // Round 7's deck: the mockup is "Where your lights would go" (its headline
-  // from Settings), and a page's pictures load once it is near the screen,
-  // so go to it first.
+  // Round 9's deck: with no trace, the mockup is "Your house, lit" (its
+  // headline from Settings), standing in for Your house; a page's pictures
+  // load once it is near the screen, so go to it first.
   const mockupLabel = await ready.locator('section[data-page="mockup"]').getAttribute("aria-label").catch(() => null);
+  const { data: deckRow } = await admin.from("settings").select("deck").eq("id", 1).single();
+  const mockupHeadline = (deckRow?.deck?.pages?.mockup?.headline ?? "").trim() || "Your house, lit";
+  check(
+    "the offline meeting names the mockup page Your house, lit (its headline from Settings), standing in for Your house",
+    mockupLabel === mockupHeadline && mockupHeadline === "Your house, lit" && (await ready.locator('section[data-page="your_house"]').count()) === 0,
+    `${mockupLabel} (Settings: ${mockupHeadline})`,
+  );
   if (mockupLabel) {
     await ready.locator('ol[aria-label="Where you are"]').getByRole("button", { name: mockupLabel, exact: true }).click().catch(() => {});
   }

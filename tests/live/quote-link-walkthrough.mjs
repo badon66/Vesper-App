@@ -1,30 +1,41 @@
 // Live walk-through of the customer quote link (Keenan, 2026-11-02; the
-// rework, 2026-11-04), against the real database, phone size first.
+// rework, 2026-11-04; round 9, 2026-11-10: Keenan's options replace Start
+// smaller and Your lights), against the real database, phone size first.
 //
 // It stages a throwaway setter, a TEST LEAD with a quote (four runs, two of
 // them upper, one an upper gable; extra work marked only with upper runs; a
 // neighbour discount; the two upper access amounts; a rush colour fee; a
-// minimum job total), a mockup and a live link made by the throwaway setter,
-// so any notice goes to that account and never to Keenan's phone. Then, as a
-// customer with no session, at phone size: the page's headers and look, all
-// eight sections in order, the house diagram, Start smaller with upper
-// access following the runs and the total counting, down to the minimum and
-// Keenan's two lines, reduce motion, Tap to open, the mockup viewer, Book my
-// install and the thank-you, the visit and the choice in the database, and
-// nothing internal on the page. As Keenan, through his one-time view-only
-// session (owner-session.mjs): the lead's Quote card, the Send quote link
-// sheet (the link already exists, so nothing is written), the timeline, and
-// his Preview, which counts nothing and books nothing. As the setter: no
-// Quote card. Then the price hold passes and the page still works, Book my
-// install included; then the link is turned off and closes; and on the
-// quote domain only quote pages answer. Everything staged is removed at the
-// end, and nothing of Keenan's changes.
+// minimum job total) and three options (Full wrap, Main floor and Front
+// only, the last under the minimum), a mockup and a live link made by the
+// throwaway setter, so any notice goes to that account and never to
+// Keenan's phone. Then, as a customer with no session, at phone size (390
+// and 430): the page's headers and look, the sections in order, Your
+// options (one house diagram and a radio row per option, biggest first,
+// fitting one screen with the diagram), What's in the option on screen,
+// line by line, with "$X a foot", the one colour rule ("made to order this
+// season"), What happens next's four steps, a row tapped and the house and
+// total following, down to the minimum and Keenan's two lines, the page
+// opening on the biggest, then on the meeting's choice once there is one
+// (tagged "Your choice at the meeting"), then on what they booked; reduce
+// motion, Tap to open, the mockup viewer, Book my install (booked_offer
+// recorded, the total recomputed on the server) and the thank-you, the
+// visit and the choice in the database, and nothing internal on the page.
+// As Keenan, through his one-time view-only session (owner-session.mjs):
+// the lead's Quote card, the Send quote link sheet (the link already
+// exists, so nothing is written), the timeline, and his Preview, which
+// counts nothing and books nothing. As the setter: no Quote card. Then the
+// price hold passes and the page still works, Book my install included;
+// then the service role marks the quote accepted (standing in for Keenan)
+// and the page shows only what was agreed; then the link is turned off and
+// closes; and on the quote domain only quote pages answer. Everything
+// staged is removed at the end, and nothing of Keenan's changes.
 import http from "node:http";
 import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
 import { chromium } from "playwright";
 import sharp from "sharp";
+import { deckLine, fillLine } from "./deck-order.mjs";
 import { openOwnerSession } from "./owner-session.mjs";
 
 const base = process.env.BASE ?? "http://localhost:3300";
@@ -64,13 +75,26 @@ const fullDate = (day) =>
 // Page text as the checks compare it: spaces collapsed, and the page's curly
 // apostrophes (2026-11-04) read as straight ones.
 const flat = (t) => (t ?? "").replace(/\s+/g, " ").replace(/[\u2018\u2019]/g, "'");
-// The figure a screen reader hears, never the counting digits.
-const totalOf = async (page, testId) => ((await page.getByTestId(testId).locator(".sr-only").textContent().catch(() => "")) ?? "").trim();
-// The digits on screen, which count to the new value.
-const shownOf = async (page, testId) => ((await page.getByTestId(testId).locator("[aria-hidden=true]").first().textContent().catch(() => "")) ?? "").trim();
+// A total as the page shows it (round 9: it changes at once, it never counts).
+const totalOf = async (page, testId) => flat(await page.getByTestId(testId).first().innerText().catch(() => "")).trim();
 const lineShown = async (page, label) =>
   (await page.locator(`[data-testid="quote-lines"] [data-line="${label}"]`).getAttribute("data-shown").catch(() => null)) === "true";
 const segment = async (page, name) => page.locator(`[data-testid="quote-house"] [data-segment="${name}"]`).getAttribute("data-state").catch(() => null);
+// The option rows, top to bottom: id, whether selected, the total and the coverage line.
+const optionRows = (page) =>
+  page.getByTestId("option-row").evaluateAll((rows) =>
+    rows.map((row) => ({
+      offer: row.getAttribute("data-offer"),
+      selected: row.getAttribute("data-selected") === "true",
+      total: (row.querySelector('[data-testid="option-total"]')?.textContent ?? "").replace(/\s+/g, " ").trim(),
+      coverage: (row.querySelector('[data-testid="option-coverage"]')?.textContent ?? "").replace(/\s+/g, " ").trim(),
+      tagged: Boolean(row.querySelector('[data-testid="option-meeting-tag"]')),
+    })),
+  );
+const pickOption = async (page, offer) => {
+  await page.locator(`[data-testid="option-row"][data-offer="${offer}"]`).click();
+  await page.waitForTimeout(500);
+};
 
 async function settle(page) {
   await page.waitForLoadState("networkidle").catch(() => {});
@@ -146,7 +170,7 @@ try {
   const ownerId = ownerRow.id;
   const { data: settingsRow } = await admin
     .from("settings")
-    .select("warranty_text, company, service_call_fee, christmas_banner_on, christmas_banner_title, christmas_banner_text, product_points, presentation")
+    .select("warranty_text, company, service_call_fee, christmas_banner_on, christmas_banner_title, christmas_banner_text, product_points, presentation, deck")
     .eq("id", 1)
     .single();
 
@@ -190,6 +214,16 @@ try {
       upper_access_fee: 200,
       upper_gable_access_fee: 400,
       track_colour_name: "White",
+      financing_offered: true,
+      // Keenan's three options (round 9), in the order he made them; the
+      // page shows them biggest first. Full wrap $4,959; Main floor (Front
+      // and Garage, no upper run, so no upper access or Extra height)
+      // $2,633; Front only $1,961 before the $2,500 minimum.
+      offers: [
+        { id: "front", name: "Front only", runs: [0] },
+        { id: "full", name: "Full wrap", runs: [0, 1, 2, 3] },
+        { id: "main", name: "Main floor", runs: [0, 2] },
+      ],
       notes: INTERNAL,
       valid_until: validUntil,
     })
@@ -249,17 +283,20 @@ try {
   }));
   check("white like a document, whatever the theme, and no sideways scroll", look.body === "rgb(255, 255, 255)" && look.width <= 390, JSON.stringify(look));
 
+  const words = (key) => deckLine(settingsRow.deck, key);
   const text = flat(await page.locator("body").innerText());
-  // 1. Their house and their price.
+  // 1. Their house and the price of the option on screen: the biggest first.
   check(
-    "their greeting first, then the total and price held until",
+    "their greeting first, then the biggest option's name over its total, and price held until",
     text.includes(`${TEST_LEAD}, here's your quote`) &&
+      (await totalOf(page, "hero-option")) === "Full wrap" &&
       (await totalOf(page, "hero-total")) === "$4,959" &&
-      (await page.getByTestId("quote-price-hold").innerText()).trim() === `Price held until ${fullDate(validUntil)}`,
-    text.slice(0, 200),
+      (await page.getByTestId("quote-price-hold").innerText()).trim() === `Price held until ${fullDate(validUntil)}.`,
+    `${await totalOf(page, "hero-option")} ${await totalOf(page, "hero-total")} | ${(await page.getByTestId("quote-price-hold").innerText().catch(() => "")).trim()}`,
   );
   const mockup = await page.getByTestId("quote-mockup").evaluate((img) => img.complete && img.naturalWidth > 0).catch(() => false);
   check("their mockup, full width, loaded through a short-lived signed link", mockup);
+  check("the full wrap covers every run, so the mockup needs no caption", (await page.getByTestId("mockup-caption").count()) === 0);
   const promises = flat(await page.getByTestId("quote-promises").innerText());
   const justAsk = await page.getByRole("link", { name: "Just ask." }).getAttribute("href").catch(() => "");
   check(
@@ -269,7 +306,8 @@ try {
   );
   // 2. Christmas, while Keenan has it on, September 1 to November 30.
   const [, month] = calgaryToday().split("-").map(Number);
-  const bannerDue = settingsRow?.christmas_banner_on && month >= 9 && month <= 11;
+  const season = month >= 9 && month <= 11;
+  const bannerDue = settingsRow?.christmas_banner_on && season;
   const banner = await page.getByTestId("quote-christmas").innerText().catch(() => "");
   check(
     bannerDue ? "the Christmas banner, in Keenan's words from Settings" : "no Christmas banner out of season or while it's off",
@@ -284,15 +322,42 @@ try {
     pointItems.length === pointTexts.length && pointTexts.every((t, at) => pointItems[at]?.trim() === t) && (await page.getByTestId("quote-points").locator("svg").count()) === pointTexts.length,
     `${pointItems.length} of ${pointTexts.length}`,
   );
-  // 4. Your lights, and the house.
-  const runRows = await page.getByTestId("quote-runs").locator("li").allInnerTexts();
-  check("their runs as a compact list, name and feet, no levels", runRows.length === 4 && runRows[0].replace(/\s+/g, " ").trim() === "Front 64 ft" && !runRows.join(" ").includes("level"), runRows.join(" | "));
+  check(
+    "round 9's track point: tucked under the roof edge, never \"colour matched to your soffit\"",
+    !pointTexts.some((t) => /colour matched to your soffit/i.test(t)),
+    pointTexts.find((t) => /track/i.test(t)) ?? "",
+  );
+  // 4. Your options: one house, a row per option, biggest first.
+  check("Your options replaces Your lights and Start smaller", flat(await page.locator("#your-options").innerText()) === "Your options" && (await page.getByTestId("start-smaller").count()) === 0 && (await page.getByTestId("quote-runs").count()) === 0 && !/Start smaller|Switch all back on|At least one part stays in/.test(text));
+  let rows = await optionRows(page);
+  check(
+    "the options as radio rows, biggest first, each with what it covers and its total; the biggest selected",
+    JSON.stringify(rows.map((row) => [row.offer, row.total, row.coverage, row.selected])) ===
+      JSON.stringify([
+        ["full", "$4,959", "Front, Front upper, Garage and Left gable, 166 ft", true],
+        ["main", "$2,633", "Front and Garage, 92 ft", false],
+        ["front", "$2,500", "Front, 64 ft", false],
+      ]) && rows.every((row) => !row.tagged),
+    JSON.stringify(rows),
+  );
   const states = {};
   for (const name of ["lower-eave", "upper-eave", "garage", "upper-gable", "garage-gable", "porch", "lower-sides", "upper-sides"]) states[name] = await segment(page, name);
   check(
-    "the house lights the parts in their quote and leaves the rest as the outline",
+    "one house for the option on screen: gold for its runs, the plain outline where nothing was measured",
     states["lower-eave"] === "on" && states["upper-eave"] === "on" && states.garage === "on" && states["upper-gable"] === "on" && states["garage-gable"] === "none" && states.porch === "none",
     JSON.stringify(states),
+  );
+  check("its caption names the option", flat(await page.getByTestId("drawing-caption").innerText()) === fillLine(words("link_drawing_caption"), { name: "Full wrap" }));
+  const fit = await page.evaluate(() => {
+    const figure = document.querySelector('[data-testid="quote-house"]').getBoundingClientRect();
+    const rows = [...document.querySelectorAll('[data-testid="option-row"]')].map((row) => row.getBoundingClientRect());
+    const bar = document.querySelector('[data-testid="quote-bar"]').getBoundingClientRect();
+    return { span: Math.round(rows[rows.length - 1].bottom - figure.top), room: Math.round(window.innerHeight - bar.height), heights: rows.map((r) => Math.round(r.height)) };
+  });
+  check(
+    "the diagram and the three rows fit on one screen at 390, above the bar, so a tap and the house changing are in view together; rows 72 to 88 px (no meeting tag yet)",
+    fit.span <= fit.room && fit.heights.every((h) => h >= 72 && h <= 88),
+    JSON.stringify(fit),
   );
   const explainer = page.getByTestId("quote-explainer");
   const explainerClosed = (await explainer.getAttribute("open")) === null;
@@ -306,35 +371,57 @@ try {
       (await page.getByTestId("parts-explained").locator("svg").count()) === 5,
     explained.slice(0, 160),
   );
-  // 5. The price, line by line.
-  const lines = (await page.getByTestId("quote-lines").innerText()).replace(/\s+/g, " ");
+  await explainer.locator("summary").click();
+  await page.waitForTimeout(300);
+  // 5. What's in the option on screen, line by line, ending on one Total.
+  const lines = flat(await page.getByTestId("quote-lines").innerText());
   check(
-    "the price line by line: lights at the per-foot price, the box, upper access with its reason, extra work and the discount",
-    lines.includes("Track and lights") &&
-      lines.includes("166 ft at $24/ft") &&
+    "What's in Full wrap, line by line: the lights at \"$X a foot\", the box, upper access with its reason, extra work and the discount",
+    flat(await page.getByTestId("whats-in").innerText()) === fillLine(words("whats_in"), { name: "Full wrap" }) &&
+      lines.includes("Track and lights") &&
+      lines.includes("166 ft at $24 a foot") &&
       lines.includes("$3,984") &&
       lines.includes("Control box Always included $500") &&
       lines.includes("Upper roof access For work up high: $200, or $400 with an upper gable $400") &&
       lines.includes("Extra height") &&
       lines.includes("Garage corner") &&
-      lines.includes("\u2212$150") &&
-      !lines.includes("Rush colour fee"),
+      lines.includes("−$150") &&
+      !(await lineShown(page, "Rush colour fee")) &&
+      (await totalOf(page, "line-total")) === "Total $4,959",
     lines,
   );
-  check("the total, with no mention of GST while GST is off", (await totalOf(page, "smaller-total")) === "$4,959" && !/GST/.test(text));
-  // 6. Track colour, in Keenan's words: the rush colour fee "to have it
-  // before Christmas" only from September 1 to November 30, like the banner.
-  const otherColours = (month >= 9 && month <= 11)
-    ? "Any other colour is powder coated: nothing extra if it can wait for spring, or the $350 rush colour fee to have it before Christmas."
-    : "Any other colour is powder coated for a spring install, with colour matching included at no extra cost.";
+  check("one Total, with no mention of GST while GST is off", (await page.getByTestId("line-total").count()) === 1 && !/GST/.test(text));
   check(
-    "track colour: their colour, white is stock, and the other colours for the time of year",
-    text.includes("Your colour: White.") &&
-      text.includes("White is our stock colour. It costs nothing extra and fits this season's schedule.") &&
-      text.includes(otherColours) &&
-      ((month >= 9 && month <= 11) || !text.includes("Christmas")),
+    "under the rows: what every option includes, and something different is a call or a text",
+    flat(await page.getByTestId("quote-includes").innerText()) === words("price_includes") &&
+      flat(await page.getByTestId("quote-something-else").innerText()) === words("link_something_else"),
   );
-  // 7. Tap to open, closed until tapped.
+  // 6. Track colour: one colour rule, the same as the iPad.
+  const otherColours = season
+    ? "Any other colour is made to order: nothing extra if it can wait for spring, or the $350 rush colour fee to have it this season."
+    : "Any other colour is made to order for a spring install, at no extra cost.";
+  check(
+    "track colour: their colour, White in stock and included, every other colour made to order",
+    (await totalOf(page, "quote-colour")) === "Your colour: White." &&
+      (await totalOf(page, "quote-colour-stock")) === words("colour_stock") &&
+      (await totalOf(page, "quote-colour-rush")) === otherColours &&
+      !/powder|colour matching/i.test(text),
+    `${await totalOf(page, "quote-colour-stock")} | ${await totalOf(page, "quote-colour-rush")}`,
+  );
+  // 7. What happens next: the meeting's four steps, in its words.
+  const steps = [];
+  for (const key of ["colour", "day", "on_day", "pay"]) steps.push(flat(await page.getByTestId(`next-step-${key}`).innerText().catch(() => "")));
+  check(
+    "What happens next replaces How install day works: the colour to confirm, the day to pick together, the day itself and no payment until the install",
+    (await page.getByTestId("quote-install-day").count()) === 0 &&
+      steps[0].includes(words("step_colour_label")) && steps[0].includes(words("step_colour_todo")) &&
+      steps[1].includes(words("step_day_label")) && steps[1].includes(words("step_day_none")) &&
+      steps[2].includes(words("step_on_day_label")) &&
+      steps[3].includes(words("step_pay_label")) && steps[3].includes("No payment until your install is complete.") &&
+      (await page.getByTestId("quote-what-we-need").count()) === 1,
+    steps.join(" | "),
+  );
+  // 8. Tap to open, closed until tapped.
   const warrantyFirst = (settingsRow?.warranty_text ?? "").split(/\n+/)[0]?.trim() ?? "";
   const warranty = page.getByTestId("quote-warranty");
   const warrantyClosed = (await warranty.getAttribute("open")) === null && !(await warranty.getByText(warrantyFirst).isVisible().catch(() => false));
@@ -347,27 +434,20 @@ try {
     warrantyClosed && warrantyFirst.length > 0 && warrantyText.includes(warrantyFirst) && (fee > 0 ? warrantyText.includes(`Service call fee for years 6 to 10: $${fee.toLocaleString("en-CA")}`) : true),
     warrantyText.slice(0, 200),
   );
-  const installDay = (Array.isArray(settingsRow?.presentation) ? settingsRow.presentation : []).find((p) => p?.kind === "install_day");
+  await warranty.locator("summary").click();
   const galleryCount = (Array.isArray(settingsRow?.presentation) ? settingsRow.presentation : []).find((p) => p?.kind === "gallery")?.image_paths?.filter(Boolean)?.length ?? 0;
   check(
-    "How install day works from Settings, and See our work hidden until there are photos",
-    (installDay?.body?.trim() ? (await page.getByTestId("quote-install-day").count()) === 1 : true) &&
-      (galleryCount === 0 ? (await page.getByTestId("quote-gallery").count()) === 0 : (await page.getByTestId("quote-gallery").count()) === 1),
+    "See our work hidden until there are photos",
+    galleryCount === 0 ? (await page.getByTestId("quote-gallery").count()) === 0 : true,
     `${galleryCount} gallery photos`,
   );
   const order = await page.evaluate(() =>
-    ["hero-total", "quote-christmas", "quote-points", "quote-runs", "quote-house", "start-smaller", "smaller-total", "quote-lines", "quote-colour", "quote-more", "quote-footer"]
-      .map((id) => document.querySelector(`[data-testid="${id}"]`))
-      .filter(Boolean)
-      .map((el) => el.getBoundingClientRect().top + window.scrollY),
+    ["hero-total", "quote-christmas", "quote-points", "quote-options", "quote-house", "option-rows", "whats-in", "quote-lines", "quote-includes", "quote-colour", "quote-next-steps", "quote-more", "quote-footer"]
+      .map((id) => [id, document.querySelector(`[data-testid="${id}"]`)])
+      .filter(([, el]) => el)
+      .map(([id, el]) => [id, Math.round(el.getBoundingClientRect().top + window.scrollY)]),
   );
-  check("the sections in Keenan's order, top to bottom, with the total right under the switches", order.every((top, at) => at === 0 || top > order[at - 1]), order.map(Math.round).join(","));
-  const gap = await page.evaluate(() => {
-    const rows = document.querySelector('[data-testid="start-smaller"]').getBoundingClientRect();
-    const total = document.querySelector('[data-testid="smaller-total"]').getBoundingClientRect();
-    return Math.round(total.top - rows.bottom);
-  });
-  check("a switch and the total share the screen: the total sits within 60 px of the last switch", gap >= 0 && gap <= 60, `${gap} px`);
+  check("the sections in order, top to bottom", order.every(([, top], at) => at === 0 || top > order[at - 1][1]), order.map(([id, top]) => `${id} ${top}`).join(", "));
   const hrefs = await page.locator("a").evaluateAll((links) => links.map((a) => a.getAttribute("href") ?? ""));
   check(
     "call, text and email Vesper; Text opens with a line about their quote",
@@ -380,14 +460,29 @@ try {
     "nothing internal: no note, setter, status or other customer",
     !text.includes("INTERNAL") && !text.includes(setter.name) && !text.includes(setter.email) && !/\bdraft\b/i.test(text),
   );
+  check(
+    "no badges or deals: no Recommended, Most popular, Best value, struck-through price or countdown",
+    !/Recommended|Most popular|Best value|tonight only|ends in/i.test(text) && (await page.locator("s, del").count()) === 0,
+  );
   const bar = (await page.getByTestId("quote-bar").innerText()).replace(/\s+/g, " ").trim();
   check(
     "a bar fixed to the bottom with Call, Text and Book my install, and no price in it",
     (await page.getByRole("button", { name: "Book my install" }).isVisible()) && bar === "Call Text Book my install" && (await page.getByTestId("quote-bar").evaluate((el) => getComputedStyle(el).position)) === "fixed",
     bar,
   );
+  check(
+    "gold is Book my install's alone: the selected row is navy",
+    await page.evaluate(() => {
+      const gold = (el) => {
+        const style = getComputedStyle(el);
+        return /185, 146, 87/.test(style.backgroundColor) || (parseFloat(style.borderTopWidth) > 0 && /185, 146, 87/.test(style.borderTopColor));
+      };
+      const golden = [...document.querySelectorAll("main *")].filter((el) => el.getBoundingClientRect().width > 0 && gold(el) && !el.closest("[data-testid=quote-christmas]"));
+      return golden.length === 0;
+    }),
+  );
   const targets = await page.evaluate(() =>
-    [...document.querySelectorAll('[data-testid="quote-bar"] a, [data-testid="quote-bar"] button, [role="switch"], summary, [data-testid="quote-footer"] a, [data-testid="switch-all-on"]')].map((el) => Math.round(el.getBoundingClientRect().height)),
+    [...document.querySelectorAll('[data-testid="quote-bar"] a, [data-testid="quote-bar"] button, [data-testid="option-row"], summary, [data-testid="quote-footer"] a')].map((el) => Math.round(el.getBoundingClientRect().height)),
   );
   check("every tap target is at least 44 px tall", targets.every((h) => h >= 44), targets.join(","));
   await page.screenshot({ path: `${out}/ql-phone-top.png` });
@@ -398,63 +493,68 @@ try {
   const { data: opened } = await admin.from("lead_events").select("actor_id").eq("lead_id", leadId).eq("type", "quote_link_opened");
   check("the visit is counted, nothing about the visitor stored, and goes on the timeline once", visited?.view_count === 1 && opened?.length === 1 && opened[0].actor_id === null, JSON.stringify(visited));
 
-  // Start smaller: the upper gable off, then the other upper run, then the
-  // front, down to the minimum. The total counts to each new figure.
-  const smaller = page.getByTestId("start-smaller");
-  await smaller.getByRole("switch", { name: /^Left gable/ }).click();
-  await page.waitForTimeout(90);
-  const counting = await shownOf(page, "smaller-total");
-  await page.waitForTimeout(700);
+  // A row tapped: Main floor leaves both upper runs out, so the house darks
+  // them, upper access and the extra work marked only with upper runs drop
+  // off, and the mockup says it shows every run.
+  await pickOption(page, "main");
   check(
-    "switching off the upper gable dims it on the house, drops upper access to $200, and the total counts to its new figure",
-    (await segment(page, "upper-gable")) === "off" &&
-      lines.length > 0 &&
-      (await page.locator('[data-testid="quote-lines"] [data-line="Upper roof access"]').innerText()).includes("$200") &&
-      (await totalOf(page, "smaller-total")) === "$4,231" &&
-      (await shownOf(page, "smaller-total")) === "$4,231" &&
-      counting !== "$4,231" &&
-      (await totalOf(page, "hero-total")) === "$4,231" &&
-      (await page.getByTestId("hero-full").innerText()).trim() === "Full quote $4,959",
-    `while counting: ${counting}`,
+    "tapping Main floor selects it, dashes the upper runs it leaves out, and the hero follows",
+    (await totalOf(page, "hero-option")) === "Main floor" &&
+      (await totalOf(page, "hero-total")) === "$2,633" &&
+      (await segment(page, "upper-eave")) === "off" &&
+      (await segment(page, "upper-gable")) === "off" &&
+      (await segment(page, "lower-eave")) === "on" &&
+      (await segment(page, "garage")) === "on" &&
+      (await optionRows(page)).find((row) => row.selected)?.offer === "main",
+    `${await totalOf(page, "hero-option")} ${await totalOf(page, "hero-total")}`,
   );
-  const markOf = async (name) =>
-    smaller.getByRole("switch", { name: new RegExp(`^${name}`) }).locator(`[data-state="off"], [data-state="on"]`).first().getAttribute("data-state").catch(() => null);
   check(
-    "each switch carries a small drawing of its own part: lit while on, dashed once off",
-    (await markOf("Left gable")) === "off" && (await markOf("Front upper")) === "on" && (await markOf("Garage")) === "on",
-  );
-  await smaller.getByRole("switch", { name: /^Front upper/ }).click();
-  await page.waitForTimeout(700);
-  check(
-    "switching off every upper run drops upper access and the extra work marked only with upper runs",
+    "with no upper run, no upper access and no extra work marked only with upper runs; the rest stays",
     !(await lineShown(page, "Upper roof access")) &&
       !(await lineShown(page, "Extra height")) &&
       (await lineShown(page, "Garage corner")) &&
-      (await segment(page, "upper-eave")) === "off" &&
-      (await totalOf(page, "smaller-total")) === "$2,633",
+      flat(await page.getByTestId("quote-lines").innerText()).includes("92 ft at $24 a foot") &&
+      (await totalOf(page, "line-total")) === "Total $2,633" &&
+      flat(await page.getByTestId("whats-in").innerText()) === fillLine(words("whats_in"), { name: "Main floor" }),
   );
-  await smaller.getByRole("switch", { name: /^Front,/ }).click();
-  await page.waitForTimeout(700);
-  const minLines = (await page.getByTestId("quote-lines").innerText()).replace(/\s+/g, " ");
+  check(
+    "an option that leaves runs out puts a caption under the mockup",
+    flat(await page.getByTestId("mockup-caption").innerText().catch(() => "")) === words("link_mockup_caption"),
+  );
+  await page.screenshot({ path: `${out}/ql-phone-main-floor.png`, fullPage: true });
+  await pickOption(page, "front");
+  const minLines = flat(await page.getByTestId("quote-lines").innerText());
   const note = flat(await page.getByTestId("minimum-note").innerText()).trim();
   check(
-    "below the minimum, both totals come to it, with the lines' own subtotal, a line saying so and Keenan's two sentences at the total",
-    minLines.includes("Before the minimum $1,097 To reach our $2,500 minimum $1,403") &&
-      (await totalOf(page, "line-total")) === "$2,500" &&
-      (await totalOf(page, "smaller-total")) === "$2,500" &&
+    "below the minimum, the total comes to it, with the lines' own sum, a line saying so and Keenan's two sentences",
+    minLines.includes("Before the minimum $1,961 To reach our $2,500 minimum $539") &&
+      (await totalOf(page, "line-total")) === "Total $2,500" &&
       (await totalOf(page, "hero-total")) === "$2,500" &&
       note === "That's under our $2,500 minimum, so this option comes to $2,500. Need a repair or something smaller? Call or text us and we'll see what we can do." &&
-      (await page.getByTestId("hero-full").innerText()).trim() === "Full quote $4,959",
+      (await segment(page, "garage")) === "off",
     `${minLines} | ${note}`,
   );
-  // The last part is marked disabled; a tap on it anyway changes nothing.
-  await smaller.getByRole("switch", { name: /^Garage/ }).click({ force: true });
-  check("the last part stays on", (await smaller.getByRole("switch", { name: /^Garage/ }).getAttribute("aria-checked")) === "true");
-  check("prices, footage and discounts can't be changed", (await page.locator("input, textarea, select").count()) === 0);
-  await page.screenshot({ path: `${out}/ql-phone-smaller.png`, fullPage: true });
+  check("prices, footage and discounts can't be changed: the rows are the only choice", (await page.locator("input:not([type=radio]), textarea, select").count()) === 0);
+  await page.screenshot({ path: `${out}/ql-phone-front-only.png`, fullPage: true });
   await page.waitForTimeout(2000);
-  const { data: chosen } = await admin.from("quote_links").select("selection").eq("id", link.data.id).single();
-  check("their choice is saved on their own link", JSON.stringify(chosen?.selection) === "[2]", JSON.stringify(chosen));
+  const { data: chosen } = await admin.from("quote_links").select("selection, selection_offer").eq("id", link.data.id).single();
+  check("the option they settle on is saved on their own link, by its id", chosen?.selection_offer === "front" && JSON.stringify(chosen?.selection) === "[0]", JSON.stringify(chosen));
+
+  // The meeting's choice: the page opens on it (the service role stands in
+  // for Keenan's iPad saving it), tagged, until they book something else.
+  await admin.from("quotes").update({ meeting_offer: "main" }).eq("id", quote.data.id);
+  await page.reload();
+  await settle(page);
+  rows = await optionRows(page);
+  check(
+    "with a choice made at the meeting and nothing booked, the page opens on it, tagged \"Your choice at the meeting\"",
+    (await totalOf(page, "hero-option")) === "Main floor" &&
+      rows.find((row) => row.selected)?.offer === "main" &&
+      rows.filter((row) => row.tagged).map((row) => row.offer).join() === "main" &&
+      flat(await page.getByTestId("option-meeting-tag").innerText()) === words("link_meeting_tag"),
+    JSON.stringify(rows),
+  );
+  await page.screenshot({ path: `${out}/ql-phone-meeting-choice.png` });
 
   // The mockup, full screen.
   await page.getByRole("button", { name: /Open the picture of your house/ }).click();
@@ -465,8 +565,9 @@ try {
   await viewer.getByRole("button", { name: "Close" }).click().catch(() => {});
   check("a tap opens the mockup full screen to zoom, and Close brings them back", viewerOpen && !(await viewer.isVisible().catch(() => false)));
 
-  // Book my install: it asks once, restating the choice, before it books.
-  // A quick second tap lands where Yes appears; it must not book.
+  // Book my install on Front only: it asks once, restating the choice,
+  // before it books. A quick second tap lands where Yes appears; it must not book.
+  await pickOption(page, "front");
   await page.getByRole("button", { name: "Book my install" }).click();
   const confirm = page.getByTestId("book-confirm");
   await confirm.getByRole("button", { name: "Yes, book my install" }).click({ timeout: 2000 }).catch(() => {});
@@ -478,9 +579,10 @@ try {
   );
   const confirmText = flat(await confirm.innerText().catch(() => ""));
   check(
-    "Book my install asks first, with the choice, the total and nothing to sign or pay",
-    (await page.getByTestId("confirm-option").innerText()).trim() === "Garage only" &&
+    "Book my install asks first: Your choice, the total and nothing to sign or pay",
+    (await page.getByTestId("confirm-option").innerText()).trim() === "Front only" &&
       (await page.getByTestId("confirm-total").innerText()).trim() === "$2,500" &&
+      confirmText.includes("Your choice Front only") &&
       confirmText.includes("There's nothing to sign or pay today.") &&
       (await confirm.getByRole("button", { name: "Back" }).count()) === 1,
     confirmText.slice(0, 200),
@@ -493,42 +595,75 @@ try {
   await page.getByTestId("quote-thanks").waitFor({ timeout: 20000 }).catch(() => {});
   const thanks = flat(await page.getByTestId("quote-thanks").innerText().catch(() => ""));
   check(
-    "Book my install shows the thank-you: Keenan in touch within one business day, nothing to sign or pay",
+    "Book my install shows the thank-you: Keenan in touch within one business day, nothing to sign or pay, Your choice and its total",
     thanks.includes("Keenan will be in touch within one business day to set your install date and go through the agreement.") &&
       thanks.includes("There's nothing to sign or pay today.") &&
-      (await page.getByTestId("thanks-option").innerText()).trim() === "Garage only" &&
+      (await page.getByTestId("thanks-option").innerText()).trim() === "Front only" &&
       (await page.getByTestId("thanks-total").innerText()).trim() === "$2,500",
     thanks.slice(0, 240),
   );
   await page.screenshot({ path: `${out}/ql-phone-thanks.png`, fullPage: true });
-  const { data: booked } = await admin.from("quote_links").select("booked_at, booked_option").eq("id", link.data.id).single();
+  const { data: booked } = await admin.from("quote_links").select("booked_at, booked_option, booked_offer, booked_selection").eq("id", link.data.id).single();
   const { data: requested } = await admin.from("lead_events").select("payload, actor_id").eq("lead_id", leadId).eq("type", "install_requested");
   const { data: quoteAfter } = await admin.from("quotes").select("status, accepted_at").eq("id", quote.data.id).single();
   const { data: earnings } = await admin.from("earnings").select("id").eq("lead_id", leadId);
   check(
-    "the option is saved in words, on the timeline without a price, and the quote is not accepted",
-    booked?.booked_option === "Start smaller: Garage" &&
+    "Book my install records the option by its id (booked_offer) with its name and runs, on the timeline without a price, and the quote is not accepted",
+    booked?.booked_offer === "front" &&
+      booked?.booked_option === "Front only" &&
+      JSON.stringify(booked?.booked_selection) === "[0]" &&
       requested?.length === 1 &&
-      requested[0].payload?.option === "Start smaller: Garage" &&
-      JSON.stringify(requested[0].payload?.runs) === JSON.stringify(["Garage"]) &&
+      requested[0].payload?.option === "Front only" &&
+      JSON.stringify(requested[0].payload?.runs) === JSON.stringify(["Front"]) &&
       Object.keys(requested[0].payload ?? {}).length === 2 &&
       quoteAfter?.status === "draft" &&
       quoteAfter?.accepted_at === null &&
       (earnings ?? []).length === 0,
     JSON.stringify({ booked, requested, quoteAfter }),
   );
+  // The server prices the booking from the stored quote and the offer id,
+  // never from the browser: a made-up offer id books nothing.
+  const anon = createClient(url, anonKey, noSession);
+  const madeUp = await anon.rpc("quote_link_book_offer", { p_token: token, p_offer: "not-an-offer" });
+  const { data: stillBooked } = await admin.from("quote_links").select("booked_offer").eq("id", link.data.id).single();
+  check(
+    "an offer that isn't on the quote books nothing",
+    madeUp.data?.ok === false && madeUp.data?.state === "no_offer" && stillBooked?.booked_offer === "front",
+    JSON.stringify(madeUp.data ?? madeUp.error?.message),
+  );
   await page.reload();
   await settle(page);
+  rows = await optionRows(page);
   check(
-    "coming back, the page says they asked to book, and the bar no longer offers it again",
-    (await page.getByTestId("quote-booked-before").innerText().catch(() => "")).includes("you asked us to book your install: Garage only.") &&
+    "coming back, the page opens on what they booked (ahead of the meeting's choice, still tagged), says they asked to book, and the bar no longer offers it again",
+    (await page.getByTestId("quote-booked-before").innerText().catch(() => "")).includes("you asked us to book your install: Front only.") &&
+      rows.find((row) => row.selected)?.offer === "front" &&
+      rows.find((row) => row.tagged)?.offer === "main" &&
       (await page.getByTestId("bar-requested").innerText()).includes("Install requested") &&
       (await page.getByRole("button", { name: "Book my install" }).count()) === 0,
+    JSON.stringify(rows),
   );
   await page.screenshot({ path: `${out}/ql-phone-return.png` });
   await customer.close();
 
+  // ---------------------------------------------------------------- the customer at 430 (Keenan's own iPhone width)
+  {
+    const wide = await browser.newContext({ ...phone, viewport: { width: 430, height: 932 } });
+    const widePage = await wide.newPage();
+    await widePage.goto(quoteUrl);
+    await settle(widePage);
+    const wideFit = await widePage.evaluate(() => ({
+      width: document.documentElement.scrollWidth,
+      rows: [...document.querySelectorAll('[data-testid="option-row"]')].map((row) => Math.round(row.getBoundingClientRect().height)),
+    }));
+    check("at 430 wide: no sideways scroll, the same three rows", wideFit.width <= 430 && wideFit.rows.length === 3, JSON.stringify(wideFit));
+    await widePage.screenshot({ path: `${out}/ql-phone-430.png`, fullPage: true });
+    await wide.close();
+  }
+
   // ---------------------------------------------------------------- Keenan
+  const { data: viewsBefore } = await admin.from("quote_links").select("view_count").eq("id", link.data.id).single();
+  const views = viewsBefore?.view_count ?? 0;
   const ownerContext = await browser.newContext(ipad);
   ownerSession = await openOwnerSession({ url, anonKey, admin, base, context: ownerContext });
   const owner = await ownerContext.newPage();
@@ -537,14 +672,20 @@ try {
   const card = owner.getByTestId("quote-card");
   const cardText = (await card.innerText().catch(() => "")).replace(/\s+/g, " ");
   check(
-    "the lead's Quote card leads with the booking, then the total, opens and last visit",
-    (await card.getByTestId("quote-card-booked").innerText().catch(() => "")).includes(`${TEST_LEAD} asked to book Garage only, $2,500.`) &&
+    "the lead's Quote card leads with the booking (the option by name, priced from the stored quote), then the total, opens and last visit",
+    (await card.getByTestId("quote-card-booked").innerText().catch(() => "")).includes(`${TEST_LEAD} asked to book Front only, $2,500.`) &&
       cardText.includes("Quoted total, all parts") &&
       cardText.includes("$4,959") &&
       cardText.includes(`Price held until ${longDay(validUntil)}`) &&
-      cardText.includes("Opened 2 times, last") &&
+      cardText.includes(`Opened ${views} times, last`) &&
       !cardText.includes(".."),
     cardText.slice(0, 300),
+  );
+  check(
+    "Keenan's quote editor card sums up every option a customer sees, biggest first, and the price-held date",
+    flat(await owner.getByTestId("quote-summary-line").innerText().catch(() => "")) ===
+      `Full wrap $4,959, Main floor $2,633, Front only $2,500. Price held until ${fullDate(validUntil)}.`,
+    flat(await owner.getByTestId("quote-summary-line").innerText().catch(() => "no summary")),
   );
   const previewHref = await card.getByRole("link", { name: "Preview" }).getAttribute("href").catch(() => "");
   check("Preview opens the app's own copy of the link", previewHref === quoteUrl, previewHref ?? "");
@@ -562,7 +703,7 @@ try {
   const timeline = (await owner.getByRole("list", { name: "Timeline" }).innerText()).replace(/\s+/g, " ");
   check(
     "the timeline: opened and Book my install, by the customer, never with a price",
-    timeline.includes("Opened the quote link.") && timeline.includes("Tapped Book my install: Garage only.") && !/\$\d/.test(timeline),
+    timeline.includes("Opened the quote link.") && timeline.includes("Tapped Book my install: Front only.") && !/\$\d/.test(timeline),
     timeline.slice(0, 300),
   );
   await owner.screenshot({ path: `${out}/ql-ipad-lead.png`, fullPage: true });
@@ -572,18 +713,25 @@ try {
   await preview.goto(quoteUrl);
   await settle(preview);
   await preview.waitForTimeout(1000);
-  // It opens at the booked choice; switching the front back on offers an update.
-  await preview.getByTestId("start-smaller").getByRole("switch", { name: /^Front,/ }).click();
+  // It opens at the booked choice; another option offers an update.
+  const previewOpened = (await optionRows(preview)).find((row) => row.selected)?.offer;
+  await pickOption(preview, "main");
   await preview.getByRole("button", { name: "Update my choice" }).click();
   await preview.waitForTimeout(600);
   await preview.getByTestId("book-confirm").getByRole("button", { name: "Yes, update it" }).click();
   await preview.getByTestId("thanks-preview").waitFor({ timeout: 20000 }).catch(() => {});
   const previewNote = await preview.getByTestId("thanks-preview").isVisible().catch(() => false);
-  const { data: afterPreview } = await admin.from("quote_links").select("view_count, booked_option").eq("id", link.data.id).single();
+  await preview.waitForTimeout(1500);
+  const { data: afterPreview } = await admin.from("quote_links").select("view_count, booked_option, booked_offer, selection_offer").eq("id", link.data.id).single();
   check(
-    "Keenan's signed-in visit isn't counted and his Book my install is a preview",
-    previewNote && afterPreview?.view_count === 2 && afterPreview?.booked_option === "Start smaller: Garage",
-    JSON.stringify(afterPreview),
+    "Keenan's signed-in visit isn't counted, opens on what they booked, and his Book my install and his tap on a row are a preview",
+    previewNote &&
+      previewOpened === "front" &&
+      afterPreview?.view_count === views &&
+      afterPreview?.booked_option === "Front only" &&
+      afterPreview?.booked_offer === "front" &&
+      afterPreview?.selection_offer === "front",
+    JSON.stringify({ previewOpened, ...afterPreview }),
   );
   await preview.close();
   await ownerSession.close();
@@ -606,9 +754,16 @@ try {
   const calmPage = await calm.newPage();
   await calmPage.goto(quoteUrl);
   await settle(calmPage);
-  await calmPage.getByTestId("start-smaller").getByRole("switch", { name: /^Front,/ }).click();
-  await calmPage.waitForTimeout(60);
-  check("with reduce motion on, the total swaps straight to its new figure", (await shownOf(calmPage, "smaller-total")) === (await totalOf(calmPage, "smaller-total")));
+  await pickOption(calmPage, "full");
+  const calmMotion = await calmPage.evaluate(() => ({
+    house: getComputedStyle(document.querySelector('[data-testid="quote-house"] .house-on')).transitionDuration,
+    row: getComputedStyle(document.querySelector('[data-testid="quote-lines"] .quote-row')).transitionProperty,
+  }));
+  check(
+    "with reduce motion on, the total is the new option's at once, the house only fades quickly and no line slides",
+    (await totalOf(calmPage, "hero-total")) === "$4,959" && parseFloat(calmMotion.house) <= 0.1 && !/grid-template-rows/.test(calmMotion.row),
+    JSON.stringify(calmMotion),
+  );
   await calm.close();
 
   // ---------------------------------------------------------------- after the price hold
@@ -618,21 +773,59 @@ try {
   await laterPage.goto(quoteUrl);
   await settle(laterPage);
   const held = flat(await laterPage.getByTestId("quote-price-hold").innerText().catch(() => "")).trim();
-  await laterPage.getByTestId("start-smaller").getByRole("switch", { name: /^Front,/ }).click();
+  await pickOption(laterPage, "main");
   await laterPage.getByRole("button", { name: "Update my choice" }).click();
   const laterConfirm = flat(await laterPage.getByTestId("book-confirm").innerText().catch(() => ""));
   await laterPage.waitForTimeout(600);
   await laterPage.getByTestId("book-confirm").getByRole("button", { name: "Yes, update it" }).click();
   await laterPage.getByTestId("quote-thanks").waitFor({ timeout: 20000 }).catch(() => {});
-  const { data: rebooked } = await admin.from("quote_links").select("booked_option").eq("id", link.data.id).single();
+  const { data: rebooked } = await admin.from("quote_links").select("booked_option, booked_offer").eq("id", link.data.id).single();
   const passed = `Prices may have changed since ${fullDate(addDays(calgaryToday(), -1))}. We'll confirm before booking.`;
   check(
-    "after the price-held-until date the link still works, says prices may have changed, and Book my install still goes through",
-    held === passed && laterConfirm.includes(passed) && rebooked?.booked_option === "Start smaller: Front, Garage",
-    `${held} | ${rebooked?.booked_option}`,
+    "after the price-held-until date the link still works, says prices may have changed, and Book my install still goes through, by option",
+    held === passed && laterConfirm.includes(passed) && rebooked?.booked_option === "Main floor" && rebooked?.booked_offer === "main",
+    `${held} | ${JSON.stringify(rebooked)}`,
   );
   await laterPage.screenshot({ path: `${out}/ql-phone-held.png` });
   await later.close();
+
+  // ---------------------------------------------------------------- accepted: only what was agreed
+  // The service role stands in for Keenan's Accepted sheet (owner-only):
+  // Main floor, with a planned install day.
+  const { data: colourRow } = await admin.from("track_colours").select("id, name").eq("active", true).ilike("name", "white").limit(1).maybeSingle();
+  const { data: anyColour } = await admin.from("track_colours").select("id, name").eq("active", true).order("sort_order").limit(1).single();
+  const agreedColour = colourRow ?? anyColour;
+  await admin.from("leads").update({ track_colour_id: agreedColour.id }).eq("id", leadId);
+  const agreedDay = addDays(calgaryToday(), 9);
+  const accepted = await admin.rpc("quote_accept_offer", { p_quote: quote.data.id, p_offer: "main", p_install_on: agreedDay });
+  if (accepted.error) throw new Error(`accept: ${accepted.error.message}`);
+  const agreedContext = await browser.newContext(phone);
+  const agreedPage = await agreedContext.newPage();
+  await agreedPage.goto(quoteUrl);
+  await settle(agreedPage);
+  const agreedText = flat(await agreedPage.locator("body").innerText());
+  check(
+    "after Keenan marks it accepted, the page shows only what was agreed: Your choice and its total, the colour, the install day and no payment until the install",
+    (await agreedPage.getByTestId("quote-agreed").count()) === 1 &&
+      (await totalOf(agreedPage, "agreed-choice")).includes("Main floor") &&
+      (await totalOf(agreedPage, "agreed-total")) === "$2,633" &&
+      (await totalOf(agreedPage, "agreed-colour")) === `Your track colour: ${agreedColour.name}` &&
+      (await totalOf(agreedPage, "agreed-day")) === `Your install day: ${longDay(agreedDay)}` &&
+      agreedText.includes("No payment until your install is complete."),
+    agreedText.slice(0, 300),
+  );
+  check(
+    "no other option's price, no Your options, no Book my install and no status word; Call and Text stay",
+    (await agreedPage.getByTestId("option-rows").count()) === 0 &&
+      (await agreedPage.getByTestId("quote-options").count()) === 0 &&
+      (await agreedPage.getByRole("button", { name: /Book my install|Update my choice/ }).count()) === 0 &&
+      !agreedText.includes("$4,959") &&
+      !/\b(accepted|sold|status)\b/i.test(agreedText) &&
+      (await agreedPage.getByTestId("bar-call").count()) === 1 &&
+      (await agreedPage.getByTestId("bar-text").count()) === 1,
+  );
+  await agreedPage.screenshot({ path: `${out}/ql-phone-agreed.png`, fullPage: true });
+  await agreedContext.close();
 
   // ---------------------------------------------------------------- turned off, and the quote domain
   const turnedOff = await admin.rpc("revoke_quote_link", { p_lead_id: leadId });
@@ -678,9 +871,11 @@ try {
     const { data: owned } = await admin.from("leads").select("id").eq("created_by", setter.id);
     const ids = (owned ?? []).map((row) => row.id);
     if (ids.length > 0) {
+      await admin.from("earnings").delete().in("lead_id", ids);
       await admin.from("quote_links").delete().in("lead_id", ids);
       await admin.from("quotes").delete().in("lead_id", ids);
     }
+    await admin.from("earnings").delete().eq("profile_id", setter.id);
     await admin.from("push_subscriptions").delete().eq("profile_id", setter.id);
     await admin.from("leads").delete().eq("created_by", setter.id);
     await admin.auth.admin.deleteUser(setter.id);

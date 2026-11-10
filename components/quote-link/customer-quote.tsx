@@ -580,7 +580,9 @@ function OptionRow({
       className={cn(
         "flex min-h-[4.5rem] cursor-pointer items-center gap-3 rounded-md transition-colors duration-150",
         "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
-        selected ? "border-2 border-navy px-[0.8125rem] py-[0.6875rem]" : "border border-border px-[0.875rem] py-3 hover:bg-muted",
+        // 12 px of border and padding top and bottom, selected or not, keeps
+        // a row with a two-line coverage line within the spec's 88 px.
+        selected ? "border-2 border-navy px-[0.8125rem] py-[0.625rem]" : "border border-border px-[0.875rem] py-[0.6875rem] hover:bg-muted",
       )}
       data-testid="option-row"
       data-offer={offer.id}
