@@ -501,6 +501,7 @@ export function LeadForm({
         onOpenChange={(open) => setOpenNow((current) => (current === null ? null : open.length > 0 ? open : null))}
         onBookingChange={setBookingBlocked}
         markRestRef={markRestRef}
+        partial={mode === "edit"}
         afterPhone={
           // Round 6 (Keenan, 2026-11-07): Keenan does the confirming, so
           // Call or text isn't asked any more.

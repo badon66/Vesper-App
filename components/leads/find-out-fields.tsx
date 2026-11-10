@@ -83,6 +83,7 @@ export function LeadQuestions({
   markRestRef,
   afterPhone,
   afterQuestions,
+  partial = false,
 }: {
   defaults: QuestionDefaults;
   phone: string;
@@ -102,6 +103,8 @@ export function LeadQuestions({
   // and hot buttons after the questions. Optional, never counted.
   afterPhone?: React.ReactNode;
   afterQuestions?: React.ReactNode;
+  // A saved lead's edit page saves part answers (Keenan, 2026-11-10).
+  partial?: boolean;
 }) {
   const [answers, setAnswers] = useState<QuestionDefaults>(defaults);
   const [phoneMarked, setPhoneMarked] = useState(phoneNotCollected && phone.trim() === "");
@@ -218,7 +221,9 @@ export function LeadQuestions({
             Find out
           </h2>
           <p className="text-sm text-pretty text-muted-foreground">
-            Answer each one, or mark it Not collected, in any order. Tap an answer again to clear it.
+            {partial
+              ? "Answer what you know now; the rest can be finished later. Tap an answer again to clear it."
+              : "Answer each one, or mark it Not collected, in any order. Tap an answer again to clear it."}
           </p>
         </div>
         {ASKED.map(({ field, legend, options, columns }) => {

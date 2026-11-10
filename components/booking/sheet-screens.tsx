@@ -612,7 +612,9 @@ export function BookScreen({
           <h3 id="sheet-later-heading" className="text-sm font-bold min-[420px]:text-base">
             To finish later
           </h3>
-          {later.length > 0 && !ruledOut ? (
+          {/* Not said while Book still needs a name or the address: both
+              are on the list, and one of them does stop it. */}
+          {later.length > 0 && !ruledOut && canSaveLead(draft) ? (
             <p className="text-sm text-muted-foreground min-[420px]:text-base" data-testid="book-later-note">
               None of it stops the booking.
             </p>
