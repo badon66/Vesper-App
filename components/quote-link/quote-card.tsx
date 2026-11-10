@@ -9,16 +9,18 @@ import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { choiceInSentence, phoneHref, quoteLinkMessage } from "@/lib/quote-link/view";
-import { formatDateTime, formatLongDay } from "@/lib/time";
+import { formatDateTime, formatFullDate } from "@/lib/time";
 
 // Times end in "p.m.", so a sentence ending in one gets no second full stop.
 const sentence = (text: string) => (text.endsWith(".") ? text : `${text}.`);
 
-// The quote on the lead page (Keenan, 2026-11-02; owner only): the total,
-// the valid-until date and the customer's link: whether it went out, how
-// often it was opened, what they are looking at, and Book my install.
-// Send quote link hands Keenan a link and a text to send himself; nothing
-// sends from the app.
+// The customer's link on the lead page (Keenan, 2026-11-02; owner only):
+// whether it went out, how often it was opened, what they are looking at,
+// Book my install, and the price-held date the link shows. The Quote card
+// above it shows the options and their prices (the critique, 2026-11-10:
+// this card no longer repeats a single quoted total). Send quote link
+// hands Keenan a link and a text to send himself; nothing sends from the
+// app.
 
 export type QuoteCardLink = {
   live: boolean;
@@ -40,8 +42,10 @@ export type QuoteCardProps = {
   // The customer's own number, for Call and Text it, when the lead has one.
   customerPhone: string | null;
   // holdPassed: after the price-held-until date the link still works and
-  // tells the customer prices may have changed (2026-11-04).
-  quote: { total: string; feet: number; validUntil: string | null; holdPassed: boolean } | null;
+  // tells the customer prices may have changed (2026-11-04). total and feet
+  // are the whole quote's, from before options; the card no longer shows
+  // them, and the lead page can stop sending them.
+  quote: { total?: string; feet?: number; validUntil: string | null; holdPassed: boolean } | null;
   link: QuoteCardLink | null;
 };
 
@@ -112,11 +116,11 @@ export function QuoteCard({ leadId, firstName, phone, customerPhone, quote, link
   return (
     <Card id="quote" className="scroll-mt-24" data-testid="quote-card">
       <CardHeader>
-        <CardTitle>Quote</CardTitle>
-        <CardDescription>
+        <CardTitle>Customer&apos;s link</CardTitle>
+        <CardDescription className="text-pretty">
           {quote
-            ? "What the customer's link shows. Changing the quote in meeting mode changes the same link."
-            : "No quote yet. Price it in meeting mode; once it's saved, the link can go out from here."}
+            ? "Their own page for this quote. A change to the quote shows on the same link."
+            : "No quote yet. Edit the quote above; once it's saved, the link can go out from here."}
         </CardDescription>
       </CardHeader>
       {quote ? (
@@ -130,30 +134,7 @@ export function QuoteCard({ leadId, firstName, phone, customerPhone, quote, link
               <p className="text-muted-foreground">{sentence(formatDateTime(bookedNow.at))}</p>
             </div>
           ) : null}
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
-            <dt className="text-muted-foreground">Quoted total, all parts</dt>
-            <dd className="font-semibold tabular-nums" data-testid="quote-card-total">
-              {quote.total}
-            </dd>
-            <dt className="text-muted-foreground">Feet</dt>
-            <dd className="tabular-nums">{quote.feet} ft</dd>
-            {quote.validUntil ? (
-              <>
-                <dt className="text-muted-foreground">Price held until</dt>
-                <dd>
-                  {formatLongDay(quote.validUntil)}
-                  {quote.holdPassed ? (
-                    <span className="block font-semibold">
-                      Passed: the link still works and says prices may have changed. Change the date in meeting mode to hold them again.
-                    </span>
-                  ) : null}
-                </dd>
-              </>
-            ) : null}
-          </dl>
-
-          <div className="flex flex-col gap-1.5 border-t pt-4" data-testid="quote-link-status">
-            <p className="font-semibold">Customer&apos;s link</p>
+          <div className="flex flex-col gap-1.5" data-testid="quote-link-status">
             {!link ? (
               <p className="text-muted-foreground">Not sent yet.</p>
             ) : !link.live ? (
@@ -175,6 +156,17 @@ export function QuoteCard({ leadId, firstName, phone, customerPhone, quote, link
                 ) : null}
               </>
             )}
+            {/* The same date style as the Quote card above: March 10, 2027. */}
+            {quote.validUntil ? (
+              <p data-testid="quote-link-hold">
+                Price held until {formatFullDate(quote.validUntil)}.
+                {quote.holdPassed ? (
+                  <span className="block font-semibold text-pretty">
+                    Passed: the link still works and says prices may have changed. Edit the quote above to hold them again.
+                  </span>
+                ) : null}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">

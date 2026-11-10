@@ -455,6 +455,21 @@ export function nextStepsFor(view: Pick<CustomerQuote, "nextSteps" | "words"> & 
   ];
 }
 
+// What Keenan gets in touch about once they ask to book: with an install
+// day already planned (What happens next shows it), confirming that day;
+// otherwise setting one (the critique, 2026-11-10).
+export function inTouchAbout(installOn: string | null): string {
+  return installOn ? "to confirm your install day" : "to set your install date";
+}
+
+// The mockup shows every run lit, so its caption shows only when the
+// option on screen leaves a run out. No option, no caption.
+export function leavesRunsOut(runCount: number, positions: readonly number[] | null | undefined): boolean {
+  if (!positions || runCount <= 0) return false;
+  const covered = new Set(positions.filter((at) => Number.isInteger(at) && at >= 0 && at < runCount));
+  return covered.size < runCount;
+}
+
 // A run's name, never blank.
 export function runName(run: QuoteRun, position: number): string {
   return run.name.trim() || `Run ${position + 1}`;

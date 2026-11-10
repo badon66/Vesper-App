@@ -8,6 +8,8 @@ import {
   customerChoice,
   customerChoiceInSentence,
   customerTotal,
+  inTouchAbout,
+  leavesRunsOut,
   lineAmount,
   linkOffers,
   nextStepsFor,
@@ -481,6 +483,23 @@ describe("what happens next", () => {
       ["We confirm it with you from the colour book.", false],
       ["We pick the day together.", false],
     ]);
+  });
+
+  it("after Book my install, Keenan confirms a day already planned, or sets one", () => {
+    expect(inTouchAbout("2026-11-21")).toBe("to confirm your install day");
+    expect(inTouchAbout(null)).toBe("to set your install date");
+    const planned = liveOf(withOffers);
+    expect(nextStepsFor(planned)[1].done).toBe(true);
+    expect(inTouchAbout(planned.nextSteps.installOn)).toBe("to confirm your install day");
+  });
+
+  it("captions the mockup only for an option that leaves a run out", () => {
+    expect(leavesRunsOut(4, [0, 1, 2, 3])).toBe(false);
+    expect(leavesRunsOut(4, [3, 2, 1, 0, 0])).toBe(false);
+    expect(leavesRunsOut(4, [0, 2])).toBe(true);
+    expect(leavesRunsOut(4, [0, 1, 2, 2, 9])).toBe(true);
+    expect(leavesRunsOut(4, null)).toBe(false);
+    expect(leavesRunsOut(0, [])).toBe(false);
   });
 
   it("uses Keenan's words from settings.deck.lines when the database hands them over, ours otherwise", () => {

@@ -17,6 +17,8 @@ import {
   christmasSeason,
   customerChoice,
   customerChoiceInSentence,
+  inTouchAbout,
+  leavesRunsOut,
   lineAmount,
   linkOffers,
   nextStepsFor,
@@ -181,7 +183,15 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
 
   if (phase === "closed") return <ClosedQuote company={view.company} />;
   if (phase === "thanks" && thanks) {
-    return <ThankYou firstName={view.firstName} thanks={thanks} company={view.company} onBack={backToQuote} />;
+    return (
+      <ThankYou
+        firstName={view.firstName}
+        thanks={thanks}
+        installOn={view.nextSteps.installOn}
+        company={view.company}
+        onBack={backToQuote}
+      />
+    );
   }
 
   const matchesBooked = booked !== null && selected !== null && booked.offer === selected.offer.id;
@@ -196,7 +206,10 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
         {/* 1. Their house and the price of the option on screen. */}
         <section aria-labelledby="quote-for" className="flex flex-col">
           {view.mockupUrl ? (
-            <Mockup url={view.mockupUrl} caption={selected && !selected.everyRun ? words.link_mockup_caption : null} />
+            <Mockup
+              url={view.mockupUrl}
+              caption={selected && leavesRunsOut(quote.runs.length, selected.offer.runs) ? words.link_mockup_caption : null}
+            />
           ) : null}
           <div className="flex flex-col px-5 pt-6">
             <Greeting firstName={view.firstName} headingRef={heading} />
@@ -205,6 +218,9 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
                 <p className="mt-4 text-base font-semibold text-pretty text-muted-foreground" data-testid="hero-option">
                   {name}
                 </p>
+                {/* A row tapped further down changes this out of view; the
+                    polite announcer under Your options says the option and
+                    its total once they settle, so it isn't heard twice. */}
                 <p className="mt-1 text-[2.75rem] leading-none font-bold tracking-tight" data-testid="hero-total">
                   <Money subtotal={totals.subtotal} gstEnabled={quote.gstEnabled} />
                 </p>
@@ -231,7 +247,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
         {booked ? (
           <p role="status" className="mx-5 mt-6 rounded-md border px-4 py-3 text-base text-pretty" data-testid="quote-booked-before">
             On {formatLongDay(calgaryDateOf(booked.at))} you asked us to book your install:{" "}
-            {customerChoiceInSentence(booked.option)}. Keenan will be in touch to set the date.
+            {customerChoiceInSentence(booked.option)}. Keenan will be in touch {inTouchAbout(view.nextSteps.installOn)}.
           </p>
         ) : null}
 
@@ -267,9 +283,11 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
               </div>
 
               {many ? (
-                <fieldset className="mt-3" data-testid="option-rows">
+                <fieldset className="mt-4" data-testid="option-rows">
                   <legend className="sr-only">Your options</legend>
-                  <div className="flex flex-col gap-2.5">
+                  {/* 12 px between rows: room for the meeting's tag, which
+                      sits on its row's top edge. */}
+                  <div className="flex flex-col gap-3">
                     {shown.map((priced) => (
                       <OptionRow
                         key={priced.offer.id}
@@ -314,7 +332,8 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
               <p className="mt-5 text-base text-pretty" data-testid="quote-includes">
                 {words.price_includes}
               </p>
-              <p className="mt-2 text-base font-semibold text-pretty" data-testid="quote-something-else">
+              {/* Balanced, so two short sentences break between them, not after "Call or". */}
+              <p className="mt-2 text-base font-semibold text-balance" data-testid="quote-something-else">
                 {words.link_something_else}
               </p>
               <p aria-live="polite" className="sr-only">
@@ -429,8 +448,8 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
             </p>
           ) : null}
           <p className="text-pretty">
-            There’s nothing to sign or pay today. Keenan will be in touch to set your install date and go through the
-            agreement.
+            There’s nothing to sign or pay today. Keenan will be in touch {inTouchAbout(view.nextSteps.installOn)} and go
+            through the agreement.
           </p>
         </div>
       </DialogPanel>
@@ -448,14 +467,18 @@ function AgreedQuote({ view }: { view: View }) {
   // A quote accepted before options has no option to name; the rest stands.
   const agreed = offerChoice(quote, quote.acceptedOffer);
   const states = statesFor(quote.runs, agreed?.offer.runs ?? []);
-  const everyRun = agreed !== null && agreed.offer.runs.length === quote.runs.length;
   const textHref = smsWithBody(view.company.phone, `Hi Keenan, a question about the install at ${view.address}: `);
 
   return (
     <>
       <main className="mx-auto flex max-w-xl flex-col pb-36" data-testid="quote-agreed">
         <section aria-labelledby="quote-for" className="flex flex-col">
-          {view.mockupUrl ? <Mockup url={view.mockupUrl} caption={agreed && !everyRun ? words.link_mockup_caption : null} /> : null}
+          {view.mockupUrl ? (
+            <Mockup
+              url={view.mockupUrl}
+              caption={agreed && leavesRunsOut(quote.runs.length, agreed.offer.runs) ? words.link_mockup_caption : null}
+            />
+          ) : null}
           <div className="flex flex-col px-5 pt-6">
             <Greeting firstName={view.firstName} />
             {agreed ? (
@@ -549,11 +572,13 @@ function Money({ subtotal, gstEnabled }: { subtotal: number; gstEnabled: boolean
   );
 }
 
-// One option as a radio row: its name and what it covers on the left, its
-// total on the right. The one on screen has a 2 px navy border and a filled
-// navy radio; gold stays Book my install's alone. The meeting's choice
-// carries a small navy tag. A native radio underneath, so arrow keys and
-// screen readers work as they expect.
+// One option as a radio row, in two lines: the radio, its name and its
+// total; then what it covers, across the full width, two lines at most
+// (the critique, 2026-11-10: rows ran 105 to 113 px). The one on screen has
+// a 2 px navy border and a filled navy radio; gold stays Book my install's
+// alone. The meeting's choice carries a small navy tag on the row's top
+// edge, like the iPad's "Your choice", so it adds no height. A native radio
+// underneath, so arrow keys and screen readers work as they expect.
 function OptionRow({
   priced,
   runs,
@@ -578,11 +603,14 @@ function OptionRow({
   return (
     <label
       className={cn(
-        "flex min-h-[4.5rem] cursor-pointer items-center gap-3 rounded-md transition-colors duration-150",
+        "relative flex min-h-11 cursor-pointer flex-col gap-0.5 rounded-md transition-colors duration-150",
         "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
-        // 12 px of border and padding top and bottom, selected or not, keeps
-        // a row with a two-line coverage line within the spec's 88 px.
-        selected ? "border-2 border-navy px-[0.8125rem] py-[0.625rem]" : "border border-border px-[0.875rem] py-[0.6875rem] hover:bg-muted",
+        // 14 px of border and padding on top (clear of the meeting's tag)
+        // and 10 below, selected or not, so a row whose coverage takes two
+        // lines stays within 88 px and choosing one never moves the others.
+        selected
+          ? "border-2 border-navy px-[0.8125rem] pt-3 pb-2"
+          : "border border-border px-[0.875rem] pt-[0.8125rem] pb-[0.5625rem] hover:bg-muted",
       )}
       data-testid="option-row"
       data-offer={offer.id}
@@ -597,34 +625,40 @@ function OptionRow({
         onChange={() => onChoose(offer.id)}
         className="sr-only"
       />
-      <span
-        aria-hidden="true"
-        className={cn(
-          "flex size-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-150",
-          selected ? "border-navy bg-navy" : "border-input bg-background",
-        )}
-      >
-        {selected ? <span className="size-2.5 rounded-full bg-white" /> : null}
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="text-base leading-snug font-semibold text-pretty">{offer.name}</span>
-        {/* In full, feet included: it's what they compare the options by. */}
-        <span className="mt-0.5 text-sm leading-snug text-pretty text-muted-foreground" data-testid="option-coverage">
-          {offerCoverage(runs, offer)}
+      <span className="flex items-center gap-3">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "flex size-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-150",
+            selected ? "border-navy bg-navy" : "border-input bg-background",
+          )}
+        >
+          {selected ? <span className="size-2.5 rounded-full bg-white" /> : null}
         </span>
-        {meeting ? (
-          <span
-            className="mt-1.5 self-start rounded-sm border border-navy px-1.5 text-[0.8125rem] leading-5 font-semibold text-navy"
-            data-testid="option-meeting-tag"
-          >
-            {meetingTag}
-          </span>
-        ) : null}
+        <span className="line-clamp-2 min-w-0 flex-1 text-base leading-snug font-semibold">{offer.name}</span>
+        <span className="shrink-0 text-lg leading-tight font-bold whitespace-nowrap tabular-nums" data-testid="option-total">
+          {formatMoney(totals.subtotal)}
+          {gstEnabled ? (
+            <>
+              {" "}
+              <span className="text-xs font-semibold text-muted-foreground">+ GST</span>
+            </>
+          ) : null}
+        </span>
       </span>
-      <span className="flex shrink-0 flex-col items-end" data-testid="option-total">
-        <span className="text-lg leading-tight font-bold tabular-nums">{formatMoney(totals.subtotal)}</span>
-        {gstEnabled ? <span className="text-xs font-semibold text-muted-foreground">+ GST</span> : null}
+      {/* Feet included: it's what they compare the options by. */}
+      <span className="line-clamp-2 text-sm leading-[1.3] text-pretty text-muted-foreground" data-testid="option-coverage">
+        {offerCoverage(runs, offer)}
       </span>
+      {/* 18 px tall, centred on the top border. */}
+      {meeting ? (
+        <span
+          className="absolute -top-[0.5625rem] right-3 rounded-sm border border-navy bg-background px-1.5 text-[0.8125rem] leading-4 font-semibold text-navy"
+          data-testid="option-meeting-tag"
+        >
+          {meetingTag}
+        </span>
+      ) : null}
     </label>
   );
 }
@@ -1026,11 +1060,15 @@ function BookBar({
 function ThankYou({
   firstName,
   thanks,
+  installOn,
   company,
   onBack,
 }: {
   firstName: string;
   thanks: { option: string; total: string; preview: boolean };
+  // The install day planned at the meeting, if any: Keenan confirms it
+  // rather than setting one.
+  installOn: string | null;
   company: CustomerQuote["company"];
   onBack: () => void;
 }) {
@@ -1051,7 +1089,7 @@ function ThankYou({
           Thank you{firstName.trim() ? `, ${firstName.trim()}` : ""}
         </h1>
         <p className="text-lg text-pretty">
-          Keenan will be in touch within one business day to set your install date and go through the agreement.
+          Keenan will be in touch within one business day {inTouchAbout(installOn)} and go through the agreement.
         </p>
         <p className="text-base text-pretty text-muted-foreground">
           There’s nothing to sign or pay today. No payment until your install is complete.

@@ -10,7 +10,7 @@ import { hasMeasuredRun, QuoteEditor } from "@/components/quotes/quote-editor/qu
 import { useQuoteSave } from "@/components/quotes/quote-editor/use-quote-save";
 import { Button } from "@/components/ui/button";
 import { DEFAULT_LINES, deckLine, priceSubLine, type DeckLines } from "@/lib/deck";
-import { breakdownRows, coverageLine, minimumSentence, NO_PAYMENT, screenOptions } from "@/lib/meeting/price-screen";
+import { breakdownRows, coverageLine, minimumSentence, NO_PAYMENT, screenOptions, type BreakdownRow } from "@/lib/meeting/price-screen";
 import { quoteInputs, quoteOffers, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
 import { MOTION, transition } from "@/lib/motion";
 import { formatMoney, type QuoteTotals } from "@/lib/pricing";
@@ -162,7 +162,7 @@ export function QuoteScreen({
       ) : (
         <>
           {/* The options: biggest on the left, every total the same size. */}
-          <div className="mt-6 flex shrink-0 gap-3 pr-12 pl-16" role="group" aria-label="Options" data-testid="price-options">
+          <div className="mt-4 flex shrink-0 gap-3 pr-12 pl-16" role="group" aria-label="Options" data-testid="price-options">
             {options.map((option) => (
               <OptionButton
                 key={option.offer.id}
@@ -176,12 +176,21 @@ export function QuoteScreen({
             ))}
           </div>
 
-          <div className="mt-6 grid min-h-0 flex-1 grid-cols-[56%_44%]">
+          {/* Two even columns: the house needs about 420 px at its fixed
+              height, and the breakdown's column needs the room for the
+              total and Choose side by side, "+ GST" included. */}
+          <div className="mt-6 grid min-h-0 flex-1 grid-cols-2">
             {/* Left: the house lighting the option on screen, what it
-                covers, and what every option shares. */}
-            <div className="flex min-h-0 min-w-0 flex-col gap-3 pr-10 pl-16">
-              <RunsDrawing runs={state.runs} lit={viewing.offer.runs} dashedRest className="min-h-0 w-full flex-1" />
-              <p className={cn(DECK_TYPE.small, "font-semibold")} data-testid="price-coverage">
+                covers, and what every option shares. The drawing has a
+                fixed slot and the coverage line always keeps two lines, so
+                a tap on another option changes only the lights. */}
+            <div className="flex min-h-0 min-w-0 flex-col gap-3 pr-10 pl-16" data-testid="price-left">
+              <RunsDrawing runs={state.runs} lit={viewing.offer.runs} dashedRest className="h-[230px] w-full shrink-0" />
+              <p
+                className={cn(DECK_TYPE.small, "line-clamp-2 shrink-0 font-semibold")}
+                style={{ minHeight: "calc(var(--deck-small, 20px) * 2.6)" }}
+                data-testid="price-coverage"
+              >
                 {say(coverageLine(state.runs, viewing.offer))}
               </p>
               <div className={cn(DECK_TYPE.small, "flex flex-col gap-1 text-muted-foreground")}>
@@ -192,43 +201,49 @@ export function QuoteScreen({
               </div>
             </div>
 
-            {/* Right: its breakdown, its total and Choose. */}
+            {/* Right: its breakdown, then its total and Choose on one
+                row (Choose drops under the total only when they can't
+                share it). */}
             <div className="flex min-h-0 min-w-0 flex-col pr-12 pl-10" data-testid="price-breakdown">
-              <p className={cn(DECK_TYPE.body, "font-semibold")}>
+              <p className={cn(DECK_TYPE.body, "shrink-0 font-semibold")}>
                 {say(deckLine(lines, "whats_in", { name: cleanOfferName(viewing.offer.name) }))}
               </p>
               {viewing.totals ? <Breakdown totals={viewing.totals} /> : null}
-              {viewing.totals ? (
-                <div className="mt-2 flex items-baseline justify-between gap-4 border-t border-foreground/60 pt-2" data-testid="price-total">
-                  <span className={cn(DECK_TYPE.small, "text-muted-foreground")}>Total</span>
-                  <span className="text-right">
-                    <span className="text-[length:var(--deck-headline)] leading-none font-semibold tabular-nums">
-                      {formatMoney(viewing.totals.subtotal)}
-                    </span>
-                    {pricing.gstEnabled ? <span className="ml-2 text-[22px] text-muted-foreground">+ GST</span> : null}
-                  </span>
+              {viewing.totals || !locked ? (
+                <div className="mt-2 flex shrink-0 flex-wrap items-end justify-between gap-x-5 gap-y-3 border-t border-foreground/60 pt-3">
+                  {viewing.totals ? (
+                    <p className="flex flex-col gap-1" data-testid="price-total">
+                      <span className={cn(DECK_TYPE.small, "leading-none text-muted-foreground")}>Total</span>
+                      <span className="whitespace-nowrap">
+                        <span className="text-[length:var(--deck-headline)] leading-none font-semibold tabular-nums">
+                          {formatMoney(viewing.totals.subtotal)}
+                        </span>
+                        {pricing.gstEnabled ? <span className="ml-2 text-[22px] text-muted-foreground">+ GST</span> : null}
+                      </span>
+                    </p>
+                  ) : null}
+                  {!locked ? (
+                    <button
+                      type="button"
+                      aria-pressed={viewingChosen}
+                      onClick={() => choose(viewing.offer.id)}
+                      className={cn(
+                        "inline-flex h-14 min-w-fit flex-1 touch-manipulation items-center justify-center gap-2 rounded-md border px-6 text-[22px] font-semibold whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                        viewingChosen ? "border-foreground bg-foreground text-background" : "border-foreground/70 bg-background hover:bg-muted",
+                      )}
+                      data-testid="price-choose"
+                    >
+                      {viewingChosen ? (
+                        <>
+                          <Check aria-hidden="true" className="size-6" />
+                          {say(deckLine(lines, "your_choice"))}
+                        </>
+                      ) : (
+                        say(deckLine(lines, "choose", { name: cleanOfferName(viewing.offer.name) }))
+                      )}
+                    </button>
+                  ) : null}
                 </div>
-              ) : null}
-              {!locked ? (
-                <button
-                  type="button"
-                  aria-pressed={viewingChosen}
-                  onClick={() => choose(viewing.offer.id)}
-                  className={cn(
-                    "mt-4 inline-flex h-14 w-full shrink-0 touch-manipulation items-center justify-center gap-2 rounded-md border px-6 text-[22px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                    viewingChosen ? "border-foreground bg-foreground text-background" : "border-foreground/70 bg-background hover:bg-muted",
-                  )}
-                  data-testid="price-choose"
-                >
-                  {viewingChosen ? (
-                    <>
-                      <Check aria-hidden="true" className="size-6" />
-                      {say(deckLine(lines, "your_choice"))}
-                    </>
-                  ) : (
-                    say(deckLine(lines, "choose", { name: cleanOfferName(viewing.offer.name) }))
-                  )}
-                </button>
               ) : null}
             </div>
           </div>
@@ -236,8 +251,8 @@ export function QuoteScreen({
       )}
 
       {/* Keenan's own: small, outlined, bottom left, away from Choose and
-          the forward chevron. */}
-      <div className="absolute left-12 z-10" style={{ bottom: "var(--deck-row-bottom, 20px)" }}>
+          the forward chevron, on the dots' centre line. */}
+      <div className="absolute left-12 z-10 flex h-14 items-center" style={{ bottom: "var(--deck-row-bottom, 20px)" }}>
         <button
           type="button"
           onClick={() => setEditOpen(true)}
@@ -325,28 +340,41 @@ function OptionButton({
 }
 
 // The option's breakdown, in the rows and words the link and the Accepted
-// sheet use (lib/pricing.ts): 22 px, or 20 px when there are more than seven
-// rows. A long one scrolls inside its column; the total and Choose stay put.
+// sheet use (lib/pricing.ts): 22 px rows, or 20 px rows packed closer once
+// the list is long: five rows or more, a detail beyond the track's and the
+// box's (upper access, a rush colour), or the minimum. At 1180 x 820 the
+// longest breakdown (every adder, a discount and the minimum) fits whole;
+// only something longer still scrolls inside its column, with the total
+// and Choose staying put.
+function breakdownIsCompact(rows: BreakdownRow[]): boolean {
+  return (
+    rows.length >= 5 ||
+    rows.some((row, at) => row.kind === "sum" || (row.kind === "line" && (row.minimum || (at > 1 && row.detail !== null))))
+  );
+}
+
 function Breakdown({ totals }: { totals: QuoteTotals }) {
   const rows = breakdownRows(totals);
-  const size = rows.length > 7 ? "text-[20px]" : "text-[22px]";
-  const detail = "text-[20px] leading-tight text-muted-foreground";
+  const compact = breakdownIsCompact(rows);
+  const size = compact ? "text-[20px] leading-[1.2]" : "text-[22px] leading-tight";
+  const pad = compact ? "py-[3px]" : "py-1.5";
+  const detail = cn("text-[20px] text-muted-foreground", compact ? "leading-[1.2]" : "leading-tight");
   return (
-    <dl className={cn("mt-2 flex min-h-0 flex-col overflow-y-auto", size)} data-testid="price-lines">
+    <dl className={cn("mt-2 flex min-h-0 flex-col overflow-y-auto", size)} data-testid="price-lines" data-compact={compact ? "yes" : "no"}>
       {rows.map((row, at) =>
         row.kind === "sum" ? (
-          <div key={at} className="flex items-baseline justify-between gap-4 border-t border-input py-1.5 leading-tight">
+          <div key={at} className={cn("flex items-baseline justify-between gap-4 border-t border-input", pad)}>
             <dt className="text-muted-foreground">{row.label}</dt>
             <dd className="shrink-0 font-semibold tabular-nums">{row.amount}</dd>
           </div>
         ) : (
-          <div key={at} className="flex flex-col border-t border-border py-1.5" data-line={row.label}>
-            <div className="flex items-baseline justify-between gap-4 leading-tight">
+          <div key={at} className={cn("flex flex-col border-t border-border", pad)} data-line={row.label}>
+            <div className="flex items-baseline justify-between gap-4">
               <dt className="min-w-0">{say(row.label)}</dt>
               <dd className="shrink-0 font-semibold tabular-nums">{row.amount}</dd>
             </div>
             {row.detail ? <p className={detail}>{say(row.detail)}</p> : null}
-            {row.minimum ? <p className={cn(detail, "mt-1 text-foreground")}>{say(minimumSentence(totals.subtotal))}</p> : null}
+            {row.minimum ? <p className={cn(detail, "mt-0.5 text-foreground")}>{say(minimumSentence(totals.subtotal))}</p> : null}
           </div>
         ),
       )}

@@ -38,6 +38,7 @@ import {
   bottomRowWidth,
   coverLine,
   DECK_CLEAR_CSS,
+  DECK_ROW,
   DECK_ROW_BOTTOM_CSS,
   DECK_SIZES,
   deckPages,
@@ -147,6 +148,9 @@ const ROOT_STYLE = {
   "--deck-row-bottom": DECK_ROW_BOTTOM_CSS,
   "--deck-clear": DECK_CLEAR_CSS,
 } as CSSProperties;
+
+// The bottom row's Previous and Next discs: 48 px, the iPad's tap size.
+const CHEVRON_PX = 48;
 
 const ROOT_CLASS =
   "dark overflow-hidden bg-background text-foreground select-none [&_input]:select-text [&_textarea]:select-text";
@@ -639,13 +643,23 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
   const canForward = current < pages.length - 1 || (onGallery && galleryAt < galleryCount - 1);
   // "Next: Hidden by day", right of the forward chevron, as wide as the row
   // leaves before the deck's 48 px edge; the page's name takes its own line.
+  // The chevrons are 48 px discs (the iPad's tap size); bottomRowWidth
+  // counts DECK_ROW.chevron, so the difference is added here.
   const next = nextLabelParts(pages, current, deck.words.lines);
-  const nextRoom = `calc(50cqw - ${bottomRowWidth(pages.length) / 2 + 12 + 48}px)`;
+  const nextName = next ? smartApostrophes([next.lead, next.page].filter(Boolean).join(" ")) : "Next";
+  const halfRow = bottomRowWidth(pages.length) / 2 + (CHEVRON_PX - DECK_ROW.chevron);
+  const nextRoom = `calc(50cqw - ${halfRow + 12 + 48}px)`;
   // Solid Night Background discs with a Night Text chevron, so they read the
   // same wherever they sit. One that can't move keeps its place, unseen, so
   // the dots never shift.
-  const chevron =
-    "pointer-events-auto hidden size-11 shrink-0 touch-none items-center justify-center rounded-full bg-background text-foreground outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring sm:inline-flex";
+  const disc = "flex size-12 shrink-0 items-center justify-center rounded-full bg-background text-foreground";
+  const photosAhead = onGallery && galleryAt < galleryCount - 1;
+  const nextWords = next ? (
+    <span data-testid="deck-next-label" className="flex flex-col text-[length:var(--deck-small)] leading-[1.1] text-muted-foreground" style={{ maxWidth: nextRoom }}>
+      {next.lead ? <span className="whitespace-nowrap">{smartApostrophes(next.lead)}</span> : null}
+      <span className="truncate">{smartApostrophes(next.page)}</span>
+    </span>
+  ) : null;
 
   return (
     <DeckContext.Provider value={context}>
@@ -700,7 +714,11 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
               disabled={!canBack}
               aria-hidden={canBack ? undefined : true}
               tabIndex={canBack ? undefined : -1}
-              className={cn(chevron, !canBack && "invisible")}
+              className={cn(
+                disc,
+                "pointer-events-auto hidden touch-none outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring sm:flex",
+                !canBack && "invisible",
+              )}
             >
               <ChevronLeft aria-hidden="true" className="size-6" />
             </button>
@@ -719,28 +737,56 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
                 </li>
               ))}
             </ol>
-            <span className="relative flex shrink-0">
-              <button
-                type="button"
-                aria-label="Next"
-                onClick={() => step(1)}
-                disabled={!canForward}
-                aria-hidden={canForward ? undefined : true}
-                tabIndex={canForward ? undefined : -1}
-                className={cn(chevron, !canForward && "invisible")}
-              >
-                <ChevronRight aria-hidden="true" className="size-6" />
-              </button>
-              {next ? (
-                <span
-                  data-testid="deck-next-label"
-                  className="pointer-events-none absolute top-1/2 left-full ml-3 hidden -translate-y-1/2 flex-col text-[length:var(--deck-small)] leading-[1.1] text-muted-foreground sm:flex"
-                  style={{ width: "max-content", maxWidth: nextRoom }}
-                >
-                  {next.lead ? <span className="whitespace-nowrap">{smartApostrophes(next.lead)}</span> : null}
-                  <span className="truncate">{smartApostrophes(next.page)}</span>
-                </span>
-              ) : null}
+            {/* Forward: one button holding the chevron and "Next: {page}",
+                so the words are a tap target too. It keeps a 48 px slot in
+                the row, so the dots stay centred, and the words hang off
+                its right. On the gallery, while photos are left, the
+                chevron steps through them and the words turn the page. */}
+            <span className="relative hidden size-12 shrink-0 sm:flex">
+              <span className="absolute top-0 left-0 flex items-center" style={{ width: "max-content" }}>
+                {photosAhead ? (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Next photo"
+                      onClick={() => step(1)}
+                      className={cn(disc, "pointer-events-auto touch-none outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring")}
+                    >
+                      <ChevronRight aria-hidden="true" className="size-6" />
+                    </button>
+                    {next ? (
+                      <button
+                        type="button"
+                        aria-label={nextName}
+                        onClick={() => turnPage(1)}
+                        className="pointer-events-auto ml-1 flex min-h-12 touch-none items-center rounded-md px-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        data-testid="deck-next"
+                      >
+                        {nextWords}
+                      </button>
+                    ) : null}
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label={nextName}
+                    onClick={() => step(1)}
+                    disabled={!canForward}
+                    aria-hidden={canForward ? undefined : true}
+                    tabIndex={canForward ? undefined : -1}
+                    className={cn(
+                      "group pointer-events-auto flex min-h-12 touch-none items-center gap-3 rounded-full pr-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      !canForward && "invisible",
+                    )}
+                    data-testid="deck-next"
+                  >
+                    <span className={cn(disc, "group-hover:bg-muted")}>
+                      <ChevronRight aria-hidden="true" className="size-6" />
+                    </span>
+                    {nextWords}
+                  </button>
+                )}
+              </span>
             </span>
           </div>
         ) : null}

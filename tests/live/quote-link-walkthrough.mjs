@@ -355,8 +355,8 @@ try {
     return { span: Math.round(rows[rows.length - 1].bottom - figure.top), room: Math.round(window.innerHeight - bar.height), heights: rows.map((r) => Math.round(r.height)) };
   });
   check(
-    "the diagram and the three rows fit on one screen at 390, above the bar, so a tap and the house changing are in view together; rows 72 to 88 px (no meeting tag yet)",
-    fit.span <= fit.room && fit.heights.every((h) => h >= 72 && h <= 88),
+    "the diagram and the three rows fit on one screen at 390, above the bar, so a tap and the house changing are in view together; rows 44 to 88 px (name and total, then what it covers in two lines at most)",
+    fit.span <= fit.room && fit.heights.every((h) => h >= 44 && h <= 88),
     JSON.stringify(fit),
   );
   const explainer = page.getByTestId("quote-explainer");
@@ -554,6 +554,17 @@ try {
       flat(await page.getByTestId("option-meeting-tag").innerText()) === words("link_meeting_tag"),
     JSON.stringify(rows),
   );
+  const tagFit = await page.evaluate(() => {
+    const tag = document.querySelector('[data-testid="option-meeting-tag"]').getBoundingClientRect();
+    const row = document.querySelector('[data-testid="option-meeting-tag"]').closest('[data-testid="option-row"]').getBoundingClientRect();
+    const heights = [...document.querySelectorAll('[data-testid="option-row"]')].map((r) => Math.round(r.getBoundingClientRect().height));
+    return { tagTop: Math.round(tag.top - row.top), tagBottom: Math.round(tag.bottom - row.top), heights };
+  });
+  check(
+    "the meeting's tag sits on its row's top edge, so it adds no height: every row still 88 px or less",
+    tagFit.tagTop < 0 && tagFit.tagBottom > 0 && tagFit.heights.every((h) => h <= 88),
+    JSON.stringify(tagFit),
+  );
   await page.screenshot({ path: `${out}/ql-phone-meeting-choice.png` });
 
   // The mockup, full screen.
@@ -579,11 +590,12 @@ try {
   );
   const confirmText = flat(await confirm.innerText().catch(() => ""));
   check(
-    "Book my install asks first: Your choice, the total and nothing to sign or pay",
+    "Book my install asks first: Your choice, the total and nothing to sign or pay; with no day planned, Keenan sets the install date",
     (await page.getByTestId("confirm-option").innerText()).trim() === "Front only" &&
       (await page.getByTestId("confirm-total").innerText()).trim() === "$2,500" &&
       confirmText.includes("Your choice Front only") &&
       confirmText.includes("There's nothing to sign or pay today.") &&
+      confirmText.includes("Keenan will be in touch to set your install date and go through the agreement.") &&
       (await confirm.getByRole("button", { name: "Back" }).count()) === 1,
     confirmText.slice(0, 200),
   );
@@ -656,7 +668,11 @@ try {
       width: document.documentElement.scrollWidth,
       rows: [...document.querySelectorAll('[data-testid="option-row"]')].map((row) => Math.round(row.getBoundingClientRect().height)),
     }));
-    check("at 430 wide: no sideways scroll, the same three rows", wideFit.width <= 430 && wideFit.rows.length === 3, JSON.stringify(wideFit));
+    check(
+      "at 430 wide: no sideways scroll, the same three rows, each 88 px or less",
+      wideFit.width <= 430 && wideFit.rows.length === 3 && wideFit.rows.every((h) => h <= 88),
+      JSON.stringify(wideFit),
+    );
     await widePage.screenshot({ path: `${out}/ql-phone-430.png`, fullPage: true });
     await wide.close();
   }
@@ -672,11 +688,11 @@ try {
   const card = owner.getByTestId("quote-card");
   const cardText = (await card.innerText().catch(() => "")).replace(/\s+/g, " ");
   check(
-    "the lead's Quote card leads with the booking (the option by name, priced from the stored quote), then the total, opens and last visit",
-    (await card.getByTestId("quote-card-booked").innerText().catch(() => "")).includes(`${TEST_LEAD} asked to book Front only, $2,500.`) &&
-      cardText.includes("Quoted total, all parts") &&
-      cardText.includes("$4,959") &&
-      cardText.includes(`Price held until ${longDay(validUntil)}`) &&
+    "the lead's Customer's link card leads with the booking (the option by name, priced from the stored quote), then opens, last visit and the price-held date in the Quote card's style; no single quoted total",
+    cardText.trim().startsWith("Customer's link") &&
+      (await card.getByTestId("quote-card-booked").innerText().catch(() => "")).includes(`${TEST_LEAD} asked to book Front only, $2,500.`) &&
+      !cardText.includes("Quoted total") &&
+      cardText.includes(`Price held until ${fullDate(validUntil)}.`) &&
       cardText.includes(`Opened ${views} times, last`) &&
       !cardText.includes(".."),
     cardText.slice(0, 300),
@@ -767,7 +783,9 @@ try {
   await calm.close();
 
   // ---------------------------------------------------------------- after the price hold
-  await admin.from("quotes").update({ valid_until: addDays(calgaryToday(), -1) }).eq("id", quote.data.id);
+  // With an install day picked at the meeting too: What happens next shows
+  // it, so the confirm step and the thank-you say Keenan confirms that day.
+  await admin.from("quotes").update({ valid_until: addDays(calgaryToday(), -1), meeting_install_on: addDays(calgaryToday(), 6) }).eq("id", quote.data.id);
   const later = await browser.newContext(phone);
   const laterPage = await later.newPage();
   await laterPage.goto(quoteUrl);
@@ -779,6 +797,14 @@ try {
   await laterPage.waitForTimeout(600);
   await laterPage.getByTestId("book-confirm").getByRole("button", { name: "Yes, update it" }).click();
   await laterPage.getByTestId("quote-thanks").waitFor({ timeout: 20000 }).catch(() => {});
+  const laterThanks = flat(await laterPage.getByTestId("quote-thanks").innerText().catch(() => ""));
+  check(
+    "with an install day planned, the confirm step and the thank-you say Keenan will be in touch to confirm it, not to set one",
+    laterConfirm.includes("Keenan will be in touch to confirm your install day and go through the agreement.") &&
+      laterThanks.includes("Keenan will be in touch within one business day to confirm your install day and go through the agreement.") &&
+      !`${laterConfirm} ${laterThanks}`.includes("set your install date"),
+    `${laterConfirm.slice(0, 200)} | ${laterThanks.slice(0, 200)}`,
+  );
   const { data: rebooked } = await admin.from("quote_links").select("booked_option, booked_offer").eq("id", link.data.id).single();
   const passed = `Prices may have changed since ${fullDate(addDays(calgaryToday(), -1))}. We'll confirm before booking.`;
   check(
