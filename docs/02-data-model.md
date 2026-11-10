@@ -157,6 +157,8 @@ not_collected text[] not null default '{}'      -- round 2: the questions marked
 setter_read setter_read                         -- round 3 (2026-11-05): Hot, Warm or Just curious; optional, never counted; Keenan sees it on Meetings and Home; never in meeting mode or anything a customer sees
 hot_buttons hot_button[] not null default '{}'  -- round 3: any that apply, or Not sure alone (checked: Not sure never beside another; at most four); optional, never counted; shown with the read
 confirm_by confirm_by                           -- round 3: call or text to confirm the meeting; optional
+name_to_come boolean not null default false     -- 2026-11-10: booked with no name; first_name holds 'Name to come' until it's filled in (cleared by leads_to_come_tidy the moment first_name holds anything else); read grant to signed-in people
+address_to_come boolean not null default false  -- 2026-11-10: booked with no address; address_line holds 'Address to come', lat and lng empty, until it's filled in (cleared the same way)
 save_key uuid                                   -- 2026-11-04: made on the phone once per new lead (booking sheet, New lead) and sent with every try of its first save, so a retry finds this lead instead of making a copy; unique; empty on leads saved before it or by other paths
 consent_text boolean not null default false     -- CASL: agreed to texts and emails
 lost_reason text
@@ -322,7 +324,7 @@ unique (lead_id) where status in ('booked','confirmed')   -- one live booking pe
 ```
 Rules, all enforced in the database:
 - **No double booking** (a hard rule). Tapping an open time places a hold; booking takes the caller's own active hold or a free time, never a time someone else holds. Holds and bookings take the same transaction lock, one per host and Calgary evening, and the unique indexes are the last line.
-- **Who may book.** The lead's setter or the owner, for a lead in New or Follow up that passes Before you book, into a time on the template, inside the window and before the cutoff (setters: `booking_cutoff_minutes` before it starts; the owner: until it starts), not blocked.
+- **Who may book.** The lead's setter or the owner, for a lead in New or Follow up that isn't ruled out (`booking_problems`: since 2026-11-10 only a No on owns the home, plus Other as a photo skip reason without its note), into a time on the template, inside the window and before the cutoff (setters: `booking_cutoff_minutes` before it starts; the owner: until it starts), not blocked.
 - **Move and cancel.** A move creates a new meeting at the new time (held first, like a booking) and marks the old one `moved` with `rebooked_as` pointing to the new one. A cancel marks it `cancelled` and sends the lead to Follow up for the next Calgary day. Setters may do either on their own upcoming bookings until the time starts; the owner on any.
 - **Confirmed** (round 7): `confirm_meeting(meeting, confirmed)` sets or clears `confirmed_at`, for the owner only (42501 for anyone else, the secret key included) and only on a meeting still `booked` or `confirmed`.
 - **Outcomes** are the owner's: from the slot's start for Qualified, Not qualified and No-show, and any time for Cancelled. Qualified and Not qualified set the lead to Met; No-show and Cancelled set it to Follow up for the next day. An outcome can be corrected until the booking fee is paid.
