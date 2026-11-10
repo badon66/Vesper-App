@@ -179,7 +179,7 @@ beforeAll(async () => {
       removed_at: new Date().toISOString(),
     },
     { lead_id: leadB, storage_path: paths.other, name: "Main", is_main: true, created_by: ownerId },
-  ]);
+  ], { defaultToNull: false });
   if (rowsError) throw new Error(`mockups: ${rowsError.message}`);
 });
 
