@@ -43,6 +43,7 @@ const payload = (draft: MeetingPayload["draft"] = null): MeetingPayload => ({
   },
   colours: { list: [], ralNames: {}, choice: null, ralCode: null },
   mockupUrl: null,
+  mockups: [],
   pricing: {
     pricePerFt: 23,
     boxPrice: 500,

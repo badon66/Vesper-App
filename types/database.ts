@@ -430,6 +430,54 @@ export type Database = {
           },
         ]
       }
+      lead_mockups: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_day: boolean
+          is_main: boolean
+          is_night: boolean
+          is_scene: boolean
+          lead_id: string
+          name: string
+          offer_ids: string[]
+          position: number
+          removed_at: string | null
+          storage_path: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_day?: boolean
+          is_main?: boolean
+          is_night?: boolean
+          is_scene?: boolean
+          lead_id: string
+          name?: string
+          offer_ids?: string[]
+          position?: number
+          removed_at?: string | null
+          storage_path: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_day?: boolean
+          is_main?: boolean
+          is_night?: boolean
+          is_scene?: boolean
+          lead_id?: string
+          name?: string
+          offer_ids?: string[]
+          position?: number
+          removed_at?: string | null
+          storage_path?: string
+        }
+        Relationships: []
+      }
       lead_photos: {
         Row: {
           caption: string | null
@@ -2373,6 +2421,7 @@ export type Database = {
       }
       quote_link_select_offer: { Args: { p_offer: string; p_token: string }; Returns: boolean }
       quote_link_visit: { Args: { p_token: string }; Returns: boolean }
+      quote_link_mockups: { Args: { p_token: string }; Returns: Json }
       quote_mockup_signable: { Args: { p_name: string }; Returns: boolean }
       quote_undo_acceptance: {
         Args: { p_quote: string }

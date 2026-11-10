@@ -44,6 +44,20 @@ export type DeckPayload = {
   warranty: { text: string; serviceCallFee: number | null; gstEnabled: boolean };
 };
 
+// A mockup of their house (round 10): Keenan's own picture, signed for the
+// evening. One picture can do several jobs: the Main (lights on), Day and
+// Night (the slider), a scene for the phone page, the picture for offers.
+export type MeetingMockup = {
+  id: string;
+  name: string;
+  url: string;
+  main: boolean;
+  day: boolean;
+  night: boolean;
+  scene: boolean;
+  offers: string[];
+};
+
 export type MeetingPayload = {
   lead: {
     id: string;
@@ -71,7 +85,10 @@ export type MeetingPayload = {
     choice: string | null;
     ralCode: string | null;
   };
+  // The Main mockup's URL (round 10: the Main of mockups below).
   mockupUrl: string | null;
+  // Round 10: every mockup of the house, Main first, then in Keenan's order.
+  mockups: MeetingMockup[];
   // Round 9: their Front photo, signed, for Your house when the roofline
   // isn't traced and there is no mockup; null otherwise.
   frontPhotoUrl?: string | null;
