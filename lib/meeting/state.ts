@@ -72,6 +72,9 @@ export type MeetingPayload = {
     ralCode: string | null;
   };
   mockupUrl: string | null;
+  // Round 9: their Front photo, signed, for Your house when the roofline
+  // isn't traced and there is no mockup; null otherwise.
+  frontPhotoUrl?: string | null;
   pricing: {
     pricePerFt: number;
     boxPrice: number;

@@ -262,6 +262,7 @@ describe("what a token shows", () => {
         "product_points",
         "install_day",
         "install_day_deck",
+        "lines",
         "next_steps",
         "gallery",
       ].sort(),

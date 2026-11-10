@@ -123,15 +123,17 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
   const ralNames = Object.fromEntries((ralRows ?? []).map((row) => [row.code, row.name]));
   const trackColour = leadTrackColour(lead, colourById, new Map(Object.entries(ralNames)));
 
-  // The customer's mockup and the photo the roofline was traced on, signed
-  // together. Only those two of the lead's photos ever reach the iPad.
+  // The customer's mockup, the photo the roofline was traced on, and (round
+  // 9) their Front photo when there is no mockup and no trace, for Your
+  // house, signed together. Only these of the lead's photos reach the iPad.
   const photos = leadPhotos ?? [];
   const mockup = photos.find((photo) => photo.slot === "mockup") ?? null;
   const tracePhoto = trace ? photos.find((photo) => photo.id === trace.photo_id) : undefined;
+  const front = !mockup && !tracePhoto ? (photos.find((photo) => photo.slot === "front") ?? null) : null;
   const signedLeadPhotos = await signAll(
     supabase,
     PHOTO_BUCKET,
-    [mockup?.storage_path, tracePhoto?.storage_path].filter((path): path is string => Boolean(path)),
+    [mockup?.storage_path, tracePhoto?.storage_path, front?.storage_path].filter((path): path is string => Boolean(path)),
   );
 
   const deck = buildDeckPayload({
@@ -163,6 +165,7 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
       ralCode: lead.track_ral_code,
     },
     mockupUrl: mockup ? (signedLeadPhotos.get(mockup.storage_path) ?? null) : null,
+    frontPhotoUrl: front ? (signedLeadPhotos.get(front.storage_path) ?? null) : null,
     pricing: pricingFrom(settings),
     draft,
     today: calgaryToday(),
