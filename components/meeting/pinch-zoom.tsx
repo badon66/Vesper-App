@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 
+import { EASE_QUIET } from "@/lib/motion";
+
 // The customer's mockup, full screen, pinch to zoom (M5). Two fingers
 // scale, one finger pans while zoomed, a double tap steps between fit
 // and close-up. At normal size a one-finger swipe turns the page, the
@@ -123,7 +125,7 @@ export function PinchZoom({
         className="size-full object-contain"
         style={{
           transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-          transition: touching ? "none" : "transform 150ms ease-out",
+          transition: touching ? "none" : `transform 150ms ${EASE_QUIET}`,
         }}
       />
     </div>

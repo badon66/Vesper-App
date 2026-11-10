@@ -178,6 +178,15 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
   // The database writes the quote_created timeline event (its id only,
   // never a dollar amount), as it writes every event but notes.
   const { data: created, error } = await supabase.from("quotes").insert(row).select("id, updated_at").single();
+  // Round 8: while a quote on the lead is accepted, no new quote starts
+  // (the database's quotes guard, hint quote_locked).
+  if (error?.hint === "quote_locked") {
+    return {
+      ok: false,
+      code: "quote_locked",
+      message: "This quote is already accepted. To change it, undo the acceptance on the lead page first.",
+    };
+  }
   if (error || !created) {
     return { ok: false, code: "save_failed", message: "The draft could not be saved. Check your signal and try again." };
   }

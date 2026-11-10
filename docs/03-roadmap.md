@@ -18,6 +18,15 @@ Additive schema changes approved up front. Accepting a quote and the commission 
 - [x] The owner's status menu no longer offers Sold or Installed
 - [x] Declining or cancelling closes the customer's link (the existing closed page with call and text); accepted keeps it working; no customer page code changes
 
+## Round 7, Branch B: meeting mode, deeper (Keenan, 2026-11-08; customer facing, waits for the preview, approved)
+Additive schema changes approved up front. Merges only when Keenan says "push the changes".
+- [ ] A five-seat debate (homeowner, Keenan closing, brand designer, iPad specialist, plain-language editor) settles the page order, content, depth, the light picker's looks and the motion; recorded in decisions.md
+- [ ] Every page deeper: one idea, a strong picture, a few words, more one tap away; Run it from your phone added
+- [ ] The light picker: the roofline traced in prep (item 6), dusk, five lights a metre, looks and effects in Settings, offline, skipped until traced
+- [ ] Photo slots with scenarios and researched references (links only), a shot list in Settings with Upload my photo, and the rehearsal view with "Example to copy"; customers never see references
+- [ ] Your colours shows both soffit colours for a split soffit
+- [ ] Impeccable critique and polish with scores, the five seats review iPad screenshots, the full suite passes, and the preview goes to Keenan
+
 ## Round 7, Branch A: the Meetings page's prep list (Keenan, 2026-11-08; owner only, merges on green, approved)
 An additive schema change and the ready-made confirmation text approved up front.
 - [x] Quick pick under tonight: the next few days' meetings and the newest leads, each one tap to its prep list or Start; search stays in Start a meeting

@@ -18,7 +18,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { POINT_ICON_NAMES } from "@/components/quote-link/point-icon";
 import { submitKeepingValues } from "@/lib/forms/submit";
 import { POINT_ICONS } from "@/lib/quote-link/view";
-import { PAGE_LABELS, type PresentationKind } from "@/lib/presentation";
 import { formatTime } from "@/lib/time";
 import {
   DAY_OPTIONS,
@@ -26,8 +25,6 @@ import {
   type SettingsFormField,
 } from "@/lib/settings/schema";
 import { updateSettings, type SettingsState } from "./actions";
-
-export type PresentationTextPage = { kind: PresentationKind; title: string; body: string };
 
 const initialState: SettingsState = {};
 
@@ -73,13 +70,9 @@ function formatSavedAt(iso: string) {
   return formatTime(iso);
 }
 
-export function SettingsForm({
-  defaults,
-  presentation,
-}: {
-  defaults: SettingsFormDefaults;
-  presentation: PresentationTextPage[];
-}) {
+// The presentation's words, photos and looks moved to their own page in
+// round 7 (presentation/page.tsx); settings.presentation is no longer edited.
+export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
   const [state, formAction, pending] = useActionState(updateSettings, initialState);
   const errors = state.errors;
 
@@ -153,7 +146,9 @@ export function SettingsForm({
         <CardHeader>
           <CardTitle>Warranty</CardTitle>
           <CardDescription>
-            Printed word for word on every quote and shown in the presentation.
+            Printed word for word on every quote. The presentation shows its
+            first lines up front and every line behind The full warranty, one
+            per line, as written here.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -251,69 +246,6 @@ export function SettingsForm({
             ))}
             <FieldError id="settings-product_points-error" message={errors?.product_points} />
           </fieldset>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Presentation</CardTitle>
-          <CardDescription>
-            The six screens of the meeting presentation, in the order they
-            show. The words started as drafts; make them yours. A page with no
-            words or photos is skipped at the meeting, never shown empty.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-6">
-          {presentation.map((page) => (
-            <fieldset key={page.kind} className="flex flex-col gap-3 border-t pt-4 first:border-t-0 first:pt-0">
-              <legend className="sr-only">{PAGE_LABELS[page.kind]}</legend>
-              <p className="text-sm font-semibold text-muted-foreground">{PAGE_LABELS[page.kind]}</p>
-              <input type="hidden" name="presentation_kind" value={page.kind} />
-              <div className="flex flex-col gap-2">
-                <Label htmlFor={`settings-presentation_title_${page.kind}`}>Title on screen</Label>
-                <Input
-                  id={`settings-presentation_title_${page.kind}`}
-                  name={`presentation_title_${page.kind}`}
-                  defaultValue={page.title}
-                  maxLength={80}
-                />
-              </div>
-              {page.kind === "warranty" ? (
-                <>
-                  <input type="hidden" name={`presentation_body_${page.kind}`} defaultValue={page.body} />
-                  <p className="text-sm text-muted-foreground">
-                    This page shows the Warranty text above, word for word.
-                  </p>
-                </>
-              ) : page.kind === "gallery" ? (
-                <>
-                  <input type="hidden" name={`presentation_body_${page.kind}`} defaultValue={page.body} />
-                  <p className="text-sm text-muted-foreground">
-                    This page is photos only. Add them under Presentation photos below.
-                  </p>
-                </>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor={`settings-presentation_body_${page.kind}`}>Words on screen</Label>
-                  <Textarea
-                    id={`settings-presentation_body_${page.kind}`}
-                    name={`presentation_body_${page.kind}`}
-                    rows={page.kind === "install_day" ? 7 : 5}
-                    defaultValue={page.body}
-                  />
-                  {page.kind === "hidden_by_day" ? (
-                    <p className="text-sm text-muted-foreground">
-                      Shown over the day and night photos, uploaded below.
-                    </p>
-                  ) : null}
-                  {page.kind === "install_day" ? (
-                    <p className="text-sm text-muted-foreground">One step per line; the screen numbers them.</p>
-                  ) : null}
-                </div>
-              )}
-            </fieldset>
-          ))}
-          <FieldError id="settings-presentation_pages-error" message={errors?.presentation_pages} />
         </CardContent>
       </Card>
 

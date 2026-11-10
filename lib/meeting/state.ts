@@ -6,7 +6,42 @@
 import type { SoffitColour } from "@/lib/leads/status";
 import type { TrackColour } from "@/lib/leads/track-colour";
 import { defaultValidUntil, guessRunPart, RUN_PARTS, type ColourTiming, type QuoteInputs, type QuoteRun, type RunPart } from "@/lib/pricing";
-import type { PresentationKind } from "@/lib/presentation";
+import { EFFECTS, type DeckWords, type Effect, type Look, type Trace } from "@/lib/deck";
+
+// Round 7 (Keenan, 2026-11-08): the deck's own part of the payload. Keenan's
+// photos come as short-lived signed storage links, so Get tonight ready keeps
+// them for a meeting without signal. Never a reference shot: those live only
+// in Settings and the rehearsal view (lib/deck.ts, presentation_references),
+// and this type has no field that could carry one (a unit test holds it).
+export type DeckPhoto = {
+  url: string;
+  // The 640 px copy, for the gallery's contact sheet; null elsewhere.
+  thumbUrl: string | null;
+  // The focus point every crop keeps in view, 0 to 1 across and down.
+  focus: [number, number];
+  // The gallery's caption (the look only); null elsewhere.
+  caption: string | null;
+};
+export type DeckPayload = {
+  words: DeckWords;
+  // Keenan's photos by slot key (lib/deck.ts DECK_SLOTS), in his order
+  // within each slot.
+  photos: Record<string, DeckPhoto[]>;
+  // The gallery's photos across its slots, in Keenan's one order (warm
+  // whites first, the holiday look last).
+  gallery: DeckPhoto[];
+  // The looks on offer, in order, at most six.
+  looks: Look[];
+  // The light picker: the photo the roofline was traced on and the trace;
+  // null when the page is skipped (not traced, or that photo changed).
+  picker: { photoUrl: string; trace: Trace } | null;
+  // The warranty page's company line: "Vesper Lighting, Inc., Calgary" and
+  // the phone number. place is the town from the company's address.
+  company: { name: string; place: string | null; phone: string };
+  // settings.warranty_text word for word, and the service call fee for
+  // The full warranty (null: not set, so its line is hidden).
+  warranty: { text: string; serviceCallFee: number | null; gstEnabled: boolean };
+};
 
 export type MeetingPayload = {
   lead: {
@@ -16,13 +51,16 @@ export type MeetingPayload = {
     addressLine: string;
     neighbourhood: string | null;
     soffitColour: SoffitColour | null;
-    soffitNote: string | null;
+    // The split soffit's second colour. The setter's which-is-where note is
+    // never sent to meeting mode (a field that isn't sent can't show).
+    soffitColour2: SoffitColour | null;
     colourKind: "none" | "list" | "custom";
     colourText: string;
     initials: string | null;
     initialledAt: string | null;
   };
-  pages: { kind: PresentationKind; title: string; body: string; images: (string | null)[] }[];
+  // The deck's words, Keenan's photos, the looks and the picker (round 7).
+  deck: DeckPayload;
   // For changing the colour at the table: Keenan's list (retired ones too,
   // so the lead's own still names itself), the RAL Classic names, and the
   // lead's choice as the lead page's form takes it.
@@ -32,8 +70,6 @@ export type MeetingPayload = {
     choice: string | null;
     ralCode: string | null;
   };
-  warrantyText: string;
-  serviceCallFee: number | null;
   mockupUrl: string | null;
   pricing: {
     pricePerFt: number;
@@ -249,6 +285,10 @@ export function quoteInputs(state: QuoteUIState, pricing: MeetingPayload["pricin
 
 // ---------------------------------------------------------------- the iPad's copy
 
+// The light picker's state as the meeting keeps it (round 7): the look and
+// effect on screen, and whether the first light-up has played.
+export type PickerStored = { look: string; effect: Effect; played: boolean };
+
 // What the iPad keeps between reloads: the quote as it stands, when and
 // in what shape it was last saved, the initials typed but not yet saved,
 // and the screen it was on. Weak signal never loses any of it.
@@ -260,7 +300,12 @@ export type MeetingStored = {
   initialsDraft: string;
   // Optional: copies written before these existed lack them.
   savedQuote?: string | null;
-  screen?: { index: number; at: number };
+  // key (round 7): the page's own key, so a reload finds the same page even
+  // when the pages before it changed.
+  screen?: { index: number; at: number; key?: string };
+  // Round 7: the light picker's look and effect, and whether the light-up
+  // has played this meeting, so a reload or auto-lock keeps them.
+  picker?: PickerStored;
 };
 
 // A meeting reopened within this long picks up on the screen it left,
@@ -275,13 +320,34 @@ export type MeetingStart = {
   savedQuote: string | null;
   initialsDraft: string;
   index: number;
+  // The page the iPad was on, by key, when it picks up where it left off.
+  screenKey: string | null;
+  // The light picker as it was this meeting; null for a fresh open or a
+  // new meeting (Warm white, Steady, the light-up to play).
+  picker: PickerStored | null;
 };
+
+// The picker's stored state, kept only while it still makes sense: an
+// effect the control offers and a look still on offer. Otherwise the page
+// opens as every meeting does, on its first look, Steady.
+export function pickerFromStored(value: unknown, looks: Pick<Look, "key">[]): PickerStored | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const effect = EFFECTS.find((item) => item.key === raw.effect)?.key;
+  if (typeof raw.look !== "string" || !effect || !looks.some((look) => look.key === raw.look)) return null;
+  return { look: raw.look, effect, played: raw.played === true };
+}
 
 // Where the meeting starts: the iPad's own copy, which may hold edits made
 // without signal, unless the server has a save the iPad never saw (made on
 // another device). Then the server's, so the price in the room is current.
 // Opened fresh from Tonight or the lead page, it starts at the cover; only
-// a reload mid-meeting picks up on the screen it left.
+// a reload mid-meeting picks up on the screen it left. The light picker
+// does the same (round 7 review, Keenan): a fresh open (#start) opens it on
+// Warm white, Steady, with the light-up to play the first time the page is
+// reached, so a check from prep or the truck before the visit never spends
+// the reveal; only a reload or auto-lock mid-meeting (within RESUME_MS of
+// the last screen) keeps its look, effect and played light-up.
 export function startingPoint(
   payload: MeetingPayload,
   stored: MeetingStored | null,
@@ -292,8 +358,12 @@ export function startingPoint(
   const fromServer = draft ? quoteStateFromDraft(draft, payload) : null;
   const serverNewer =
     draft !== null && (!stored?.savedAt || Date.parse(draft.updatedAt) > Date.parse(stored.savedAt));
-  const index = !fresh && stored?.screen && now - stored.screen.at < RESUME_MS ? stored.screen.index : 0;
+  const sameMeeting = Boolean(stored?.screen && now - stored.screen.at < RESUME_MS);
+  const index = !fresh && sameMeeting && stored?.screen ? stored.screen.index : 0;
+  const screenKey = !fresh && sameMeeting && typeof stored?.screen?.key === "string" ? stored.screen.key : null;
+  const picker = !fresh && sameMeeting ? pickerFromStored(stored?.picker, payload.deck.looks) : null;
   const initialsDraft = stored?.initialsDraft ?? "";
+  const where = { index, screenKey, picker };
 
   if (stored && !serverNewer) {
     return {
@@ -302,7 +372,7 @@ export function startingPoint(
       savedAt: stored.savedAt,
       savedQuote: stored.savedQuote ?? (fromServer ? quoteFingerprint(fromServer) : null),
       initialsDraft,
-      index,
+      ...where,
     };
   }
   if (draft && fromServer) {
@@ -312,8 +382,8 @@ export function startingPoint(
       savedAt: draft.updatedAt,
       savedQuote: quoteFingerprint(fromServer),
       initialsDraft,
-      index,
+      ...where,
     };
   }
-  return { quote: defaultQuoteState(payload), quoteId: null, savedAt: null, savedQuote: null, initialsDraft, index };
+  return { quote: defaultQuoteState(payload), quoteId: null, savedAt: null, savedQuote: null, initialsDraft, ...where };
 }
