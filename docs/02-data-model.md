@@ -342,7 +342,8 @@ booked_by uuid not null references profiles      -- who picked the time
 starts_at timestamptz not null
 ends_at timestamptz not null                     -- starts_at plus the evening's slot length when it was booked
 status meeting_status not null default 'booked'
-everyone_deciding_present boolean not null      -- the setter's confirmation that everyone who decides on the house will be there; must be true
+everyone_deciding_present boolean not null      -- retired (round 12): always true, its check forces it, and nothing reads it
+everyone_deciding text default 'not_asked'      -- round 12: the lead's real answer to "everyone who decides will be there": 'yes', 'no' or 'not_asked'; set by a trigger from leads.both_decision_makers when the meeting is inserted (booked or moved), and kept in step by a trigger on leads for meetings that haven't started and aren't moved or cancelled
 photos_skipped text                             -- 'homeowner_said_no' or 'other' when the Front, Left corner or Right corner photo is missing at booking; shown to the owner on Schedule
 photos_skip_note text                           -- required when photos_skipped is 'other'
 outcome_reason text                             -- required when not_qualified: from settings.not_qualified_reasons, or the text typed for Other
@@ -368,7 +369,7 @@ Every write to `slot_holds`, `meetings` and `earnings` goes through these SECURI
 - `schedule_board(host, as_sales, viewer)`: every time in the window with its state (open, held, booked, blocked or closed), the holder's name and initials, and a booked time's neighbourhood and setter. Times come from each evening's own schedule or the template. Every live meeting shows at its own start and end, whether or not it still lines up, and template times that overlap any live meeting are left out (migration 20261102051654: before it, a meeting that still lined up could drop off the board after a longer meeting length). Read only; the screens poll it.
 - `set_day_schedule(day, start, minutes, count, scope, host)`: the owner's. Scope `day` gives that evening its own times; `all` updates the template in settings and drops that evening's own times; `usual` drops them only. It takes the evening lock, lets go of holds on times that disappear (stamped `released`), never touches a meeting, and writes Settings only when a value changes. `day_schedule_preview(day, start, minutes, count, scope, host)` lists, read only, the meetings that wouldn't line up and the holds that would let go, for the pop-up's warning.
 - `hold_slot(starts_at, lead, meeting, host)`, `release_hold()`; round 2: `extend_hold()` (holder only: adds `hold_minutes` to a live hold, or takes a run-out one back while it's still free) and `hold_status()` (the caller's own hold and when it runs out); `renew_hold()` now only reports, like `hold_status()`, and never extends.
-- `book_meeting(lead, starts_at, everyone_deciding_present, photos_skipped, photos_skip_note, host)`.
+- `book_meeting(lead, starts_at, everyone_deciding_present, photos_skipped, photos_skip_note, host)`. Round 12: the `everyone_deciding_present` parameter is kept for callers but decides nothing; the meeting's answer comes from the lead (`everyone_deciding_of(lead)`, owner-side only, no app grant).
 - `move_meeting(meeting, new_starts_at)` and `cancel_meeting(meeting, note)`.
 - `set_meeting_outcome(meeting, outcome, reason, note)` and `mark_earnings_paid(ids)`: the owner's (the service role may call them too, for the test suite).
 
