@@ -374,8 +374,10 @@ export function QuoteScreen({
       )}
 
       {/* Keenan's own: small, outlined, bottom left, away from Choose and
-          the forward chevron, on the dots' centre line. */}
-      <div className="absolute left-12 z-10 flex h-14 items-center" style={{ bottom: "var(--deck-row-bottom, 20px)" }}>
+          the forward chevron, on the dots' centre line. On a deck narrower
+          than 768 px (a phone) the centred dots would cover it, so it sits
+          one row up. */}
+      <div className="absolute bottom-[var(--deck-row-bottom,20px)] left-12 z-10 flex h-14 items-center @max-3xl:bottom-[calc(var(--deck-row-bottom,20px)+64px)]">
         <button
           type="button"
           onClick={() => setEditOpen(true)}
