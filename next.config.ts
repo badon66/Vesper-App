@@ -6,7 +6,14 @@ import { assertNoSecretsInPublicEnv } from "./lib/public-env-guard";
 // See lib/public-env-guard.ts and docs/decisions.md (2026-11-02).
 assertNoSecretsInPublicEnv(process.env);
 
+// Every build carries its own id, for the update notice (Keenan,
+// 2026-11-11): the deploy's commit on Vercel, else a stamp. It is public
+// (it names a commit, nothing else) and the app compares it with what
+// /api/version says is live.
+const appBuild = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || String(Date.now());
+
 const nextConfig: NextConfig = {
+  env: { NEXT_PUBLIC_APP_BUILD: appBuild },
   // People and Settings moved into Admin, and the owner's Home became the
   // dashboard (2026-10-28). Old links and home screen shortcuts still land.
   async redirects() {
