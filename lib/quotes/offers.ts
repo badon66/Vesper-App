@@ -80,11 +80,11 @@ export function cleanBoxes(value: unknown): number | null {
   return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= 9 ? n : null;
 }
 
-// An upper access amount Keenan typed over, as saved: 0 to 100,000 to the
-// cent, else null (the automatic amount).
+// An upper access amount Keenan typed over, as saved: a number from 0 to
+// 100,000, to the cent, else null (the automatic amount). A number only,
+// never text, the same as the database's quote_offers_clean.
 export function cleanUpperAccess(value: unknown): number | null {
-  const n = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
-  return typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 100_000 ? Math.round(n * 100) / 100 : null;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100_000 ? Math.round(value * 100) / 100 : null;
 }
 
 // Positions on a quote with runCount runs: whole numbers in range, sorted,

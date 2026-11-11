@@ -780,7 +780,7 @@ try {
       areaLines.some(
         (line) =>
           (line.area === area || (line.area ?? "").startsWith(`${area}_`)) &&
-          labels.some((label) => line.text.includes(label)) &&
+          labels.some((label) => line.text.includes(label) || line.values.includes(label)) &&
           (line.values.includes(String(feet)) || line.text.includes(`${feet} ft`)),
       );
     check(
@@ -819,7 +819,8 @@ try {
           name: card.querySelector('[data-testid="offer-name"]')?.value ?? card.getAttribute("aria-label"),
           access: box ? { value: box.value ?? "", placeholder: box.getAttribute("placeholder") ?? "" } : null,
           auto: auto ? (auto.textContent ?? "").replace(/\s+/g, " ").trim() : null,
-          gable: gable ? gable.getAttribute("data-gable") : null,
+          // The gable chip's wrapper says whether it is on (data-on); the chip itself is marked data-gable.
+          gable: gable ? (gable.getAttribute("data-on") ?? gable.getAttribute("data-gable")) : null,
         };
       }),
     );
@@ -830,12 +831,13 @@ try {
     const reads = (card, amount) => Boolean(card?.access) && (card.access.value === amount || (card.access.value === "" && card.access.placeholder.includes(amount)));
     check(
       "each offer card's upper access box starts on the automatic amount: 400 for the full wrap (its upper gable), nothing for Main floor (lower runs only)",
-      reads(fullCard, "400") && Boolean(mainCard?.access) && ["", "0"].includes(mainCard.access.value) && !/400|200/.test(mainCard.access.placeholder),
+      // Main floor has no upper area, so it has no upper access box at all (or an empty one).
+      reads(fullCard, "400") && (mainCard?.access === null || (["", "0"].includes(mainCard.access.value) && !/400|200/.test(mainCard.access.placeholder))),
       JSON.stringify(cards.map((card) => [card.id ?? card.name, card.access, card.auto])),
     );
     check(
       "the full wrap's gable chip is on (data-gable=\"true\"); Main floor's, with no gable in it, is not",
-      fullCard?.gable === "true" && mainCard?.gable !== "true",
+      fullCard?.gable === "true" && mainCard?.gable === "false",
       JSON.stringify(cards.map((card) => [card.id ?? card.name, card.gable])),
     );
     await shot(page, "lead-editor-offer-cards-1180");
