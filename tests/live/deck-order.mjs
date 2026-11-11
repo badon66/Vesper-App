@@ -30,6 +30,12 @@ const PAGE_DEFAULTS = {
 // The lines the walk-throughs read (lib/deck.ts DECK_LINE_DEFAULTS).
 export const LINE_DEFAULTS = {
   cover_line: "What it is, your house lit up, and your price.",
+  cover_prepared: "Prepared for the {family} home",
+  cover_prepared_first: "Prepared for {name}",
+  cover_what: "Permanent lighting, up once and there all year.",
+  cover_point_1: "10-year warranty",
+  cover_point_2: "Run it from your phone",
+  cover_point_3: "Made for Calgary winters",
   next_prefix: "Next: {page}",
   colour_headline: "Your track colour",
   colour_opener: "By day you see the track, so you choose its colour.",

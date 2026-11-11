@@ -75,6 +75,9 @@ export type DeckContextValue = {
   // The meeting's own whites, for the drawings.
   warm: Look;
   cool: Look;
+  // A house photo full screen (round 15): the deck hides its dots, Next and
+  // the way out while it is open, so nothing sits over the picture.
+  setFullScreen?: (open: boolean) => void;
 };
 
 export const DeckContext = createContext<DeckContextValue>({

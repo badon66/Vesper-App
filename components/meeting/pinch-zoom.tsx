@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { EASE_QUIET } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 
 // The customer's mockup, full screen, pinch to zoom (M5). Two fingers
 // scale, one finger pans while zoomed, a double tap steps between fit
@@ -13,19 +14,28 @@ import { EASE_QUIET } from "@/lib/motion";
 // service worker can keep it for no signal; the customer's quote page
 // passes null, so the viewer reuses the picture already on the page (its
 // short-lived link may have expired by the time they zoom). onError lets the
-// page say what to do when a picture won't load.
+// page say what to do when a picture won't load. Full screen in the deck
+// (2026-11-11): onTap is a single tap that isn't the start of a double tap
+// (it waits out the double tap's 300 ms), onSwipeDown a downward swipe at
+// normal size; both close the full-screen picture.
 export function PinchZoom({
   src,
   alt,
   onSwipe,
+  onTap,
+  onSwipeDown,
   crossOrigin = "anonymous",
   onError,
+  className,
 }: {
   src: string;
   alt: string;
   onSwipe?: (delta: number) => void;
+  onTap?: () => void;
+  onSwipeDown?: () => void;
   crossOrigin?: "anonymous" | null;
   onError?: () => void;
+  className?: string;
 }) {
   const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 });
   const [touching, setTouching] = useState(false);
@@ -33,6 +43,13 @@ export function PinchZoom({
   const start = useRef({ scale: 1, x: 0, y: 0, distance: 0, midX: 0, midY: 0 });
   const swipe = useRef<{ x: number; y: number } | null>(null);
   const lastTap = useRef(0);
+  const tapTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (tapTimer.current !== null) window.clearTimeout(tapTimer.current);
+    },
+    [],
+  );
 
   function distance() {
     const [a, b] = Array.from(pointers.current.values());
@@ -55,15 +72,33 @@ export function PinchZoom({
     if (pointers.current.size === 0) setTouching(false);
     const from = swipe.current;
     swipe.current = null;
-    if (!wasOnly || !from || transform.scale !== 1 || !onSwipe) return;
+    if (!wasOnly || !from) return;
     const dx = clientX - from.x;
     const dy = clientY - from.y;
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) onSwipe(dx < 0 ? 1 : -1);
+    // A tap: barely moved. Wait out a double tap before it counts.
+    if (onTap && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+      if (tapTimer.current !== null) {
+        window.clearTimeout(tapTimer.current);
+        tapTimer.current = null;
+      } else if (transform.scale === 1) {
+        tapTimer.current = window.setTimeout(() => {
+          tapTimer.current = null;
+          onTap();
+        }, 300);
+      }
+      return;
+    }
+    if (transform.scale !== 1) return;
+    if (onSwipeDown && dy > 80 && dy > Math.abs(dx) * 1.5) {
+      onSwipeDown();
+      return;
+    }
+    if (onSwipe && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) onSwipe(dx < 0 ? 1 : -1);
   }
 
   return (
     <div
-      className="relative h-full w-full touch-none overflow-hidden select-none"
+      className={cn("relative h-full w-full touch-none overflow-hidden select-none", className)}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
         pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });

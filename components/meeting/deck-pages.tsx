@@ -6,6 +6,7 @@ import { CornerPair } from "@/components/drawings/corner-pair";
 import { useBoxSize } from "@/components/lights/light-canvas";
 import { Logo } from "@/components/brand/logo";
 import { DayNightSlider } from "@/components/meeting/day-night-slider";
+import { FullScreenButton, HousePhoto, housePictures, type HousePicture } from "@/components/meeting/house-photo";
 import {
   BandPage,
   DeckButton,
@@ -94,13 +95,77 @@ export function bandWords(words: PageWords): ReactNode {
 
 // ---------------------------------------------------------------- cover
 
+
 // A brief introduction made for the iPad (round 10): the wordmark, their
 // name large, their address under it, then one line naming what's coming,
 // the price included. No photo, greeting or date. With no lead
 // (rehearsal), the logo and the line. Since 2026-11-11 the real logo, the
 // version that suits the theme (white on the dark deck).
-export function CoverPage({ name, line, tagline }: { name?: string | null; line: string | null; tagline?: string | null }) {
+// Round 15 (Keenan, 2026-11-11): with a Main, the cover leads with their
+// house, framed and big, the phone icon on it for their scenes, and a
+// column beside it: the logo, who it's prepared for and their address, one
+// line on what Vesper is, three short points and today's date, every word
+// from Settings. Without a Main, the cover as it was.
+export type CoverHouse = {
+  pictures: HousePicture[];
+  prepared: string;
+  address: string;
+  what: string;
+  points: string[];
+  date: string;
+};
+
+export function CoverPage({
+  name,
+  line,
+  tagline,
+  house,
+}: {
+  name?: string | null;
+  line: string | null;
+  tagline?: string | null;
+  house?: CoverHouse | null;
+}) {
   const shownName = name?.trim() || null;
+  if (house && house.pictures.length > 0) {
+    return (
+      <div className="grid h-full w-full grid-cols-[minmax(0,1fr)_400px]" data-testid="deck-cover" data-house="true">
+        <div className="relative min-w-0" style={{ marginBottom: "var(--deck-clear, 78px)" }}>
+          <HousePhoto pictures={house.pictures} alt="Your house, with the lights on" frameClassName="left-10 top-10" frameTestId="cover-frame" />
+        </div>
+        <div className="flex min-h-0 min-w-0 flex-col justify-center gap-7 pr-14 pl-6" style={{ paddingBottom: "var(--deck-clear, 78px)" }}>
+          <Logo className="h-20 self-start" />
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[28px] leading-tight font-semibold text-balance" data-testid="deck-cover-prepared">
+              {say(house.prepared)}
+            </p>
+            <p className="text-[length:var(--deck-small,20px)] leading-snug text-muted-foreground" data-testid="deck-cover-address">
+              {say(house.address)}
+            </p>
+          </div>
+          <span aria-hidden="true" className="h-px w-16 bg-gold" />
+          {house.what ? (
+            <p className="text-[22px] leading-snug text-pretty" data-testid="deck-cover-what">
+              {say(house.what)}
+            </p>
+          ) : null}
+          {house.points.length > 0 ? (
+            <ul className="flex flex-col gap-3" data-testid="deck-cover-points">
+              {house.points.map((point) => (
+                <li key={point} className="flex items-center gap-3 text-[20px] leading-tight">
+                  <span aria-hidden="true" className="size-2 shrink-0 rotate-45 bg-gold" />
+                  {say(point)}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <p className="text-[length:var(--deck-small,20px)] text-muted-foreground" data-testid="deck-cover-date">
+            {house.date}
+          </p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-10 px-16 text-center" data-testid="deck-cover">
       <Logo className="h-[calc(var(--deck-wordmark)*1.85)]" />
@@ -133,20 +198,22 @@ export function WhatVesperPage({
   near,
   more,
   main,
+  scenes,
   addressLine,
   onSwipe,
-}: Omit<PageProps, "fillEmpty"> & { main: MeetingMockup; addressLine: string; onSwipe: (delta: number) => void }) {
+}: Omit<PageProps, "fillEmpty"> & { main: MeetingMockup; scenes: MeetingMockup[]; addressLine: string; onSwipe: (delta: number) => void }) {
   const words = deck.words.pages.what_vesper_is;
   const layer = moreWords(words);
-  const aspect = useImageAspect(main.url);
+  void onSwipe;
+  const pictures = housePictures(main, scenes);
   return (
     <>
       <BandPage
         picture={
           near ? (
-            <PhotoFrame aspect={aspect} testId="what-vesper-frame">
-              <PinchZoom src={main.url} alt={`${addressLine}, with the lights on`} onSwipe={onSwipe} />
-            </PhotoFrame>
+            // A tap opens it full screen, where it zooms (2026-11-11); the
+            // phone icon has their scenes when there are some.
+            <HousePhoto pictures={pictures} alt={`${addressLine}, with the lights on`} frameTestId="what-vesper-frame" />
           ) : null
         }
         headline={words.headline}
@@ -173,6 +240,14 @@ export function HiddenByDayPage({ deck, near, more, day, night }: Omit<PageProps
       <DayNightSlider
         day={<DeckImage photo={{ url: day.url, focus: centre }} alt="Your house by day" />}
         night={<DeckImage photo={{ url: night.url, focus: centre }} alt="Your house at night" />}
+      />
+      {/* Taps on the picture move the slider, so full screen is a button. */}
+      <FullScreenButton
+        pictures={[
+          { id: night.id, name: night.name.trim() || "At night", url: night.url },
+          { id: day.id, name: day.name.trim() || "By day", url: day.url },
+        ]}
+        alt="Your house"
       />
     </PhotoFrame>
   );
@@ -297,12 +372,10 @@ export function WhitesPage({ deck, near, more, fillEmpty }: PageProps) {
 // way the app changes the lights. Skipped without a scene. The chosen
 // button is the Night Text fill, never gold (the customer's page).
 export function PhonePage({ deck, near, scenes }: { deck: DeckPayload; near: boolean; scenes: MeetingMockup[] }) {
-  const { reduced } = useDeck();
   const words = deck.words.pages.phone_control;
   const [shownId, setShownId] = useState<string | null>(null);
   const shown = scenes.find((scene) => scene.id === shownId) ?? scenes[0];
   const headline = words.headline.trim();
-  const aspect = useImageAspect(shown?.url);
   return (
     <div className="grid h-full w-full grid-cols-[minmax(0,1fr)_400px]" data-testid="phone-page">
       <div className="relative min-w-0 overflow-hidden" style={{ marginBottom: "var(--deck-clear, 78px)" }} data-testid="phone-house">
@@ -310,17 +383,15 @@ export function PhonePage({ deck, near, scenes }: { deck: DeckPayload; near: boo
           // Framed (2026-11-11), the frame easing to each scene's shape
           // while the scenes cross-fade inside it; clear of the left edge
           // at the page's margin.
-          <PhotoFrame aspect={aspect} className="left-10" testId="phone-frame">
-            {scenes.map((scene) => (
-              <DeckImage
-                key={scene.id}
-                photo={{ url: scene.url, focus: [0.5, 0.5] }}
-                alt={scene.id === shown?.id ? `Your house: ${scene.name}` : ""}
-                fit="contain"
-                className={cn(!reduced && "transition-opacity duration-300", scene.id === shown?.id ? "opacity-100" : "opacity-0")}
-              />
-            ))}
-          </PhotoFrame>
+          <HousePhoto
+            pictures={housePictures(null, scenes)}
+            alt={shown ? `Your house: ${shown.name}` : "Your house"}
+            picker={false}
+            shownId={shown?.id}
+            onShow={setShownId}
+            frameClassName="left-10"
+            frameTestId="phone-frame"
+          />
         ) : null}
       </div>
       <div className="flex min-h-0 min-w-0 flex-col items-center gap-5 pt-16 pr-12 pl-6" style={{ paddingBottom: "var(--deck-clear, 78px)" }}>

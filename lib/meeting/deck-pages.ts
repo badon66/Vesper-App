@@ -325,6 +325,20 @@ export function companyLines(company: DeckPayload["company"]): string[] {
 }
 
 // The cover's address line: the address and neighbourhood, as built.
+// Who the cover is prepared for (2026-11-11): "Prepared for the Smith
+// home" from their last name (the rest of their name after the first);
+// with no last name, "Prepared for Dana".
+export function coverPrepared(
+  lines: { cover_prepared: string; cover_prepared_first: string },
+  lead: { name: string; firstName: string },
+): string {
+  const first = lead.firstName.trim();
+  const whole = lead.name.trim().replace(/\s+/g, " ");
+  const family = first && whole.toLowerCase().startsWith(first.toLowerCase()) ? whole.slice(first.length).trim() : "";
+  if (family) return fillLine(lines.cover_prepared, { family });
+  return fillLine(lines.cover_prepared_first, { name: first || whole });
+}
+
 export function coverLine(lead: Pick<MeetingPayload["lead"], "addressLine" | "neighbourhood">): string {
   const neighbourhood = lead.neighbourhood?.trim();
   return neighbourhood ? `${lead.addressLine}, ${neighbourhood}` : lead.addressLine;
