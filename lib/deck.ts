@@ -206,6 +206,15 @@ export function deckWordsToJson(words: DeckWords, stored?: Json | null): Json {
 export const DECK_LINE_DEFAULTS = {
   // Cover
   cover_line: "What it is, your house lit up, and your price.",
+  // The cover with their house (2026-11-11): over the house picture, in
+  // the column beside it. {family} is their last name; with none, the
+  // "first" line takes their first name.
+  cover_prepared: "Prepared for the {family} home",
+  cover_prepared_first: "Prepared for {name}",
+  cover_what: "Permanent lighting, up once and there all year.",
+  cover_point_1: "10-year warranty",
+  cover_point_2: "Run it from your phone",
+  cover_point_3: "Made for Calgary winters",
   // Every page but the last, beside the forward chevron
   next_prefix: "Next: {page}",
   // Your house, behind What we measured
@@ -285,6 +294,12 @@ const SENTENCE = 25;
 
 export const LINE_SPECS: Record<DeckLineKey, LineSpec> = {
   cover_line: { group: "cover", label: "The line under their address", words: 12 },
+  cover_prepared: { group: "cover", label: "With their house: who it's for", words: 8, fill: ["family"], need: ["family"] },
+  cover_prepared_first: { group: "cover", label: "The same, when there's no last name", words: 6, fill: ["name"], need: ["name"] },
+  cover_what: { group: "cover", label: "With their house: what Vesper is", words: 12 },
+  cover_point_1: { group: "cover", label: "With their house: first point", words: 6 },
+  cover_point_2: { group: "cover", label: "With their house: second point", words: 6 },
+  cover_point_3: { group: "cover", label: "With their house: third point", words: 6 },
   next_prefix: { group: "every_page", label: "The Next label", words: 4, fill: ["page"], need: ["page"] },
   house_drawing_caption: { group: "your_house", label: "Under the drawing", words: SHORT },
   colour_headline: { group: "colour", label: "Headline", words: LABEL },

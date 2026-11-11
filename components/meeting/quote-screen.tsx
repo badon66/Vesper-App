@@ -5,14 +5,15 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { InitialsConfirm, type Confirmation } from "@/components/meeting/colour-page";
-import { DeckButton, DeckImage, DECK_TYPE, MoreLayer, PhotoFrame, say, useDeck, useImageAspect } from "@/components/meeting/deck-parts";
+import { DeckButton, DECK_TYPE, MoreLayer, say, useDeck } from "@/components/meeting/deck-parts";
+import { HousePhoto, housePictures } from "@/components/meeting/house-photo";
 import { EditorClose, EditorSave } from "@/components/quotes/quote-editor/parts";
 import { hasMeasuredRun, QuoteEditor } from "@/components/quotes/quote-editor/quote-editor";
 import { useQuoteSave } from "@/components/quotes/quote-editor/use-quote-save";
 import { DEFAULT_LINES, deckLine, priceSubLine, type DeckLines } from "@/lib/deck";
 import { breakdownRows, coverageLine, minimumSentence, NO_PAYMENT, screenOptions, type BreakdownRow } from "@/lib/meeting/price-screen";
 import { blackFridayOn, chooseWithBlackFriday, offerPrice, withBlackFriday } from "@/lib/meeting/black-friday-state";
-import { colourTimingView, offerMockup } from "@/lib/meeting/deck-pages";
+import { colourTimingView, mockupJobs, offerMockup } from "@/lib/meeting/deck-pages";
 import { quoteInputs, quoteOffers, quoteRushFee, type MeetingMockup, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
 import { MOTION, transition } from "@/lib/motion";
 import { formatMoney, type QuoteTotals } from "@/lib/pricing";
@@ -184,8 +185,12 @@ export function QuoteScreen({
   const { save } = useQuoteSave({ leadId, pricing, from: "meeting", readOnly });
   // The picture for the option on screen: its own, else the Main, else none.
   const picture = offerMockup(mockups, viewing?.offer.id ?? null);
-  // The picture in its frame, the frame its shape (2026-11-11).
-  const pictureAspect = useImageAspect(picture?.url);
+  // The picture in its frame (2026-11-11): a tap opens it full screen, with
+  // the house's scenes there too; closing comes back to the option's own.
+  const pictureList = useMemo(
+    () => (picture ? [{ id: picture.id, name: cleanOfferName(viewing?.offer.name ?? "") || picture.name, url: picture.url }, ...housePictures(null, mockupJobs(mockups).scenes).filter((scene) => scene.id !== picture.id)] : []),
+    [picture, viewing, mockups],
+  );
   // The one colour line: stock, or made to order with spring or this season.
   const timing = colourTimingView({ lines, kind: colourKind, text: colourText, timing: state.colourTiming, rushFee: quoteRushFee(state) });
 
@@ -280,15 +285,15 @@ export function QuoteScreen({
             <div className="relative hidden min-h-0 min-w-0 overflow-hidden @3xl:block" data-testid="price-mockup" data-mockup={picture.id}>
               {/* Framed, clear of the screen's edge at the page's margin;
                   a new option's picture fades in (2026-11-11). */}
-              <PhotoFrame aspect={pictureAspect} className="left-10" testId="price-frame">
-                <DeckImage
-                  key={picture.url}
-                  photo={{ url: picture.url, focus: [0.5, 0.5] }}
-                  alt={`Your house: ${cleanOfferName(viewing.offer.name)}`}
-                  fit="contain"
-                  className="animate-in fade-in duration-300 motion-reduce:animate-none"
-                />
-              </PhotoFrame>
+              <HousePhoto
+                key={picture.id}
+                pictures={pictureList}
+                alt={`Your house: ${cleanOfferName(viewing.offer.name)}`}
+                picker={false}
+                resetOnClose
+                frameClassName="left-10 animate-in fade-in duration-300 motion-reduce:animate-none"
+                frameTestId="price-frame"
+              />
             </div>
           ) : null}
 

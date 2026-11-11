@@ -15,18 +15,21 @@ import {
 
 import { confirmedTonight, type Confirmation, type DeckColour } from "@/components/meeting/colour-page";
 import { DeckContext, type DeckContextValue, type EmptySlotRenderer } from "@/components/meeting/deck-parts";
-import { CoverPage, HiddenByDayPage, PhonePage, WhatVesperPage, type MoreState } from "@/components/meeting/deck-pages";
+import { CoverPage, HiddenByDayPage, PhonePage, WhatVesperPage, type CoverHouse, type MoreState } from "@/components/meeting/deck-pages";
+import { housePictures } from "@/components/meeting/house-photo";
 import { ExitHold } from "@/components/meeting/exit-hold";
 import { NextStepsPage } from "@/components/meeting/next-steps-page";
 import { QuoteScreen } from "@/components/meeting/quote-screen";
 import { TalkingPoints } from "@/components/meeting/talking-points";
 import { WarrantyPage } from "@/components/meeting/warranty-page";
 import type { DeckPageKey } from "@/lib/deck";
+import { calgaryToday, formatLongDay } from "@/lib/time";
 import { coolWhiteOf, warmWhiteOf } from "@/lib/lights/looks";
 import { blackFridayOn, offerPrice, recapParts, settleBlackFriday } from "@/lib/meeting/black-friday-state";
 import {
   bottomRowWidth,
   coverLine,
+  coverPrepared,
   DECK_CLEAR_CSS,
   DECK_ROW,
   DECK_ROW_BOTTOM_CSS,
@@ -173,6 +176,26 @@ function acceptedQuote(meeting: MeetingPayload | null): boolean {
   return draft?.accepted === true;
 }
 
+// The cover's house (2026-11-11): their Main (or the old mockup slot), their
+// scenes behind the phone icon, and the words from Settings. Null without a
+// Main, so the cover is as it was.
+function coverHouse(meeting: DeckProps["meeting"], deck: DeckProps["deck"]): CoverHouse | null {
+  if (!meeting) return null;
+  const jobs = mockupJobs(meeting.mockups ?? []);
+  const main =
+    jobs.main ?? (meeting.mockupUrl ? { id: "main", name: "", url: meeting.mockupUrl, main: true, day: false, night: false, scene: false, offers: [] } : null);
+  if (!main) return null;
+  const lines = deck.words.lines;
+  return {
+    pictures: housePictures(main, jobs.scenes),
+    prepared: coverPrepared(lines, meeting.lead),
+    address: coverLine(meeting.lead),
+    what: lines.cover_what.trim(),
+    points: [lines.cover_point_1, lines.cover_point_2, lines.cover_point_3].map((point) => point.trim()).filter(Boolean),
+    date: formatLongDay(calgaryToday()),
+  };
+}
+
 // The iPad's own copy lives in localStorage, which only the browser has. The
 // server and the first browser render both show the cover; the deck then
 // starts from that copy, so the two renders always agree.
@@ -185,6 +208,7 @@ export function Deck(props: DeckProps) {
           name={props.meeting?.lead.name ?? null}
           line={props.meeting ? coverLine(props.meeting.lead) : null}
           tagline={props.deck.words.lines.cover_line}
+          house={coverHouse(props.meeting, props.deck)}
         />
       </div>
     );
@@ -240,6 +264,8 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
   // The open layer: a page's key (its More, the contact sheet, the colour
   // chooser) or "next_steps:day" (Pick a day).
   const [layer, setLayer] = useState<string | null>(null);
+  // A house photo open full screen (round 15).
+  const [fullScreen, setFullScreen] = useState(false);
   const [galleryAt, setGalleryAt] = useState(0);
   const [overlay, setOverlay] = useState<HTMLDivElement | null>(null);
 
@@ -437,6 +463,7 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
       renderEmptySlot: fillEmpty ? renderEmptySlot : undefined,
       warm: warmWhiteOf(deck.looks),
       cool: coolWhiteOf(deck.looks),
+      setFullScreen,
     }),
     [overlay, reduced, fillEmpty, renderEmptySlot, deck.looks],
   );
@@ -447,11 +474,18 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
     const near = isNear(at, current);
     switch (page.key) {
       case "cover":
-        return <CoverPage name={meeting?.lead.name ?? null} line={meeting ? coverLine(meeting.lead) : null} tagline={deck.words.lines.cover_line} />;
+        return (
+          <CoverPage
+            name={meeting?.lead.name ?? null}
+            line={meeting ? coverLine(meeting.lead) : null}
+            tagline={deck.words.lines.cover_line}
+            house={coverHouse(meeting, deck)}
+          />
+        );
       case "what_vesper_is": {
         const main = jobs.main ?? (meeting?.mockupUrl ? { id: "main", name: "", url: meeting.mockupUrl, main: true, day: false, night: false, scene: false, offers: [] } : null);
         return main && meeting ? (
-          <WhatVesperPage deck={deck} near={near} more={moreOf(page.key)} main={main} addressLine={meeting.lead.addressLine} onSwipe={turnPage} />
+          <WhatVesperPage deck={deck} near={near} more={moreOf(page.key)} main={main} scenes={jobs.scenes} addressLine={meeting.lead.addressLine} onSwipe={turnPage} />
         ) : null;
       }
       case "hidden_by_day":
@@ -595,7 +629,7 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
 
         {/* Keenan's talking points for the page on screen: a quiet mark he
             presses and holds; never shown otherwise. */}
-        {currentKey ? <TalkingPoints key={currentKey} text={deck.talking?.[currentKey] ?? null} /> : null}
+        {currentKey && !fullScreen ? <TalkingPoints key={currentKey} text={deck.talking?.[currentKey] ?? null} /> : null}
 
         {/* Layers mount here: over the pages, under the way out and the dots. */}
         <div ref={setOverlay} className="pointer-events-none absolute inset-0 z-30 [&>*]:pointer-events-auto" />
@@ -605,7 +639,7 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             hold the iPad. All of it hides while a layer is open (the pager
             is locked and Back is the way out). The chevrons hide on a phone,
             where a swipe does it. */}
-        {!layer ? (
+        {!layer && !fullScreen ? (
           <div
             data-deck-row="nav"
             className="pointer-events-none absolute inset-x-0 z-40 flex h-14 items-center justify-center gap-1.5"
@@ -699,7 +733,7 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             iPad by its corner doesn't rest on it, out of the customer's eye
             line. */}
         <div
-          className="absolute z-50"
+          className={cn("absolute z-50", fullScreen && "hidden")}
           style={{ top: "max(20px, env(safe-area-inset-top, 0px))", left: "max(20px, env(safe-area-inset-left, 0px))" }}
         >
           <ExitHold onExit={onExit} label={mode === "rehearsal" ? "Hold to leave the rehearsal" : "Hold to leave meeting mode"} />

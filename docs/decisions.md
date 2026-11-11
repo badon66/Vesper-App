@@ -1344,3 +1344,13 @@ A quick round, merged on Keenan's word inside the knocking window.
 
 **The frame.** The house's pictures in the deck (Up once there all year, Hidden by day, the warm and cool pair, Run it from your phone, Your price) sit in a frame the photo's own shape: rounded corners, a hairline border, a soft shadow and a margin from every edge; the frame eases to a new shape and a new picture fades in. The customer link's house pictures (See it on your house, Your price) get the same treatment on white. DESIGN.md keeps the app itself flat and names this as the exception. Keenan's own photos in the deck's named slots, which fill their band edge to edge by design, were left full width.
 
+## 2026-11-11: Round 15, the cover and full screen (Keenan)
+
+Tested by what it touches and merged on Keenan's word inside the knocking window (he overrode it for this round), with no preview.
+
+**The cover.** It leads with the Main mockup in the same frame as the other pages, the logo and the words on a 400 px column to its right. "Prepared for the {family} home" takes the family name as everything after the first name; a lead with one name (or none split out) reads "Prepared for {name}". Today's date is the iPad's day in Calgary. The six new lines (who it is for, both forms; what Vesper is; the three points) are in Settings with the deck's other lines; the points allow six words, since "Run it from your phone" is five. A house with a Main but no scenes shows the house with no icon; a house with no Main keeps the old centred cover with its line. A legacy single mockup (before round 10) counts as the Main.
+
+**The selector.** It lists the Main first, then each scene once, by the names Keenan gave them (an unnamed Main reads "Lights on"). On the cover and Up once there all year it sits on the picture; on Run it from your phone the drawn phone is still the selector, so the picture there has no second icon, and full screen from that page opens on the scene showing.
+
+**Full screen.** One way for every house photo: a tap opens it, a tap, swipe down, Escape or the X closes it. Pinch to zoom moved there: the inline picture on Up once there all year no longer zooms, so a tap can open full screen (round 10 had it zoom in place). While it is open the deck hides its dots, Next, the way out and the talking points, and the arrow keys don't turn the page. Hidden by day keeps its slider, so it gets a corner expand button; Your price shows the option's picture first and goes back to it on close.
+

@@ -338,11 +338,35 @@ try {
   );
   check("meeting mode is full screen, with no tabs and no side rail", (await page.locator('nav[aria-label="Tabs"]').count()) === 0);
   check("it opens on the cover, with the address", (await currentScreen(page)) === "Vesper" && (await page.getByRole("region", { name: "Vesper" }).innerText()).includes("1 Test Crescent SW"));
-  check(
-    "the cover says what's coming, in the line from Settings",
-    flat(await page.getByTestId("deck-cover-line").innerText().catch(() => "")) === smart(deckLine(settings.deck, "cover_line")),
-    await page.getByTestId("deck-cover-line").innerText().catch(() => "no line"),
-  );
+  if ((await page.getByTestId("deck-cover").getAttribute("data-house").catch(() => null)) === "true") {
+    // Round 15: with a Main mockup the cover leads with the house, and says
+    // who it is for, what Vesper is (from Settings), three points and the date.
+    const coverText = await page.getByTestId("deck-cover").innerText();
+    check(
+      "the cover leads with their house, framed, with who it's for, the line on what Vesper is, three points and today's date",
+      (await page.getByTestId("cover-frame").count()) === 1 &&
+        /^Prepared for /.test(flat(await page.getByTestId("deck-cover-prepared").innerText())) &&
+        flat(await page.getByTestId("deck-cover-what").innerText()) === smart(deckLine(settings.deck, "cover_what")) &&
+        (await page.locator("[data-testid=deck-cover-points] li").count()) === 3 &&
+        (await page.getByTestId("deck-cover-date").innerText()).trim().length > 0,
+      coverText.slice(0, 240),
+    );
+    await page.getByTestId("house-photo-open").first().click();
+    await page.getByTestId("deck-full").waitFor({ timeout: 5000 }).catch(() => {});
+    const fullOpen = (await page.getByTestId("deck-full").count()) === 1;
+    await page.getByTestId("deck-full-close").click().catch(() => {});
+    await page.waitForTimeout(400);
+    check(
+      "tapping the house opens it full screen on black, and closing it stays on the cover",
+      fullOpen && (await page.getByTestId("deck-full").count()) === 0 && (await currentScreen(page)) === "Vesper",
+    );
+  } else {
+    check(
+      "the cover says what's coming, in the line from Settings",
+      flat(await page.getByTestId("deck-cover-line").innerText().catch(() => "")) === smart(deckLine(settings.deck, "cover_line")),
+      await page.getByTestId("deck-cover-line").innerText().catch(() => "no line"),
+    );
+  }
   const deckText = await page.locator("body").innerText();
   check(
     "nothing internal anywhere in the deck: no setter, no status, no pipeline",

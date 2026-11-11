@@ -534,7 +534,12 @@ try {
       await page.waitForTimeout(600);
     }
     if (at === 0) {
-      check("the cover's line says what's coming", flat(await page.getByTestId("deck-cover-line").innerText().catch(() => "")) === flat(deckLine(settings.deck, "cover_line")));
+      if ((await page.getByTestId("deck-cover").getAttribute("data-house").catch(() => null)) === "true") {
+        // Round 15: with a Main mockup the cover leads with the house.
+        check("the cover leads with their house and the line on what Vesper is", (await page.getByTestId("cover-frame").count()) === 1 && flat(await page.getByTestId("deck-cover-what").innerText().catch(() => "")) === flat(deckLine(settings.deck, "cover_what")));
+      } else {
+        check("the cover's line says what's coming", flat(await page.getByTestId("deck-cover-line").innerText().catch(() => "")) === flat(deckLine(settings.deck, "cover_line")));
+      }
     }
   }
   check("paging through meeting mode, the Edit layer and Pick a day wrote nothing", (await leadFootprint(leadId)) === looked);
