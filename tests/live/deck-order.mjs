@@ -122,7 +122,6 @@ export function activeLookCount(lightLooks) {
 export function deckOrder(settings, { lead }) {
   const deck = settings.deck;
   const main = Boolean(lead.main ?? lead.mockup);
-  const looks = activeLookCount(settings.light_looks);
   const shows = {
     cover: true,
     what_vesper_is: main,
