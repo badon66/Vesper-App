@@ -11,10 +11,13 @@
 // customer's link and round 8's Accepted sheet.
 
 import { priceQuote, runPart, selectRuns, totalFeet, type QuoteInputs, type QuoteRun, type QuoteTotals, type RunPart } from "@/lib/pricing";
+import { areaOf, hasArea } from "@/lib/quotes/areas";
 
 // boxes: this offer's control box count, 1 to 9; null uses the quote's
-// box count (the five seats, 2026-11-10).
-export type QuoteOffer = { id: string; name: string; runs: number[]; boxes?: number | null };
+// box count (the five seats, 2026-11-10). upperAccess (round 11): the
+// upper access amount Keenan typed over for this offer, 0 included, kept
+// as upper_access in quotes.offers; null is the automatic amount.
+export type QuoteOffer = { id: string; name: string; runs: number[]; boxes?: number | null; upperAccess?: number | null };
 
 export const OFFER_NAME_MAX = 60;
 // What the editor lets Keenan type, so an iPad button never wraps at three
@@ -28,41 +31,60 @@ export const OFFERS_MAX = 4;
 export const FULL_WRAP_ID = "full";
 export const FULL_WRAP_NAME = "Full wrap";
 
-export type QuickStart = "full" | "front" | "front_lower" | "blank";
+export type QuickStart = "front_lower" | "full_front" | "front_upper" | "full_wrap" | "front_back" | "full_back" | "custom";
 
-// The "+ Offer" choices (round 10, Keenan, 2026-11-10: Full wrap, Front and
-// Front lower). label is the button Keenan taps; name is what the offer it
-// makes is called, which customers read, and Keenan can rename it. Front
-// covers the runs on the front of the house (a run named front, the garage
-// and the porch), upper and lower; Front lower only their lower runs, and
-// is offered only when the front has an upper run, since otherwise it
-// would match Front.
+// The "+ Offer" presets (round 11, Keenan, 2026-11-11): the standard offers
+// he sells from, each filled from the measured areas, gables included to
+// start (he can tick a gable off on any offer). label is the button; name
+// is what the offer is called, which customers read and he can change.
 export const QUICK_STARTS: readonly { kind: QuickStart; label: string; name: string; hint: string }[] = [
-  { kind: "full", label: "Full wrap", name: "Full wrap", hint: "Every run" },
-  { kind: "front", label: "Front", name: "Front", hint: "The front runs, upper and lower" },
-  { kind: "front_lower", label: "Front lower", name: "Front lower", hint: "The front's lower runs" },
-  { kind: "blank", label: "Blank", name: "", hint: "Name it" },
+  { kind: "front_lower", label: "Front lower only", name: "Front lower only", hint: "The front, lower" },
+  { kind: "full_front", label: "Full front", name: "Full front", hint: "The front, upper and lower" },
+  { kind: "front_upper", label: "Front upper", name: "Front upper", hint: "The front, upper" },
+  { kind: "full_wrap", label: "Full wrap", name: "Full wrap", hint: "Every area" },
+  { kind: "front_back", label: "Front plus back", name: "Front plus back", hint: "The front and the back" },
+  { kind: "full_back", label: "Full back", name: "Full back", hint: "The back, upper and lower" },
+  { kind: "custom", label: "Custom", name: "", hint: "Tick the areas and name it" },
 ];
 
-// A run on the front of the house: named front (not back, rear or side),
-// or the garage or porch, which face the street.
-export function isFrontRun(run: QuoteRun): boolean {
-  const name = run.name.toLowerCase();
-  if (/\b(back|rear|sides?)\b/.test(name)) return false;
-  if (/\bfront\b/.test(name)) return true;
-  const part = runPart(run);
-  return part === "garage" || part === "porch";
+// The presets the measurements can fill: no Front upper without an upper
+// front, no Full back without a back, no Full front without both levels
+// at the front, no Front plus back without both; Full wrap needs any run.
+export function quickStartsFor(runs: QuoteRun[]): typeof QUICK_STARTS {
+  const frontLower = hasArea(runs, "front", "lower");
+  const frontUpper = hasArea(runs, "front", "upper");
+  const front = frontLower || frontUpper;
+  const back = hasArea(runs, "back");
+  const any = runs.some((run) => run.feet > 0);
+  const fits: Record<QuickStart, boolean> = {
+    front_lower: frontLower,
+    full_front: frontLower && frontUpper,
+    front_upper: frontUpper,
+    full_wrap: any,
+    front_back: front && back,
+    full_back: back,
+    custom: true,
+  };
+  return QUICK_STARTS.filter((start) => fits[start.kind]);
 }
 
-export function quickStartsFor(runs: QuoteRun[]): typeof QUICK_STARTS {
-  const upperFront = runs.some((run) => run.level === "upper" && isFrontRun(run));
-  return QUICK_STARTS.filter((start) => start.kind !== "front_lower" || upperFront);
+// A run on the front of the house, for an old run too: its area tag, else
+// what its name and part make obvious (lib/quotes/areas.ts).
+export function isFrontRun(run: QuoteRun): boolean {
+  return areaOf(run) === "front";
 }
 
 // A box count as saved: a whole number from 1 to 9, else null (the quote's).
 export function cleanBoxes(value: unknown): number | null {
   const n = typeof value === "string" && /^[0-9]+$/.test(value) ? Number(value) : value;
   return typeof n === "number" && Number.isInteger(n) && n >= 1 && n <= 9 ? n : null;
+}
+
+// An upper access amount Keenan typed over, as saved: 0 to 100,000 to the
+// cent, else null (the automatic amount).
+export function cleanUpperAccess(value: unknown): number | null {
+  const n = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+  return typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 100_000 ? Math.round(n * 100) / 100 : null;
 }
 
 // Positions on a quote with runCount runs: whole numbers in range, sorted,
@@ -97,23 +119,45 @@ export function parseOffers(value: unknown, runCount: number): QuoteOffer[] {
     const id = typeof record.id === "string" ? record.id.trim().slice(0, OFFER_ID_MAX) : "";
     if (id === "" || seen.has(id)) continue;
     seen.add(id);
-    offers.push({ id, name: cleanOfferName(record.name), runs: cleanPositions(runCount, record.runs), boxes: cleanBoxes(record.boxes) });
+    offers.push({
+      id,
+      name: cleanOfferName(record.name),
+      runs: cleanPositions(runCount, record.runs),
+      boxes: cleanBoxes(record.boxes),
+      upperAccess: cleanUpperAccess(record.upper_access ?? record.upperAccess),
+    });
   }
   if (offers.length > 0) return offers;
   return runCount > 0 ? [fullWrap(runCount)] : [];
 }
 
 export function fullWrap(runCount: number): QuoteOffer {
-  return { id: FULL_WRAP_ID, name: FULL_WRAP_NAME, runs: Array.from({ length: runCount }, (_, at) => at), boxes: null };
+  return { id: FULL_WRAP_ID, name: FULL_WRAP_NAME, runs: Array.from({ length: runCount }, (_, at) => at), boxes: null, upperAccess: null };
 }
 
-// What a quick start covers: every run, the front runs, the front's lower
-// runs, or none (Blank). Keenan taps runs on or off afterwards.
+// What a preset covers, as positions: its areas' runs, gables included;
+// Custom starts empty and Keenan ticks the areas himself.
 export function quickStartRuns(kind: QuickStart, runs: QuoteRun[]): number[] {
-  if (kind === "full") return runs.map((_, at) => at);
-  if (kind === "front") return runs.flatMap((run, at) => (isFrontRun(run) ? [at] : []));
-  if (kind === "front_lower") return runs.flatMap((run, at) => (isFrontRun(run) && run.level === "lower" ? [at] : []));
-  return [];
+  const on = (run: QuoteRun): boolean => {
+    const area = areaOf(run);
+    switch (kind) {
+      case "full_wrap":
+        return true;
+      case "front_lower":
+        return area === "front" && run.level === "lower";
+      case "front_upper":
+        return area === "front" && run.level === "upper";
+      case "full_front":
+        return area === "front";
+      case "full_back":
+        return area === "back";
+      case "front_back":
+        return area === "front" || area === "back";
+      default:
+        return false;
+    }
+  };
+  return runs.flatMap((run, at) => (on(run) ? [at] : []));
 }
 
 // A run's name, never blank, the way the customer's link and the database
@@ -211,7 +255,12 @@ export function addRunToOffers(offers: readonly QuoteOffer[], runsBefore: QuoteR
 // when the offer covers no run yet (it shows "Pick the runs" instead).
 export function priceOffer(inputs: QuoteInputs, offer: QuoteOffer): QuoteTotals | null {
   if (offer.runs.length === 0) return null;
-  return priceQuote({ ...inputs, runs: selectRuns(inputs.runs, offer.runs), boxCount: offer.boxes ?? inputs.boxCount });
+  return priceQuote({
+    ...inputs,
+    runs: selectRuns(inputs.runs, offer.runs),
+    boxCount: offer.boxes ?? inputs.boxCount,
+    upperAccess: offer.upperAccess ?? null,
+  });
 }
 
 export type PricedOffer = {
@@ -272,7 +321,13 @@ export function offersForSave(offers: readonly QuoteOffer[], runCount: number): 
     const id = offer.id.trim().slice(0, OFFER_ID_MAX);
     if (id === "" || seen.has(id)) continue;
     seen.add(id);
-    out.push({ id, name: cleanOfferName(offer.name), runs: cleanPositions(runCount, offer.runs), boxes: cleanBoxes(offer.boxes) });
+    out.push({
+      id,
+      name: cleanOfferName(offer.name),
+      runs: cleanPositions(runCount, offer.runs),
+      boxes: cleanBoxes(offer.boxes),
+      upperAccess: cleanUpperAccess(offer.upperAccess),
+    });
     if (out.length === OFFERS_MAX) break;
   }
   return out;

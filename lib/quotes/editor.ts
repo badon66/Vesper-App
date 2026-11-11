@@ -49,7 +49,7 @@ export function addQuickStart(offers: readonly QuoteOffer[], kind: QuickStart, r
     offers.map((offer) => offer.id),
     seed,
   );
-  const name = kind === "blank" ? "" : uniqueOfferName(start.name, offers);
+  const name = kind === "custom" ? "" : uniqueOfferName(start.name, offers);
   return [...offers, { id, name, runs: quickStartRuns(kind, runs), boxes: null }];
 }
 

@@ -5,6 +5,7 @@
 // text Keenan sends. No React and no network, so it is unit tested like the
 // pricing it feeds, and the page and the server share it.
 
+import { AREA_KINDS } from "@/lib/quotes/areas";
 import { z } from "zod";
 import {
   formatMoney,
@@ -163,6 +164,11 @@ const runSchema = z.object({
   // The part of the house (2026-11-04); a run saved before then has none,
   // and its name gives the guess.
   part: z.enum(RUN_PARTS).nullable().optional().catch(null),
+  // Round 11, quoting by area: kept so each area prices as Keenan set it.
+  area: z.enum(AREA_KINDS).nullable().optional().catch(null),
+  gable: z.boolean().nullable().optional().catch(null),
+  rate: z.coerce.number().nullable().optional().catch(null),
+  flat: z.coerce.number().nullable().optional().catch(null),
 });
 
 const quoteSchema = z.object({
@@ -206,7 +212,16 @@ function toQuote(q: z.infer<typeof quoteSchema>): CustomerQuote["quote"] {
     meetingOffer: q.meeting_offer?.trim() || null,
     accepted: q.accepted === true,
     acceptedOffer: q.accepted === true ? q.accepted_offer?.trim() || null : null,
-    runs: q.runs.map((run) => ({ name: run.name, feet: run.feet, level: run.level, part: runPart(run) })),
+    runs: q.runs.map((run) => ({
+      name: run.name,
+      feet: run.feet,
+      level: run.level,
+      part: runPart(run),
+      ...(run.area ? { area: run.area } : {}),
+      ...(typeof run.gable === "boolean" ? { gable: run.gable } : {}),
+      ...(typeof run.rate === "number" && run.rate > 0 ? { rate: run.rate } : {}),
+      ...(typeof run.flat === "number" && run.flat >= 0 ? { flat: run.flat } : {}),
+    })),
     runsFingerprint: q.runs_fingerprint,
     pricePerFt: q.price_per_ft,
     boxPrice: q.box_price,

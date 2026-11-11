@@ -27,7 +27,16 @@ export const NO_SIGNAL_SAVE = "No signal. The quote stays on this iPad; save aga
 export type QuoteSaveInput = {
   leadId: string;
   from: SaveFrom;
-  runs: { name: string; feet: number; level: "lower" | "upper"; part?: QuoteUIState["runs"][number]["part"] }[];
+  runs: {
+    name: string;
+    feet: number;
+    level: "lower" | "upper";
+    part?: QuoteUIState["runs"][number]["part"];
+    area?: QuoteUIState["runs"][number]["area"];
+    gable?: boolean | null;
+    rate?: number | null;
+    flat?: number | null;
+  }[];
   boxCount: number;
   pricePerFt: number;
   boxPrice: number;
@@ -45,7 +54,7 @@ export type QuoteSaveInput = {
   gstEnabled: boolean;
   gstRate: number;
   gstNumber: string | null;
-  offers: { id: string; name: string; runs: number[]; boxes: number | null }[];
+  offers: { id: string; name: string; runs: number[]; boxes: number | null; upperAccess: number | null }[];
   meetingOffer: string | null;
   meetingInstallOn: string | null;
 };
@@ -56,7 +65,7 @@ export type QuoteSaveInput = {
 export function quoteSaveInput(state: QuoteUIState, pricing: MeetingPayload["pricing"], leadId: string, from: SaveFrom): QuoteSaveInput {
   const inputs = quoteInputs(state, pricing);
   const runCount = state.runs.length;
-  const offers = offersForSave(state.offers, runCount).map((offer) => ({ ...offer, boxes: offer.boxes ?? null }));
+  const offers = offersForSave(state.offers, runCount).map((offer) => ({ ...offer, boxes: offer.boxes ?? null, upperAccess: offer.upperAccess ?? null }));
   // An empty list stands for one full wrap under the id "full".
   const ids = offers.length > 0 ? offers.map((offer) => offer.id) : runCount > 0 ? ["full"] : [];
   return {

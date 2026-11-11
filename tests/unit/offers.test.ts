@@ -11,6 +11,7 @@ import {
   offersForSave,
   parseOffers,
   pricedOffers,
+  QUICK_STARTS,
   priceOffer,
   quickStartRuns,
   quickStartsFor,
@@ -45,7 +46,7 @@ const inputs = (over: Partial<QuoteInputs> = {}): QuoteInputs => ({
 
 describe("offers", () => {
   it("reads an empty list as one full wrap, and cleans what is stored", () => {
-    expect(parseOffers([], 4)).toEqual([{ id: "full", name: "Full wrap", runs: [0, 1, 2, 3], boxes: null }]);
+    expect(parseOffers([], 4)).toEqual([{ id: "full", name: "Full wrap", runs: [0, 1, 2, 3], boxes: null, upperAccess: null }]);
     expect(parseOffers(null, 0)).toEqual([]);
     expect(
       parseOffers(
@@ -59,8 +60,8 @@ describe("offers", () => {
         4,
       ),
     ).toEqual([
-      { id: "a", name: "Lower level", runs: [0, 1, 2], boxes: null },
-      { id: "b", name: "Offer", runs: [], boxes: null },
+      { id: "a", name: "Lower level", runs: [0, 1, 2], boxes: null, upperAccess: null },
+      { id: "b", name: "Offer", runs: [], boxes: null, upperAccess: null },
     ]);
     expect(parseOffers([{ id: "c", name: "Two boxes", runs: [0], boxes: 2 }, { id: "d", name: "Bad", runs: [0], boxes: 12 }], 4).map((o) => o.boxes)).toEqual([2, null]);
   });
@@ -76,19 +77,22 @@ describe("offers", () => {
     expect(cleanPositions(3, "0,1")).toEqual([]);
   });
 
-  it("quick starts: Full wrap is every run, Front the front runs, Front lower their lower runs", () => {
-    expect(quickStartRuns("full", RUNS)).toEqual([0, 1, 2, 3]);
-    // Front, Garage and Upper front face the street; Upper gable is not named front.
-    expect(quickStartRuns("front", RUNS)).toEqual([0, 1, 2]);
+  it("presets (round 11): each fills from the areas, gables included; Custom starts empty", () => {
+    expect(quickStartRuns("full_wrap", RUNS)).toEqual([0, 1, 2, 3]);
+    // Front, Garage and Upper front are the front; Upper gable is named by its level only, so it is Other.
+    expect(quickStartRuns("full_front", RUNS)).toEqual([0, 1, 2]);
     expect(quickStartRuns("front_lower", RUNS)).toEqual([0, 1]);
-    expect(quickStartRuns("blank", RUNS)).toEqual([]);
+    expect(quickStartRuns("front_upper", RUNS)).toEqual([2]);
+    expect(quickStartRuns("custom", RUNS)).toEqual([]);
     const house: QuoteRun[] = [
       { name: "Back", feet: 40, level: "lower", part: "eave" },
       { name: "Left side", feet: 30, level: "lower", part: "sides" },
       { name: "Front porch", feet: 12, level: "lower", part: "porch" },
       { name: "Front gable", feet: 18, level: "upper", part: "gable" },
     ];
-    expect(quickStartRuns("front", house)).toEqual([2, 3]);
+    expect(quickStartRuns("full_front", house)).toEqual([2, 3]);
+    expect(quickStartRuns("full_back", house)).toEqual([0]);
+    expect(quickStartRuns("front_back", house)).toEqual([0, 2, 3]);
   });
 
   it("prices an offer from its own runs: upper access only with its upper runs, the gable amount with an upper gable", () => {
@@ -181,7 +185,11 @@ describe("offers", () => {
   it("saves at most four offers, cleaned", () => {
     const many = Array.from({ length: 8 }, (_, i) => ({ id: `o${i}`, name: `Offer ${i}`, runs: [i % 4] }));
     expect(offersForSave(many, 4)).toHaveLength(4);
-    expect(offersForSave([{ id: " a ", name: "Lower $", runs: [3, 3, 7], boxes: 2 }], 4)).toEqual([{ id: "a", name: "Lower", runs: [3], boxes: 2 }]);
+    expect(offersForSave([{ id: " a ", name: "Lower $", runs: [3, 3, 7], boxes: 2 }], 4)).toEqual([{ id: "a", name: "Lower", runs: [3], boxes: 2, upperAccess: null }]);
+    // A typed upper access amount is kept, 0 included, and read back from upper_access.
+    expect(offersForSave([{ id: "b", name: "Front", runs: [0], upperAccess: 0 }], 4)[0].upperAccess).toBe(0);
+    expect(parseOffers([{ id: "b", name: "Front", runs: [0], upper_access: 150.5 }], 4)[0].upperAccess).toBe(150.5);
+    expect(parseOffers([{ id: "b", name: "Front", runs: [0], upper_access: -1 }], 4)[0].upperAccess).toBeNull();
   });
 
   it("prices an offer with its own box count, or the quote's", () => {
@@ -207,9 +215,14 @@ describe("offers", () => {
     expect(offerCoverage([{ name: "Upper", feet: 20, level: "upper", part: "gable" }], { runs: [0] })).toBe("Gable, upper: 20 ft");
   });
 
-  it("offers Full wrap, Front and Front lower, and Front lower only when the front has an upper run", () => {
-    expect(quickStartsFor(RUNS).map((s) => s.kind)).toEqual(["full", "front", "front_lower", "blank"]);
-    expect(quickStartsFor(RUNS.filter((r) => r.level === "lower")).map((s) => s.kind)).toEqual(["full", "front", "blank"]);
-    expect(quickStartsFor(RUNS).map((s) => s.name)).toEqual(["Full wrap", "Front", "Front lower", ""]);
+  it("shows only the presets the measurements can fill", () => {
+    // Front lower and upper, no back: no Full back or Front plus back.
+    expect(quickStartsFor(RUNS).map((s) => s.kind)).toEqual(["front_lower", "full_front", "front_upper", "full_wrap", "custom"]);
+    // A bungalow front: no Full front or Front upper.
+    expect(quickStartsFor(RUNS.filter((r) => r.level === "lower")).map((s) => s.kind)).toEqual(["front_lower", "full_wrap", "custom"]);
+    const both: QuoteRun[] = [...RUNS, { name: "Back", feet: 40, level: "lower", part: "eave" }];
+    expect(quickStartsFor(both).map((s) => s.kind)).toEqual(["front_lower", "full_front", "front_upper", "full_wrap", "front_back", "full_back", "custom"]);
+    expect(quickStartsFor([]).map((s) => s.kind)).toEqual(["custom"]);
+    expect(QUICK_STARTS.map((s) => s.name)).toEqual(["Front lower only", "Full front", "Front upper", "Full wrap", "Front plus back", "Full back", ""]);
   });
 });

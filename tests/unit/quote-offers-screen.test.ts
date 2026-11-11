@@ -47,9 +47,9 @@ const inputs = (over: Partial<QuoteInputs> = {}): QuoteInputs => ({
   ...over,
 });
 
-const FULL: QuoteOffer = { id: "full", name: "Full wrap", runs: [0, 1, 2, 3], boxes: null };
-const MAIN: QuoteOffer = { id: "main", name: "Main floor", runs: [0, 1], boxes: null };
-const FRONT: QuoteOffer = { id: "front", name: "Front only", runs: [0], boxes: null };
+const FULL: QuoteOffer = { id: "full", name: "Full wrap", runs: [0, 1, 2, 3], boxes: null, upperAccess: null };
+const MAIN: QuoteOffer = { id: "main", name: "Main floor", runs: [0, 1], boxes: null, upperAccess: null };
+const FRONT: QuoteOffer = { id: "front", name: "Front only", runs: [0], boxes: null, upperAccess: null };
 
 const pricing: MeetingPayload["pricing"] = {
   pricePerFt: 23,
@@ -117,17 +117,17 @@ describe("the quote editor", () => {
     expect(editorOffers(RUNS, [MAIN])).toEqual([MAIN]);
   });
 
-  it("adds quick starts: Front lower, Front and Blank, at most four", () => {
+  it("adds presets: Front lower only, Full front and Custom, at most four", () => {
     const withMain = addQuickStart([FULL], "front_lower", RUNS, 1);
-    expect(withMain[1]).toMatchObject({ name: "Front lower", runs: [0, 1], boxes: null });
-    const withFront = addQuickStart(withMain, "front", RUNS, 2);
-    expect(withFront[2]).toMatchObject({ name: "Front", runs: [0, 1, 2] });
-    const withBlank = addQuickStart(withFront, "blank", RUNS, 3);
+    expect(withMain[1]).toMatchObject({ name: "Front lower only", runs: [0, 1], boxes: null });
+    const withFront = addQuickStart(withMain, "full_front", RUNS, 2);
+    expect(withFront[2]).toMatchObject({ name: "Full front", runs: [0, 1, 2] });
+    const withBlank = addQuickStart(withFront, "custom", RUNS, 3);
     expect(withBlank[3]).toMatchObject({ name: "", runs: [] });
     expect(new Set(withBlank.map((offer) => offer.id)).size).toBe(4);
-    expect(addQuickStart(withBlank, "full", RUNS, 4)).toHaveLength(4);
+    expect(addQuickStart(withBlank, "full_wrap", RUNS, 4)).toHaveLength(4);
     // A second Full wrap gets a name customers can tell apart.
-    expect(addQuickStart([FULL], "full", RUNS, 5)[1].name).toBe("Full wrap 2");
+    expect(addQuickStart([FULL], "full_wrap", RUNS, 5)[1].name).toBe("Full wrap 2");
   });
 
   it("taps runs on and off an offer, kept in order", () => {

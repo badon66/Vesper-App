@@ -6,6 +6,7 @@ import { NotOwnerError, ReadOnlyError, requireOwnerForAction, type SessionProfil
 import { hasDash, hasExclamation } from "@/lib/deck";
 import { guessRunPart, RUN_PARTS, totalFeet, type QuoteInputs } from "@/lib/pricing";
 import { quoteLockedWords, type QuoteSaveInput } from "@/lib/quotes/draft";
+import { AREA_KINDS } from "@/lib/quotes/areas";
 import { chosenOfferTotals, OFFERS_MAX, offersForSave } from "@/lib/quotes/offers";
 import { createClient } from "@/lib/supabase/server";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
@@ -42,6 +43,12 @@ const quoteDraftSchema = z.object({
         // The part of the house (2026-11-04). An iPad still holding a draft
         // from before parts gets the guess from the run's name.
         part: z.enum(RUN_PARTS).nullable().optional(),
+        // Round 11, quoting by area: the view, a gable, Keenan's own price
+        // a foot for the area, or a flat price for it.
+        area: z.enum(AREA_KINDS).nullable().optional(),
+        gable: z.boolean().nullable().optional(),
+        rate: z.number().min(0).max(10_000).nullable().optional(),
+        flat: z.number().min(0).max(1_000_000).nullable().optional(),
       }),
     )
     .max(30),
@@ -85,6 +92,8 @@ const quoteDraftSchema = z.object({
         name: z.string().max(60),
         runs: z.array(z.number().int().min(0).max(29)).max(30),
         boxes: z.number().int().min(1).max(9).nullable().optional(),
+        // Round 11: the upper access amount typed over for this offer.
+        upperAccess: z.number().min(0).max(100_000).nullable().optional(),
       }),
     )
     .max(OFFERS_MAX)
@@ -128,7 +137,7 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
   // The offers as the database keeps them, and the table's choice only
   // while it names one of them (an empty list is one full wrap, "full").
   const offers = offersForSave(
-    (draft.offers ?? []).map((offer) => ({ ...offer, boxes: offer.boxes ?? null })),
+    (draft.offers ?? []).map((offer) => ({ ...offer, boxes: offer.boxes ?? null, upperAccess: offer.upperAccess ?? null })),
     draft.runs.length,
   );
   const offerIds = offers.length > 0 ? offers.map((offer) => offer.id) : draft.runs.length > 0 ? ["full"] : [];
@@ -170,7 +179,13 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     price_per_ft: draft.pricePerFt,
     box_price: draft.boxPrice,
     box_count: draft.boxCount,
-    runs: draft.runs,
+    runs: draft.runs.map(({ area, gable, rate, flat, ...run }) => ({
+      ...run,
+      ...(area ? { area } : {}),
+      ...(typeof gable === "boolean" ? { gable } : {}),
+      ...(typeof rate === "number" && rate > 0 ? { rate } : {}),
+      ...(typeof flat === "number" ? { flat } : {}),
+    })),
     total_feet: totalFeet(draft.runs),
     // Stored the way the data model names it: upper_only, only when set.
     adders: draft.adders.map((adder) => ({
@@ -201,8 +216,9 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     valid_until: draft.validUntil,
     min_job_total: draft.minJobTotal ?? null,
     // Round 9: the offers, the table's choice and the install day picked
-    // there (never written to the lead before Accepted).
-    offers,
+    // there (never written to the lead before Accepted). Stored the way the
+    // database cleans them: upper_access for the typed amount (round 11).
+    offers: offers.map(({ upperAccess, ...offer }) => ({ ...offer, upper_access: upperAccess ?? null })),
     meeting_offer: meetingOffer,
     meeting_install_on: draft.meetingInstallOn ?? null,
   };

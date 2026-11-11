@@ -92,7 +92,7 @@ export function QuoteEditor({ state, onChange, pricing, colourKind, colourText, 
   const addOffer = (kind: QuickStart) => {
     const next = addQuickStart(offers, kind, state.runs);
     setQuickOpen(false);
-    if (kind === "blank") setFocusOffer(next[next.length - 1]?.id ?? null);
+    if (kind === "custom") setFocusOffer(next[next.length - 1]?.id ?? null);
     setOffers(next);
   };
   const changeOffer = (offer: QuoteOffer) => setOffers(offers.map((item) => (item.id === offer.id ? offer : item)));
