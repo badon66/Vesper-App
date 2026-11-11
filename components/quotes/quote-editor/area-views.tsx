@@ -1,8 +1,9 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode, type Ref } from "react";
 
+import { HouseView } from "@/components/quotes/quote-editor/house-views";
 import { MoneyBox, Segmented, useTyping } from "@/components/quotes/quote-editor/parts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +14,7 @@ import {
   areaLines,
   areaShortLabel,
   dropRun,
+  houseLines,
   moneyText,
   runByTheFoot,
   runPricingMode,
@@ -25,17 +27,23 @@ import {
 import type { QuoteOffer } from "@/lib/quotes/offers";
 import { cn } from "@/lib/utils";
 
-// Measuring, front and back views (round 11, Keenan, 2026-11-11). Keenan
-// measures the house as areas: the Front view (lower, its gable, upper, its
-// gable), the Back view (the same four), the Sides (one number each for
-// both sides together) and Other for anything off the views (a shed, a
-// detached garage). Each area is a line he taps to type its feet; an area
-// with no feet isn't on the house and is never kept as a run. Under a
-// measured line sits its price: the quote's price a foot, his own price a
-// foot for that area, or a flat price. An old quote's extra runs on an area
-// (Front and Garage, say) show as more lines under it, named apart, never
-// merged. No drawing: this is Keenan's alone, and customers only ever see
-// an offer's photo. Owner only, never View as.
+// Measuring, the views drawn (round 11, Keenan, 2026-11-11). Keenan measures
+// the house as areas on two drawings, FRONT and BACK (lower roofline, lower
+// gable, upper roofline, upper gable on each), a slim strip for the Sides
+// (one number each for both sides together) and Other for anything off the
+// views (a shed, a detached garage). On the drawing a measured line is solid
+// with its feet on it, an unmeasured one faint and dashed, and the lines the
+// active offer covers light up in gold (house-views.tsx). Under each drawing
+// sit its rows: one per area, the feet box and, once measured, its price
+// (the quote's price a foot, his own price a foot for that area, or a flat
+// price). Tapping a line on the drawing lands in that area's feet box. The
+// rows stay for the unmeasured areas too, quiet: a box that moved while he
+// typed into it would lose his thumb, and the walk-throughs type into them.
+// An area with no feet isn't on the house and is never kept as a run. An old
+// quote's extra runs on an area (Front and Garage, say) show as rows of
+// their own under the drawing, named apart, never merged and never on the
+// line. This is Keenan's alone: customers only ever see an offer's photo.
+// Owner only, never View as.
 
 const LEVELS = [
   { value: "lower", label: "Lower" },
@@ -47,6 +55,7 @@ export function AreaViews({
   offers,
   pricePerFt,
   locked,
+  lit,
   onChange,
 }: {
   runs: QuoteRun[];
@@ -54,17 +63,37 @@ export function AreaViews({
   offers: QuoteOffer[];
   pricePerFt: number;
   locked: boolean;
+  // The positions the active offer covers (quote-editor.tsx): their lines
+  // light up on the drawings. Lighting writes nothing.
+  lit?: ReadonlySet<number>;
   onChange: (next: RunsAndOffers) => void;
 }) {
   const state: RunsAndOffers = { runs, offers };
   const lines = areaLines(runs);
+  const house = houseLines(runs, lit);
   const others = otherRuns(runs);
   const setRun = (at: number, next: QuoteRun) => onChange({ ...state, runs: runs.map((run, which) => (which === at ? next : run)) });
+
+  // Each area's own feet box, so a tap on its line on the drawing lands in
+  // it: a measured line's feet selected to type over, an empty line's box
+  // open and waiting.
+  const boxes = useRef(new Map<AreaKey, HTMLInputElement>());
+  const keep = (key: AreaKey) => (node: HTMLInputElement | null) => {
+    if (node) boxes.current.set(key, node);
+    else boxes.current.delete(key);
+  };
+  const tapLine = (key: AreaKey) => {
+    const box = boxes.current.get(key);
+    if (!box) return;
+    box.focus();
+    box.select();
+  };
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {AREA_VIEWS.map((view) => (
         <Panel key={view.kind} title={view.title}>
+          <HouseView view={view.kind} lines={house} onTap={locked ? undefined : tapLine} />
           <ul className="flex flex-col divide-y">
             {view.keys.map((key) => (
               <AreaLine
@@ -74,6 +103,7 @@ export function AreaViews({
                 runs={runs}
                 pricePerFt={pricePerFt}
                 locked={locked}
+                feetRef={keep(key)}
                 onFeet={(feet) => onChange(setAreaFeet(state, key, feet))}
                 onRunFeet={(at, feet) => onChange(setRunFeet(state, at, feet))}
                 onRun={setRun}
@@ -111,11 +141,13 @@ export function AreaViews({
   );
 }
 
+// A view's panel: a small caption (FRONT, BACK, SIDES, OTHER), then its
+// drawing and its rows.
 function Panel({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
     <section aria-label={title} className="flex flex-col gap-3 rounded-lg border bg-card p-4" data-testid="area-view" data-view={title.toLowerCase()}>
       <div className="flex flex-col gap-0.5">
-        <h4 className="text-base font-bold">{title}</h4>
+        <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">{title}</h4>
         {hint ? <p className="text-xs text-pretty text-muted-foreground">{hint}</p> : null}
       </div>
       {children}
@@ -123,13 +155,16 @@ function Panel({ title, hint, children }: { title: string; hint?: string; childr
   );
 }
 
-// One standard area: its line, then an old quote's extra runs on it.
+// One standard area's row under the drawing: its label, its feet box and,
+// once measured, its price; then an old quote's extra runs on it, each a
+// row of its own by name.
 function AreaLine({
   areaKey,
   positions,
   runs,
   pricePerFt,
   locked,
+  feetRef,
   onFeet,
   onRunFeet,
   onRun,
@@ -139,6 +174,7 @@ function AreaLine({
   runs: QuoteRun[];
   pricePerFt: number;
   locked: boolean;
+  feetRef: Ref<HTMLInputElement>;
   onFeet: (feet: number) => void;
   onRunFeet: (at: number, feet: number) => void;
   onRun: (at: number, next: QuoteRun) => void;
@@ -156,7 +192,7 @@ function AreaLine({
             <p className={cn("text-base font-semibold", feet === 0 && "text-muted-foreground")}>{areaShortLabel(areaKey)}</p>
             {ownName ? <p className="truncate text-xs text-muted-foreground">{ownName}</p> : null}
           </div>
-          <FeetBox label={`${AREA_LABELS[areaKey]} feet`} area={areaKey} feet={feet} disabled={locked} onFeet={onFeet} />
+          <FeetBox label={`${AREA_LABELS[areaKey]} feet`} area={areaKey} feet={feet} disabled={locked} inputRef={feetRef} onFeet={onFeet} />
         </div>
         {run && at !== null && feet > 0 ? (
           <PriceControl run={run} area={areaKey} pricePerFt={pricePerFt} disabled={locked} onRun={(next) => onRun(at, next)} />
@@ -271,18 +307,21 @@ function FeetBox({
   area,
   feet,
   disabled,
+  inputRef,
   onFeet,
 }: {
   label: string;
   area: string;
   feet: number;
   disabled: boolean;
+  inputRef?: Ref<HTMLInputElement>;
   onFeet: (feet: number) => void;
 }) {
   const typing = useTyping(feet > 0 ? String(feet) : "");
   return (
     <div className="relative shrink-0">
       <Input
+        ref={inputRef}
         inputMode="numeric"
         pattern="[0-9]*"
         aria-label={label}

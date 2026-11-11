@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import type { LeadMockupItem } from "@/lib/leads/mockup-roles";
 import { colourTimingFor, quoteInputs, quoteMinimum, quoteRushFee, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
 import { cleanFeet, defaultValidUntil, formatMoney, percentWords, totalFeet, usablePercent } from "@/lib/pricing";
-import { addQuickStart, editorOffers, editorOrder, offerWarnings, percentDiscountWords, typeDiscountAmount } from "@/lib/quotes/editor";
+import { addQuickStart, editorOffers, editorOrder, offerLitPositions, offerWarnings, percentDiscountWords, typeDiscountAmount } from "@/lib/quotes/editor";
 import { OFFERS_MAX, pricedOffers, quickStartsFor, type QuickStart, type QuoteOffer } from "@/lib/quotes/offers";
 import { cn } from "@/lib/utils";
 
@@ -21,11 +21,13 @@ import { cn } from "@/lib/utils";
 // one component in two places, the lead page's Edit the quote sheet and
 // meeting mode's Edit layer, so it is literally the quote the meeting opens
 // with. The sections follow the order a quote is built: measuring (the
-// Front and Back views, the Sides and Other, each area a line he types the
-// feet into, priced the quote's way or his own), the offers (each picking
-// its areas, gables ticked on or off, biggest first, with a photo spot on
-// the lead page), and the prices for this quote (collapsed, since Settings'
-// values usually stand). Warnings are quiet and never block. An accepted
+// Front and Back views drawn, the Sides and Other, each area a line he taps
+// to type the feet into, priced the quote's way or his own), the offers
+// (each picking its areas, gables ticked on or off, biggest first, with a
+// photo spot on the lead page; tapping a card lights the areas it covers on
+// the drawings, and a tap outside the cards puts the lights out), and the
+// prices for this quote (collapsed, since Settings' values usually stand).
+// Warnings are quiet and never block. An accepted
 // quote is read only. Owner only, never under View as, never customer
 // facing. It holds no state of its own but the screen's: the quote is the
 // caller's, and Save is the caller's too.
@@ -73,6 +75,11 @@ export function QuoteEditor({
   const [quickOpen, setQuickOpen] = useState(false);
   const [focusOffer, setFocusOffer] = useState<string | null>(null);
 
+  // The active offer (its card tapped or focused): the measured areas it
+  // covers light up on the drawings. Screen state only; nothing is written.
+  const [activeOffer, setActiveOffer] = useState<string | null>(null);
+  const lit = useMemo(() => offerLitPositions(state.runs, offers.find((offer) => offer.id === activeOffer) ?? null), [state.runs, offers, activeOffer]);
+
   // The cards sit biggest first, but re-sort only when Keenan leaves a
   // field or taps outside the cards, never while he types or taps a card's
   // runs; adding or deleting one re-sorts at once.
@@ -100,11 +107,13 @@ export function QuoteEditor({
     setOffers(next);
   };
   const changeOffer = (offer: QuoteOffer) => setOffers(offers.map((item) => (item.id === offer.id ? offer : item)));
-  const deleteOffer = (id: string) =>
+  const deleteOffer = (id: string) => {
+    if (activeOffer === id) setActiveOffer(null);
     setOffers(
       offers.filter((item) => item.id !== id),
       state.chosenOffer === id ? { chosenOffer: null } : {},
     );
+  };
 
   const feet = totalFeet(state.runs);
   const quickStarts = quickStartsFor(state.runs);
@@ -119,7 +128,9 @@ export function QuoteEditor({
         if (event.target instanceof HTMLInputElement) resort();
       }}
       onPointerDown={(event) => {
-        if (!(event.target instanceof Element && event.target.closest("[data-offer-card]"))) resort();
+        if (event.target instanceof Element && event.target.closest("[data-offer-card]")) return;
+        resort();
+        setActiveOffer(null);
       }}
     >
       {locked && lockedWords ? (
@@ -143,7 +154,7 @@ export function QuoteEditor({
             {feet} ft measured
           </p>
         </div>
-        <AreaViews runs={state.runs} offers={state.offers} pricePerFt={inputs.pricePerFt} locked={locked} onChange={(next) => set(next)} />
+        <AreaViews runs={state.runs} offers={state.offers} pricePerFt={inputs.pricePerFt} locked={locked} lit={lit} onChange={(next) => set(next)} />
       </section>
 
       {/* ------------------------------------------------ offers */}
@@ -199,6 +210,7 @@ export function QuoteEditor({
                 locked={locked}
                 photos={photos}
                 autoFocus={focusOffer === offer.id}
+                onActivate={() => setActiveOffer(offer.id)}
                 onChange={changeOffer}
                 onDelete={() => deleteOffer(offer.id)}
               />
