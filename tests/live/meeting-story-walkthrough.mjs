@@ -981,9 +981,10 @@ try {
   );
   const sources = (await acceptSheet.getByTestId("outcome-choice-source").allInnerTexts()).map(flat);
   check(
-    "the Accepted sheet lists the three options biggest first, says where each choice came from, and starts on the meeting's choice and day",
+    "the Accepted sheet lists the three options biggest first, says where each choice came from, opens on the option they booked on their link (round 13) with the table's choice marked beside it, and starts on the table's day",
     JSON.stringify(offered.map((o) => o.offer)) === JSON.stringify(["full", "main", "front"]) &&
-      offered.find((o) => o.checked)?.offer === "main" &&
+      offered.find((o) => o.checked)?.offer === "front" &&
+      (await acceptSheet.locator('[data-testid="outcome-option"][data-offer="main"]').getByTestId("outcome-option-meeting").count()) === 1 &&
       JSON.stringify(sources) === JSON.stringify(["Chosen at the meeting: Main floor", "Booked on their link: Front only"]) &&
       (await page.getByTestId("outcome-planned-on").inputValue()) === tableDay,
     `${JSON.stringify(offered)} | ${sources.join(" | ")}`,
