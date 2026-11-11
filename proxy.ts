@@ -105,5 +105,5 @@ function withCookies(target: NextResponse, source: NextResponse) {
 // Every request except build files and the worker: the quote domain has to
 // be able to turn away anything that isn't a quote page.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|sw\\.js|icons/).*)"],
+  matcher: ["/((?!_next/static|_next/image|sw\\.js|icons/|brand/).*)"],
 };

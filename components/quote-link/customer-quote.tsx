@@ -1328,7 +1328,9 @@ function Mockup({
         aria-label={openLabel}
         className={cn(
           "group relative block aspect-[3/2] w-full overflow-hidden bg-navy outline-none focus-visible:outline-solid focus-visible:outline-3 focus-visible:-outline-offset-4 focus-visible:outline-white",
-          inset && "rounded-md",
+          // Framed like the deck's pictures (2026-11-11): rounded, a hairline
+          // edge and a soft shadow, so the house sits just off the white page.
+          inset && "rounded-2xl border border-navy/15 shadow-[0_22px_44px_-24px_rgba(19,46,63,0.6),0_8px_18px_-12px_rgba(19,46,63,0.35)]",
         )}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- a private photo behind a ten-minute signed link */}
@@ -1336,7 +1338,7 @@ function Mockup({
           ref={picture}
           src={url}
           alt={alt}
-          className="block size-full object-contain"
+          className={cn("block size-full object-contain", inset && "animate-in fade-in duration-300 motion-reduce:animate-none")}
           onError={() => setBroken(true)}
           data-testid={ids.image}
         />

@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState, type CSSPropert
 import { createPortal } from "react-dom";
 
 import { DeckDrawing, isDrawingFallback } from "@/components/drawings/deck-drawing";
+import { useBoxSize } from "@/components/lights/light-canvas";
 import type { DrawingGround } from "@/components/drawings/house-drawing";
 import { isControlTarget } from "@/components/meeting/picker/picker-state";
 import type { DeckSlot, Look } from "@/lib/deck";
@@ -121,6 +122,82 @@ export function DeckImage({
       className={cn("absolute inset-0 size-full select-none", fit === "cover" ? "object-cover" : "object-contain", className)}
       style={{ objectPosition: `${Math.round(x * 1000) / 10}% ${Math.round(y * 1000) / 10}%`, ...noCallout, ...style }}
     />
+  );
+}
+
+// ---------------------------------------------------------------- the photo frame
+
+// Keenan, 2026-11-11: the house's pictures in the deck sit in a frame, not
+// dropped on the page. Rounded corners, a hairline border that reads on the
+// dark deck, and a soft shadow so the photo sits just off the page (the one
+// place the deck uses a shadow; DESIGN.md keeps the app itself flat). The
+// frame is the photo's own shape, so nothing is cropped and there is no
+// letterbox inside it; it keeps a margin from every edge of its box, and
+// when the picture changes shape it eases to the new one.
+export const PHOTO_FRAME =
+  "relative overflow-hidden rounded-[18px] border border-foreground/15 bg-black/25 shadow-[0_30px_60px_-28px_rgba(0,0,0,0.85),0_12px_28px_-16px_rgba(0,0,0,0.6)]";
+
+// A picture's width over its height, once it has loaded (null until then).
+// It asks for the picture the way the deck does (CORS), so the copy already
+// on the iPad answers.
+export function useImageAspect(url: string | null | undefined): number | null {
+  const [shape, setShape] = useState<{ url: string; aspect: number } | null>(null);
+  useEffect(() => {
+    if (!url) return;
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () => {
+      if (image.naturalWidth > 0 && image.naturalHeight > 0) setShape({ url, aspect: image.naturalWidth / image.naturalHeight });
+    };
+    image.src = url;
+    return () => {
+      image.onload = null;
+    };
+  }, [url]);
+  return shape && shape.url === url ? shape.aspect : null;
+}
+
+// The frame inside a box: the photo's shape fitted in the box less its
+// margin (aspect), or the whole box less its margin while the shape isn't
+// known yet. Its children fill the frame (DeckImage, the slider, the zoom).
+export function PhotoFrame({
+  aspect,
+  children,
+  className,
+  testId = "photo-frame",
+}: {
+  aspect: number | null;
+  children: ReactNode;
+  className?: string;
+  testId?: string;
+}) {
+  const { reduced } = useDeck();
+  const [boxRef, box] = useBoxSize<HTMLDivElement>();
+  const margin = Math.round(Math.max(20, Math.min(box.width, box.height) * 0.045));
+  const roomW = Math.max(0, box.width - margin * 2);
+  const roomH = Math.max(0, box.height - margin * 2);
+  let width = roomW;
+  let height = roomH;
+  if (aspect && roomW > 0 && roomH > 0) {
+    if (roomW / roomH > aspect) width = Math.round(roomH * aspect);
+    else height = Math.round(roomW / aspect);
+  }
+  return (
+    <div ref={boxRef} className={cn("absolute inset-0 flex items-center justify-center", className)}>
+      {width > 0 && height > 0 ? (
+        <div
+          className={PHOTO_FRAME}
+          style={{
+            width,
+            height,
+            transition: reduced ? undefined : `width ${MOTION.lookFadeMs}ms ${EASE_QUIET}, height ${MOTION.lookFadeMs}ms ${EASE_QUIET}`,
+          }}
+          data-testid={testId}
+        >
+          {children}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

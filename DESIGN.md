@@ -160,6 +160,10 @@ A two-colour brand, navy and gold, on night-navy surfaces, with white text that 
 
 Flat. Surfaces are separated by tonal steps (background, card, muted) and 1 px borders. The only shadow is a small one under floating notices that sit over content (`shadow-sm`).
 
+Two exceptions (Keenan, 2026-11-11): the house's pictures in meeting mode, and the customer link's house pictures, sit in a photo frame: 18 px corners on the iPad (16 px on the phone), a hairline border (foreground at 15%, navy at 15% on the white link), and a soft shadow, so the photo sits just off the page. The frame takes the photo's own shape, keeps a margin from every edge, eases to a new shape and fades a new picture in (300 ms, none with Reduce Motion). Keenan's own full-width photos in the deck's named slots stay edge to edge.
+
+**Logo.** The real Vesper Lighting logo (`components/brand/logo.tsx`, files in `brand/`, web sizes in `public/brand/`): the white version on navy and dark grounds, the navy version on white, following the theme in the app. The text wordmark is gone.
+
 ## Shapes
 
 Gently rounded rectangles: 6 px on buttons, fields and time tiles, 8 px on cards, round only for the holder's initials and small badges. No pills for primary actions.

@@ -1,18 +1,18 @@
 import { Mail, MessageSquare, Phone } from "lucide-react";
-import { Wordmark } from "@/components/brand/wordmark";
+import { Logo } from "@/components/brand/logo";
 import { phoneHref, type Company } from "@/lib/quote-link/view";
 import { cn } from "@/lib/utils";
 
 // The customer quote page's frame (2026-11-02; slimmed 2026-11-04): always
-// white with a slim navy band and the Vesper name, whatever theme the phone
+// white with a slim navy band and the Vesper logo (its white version, 2026-11-11), whatever theme the phone
 // uses, like the documents. It scrolls away with the page. No app chrome:
 // no tabs, no account, nothing internal.
 export function QuoteShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="quote-light min-h-dvh bg-background text-foreground selection:bg-accent selection:text-foreground">
       <header className="bg-navy pt-[env(safe-area-inset-top)] text-white">
-        <div className="mx-auto flex h-12 max-w-xl items-center px-5">
-          <Wordmark className="text-lg" />
+        <div className="mx-auto flex h-14 max-w-xl items-center px-5">
+          <Logo tone="light" className="h-9" />
         </div>
       </header>
       {children}

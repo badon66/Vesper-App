@@ -5,7 +5,7 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { InitialsConfirm, type Confirmation } from "@/components/meeting/colour-page";
-import { DeckButton, DeckImage, DECK_TYPE, MoreLayer, say, useDeck } from "@/components/meeting/deck-parts";
+import { DeckButton, DeckImage, DECK_TYPE, MoreLayer, PhotoFrame, say, useDeck, useImageAspect } from "@/components/meeting/deck-parts";
 import { EditorClose, EditorSave } from "@/components/quotes/quote-editor/parts";
 import { hasMeasuredRun, QuoteEditor } from "@/components/quotes/quote-editor/quote-editor";
 import { useQuoteSave } from "@/components/quotes/quote-editor/use-quote-save";
@@ -184,6 +184,8 @@ export function QuoteScreen({
   const { save } = useQuoteSave({ leadId, pricing, from: "meeting", readOnly });
   // The picture for the option on screen: its own, else the Main, else none.
   const picture = offerMockup(mockups, viewing?.offer.id ?? null);
+  // The picture in its frame, the frame its shape (2026-11-11).
+  const pictureAspect = useImageAspect(picture?.url);
   // The one colour line: stock, or made to order with spring or this season.
   const timing = colourTimingView({ lines, kind: colourKind, text: colourText, timing: state.colourTiming, rushFee: quoteRushFee(state) });
 
@@ -276,7 +278,17 @@ export function QuoteScreen({
               the options take the whole width, so no price is cut off. */}
           {picture ? (
             <div className="relative hidden min-h-0 min-w-0 overflow-hidden @3xl:block" data-testid="price-mockup" data-mockup={picture.id}>
-              <DeckImage photo={{ url: picture.url, focus: [0.5, 0.5] }} alt={`Your house: ${cleanOfferName(viewing.offer.name)}`} fit="contain" />
+              {/* Framed, clear of the screen's edge at the page's margin;
+                  a new option's picture fades in (2026-11-11). */}
+              <PhotoFrame aspect={pictureAspect} className="left-10" testId="price-frame">
+                <DeckImage
+                  key={picture.url}
+                  photo={{ url: picture.url, focus: [0.5, 0.5] }}
+                  alt={`Your house: ${cleanOfferName(viewing.offer.name)}`}
+                  fit="contain"
+                  className="animate-in fade-in duration-300 motion-reduce:animate-none"
+                />
+              </PhotoFrame>
             </div>
           ) : null}
 
