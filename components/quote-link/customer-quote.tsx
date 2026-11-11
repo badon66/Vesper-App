@@ -18,6 +18,7 @@ import {
   inTouchAbout,
   leavesRunsOut,
   lineAmount,
+  linkLooks,
   linkOffers,
   nextStepsFor,
   offerChoice,
@@ -26,6 +27,8 @@ import {
   otherColoursLine,
   phoneHref,
   priceHoldPassed,
+  seeItPicture,
+  showsSeeIt,
   smsWithBody,
   type CustomerQuote,
   type LinkPicture,
@@ -37,9 +40,11 @@ import { cn } from "@/lib/utils";
 // page, phone first; round 9, 2026-11-10, Keenan's options in place of
 // Start smaller and Your lights, settled by the five seats). Top to bottom:
 // their house and the price of the option on screen, the Christmas banner,
-// what they're getting, Your options (the option's own mockup, else the
-// Main, round 10, where the house drawing was; a row per option, biggest
-// first, then what's in the one on screen), track colour,
+// what they're getting, See it on your house (round 13: one picture of
+// their house with a row of Looks, the phone scenes by name, and a row of
+// Options; with one option and no scene the picture sits in Your price as
+// in round 10), Your options (a row per option, biggest first, then what's
+// in the one on screen), track colour,
 // what happens next, two things to tap open, and a bar that stays put with
 // Call, Text and Book my install. Prices come from lib/pricing.ts over the
 // quote's own stored prices; the page sends an option's id, never a price.
@@ -81,6 +86,11 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
     openingOffer(shown, { booked: view.bookedOffer, meeting: quote.meetingOffer }),
   );
   const selected: PricedOffer | null = shown.find((priced) => priced.offer.id === chosenId) ?? shown[0] ?? null;
+  // See it on your house (round 13): the look on screen, by name, or none
+  // (the option's own picture, else the Main). Picking an option, here or
+  // in the price below, goes back to that option's picture.
+  const [look, setLook] = useState<string | null>(null);
+  const seeIt = showsSeeIt(view.pictures, shown.length);
   const totals: QuoteTotals | null = selected?.totals ?? null;
   const name = selected?.offer.name ?? "";
   const total = totals ? screenTotal(totals.subtotal, quote.gstEnabled) : "";
@@ -190,7 +200,9 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   const matchesBooked = booked !== null && selected !== null && booked.offer === selected.offer.id;
   const textHref = smsWithBody(view.company.phone, `Hi Keenan, a question about the quote for ${view.address}: `);
   const choose = (id: string) => {
-    if (!sending) setChosenId(id);
+    if (sending) return;
+    setChosenId(id);
+    setLook(null);
   };
 
   return (
@@ -255,20 +267,40 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
         {/* 3. What makes it worth it, in Keenan's words from Settings. */}
         <ProductPoints points={view.productPoints} />
 
-        {/* 4. Your options: the house for the option on screen, a row per
-            option to pick from, then what's in it, line by line. */}
+        {/* 4. See it on your house (round 13): one picture, the Looks and
+            the Options under it. Tapping an option here picks it in the
+            price below; picking one there swaps the picture. */}
+        {seeIt && selected ? (
+          <SeeItOnYourHouse
+            pictures={view.pictures}
+            offers={shown}
+            selectedId={selected.offer.id}
+            selectedName={name}
+            look={look}
+            caption={leavesRunsOut(quote.runs.length, selected.offer.runs) ? words.link_mockup_caption : null}
+            disabled={sending}
+            onLook={setLook}
+            onOption={choose}
+          />
+        ) : null}
+
+        {/* 5. Your options: a row per option to pick from, then what's in
+            it, line by line. With one option and no scene, its picture
+            sits here, as before. */}
         <section aria-labelledby="your-options" className="mt-12 px-5" data-testid="quote-options">
           <h2 id="your-options" className="text-xl font-bold">
             {many ? "Your options" : "Your price"}
           </h2>
           {selected && totals ? (
             <>
-              <OptionPicture
-                pictures={view.pictures}
-                offerId={selected.offer.id}
-                name={name}
-                caption={leavesRunsOut(quote.runs.length, selected.offer.runs) ? words.link_mockup_caption : null}
-              />
+              {seeIt ? null : (
+                <OptionPicture
+                  pictures={view.pictures}
+                  offerId={selected.offer.id}
+                  name={name}
+                  caption={leavesRunsOut(quote.runs.length, selected.offer.runs) ? words.link_mockup_caption : null}
+                />
+              )}
               <div className="mt-1">
                 <Disclosure title="What do these mean?" variant="inline" testId="quote-explainer">
                   <PartsExplained />
@@ -1091,6 +1123,128 @@ function ThankYou({
         See your quote again
       </button>
     </main>
+  );
+}
+
+// See it on your house (round 13, Keenan, 2026-11-11): one picture of
+// their house with two rows of buttons under it. Looks are the house's
+// phone scenes by name; tapping one shows the house in that look, and
+// tapping it again goes back. Options are the offers they are shown;
+// tapping one shows that offer's picture (its own, else the Main) and
+// picks it in the price below. The picture keeps the option picture's test
+// ids, since it is that picture, moved up.
+function SeeItOnYourHouse({
+  pictures,
+  offers,
+  selectedId,
+  selectedName,
+  look,
+  caption,
+  disabled,
+  onLook,
+  onOption,
+}: {
+  pictures: LinkPicture[];
+  offers: PricedOffer[];
+  selectedId: string;
+  selectedName: string;
+  look: string | null;
+  caption: string | null;
+  disabled: boolean;
+  onLook: (look: string | null) => void;
+  onOption: (id: string) => void;
+}) {
+  const looks = linkLooks(pictures);
+  const onScreen = seeItPicture(pictures, selectedId, look);
+  if (!onScreen) return null;
+  const lookOn = onScreen.kind === "look" ? onScreen.picture.name.trim() : null;
+  const chip = (on: boolean) =>
+    cn(
+      "inline-flex min-h-12 items-center rounded-md px-4 text-base font-semibold outline-none transition-colors duration-150",
+      "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-60",
+      on ? "border-2 border-navy bg-navy px-[0.9375rem] text-white" : "border border-border bg-background text-foreground hover:bg-muted",
+    );
+  return (
+    <section aria-labelledby="see-it" className="mt-12 px-5" data-testid="see-it">
+      <h2 id="see-it" className="text-xl font-bold">
+        See it on your house
+      </h2>
+      <div
+        className="mt-4"
+        data-testid="option-picture"
+        data-own={onScreen.kind === "own"}
+        data-kind={onScreen.kind}
+        data-look={lookOn ?? undefined}
+      >
+        <Mockup
+          key={onScreen.picture.url}
+          url={onScreen.picture.url}
+          caption={onScreen.kind === "own" ? null : caption}
+          alt={
+            lookOn
+              ? `Your house in the ${lookOn} look, as a mockup`
+              : onScreen.kind === "own"
+                ? `Your house with ${selectedName}, as a mockup`
+                : "Your house with Vesper lights on, as a mockup"
+          }
+          openLabel={lookOn ? `Open the ${lookOn} picture full screen` : `Open the picture for ${selectedName} full screen`}
+          inset
+          ids={{ image: "option-mockup", caption: "option-mockup-caption", viewer: "option-mockup-viewer" }}
+        />
+      </div>
+      {looks.length > 0 ? (
+        <div role="group" aria-labelledby="see-it-looks" className="mt-4" data-testid="see-it-looks">
+          <p id="see-it-looks" className="text-sm font-semibold text-muted-foreground">
+            Looks
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {looks.map((picture) => {
+              const lookName = picture.name.trim();
+              const on = lookOn === lookName;
+              return (
+                <button
+                  key={lookName}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => onLook(on ? null : lookName)}
+                  className={chip(on)}
+                  data-testid="see-it-look"
+                  data-look={lookName}
+                >
+                  {lookName}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      <div role="group" aria-labelledby="see-it-options" className="mt-4" data-testid="see-it-options">
+        <p id="see-it-options" className="text-sm font-semibold text-muted-foreground">
+          {offers.length > 1 ? "Options" : "Your option"}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {offers.map((priced) => {
+            // Pressed while its picture is the one on screen: a look takes
+            // the picture, the price below keeps the option.
+            const on = lookOn === null && priced.offer.id === selectedId;
+            return (
+              <button
+                key={priced.offer.id}
+                type="button"
+                aria-pressed={on}
+                disabled={disabled}
+                onClick={() => onOption(priced.offer.id)}
+                className={chip(on)}
+                data-testid="see-it-option"
+                data-offer={priced.offer.id}
+              >
+                {priced.offer.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
 

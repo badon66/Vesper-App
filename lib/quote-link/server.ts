@@ -39,7 +39,7 @@ export function anonymousClient(token?: string) {
 const PRESENTATION_BUCKET = "presentation";
 
 // A mockup the page may show (round 10): the Main and the ones marked for
-// offers, each signed for ten minutes.
+// offers, each signed for ten minutes; round 13 adds the phone scenes.
 export type { LinkPicture };
 
 export type LoadedQuote =
@@ -61,7 +61,7 @@ export async function loadCustomerQuote(token: string): Promise<LoadedQuote> {
   const listed = await anonymousClient().rpc("quote_link_mockups", { p_token: token });
   const mockups = listed.error
     ? view.mockupPath
-      ? [{ path: view.mockupPath, main: true, offers: [] }]
+      ? [{ path: view.mockupPath, main: true, scene: false, name: "", offers: [] }]
       : []
     : parseLinkMockups(listed.data);
 
@@ -76,7 +76,7 @@ export async function loadCustomerQuote(token: string): Promise<LoadedQuote> {
   );
   const pictures: LinkPicture[] = mockups.flatMap((m) => {
     const url = urlByPath.get(m.path);
-    return url ? [{ url, main: m.main, offers: m.offers }] : [];
+    return url ? [{ url, main: m.main, scene: m.scene, name: m.name, offers: m.offers }] : [];
   });
   const mockupUrl = mainPicture(pictures)?.url ?? null;
   const galleryUrls = (gallery?.data ?? []).flatMap((item) => (item.signedUrl ? [item.signedUrl] : []));
