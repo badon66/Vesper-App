@@ -21,7 +21,9 @@
 // owed), and at View as the setter: Home and My pay exactly as the setter
 // sees them. Then a check that nothing of the owner's changed. The leads
 // are named "TEST LEAD (automated)" and everything made here is removed at
-// the end, earnings before quotes.
+// the end, earnings before quotes. Round 11: a fourth lead quoted by area (a
+// custom rate, a flat shed, a gable ticked off, upper access typed 0): its
+// Accepted sheet is looked at, and it is accepted last, by option.
 import { createClient } from "@supabase/supabase-js";
 import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
@@ -392,6 +394,44 @@ try {
     total: 2340,
   });
 
+  // Round 11: a fourth lead, quoted by area (the sale's quote above is the
+  // old-style case). The front lower at the quote's $24, the front upper at
+  // Keenan's own $28 a foot, a front upper gable at $24, and a shed at a
+  // flat $600, one box and the neighbour discount; two options, Full wrap
+  // ($400 upper gable access, automatic) and No gable (the gable ticked off,
+  // upper access typed 0). The commission reads the lights at what each
+  // area is priced at, and never the upper access:
+  //   Full wrap  64 x 24 + 38 x 28 + 10 x 24 + 600 + 500 - 150 = 3,790.00
+  //   No gable   64 x 24 + 38 x 28 + 600 + 500 - 150 = 3,550.00
+  const AREAS_STREET = street(14);
+  const areasLead = await addLead("Areas", AREAS_STREET, { status: "met", track_colour_id: colour.id });
+  const AREAS_FULL_BASE_CENTS = 64 * 2400 + 38 * 2800 + 10 * 2400 + 60000 + 50000 - 15000;
+  const AREAS_NO_GABLE_BASE_CENTS = 64 * 2400 + 38 * 2800 + 60000 + 50000 - 15000;
+  const areasQuote = await insertQuote(areasLead, a.id, {
+    price_per_ft: 24,
+    runs: [
+      { name: "Front lower", feet: 64, level: "lower", part: "eave", area: "front", gable: false },
+      { name: "Front upper", feet: 38, level: "upper", part: "eave", area: "front", gable: false, rate: 28 },
+      { name: "Front upper gable", feet: 10, level: "upper", part: "gable", area: "front", gable: true },
+      { name: "Shed", feet: 20, level: "lower", part: "other", area: "other", gable: false, flat: 600 },
+    ],
+    total_feet: 132,
+    discounts: [{ label: "Neighbour discount", amount: 150 }],
+    subtotal: 4190,
+    total: 4190,
+    offers: [
+      { id: "full", name: "Full wrap", runs: [0, 1, 2, 3] },
+      { id: "nogable", name: "No gable", runs: [0, 1, 3], upper_access: 0 },
+    ],
+  });
+  // The two upper access amounts, where this database has those columns: on
+  // the Accepted sheet the full wrap's total carries the $400; its
+  // commission never does.
+  const areasFees = await admin.from("quotes").update({ upper_access_fee: 200, upper_gable_access_fee: 400 }).eq("id", areasQuote);
+  if (areasFees.error) note(`the areas quote's upper access columns aren't in this database (${areasFees.error.message})`);
+  const AREAS_FULL_TOTAL = 3790 + (areasFees.error ? 0 : 400);
+  const AREAS_NO_GABLE_TOTAL = 3550;
+
   // ---------------------------------------------------------------- Keenan's card before the answer (looks only)
   const before = await ownerFootprint(ownerId);
   const ownerContext = await browser.newContext(phone);
@@ -463,6 +503,37 @@ try {
     await sheet.getByRole("button", { name: "Back" }).click();
     await sheet.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
     check("looking at the card and the Accepted sheet wrote nothing", (await testFootprint(leadIds)) === looked);
+  }
+
+  // The areas quote's Accepted sheet (round 11), looked at only: each option
+  // priced by area, and the commission it would make from the lights and
+  // the box alone.
+  {
+    const looked = await testFootprint([...leadIds, areasLead]);
+    await open(op, `/app/leads/${areasLead}`);
+    await op.getByTestId("outcome-accept").click();
+    const sheet = op.getByTestId("outcome-accept-sheet");
+    await sheet.waitFor({ timeout: 10000 }).catch(() => {});
+    const areaRows = await sheet.getByTestId("outcome-option").evaluateAll((rows) =>
+      rows.map((row) => ({
+        offer: row.getAttribute("data-offer"),
+        total: (row.querySelector('[data-testid="outcome-option-total"]')?.textContent ?? "").trim(),
+        commission: (row.querySelector('[data-testid="outcome-option-commission"]')?.textContent ?? "").trim(),
+      })),
+    );
+    check(
+      "the areas quote's Accepted sheet: Full wrap then No gable, each priced by area (a $28 upper, a flat $600 shed, the gable in or out, upper access $400 automatic or typed 0), with the commission on the lights and box alone",
+      JSON.stringify(areaRows) ===
+        JSON.stringify([
+          { offer: "full", total: money(AREAS_FULL_TOTAL), commission: `${money(commissionOn(AREAS_FULL_BASE_CENTS))} commission` },
+          { offer: "nogable", total: money(AREAS_NO_GABLE_TOTAL), commission: `${money(commissionOn(AREAS_NO_GABLE_BASE_CENTS))} commission` },
+        ]),
+      JSON.stringify(areaRows),
+    );
+    await sheet.screenshot({ path: `${out}/outcome-owner-accept-sheet-areas-1180.png` }).catch(() => {});
+    await sheet.getByRole("button", { name: "Back" }).click();
+    await sheet.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
+    check("looking at the areas quote's Accepted sheet wrote nothing", (await testFootprint([...leadIds, areasLead])) === looked);
   }
 
   // ---------------------------------------------------------------- Keenan's taps, the service role standing in
@@ -883,6 +954,42 @@ try {
     outcomeEvents.length === 4 && money_found.length === 0,
     `${outcomeEvents.length} outcome events; ${money_found.join(", ")} ${JSON.stringify(outcomeEvents.map((event) => event.payload)).slice(0, 240)}`,
   );
+  // ---------------------------------------------------------------- round 11: Accepted on the areas quote, by option
+  // Last, so the pay totals above stay the sale's alone. The service role
+  // stands in for Keenan's tap, as it does for the sale.
+  {
+    const noGable = await admin.rpc("quote_accept_offer", { p_quote: areasQuote, p_offer: "nogable", p_install_on: null });
+    const { data: noGableRows } = await admin.from("earnings").select("base_amount, amount, status").eq("lead_id", areasLead).eq("type", "commission").order("created_at");
+    const { data: noGableQuote } = await admin.from("quotes").select("accepted_offer, accepted_runs, accepted_boxes").eq("id", areasQuote).single();
+    check(
+      "Accepted on No gable (the gable ticked off, upper access typed 0) pays on the front lower at $24, the upper at $28, the flat shed and the box, less the discount: a $3,550.00 base",
+      !noGable.error &&
+        Number(noGable.data?.commission?.amount) === commissionOn(AREAS_NO_GABLE_BASE_CENTS) &&
+        noGableRows?.length === 1 &&
+        Number(noGableRows[0].base_amount) === AREAS_NO_GABLE_BASE_CENTS / 100 &&
+        Number(noGableRows[0].amount) === commissionOn(AREAS_NO_GABLE_BASE_CENTS) &&
+        noGableQuote?.accepted_offer === "nogable" &&
+        JSON.stringify(noGableQuote?.accepted_runs) === "[0,1,3]" &&
+        noGableQuote?.accepted_boxes === 1,
+      `${noGable.error?.message ?? JSON.stringify(noGable.data)} | ${JSON.stringify(noGableRows)} | ${JSON.stringify(noGableQuote)}`,
+    );
+    const undone = await admin.rpc("quote_undo_acceptance", { p_quote: areasQuote });
+    const full = await admin.rpc("quote_accept_offer", { p_quote: areasQuote, p_offer: "full", p_install_on: null });
+    const { data: fullRows } = await admin.from("earnings").select("base_amount, amount, status").eq("lead_id", areasLead).eq("type", "commission").order("created_at");
+    const { data: fullQuote } = await admin.from("quotes").select("accepted_offer, accepted_runs").eq("id", areasQuote).single();
+    check(
+      "undone, then Accepted on Full wrap: the gable's 10 ft at $24 join the base and the $400 upper gable access never does: a $3,790.00 base",
+      !undone.error &&
+        !full.error &&
+        Number(full.data?.commission?.amount) === commissionOn(AREAS_FULL_BASE_CENTS) &&
+        JSON.stringify((fullRows ?? []).map((row) => row.status)) === JSON.stringify(["void", "pending"]) &&
+        Number(fullRows?.[1]?.base_amount) === AREAS_FULL_BASE_CENTS / 100 &&
+        Number(fullRows?.[1]?.amount) === commissionOn(AREAS_FULL_BASE_CENTS) &&
+        fullQuote?.accepted_offer === "full" &&
+        fullQuote?.accepted_runs === null,
+      `${undone.error?.message ?? ""} ${full.error?.message ?? JSON.stringify(full.data)} | ${JSON.stringify(fullRows)} | ${JSON.stringify(fullQuote)}`,
+    );
+  }
   await setterContext.close();
 } catch (error) {
   results.push(`SCRIPT ERROR ${error?.message ?? String(error)}${page ? ` at ${page.url()}` : ""}${op ? ` / owner at ${op.url()}` : ""}`);

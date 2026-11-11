@@ -23,7 +23,20 @@
 // house diagram knows what to light and upper access knows an upper gable.
 export const RUN_PARTS = ["eave", "gable", "garage", "porch", "sides", "other"] as const;
 export type RunPart = (typeof RUN_PARTS)[number];
-export type QuoteRun = { name: string; feet: number; level: "lower" | "upper"; part?: RunPart | null };
+// Round 11 (quoting by area, Keenan, 2026-11-11): a run is an area of the
+// house. area says which view it is on, gable whether it is a gable, rate
+// Keenan's own price a foot for it, flat a flat price for it instead; a run
+// from before this round has none of them and prices as it always did.
+export type QuoteRun = {
+  name: string;
+  feet: number;
+  level: "lower" | "upper";
+  part?: RunPart | null;
+  area?: "front" | "back" | "sides" | "other" | null;
+  gable?: boolean | null;
+  rate?: number | null;
+  flat?: number | null;
+};
 // percent (Black Friday follows each option, Keenan, 2026-11-11): a
 // discount line with a usable percent (more than 0, at most 90) is worked
 // out on the selection being priced, so every option gets its own percent
@@ -52,6 +65,9 @@ export type QuoteInputs = {
   upperGableAccessFee?: number | null;
   // The least the job can cost before GST; null or 0 means no minimum.
   minJobTotal?: number | null;
+  // Round 11: the upper access amount Keenan typed over for this option
+  // (0 included), or null for the automatic amount from the runs.
+  upperAccess?: number | null;
   gstEnabled: boolean;
   gstRate: number;
   // The track colour's name, for the rush colour line's detail ("Brown
@@ -200,16 +216,67 @@ export function resolveDiscounts(inputs: QuoteInputs): QuoteLineItem[] {
   );
 }
 
+// A run's own price a foot when set (more than 0), else the quote's.
+export function runRateOf(run: Pick<QuoteRun, "rate">, pricePerFt: number): number {
+  return typeof run.rate === "number" && Number.isFinite(run.rate) && run.rate > 0 ? run.rate : pricePerFt;
+}
+
+// A run's flat price when set (0 or more), else null.
+export function runFlatOf(run: Pick<QuoteRun, "flat">): number | null {
+  return typeof run.flat === "number" && Number.isFinite(run.flat) && run.flat >= 0 ? run.flat : null;
+}
+
+// What a run's lights cost, in cents: its flat price, or its feet at its
+// rate (its own, or the quote's). The commission counts the same (lib/pay/
+// commission.ts and the database's quote_commission_base_boxes).
+export function runLightsCents(run: Pick<QuoteRun, "feet" | "rate" | "flat">, pricePerFt: number): number {
+  const flat = runFlatOf(run);
+  if (flat !== null) return toCents(flat);
+  return cleanFeet(run.feet) * toCents(runRateOf(run, pricePerFt));
+}
+
+// The lights lines: one "Track and lights" line for every run priced a
+// foot, its detail naming the feet at each rate ("64 ft at $24, 38 ft at
+// $28", or "102 ft at $24 a foot" at one rate), then a line per flat-priced
+// run under its own name. The feet shown are the runs' measured feet.
+function lightsLines(runs: QuoteRun[], pricePerFt: number): { lines: QuoteLine[]; cents: number } {
+  const groups: { rate: number; feet: number }[] = [];
+  const flats: QuoteLine[] = [];
+  let cents = 0;
+  for (const run of runs) {
+    const feet = cleanFeet(run.feet);
+    const flat = runFlatOf(run);
+    if (flat !== null) {
+      const flatCents = toCents(flat);
+      cents += flatCents;
+      flats.push({ label: run.name.trim() || "Area", detail: feet > 0 ? `${feet} ft, flat price` : "Flat price", amount: toDollars(flatCents) });
+      continue;
+    }
+    const rate = runRateOf(run, pricePerFt);
+    const group = groups.find((item) => item.rate === rate);
+    if (group) group.feet += feet;
+    else groups.push({ rate, feet });
+    cents += feet * toCents(rate);
+  }
+  const perFoot = groups.reduce((sum, group) => sum + group.feet * toCents(group.rate), 0);
+  const lines: QuoteLine[] = [];
+  if (groups.length > 0 || flats.length === 0) {
+    const detail =
+      groups.length <= 1
+        ? `${groups[0]?.feet ?? 0} ft at ${formatMoney(groups[0]?.rate ?? pricePerFt)} a foot`
+        : groups.map((group) => `${group.feet} ft at ${formatMoney(group.rate)}`).join(", ");
+    lines.push({ label: "Track and lights", detail, amount: toDollars(perFoot) });
+  }
+  return { lines: [...lines, ...flats], cents };
+}
+
 export function priceQuote(inputs: QuoteInputs): QuoteTotals {
   const feet = totalFeet(inputs.runs);
   const lines: QuoteLine[] = [];
 
-  const trackCents = toCents(inputs.pricePerFt) * feet;
-  lines.push({
-    label: "Track and lights",
-    detail: `${feet} ft at ${formatMoney(inputs.pricePerFt)} a foot`,
-    amount: toDollars(trackCents),
-  });
+  const lights = lightsLines(inputs.runs, inputs.pricePerFt);
+  const trackCents = lights.cents;
+  lines.push(...lights.lines);
 
   const boxes = Math.max(0, Math.round(inputs.boxCount));
   const boxCents = toCents(inputs.boxPrice) * boxes;
@@ -221,11 +288,15 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
     });
   }
 
+  // Upper access: the amount Keenan typed over for this option (round 11;
+  // 0 means no line), else the automatic amount from the runs.
   let accessCents = 0;
-  const access = upperAccessAmount(inputs.runs, inputs);
+  const typed = inputs.upperAccess;
+  const overridden = typeof typed === "number" && Number.isFinite(typed) && typed >= 0;
+  const access = overridden ? (typed > 0 ? typed : null) : upperAccessAmount(inputs.runs, inputs);
   if (access !== null) {
     accessCents = toCents(access);
-    lines.push({ label: UPPER_ACCESS_LABEL, detail: upperAccessDetail(inputs), amount: toDollars(accessCents) });
+    lines.push({ label: UPPER_ACCESS_LABEL, detail: overridden ? null : upperAccessDetail(inputs), amount: toDollars(accessCents) });
   }
 
   let rushCents = 0;

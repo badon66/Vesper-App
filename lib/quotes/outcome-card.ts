@@ -1,3 +1,4 @@
+import { AREA_KINDS } from "@/lib/quotes/areas";
 import { commissionFor, commissionQuoteFromRow, type CommissionQuoteRow } from "@/lib/pay/commission";
 import { RUN_PARTS, formatMoney, priceQuote, resolveDiscounts, screenTotal, selectRuns, totalFeet, usablePercent, type ColourTiming, type QuoteAdder, type QuoteInputs, type QuoteLineItem, type QuoteRun } from "@/lib/pricing";
 import {
@@ -33,7 +34,19 @@ export function runsFromJson(value: Json | null | undefined): QuoteRun[] {
     const name = typeof run.name === "string" ? run.name : "";
     const feet = typeof run.feet === "number" && Number.isFinite(run.feet) ? run.feet : 0;
     const part = (RUN_PARTS as readonly unknown[]).includes(run.part) ? (run.part as QuoteRun["part"]) : null;
-    return { name, feet, level: run.level === "upper" ? "upper" : "lower", ...(part ? { part } : {}) };
+    const rate = typeof run.rate === "number" && Number.isFinite(run.rate) && run.rate > 0 ? run.rate : null;
+    const flat = typeof run.flat === "number" && Number.isFinite(run.flat) && run.flat >= 0 ? run.flat : null;
+    const area = (AREA_KINDS as readonly unknown[]).includes(run.area) ? (run.area as QuoteRun["area"]) : null;
+    return {
+      name,
+      feet,
+      level: run.level === "upper" ? "upper" : "lower",
+      ...(part ? { part } : {}),
+      ...(area ? { area } : {}),
+      ...(typeof run.gable === "boolean" ? { gable: run.gable } : {}),
+      ...(rate !== null ? { rate } : {}),
+      ...(flat !== null ? { flat } : {}),
+    };
   });
 }
 

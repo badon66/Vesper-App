@@ -88,7 +88,7 @@ const FULL_WRAP = { id: "full", name: "Full wrap", runs: [0, 1, 2] };
 // What an offer may carry to the page: its id, name and runs, and (with
 // the meeting's box counts, round 9 part 2) its own box count. Never a
 // price, a cost or a note.
-const OFFER_KEYS = ["boxes", "id", "name", "runs"];
+const OFFER_KEYS = ["boxes", "id", "name", "runs", "upper_access"];
 
 // An offer as compared here: id, name and runs, with a box count only when
 // it has one, so the checks hold before and after the box counts arrive.

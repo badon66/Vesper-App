@@ -5,6 +5,7 @@
 
 import type { SoffitColour } from "@/lib/leads/status";
 import type { TrackColour } from "@/lib/leads/track-colour";
+import { areaOf, isGable, runFlat, runRate, tagRun } from "@/lib/quotes/areas";
 import { defaultValidUntil, guessRunPart, RUN_PARTS, usablePercent, type ColourTiming, type QuoteInputs, type QuoteRun, type RunPart } from "@/lib/pricing";
 import { EFFECTS, type DeckPageKey, type DeckWords, type Effect, type Look, type Trace } from "@/lib/deck";
 import type { BlackFridayDeal } from "@/lib/quotes/black-friday";
@@ -285,12 +286,16 @@ export function quoteStateFromDraft(draft: QuoteDraft, payload: QuoteContext): Q
     ? draft.runs.flatMap((run) =>
         run && typeof run === "object" && typeof (run as QuoteRun).name === "string"
           ? [
-              {
+              tagRun({
                 name: String((run as QuoteRun).name).slice(0, 60),
                 feet: Number((run as QuoteRun).feet) || 0,
                 level: (run as QuoteRun).level === "upper" ? ("upper" as const) : ("lower" as const),
                 part: partOf((run as QuoteRun).part, String((run as QuoteRun).name)),
-              },
+                area: (run as QuoteRun).area ?? null,
+                gable: typeof (run as QuoteRun).gable === "boolean" ? (run as QuoteRun).gable : null,
+                rate: (run as QuoteRun).rate ?? null,
+                flat: (run as QuoteRun).flat ?? null,
+              }),
             ]
           : [],
       )
@@ -379,7 +384,9 @@ export function quoteMinimum(state: Pick<QuoteUIState, "minJobTotal">, pricing: 
 // or a run with no feet yet is not a change.
 export function quoteFingerprint(state: QuoteUIState): string {
   return JSON.stringify([
-    state.runs.filter((run) => run.feet > 0).map((run) => [run.name.trim(), Math.round(run.feet), run.level, run.part ?? guessRunPart(run.name)]),
+    state.runs
+      .filter((run) => run.feet > 0)
+      .map((run) => [run.name.trim(), Math.round(run.feet), run.level, run.part ?? guessRunPart(run.name), areaOf(run), isGable(run), runRate(run), runFlat(run)]),
     state.boxCount,
     parseMoney(state.pricePerFt),
     parseMoney(state.boxPrice),
@@ -399,7 +406,13 @@ export function quoteFingerprint(state: QuoteUIState): string {
     moneyOrNone(state.upperGableAccessFee),
     state.financingOffered,
     state.validUntil,
-    offersForSave(state.offers, state.runs.length).map((offer) => [offer.id, offer.name, cleanPositions(state.runs.length, offer.runs), offer.boxes ?? null]),
+    offersForSave(state.offers, state.runs.length).map((offer) => [
+      offer.id,
+      offer.name,
+      cleanPositions(state.runs.length, offer.runs),
+      offer.boxes ?? null,
+      offer.upperAccess ?? null,
+    ]),
     state.chosenOffer,
     state.installOn,
     state.minJobTotal === undefined ? "settings" : moneyOrNone(state.minJobTotal),

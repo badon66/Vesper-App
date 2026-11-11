@@ -28,7 +28,10 @@
 // then the service role marks the quote accepted (standing in for Keenan)
 // and the page shows only what was agreed; then the link is turned off and
 // closes; and on the quote domain only quote pages answer. Everything
-// staged is removed at the end, and nothing of Keenan's changes.
+// staged is removed at the end, and nothing of Keenan's changes. Round 11: a
+// second lead quoted by area (a custom rate, a flat shed, upper access typed
+// over, a gable in or out) on its own link, at 390; the first quote stays
+// as the old-quote case and prices exactly as before.
 import http from "node:http";
 import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
@@ -263,6 +266,70 @@ try {
   const link = await admin.from("quote_links").insert({ lead_id: leadId, token, created_by: setter.id }).select("id").single();
   if (link.error) throw new Error(`link: ${link.error.message}`);
   const quoteUrl = `${base}/q/${token}`;
+
+  // ---------------------------------------------------------------- round 11: a second lead, quoted by area
+  // The quote above is an old-style quote (no area keys on its runs) and
+  // must price exactly as it always has. This one uses areas: the front
+  // lower at the quote's $24, a front gable, the front upper at Keenan's own
+  // $28 a foot, and a shed at a flat $600. Three options: Full wrap (upper
+  // access $200, automatic: an upper run and no upper gable), Front lower
+  // only (upper access typed 0, and under the $2,500 minimum) and Front, no
+  // gable (upper access typed $150). Hand-worked:
+  //   Full wrap         64 x 24 + 12 x 24 + 38 x 28 + 600 + 500 + 200 = 4,188
+  //   Front, no gable   64 x 24 + 38 x 28 + 600 + 500 + 150 = 3,850
+  //   Front lower only  64 x 24 + 12 x 24 + 500 = 2,324, lifted to 2,500
+  const areaStreet = `${stamp} Quotewalk Areas Street SW`;
+  const areaLead = await admin
+    .from("leads")
+    .insert({ first_name: TEST_LEAD, last_name: "Quote link areas", address_line: areaStreet, created_by: setter.id })
+    .select("id")
+    .single();
+  if (areaLead.error) throw new Error(`areas lead: ${areaLead.error.message}`);
+  const areaRuns = [
+    { name: "Front", feet: 64, level: "lower", part: "eave", area: "front", gable: false },
+    { name: "Front gable", feet: 12, level: "lower", part: "gable", area: "front", gable: true },
+    { name: "Front", feet: 38, level: "upper", part: "eave", area: "front", gable: false, rate: 28 },
+    { name: "Shed", feet: 20, level: "lower", part: "other", area: "other", gable: false, flat: 600 },
+  ];
+  const AREA_FULL = 4188;
+  const areaQuote = await admin
+    .from("quotes")
+    .insert({
+      lead_id: areaLead.data.id,
+      created_by: setter.id,
+      price_per_ft: 24,
+      box_price: 500,
+      box_count: 1,
+      runs: areaRuns,
+      total_feet: 134,
+      adders: [],
+      discounts: [],
+      gst_rate: 0.05,
+      gst_enabled: false,
+      min_job_total: 2500,
+      subtotal: AREA_FULL,
+      total: AREA_FULL,
+      colour_timing: "stock",
+      rush_fee: 350,
+      upper_access_fee: 200,
+      upper_gable_access_fee: 400,
+      track_colour_name: "White",
+      financing_offered: true,
+      offers: [
+        { id: "full", name: "Full wrap", runs: [0, 1, 2, 3] },
+        { id: "front_lower", name: "Front lower only", runs: [0, 1], upper_access: 0 },
+        { id: "nogable", name: "Front, no gable", runs: [0, 2, 3], upper_access: 150 },
+      ],
+      notes: INTERNAL,
+      valid_until: validUntil,
+    })
+    .select("id")
+    .single();
+  if (areaQuote.error) throw new Error(`areas quote: ${areaQuote.error.message}`);
+  const areaToken = randomBytes(18).toString("base64url");
+  const areaLink = await admin.from("quote_links").insert({ lead_id: areaLead.data.id, token: areaToken, created_by: setter.id }).select("id").single();
+  if (areaLink.error) throw new Error(`areas link: ${areaLink.error.message}`);
+  const areaUrl = `${base}/q/${areaToken}`;
   const before = await ownerFootprint(ownerId);
 
   // ---------------------------------------------------------------- the customer, at phone size
@@ -692,6 +759,72 @@ try {
     );
     await widePage.screenshot({ path: `${out}/ql-phone-430.png`, fullPage: true });
     await wide.close();
+  }
+
+  // ---------------------------------------------------------------- the areas quote (round 11), at 390
+  {
+    const areas = await browser.newContext(phone);
+    const ap = await areas.newPage();
+    page = ap;
+    await ap.goto(areaUrl);
+    await settle(ap);
+    await ap.waitForTimeout(800);
+    // A breakdown row as the page shows it, "label detail amount", while it
+    // is on; null while it is off or not there at all (no waiting).
+    const row = async (label) => {
+      const el = ap.locator(`[data-testid="quote-lines"] [data-line="${label}"]`);
+      return (await el.count()) === 1 && (await el.getAttribute("data-shown")) === "true" ? flat(await el.innerText()).trim() : null;
+    };
+    const areaRows = await optionRows(ap);
+    check(
+      "round 11: the areas quote opens on Full wrap, with the options biggest first and their totals: $4,188, $3,850 and $2,500 at the minimum",
+      (await totalOf(ap, "hero-option")) === "Full wrap" &&
+        (await totalOf(ap, "hero-total")) === "$4,188" &&
+        JSON.stringify(areaRows.map((r) => [r.offer, r.total, r.selected])) ===
+          JSON.stringify([
+            ["full", "$4,188", true],
+            ["nogable", "$3,850", false],
+            ["front_lower", "$2,500", false],
+          ]) &&
+        (await ap.evaluate(() => document.documentElement.scrollWidth)) <= 390,
+      JSON.stringify(areaRows),
+    );
+    check(
+      "What's in Full wrap: Track and lights at two rates (\"76 ft at $24, 38 ft at $28\"), the Shed on its own line as a flat price, the box, and the automatic $200 upper roof access (an upper run, no upper gable)",
+      (await row("Track and lights")) === "Track and lights 76 ft at $24, 38 ft at $28 $2,888" &&
+        (await row("Shed")) === "Shed 20 ft, flat price $600" &&
+        (await row("Control box")) === "Control box Always included $500" &&
+        (await row("Upper roof access")) === "Upper roof access For work up high: $200, or $400 with an upper gable $200" &&
+        !(await lineShown(ap, "To reach our $2,500 minimum")) &&
+        (await totalOf(ap, "line-total")) === "Total $4,188",
+      `${await row("Track and lights")} | ${await row("Shed")} | ${await row("Upper roof access")} | ${await totalOf(ap, "line-total")}`,
+    );
+    await ap.screenshot({ path: `${out}/ql-phone-areas-full-wrap.png`, fullPage: true });
+    await pickOption(ap, "front_lower");
+    check(
+      "Front lower only: one rate (\"76 ft at $24 a foot\"), no Shed, upper access typed 0 so no line at all, and $2,324 lifted to the $2,500 minimum",
+      (await row("Track and lights")) === "Track and lights 76 ft at $24 a foot $1,824" &&
+        !(await lineShown(ap, "Shed")) &&
+        !(await lineShown(ap, "Upper roof access")) &&
+        flat(await ap.getByTestId("quote-lines").innerText()).includes("Before the minimum $2,324 To reach our $2,500 minimum $176") &&
+        (await totalOf(ap, "line-total")) === "Total $2,500" &&
+        (await totalOf(ap, "hero-total")) === "$2,500",
+      `${await row("Track and lights")} | ${await totalOf(ap, "line-total")}`,
+    );
+    await ap.screenshot({ path: `${out}/ql-phone-areas-front-lower.png`, fullPage: true });
+    await pickOption(ap, "nogable");
+    check(
+      "Front, no gable: \"64 ft at $24, 38 ft at $28\", the Shed back, and Upper roof access at the typed $150 with no detail; $3,850",
+      (await row("Track and lights")) === "Track and lights 64 ft at $24, 38 ft at $28 $2,600" &&
+        (await row("Shed")) === "Shed 20 ft, flat price $600" &&
+        (await row("Upper roof access")) === "Upper roof access $150" &&
+        (await totalOf(ap, "line-total")) === "Total $3,850" &&
+        (await totalOf(ap, "hero-total")) === "$3,850",
+      `${await row("Track and lights")} | ${await row("Upper roof access")} | ${await totalOf(ap, "line-total")}`,
+    );
+    await ap.screenshot({ path: `${out}/ql-phone-areas-no-gable.png`, fullPage: true });
+    check("nothing internal on the areas page either", !flat(await ap.locator("body").innerText()).includes("INTERNAL"));
+    await areas.close();
   }
 
   // ---------------------------------------------------------------- Keenan

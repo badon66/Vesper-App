@@ -17,7 +17,9 @@
 // table, and a made-to-order colour. On the lead page it opens the Quote
 // card's Edit the quote sheet and never saves; on the outcome card it opens
 // the Accepted sheet and never marks it. The customer, with no session,
-// opens the link at 390 and 430, picks options and books one.
+// opens the link at 390 and 430, picks options and books one. Round 11: the
+// lead page's editor shows the six old runs placed by area, the presets the
+// house allows and each offer's upper access and gable, looked at only.
 //
 // With SHOTS set to a folder, the review's screenshots are saved there in
 // order, each named with a two-digit prefix. HOUSE_PHOTO may name a JPEG of
@@ -741,6 +743,108 @@ try {
       await page.getByTestId("quote-sheet-close").click().catch(() => {});
     }
     check(`${width}: looking at the Quote card and the editor wrote nothing`, (await leadFootprint(leadId)) === looked);
+    await closeOwner(owner.context);
+  }
+
+  // ---------------------------------------------------------------- round 11: the old quote in the editor by area (looks only)
+  // The six old runs carry no area keys, so the editor places them by what
+  // their names and parts make obvious: Front, Garage and Front upper on the
+  // Front view (the garage named after its area), the two sides on the
+  // Sides view, and the Upper gable under Other. The presets follow the
+  // house (no back, so no Full back or Front plus back), and each offer's
+  // upper access box starts on the automatic amount: $400 for the full wrap
+  // (an upper gable is in), nothing for Main floor (lower runs only). The
+  // presets are opened and closed, never picked; Save is never tapped.
+  {
+    owner = await ownerPage();
+    page = owner.page;
+    looked = await leadFootprint(leadId);
+    await page.goto(`${base}/app/leads/${leadId}`);
+    await settle(page);
+    await page.getByTestId("edit-quote").click();
+    const sheet = page.getByTestId("quote-sheet");
+    await sheet.waitFor({ timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(600);
+    const areaLines = await sheet.getByTestId("editor-run").evaluateAll((rows) =>
+      rows.map((row) => ({
+        area: row.getAttribute("data-area") ?? row.closest("[data-area]")?.getAttribute("data-area") ?? null,
+        text: (row.innerText ?? "").replace(/\s+/g, " ").trim(),
+        values: [...row.querySelectorAll("input")].map((input) => input.value),
+      })),
+    );
+    // A line on a view (data-area the view, "front", or the area, "front_lower",
+    // on the line or around it), named in full ("Front lower", "Front lower:
+    // Garage" for an old run mapped onto an area) or as its view shortens it
+    // ("Lower", "Garage"), with its feet to tell the lines apart.
+    const lineWith = (area, labels, feet) =>
+      areaLines.some(
+        (line) =>
+          (line.area === area || (line.area ?? "").startsWith(`${area}_`)) &&
+          labels.some((label) => line.text.includes(label) || line.values.includes(label)) &&
+          (line.values.includes(String(feet)) || line.text.includes(`${feet} ft`)),
+      );
+    check(
+      "Edit the quote places the six old runs by area: Front lower 64 ft, Front lower: Garage 28 ft and Front upper 52 ft on the Front view, Sides lower: Left side and Right side on the Sides view, Upper gable under Other",
+      areaLines.length === 6 &&
+        lineWith("front", ["Front lower", "Lower"], 64) &&
+        lineWith("front", ["Front lower: Garage", "Garage"], 28) &&
+        lineWith("front", ["Front upper", "Upper"], 52) &&
+        lineWith("sides", ["Sides lower: Left side", "Left side", "Sides", "Lower"], 30) &&
+        lineWith("sides", ["Sides lower: Right side", "Right side"], 30) &&
+        lineWith("other", ["Upper gable"], 22),
+      JSON.stringify(areaLines.map((line) => [line.area, line.text.slice(0, 40), line.values.join("/")])),
+    );
+    await sheet.getByTestId("add-offer").click();
+    await sheet.getByTestId("quick-starts").waitFor({ timeout: 5000 }).catch(() => {});
+    const presets = await sheet
+      .locator('[data-testid^="quick-start-"]')
+      .evaluateAll((buttons) => buttons.map((button) => (button.getAttribute("data-testid") ?? "").replace("quick-start-", "")));
+    check(
+      "+ Offer's presets follow the house: Front lower only, Full front, Front upper, Full wrap and Custom, and no back (this house has none)",
+      JSON.stringify(presets) === JSON.stringify(["front_lower", "full_front", "front_upper", "full_wrap", "custom"]),
+      presets.join(", "),
+    );
+    await shot(page, "lead-editor-presets-1180");
+    // A second tap on + Offer puts the presets away without picking one.
+    await sheet.getByTestId("add-offer").click();
+    await page.waitForTimeout(300);
+    const cards = await sheet.getByTestId("offer-card").evaluateAll((items) =>
+      items.map((card) => {
+        const access = card.querySelector('[data-testid="offer-upper-access"]');
+        const box = access && access.tagName === "INPUT" ? access : access?.querySelector("input");
+        const auto = card.querySelector('[data-testid="offer-upper-access-auto"]');
+        const gable = card.querySelector('[data-testid="offer-gable"]');
+        return {
+          id: card.getAttribute("data-offer-card"),
+          name: card.querySelector('[data-testid="offer-name"]')?.value ?? card.getAttribute("aria-label"),
+          access: box ? { value: box.value ?? "", placeholder: box.getAttribute("placeholder") ?? "" } : null,
+          auto: auto ? (auto.textContent ?? "").replace(/\s+/g, " ").trim() : null,
+          // The gable chip's wrapper says whether it is on (data-on); the chip itself is marked data-gable.
+          gable: gable ? (gable.getAttribute("data-on") ?? gable.getAttribute("data-gable")) : null,
+        };
+      }),
+    );
+    const cardFor = (id, name) => cards.find((card) => card.id === id) ?? cards.find((card) => card.name === name) ?? null;
+    const fullCard = cardFor("full", "Full wrap");
+    const mainCard = cardFor("main", "Main floor");
+    // The box reads the automatic amount, as its value or as its placeholder.
+    const reads = (card, amount) => Boolean(card?.access) && (card.access.value === amount || (card.access.value === "" && card.access.placeholder.includes(amount)));
+    check(
+      "each offer card's upper access box starts on the automatic amount: 400 for the full wrap (its upper gable), nothing for Main floor (lower runs only)",
+      // Main floor has no upper area, so it has no upper access box at all (or an empty one).
+      reads(fullCard, "400") && (mainCard?.access === null || (["", "0"].includes(mainCard.access.value) && !/400|200/.test(mainCard.access.placeholder))),
+      JSON.stringify(cards.map((card) => [card.id ?? card.name, card.access, card.auto])),
+    );
+    check(
+      "the full wrap's gable chip is on (data-gable=\"true\"); Main floor's, with no gable in it, is not",
+      fullCard?.gable === "true" && mainCard?.gable === "false",
+      JSON.stringify(cards.map((card) => [card.id ?? card.name, card.gable])),
+    );
+    await shot(page, "lead-editor-offer-cards-1180");
+    await sheet.getByTestId("quote-sheet-close").click();
+    await page.waitForTimeout(400);
+    check("Close after only looking closes the sheet at once", !(await sheet.isVisible().catch(() => false)));
+    check("looking at the areas, the presets and the offer cards wrote nothing", (await leadFootprint(leadId)) === looked);
     await closeOwner(owner.context);
   }
 

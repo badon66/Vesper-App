@@ -17,7 +17,6 @@ import {
   toggleOfferRun,
 } from "@/lib/quotes/editor";
 import type { QuoteOffer } from "@/lib/quotes/offers";
-import { litPositions, runLabels, runPartStates, runsDrawingWords } from "@/lib/quotes/runs-drawing";
 
 // Round 9 (Keenan, 2026-11-10; the five seats' spec, 3.4, 3.5 and 3.7): the
 // price page's options, the quote editor's warnings and quick starts, the
@@ -47,9 +46,9 @@ const inputs = (over: Partial<QuoteInputs> = {}): QuoteInputs => ({
   ...over,
 });
 
-const FULL: QuoteOffer = { id: "full", name: "Full wrap", runs: [0, 1, 2, 3], boxes: null };
-const MAIN: QuoteOffer = { id: "main", name: "Main floor", runs: [0, 1], boxes: null };
-const FRONT: QuoteOffer = { id: "front", name: "Front only", runs: [0], boxes: null };
+const FULL: QuoteOffer = { id: "full", name: "Full wrap", runs: [0, 1, 2, 3], boxes: null, upperAccess: null };
+const MAIN: QuoteOffer = { id: "main", name: "Main floor", runs: [0, 1], boxes: null, upperAccess: null };
+const FRONT: QuoteOffer = { id: "front", name: "Front only", runs: [0], boxes: null, upperAccess: null };
 
 const pricing: MeetingPayload["pricing"] = {
   pricePerFt: 23,
@@ -117,17 +116,17 @@ describe("the quote editor", () => {
     expect(editorOffers(RUNS, [MAIN])).toEqual([MAIN]);
   });
 
-  it("adds quick starts: Front lower, Front and Blank, at most four", () => {
+  it("adds presets: Front lower only, Full front and Custom, at most four", () => {
     const withMain = addQuickStart([FULL], "front_lower", RUNS, 1);
-    expect(withMain[1]).toMatchObject({ name: "Front lower", runs: [0, 1], boxes: null });
-    const withFront = addQuickStart(withMain, "front", RUNS, 2);
-    expect(withFront[2]).toMatchObject({ name: "Front", runs: [0, 1, 2] });
-    const withBlank = addQuickStart(withFront, "blank", RUNS, 3);
+    expect(withMain[1]).toMatchObject({ name: "Front lower only", runs: [0, 1], boxes: null });
+    const withFront = addQuickStart(withMain, "full_front", RUNS, 2);
+    expect(withFront[2]).toMatchObject({ name: "Full front", runs: [0, 1, 2] });
+    const withBlank = addQuickStart(withFront, "custom", RUNS, 3);
     expect(withBlank[3]).toMatchObject({ name: "", runs: [] });
     expect(new Set(withBlank.map((offer) => offer.id)).size).toBe(4);
-    expect(addQuickStart(withBlank, "full", RUNS, 4)).toHaveLength(4);
+    expect(addQuickStart(withBlank, "full_wrap", RUNS, 4)).toHaveLength(4);
     // A second Full wrap gets a name customers can tell apart.
-    expect(addQuickStart([FULL], "full", RUNS, 5)[1].name).toBe("Full wrap 2");
+    expect(addQuickStart([FULL], "full_wrap", RUNS, 5)[1].name).toBe("Full wrap 2");
   });
 
   it("taps runs on and off an offer, kept in order", () => {
@@ -207,36 +206,5 @@ describe("saving the quote", () => {
     expect(QUOTE_LOCKED_MEETING).toBe(
       "This quote is accepted, so its prices are locked. To change them, undo the acceptance under Outcome on the lead page.",
     );
-  });
-});
-
-describe("the house drawing for an option", () => {
-  it("lights the option's runs, dashes the measured runs it leaves out, and leaves the rest as outline", () => {
-    const states = runPartStates(RUNS, [0, 1], true);
-    expect(states["lower-eave"]).toBe("lit");
-    expect(states.garage).toBe("lit");
-    expect(states["upper-eave"]).toBe("dashed");
-    expect(states["upper-gable"]).toBe("dashed");
-    expect(states.porch).toBe("outline");
-    // Without dashedRest, a run left out is the plain outline.
-    expect(runPartStates(RUNS, [0], false)["upper-eave"]).toBe("outline");
-    // Every run (null), and a run with no feet lights nothing.
-    const unmeasured = [...RUNS, { name: "Porch", feet: 0, level: "lower" as const, part: "porch" as const }];
-    expect(runPartStates(unmeasured, null).porch).toBe("outline");
-    expect(litPositions(RUNS, [0, 9, -1])).toEqual(new Set([0]));
-  });
-
-  it("names each lit run with its feet beside its part, and a run drawn nowhere along the foot", () => {
-    const runs: QuoteRun[] = [...RUNS, { name: "Back", feet: 50, level: "lower", part: "eave" }, { name: "Shed", feet: 12, level: "lower", part: "other" }];
-    const { parts, loose } = runLabels(runs, null);
-    expect(parts.find((label) => label.part === "lower-eave")?.lines).toEqual(["Front 60 ft", "Back 50 ft"]);
-    expect(parts.find((label) => label.part === "upper-gable")?.lines).toEqual(["Upper gable 20 ft"]);
-    expect(loose).toEqual(["Shed 12 ft"]);
-    expect(runLabels(runs, [1]).parts).toEqual([{ part: "garage", lines: ["Garage 30 ft"] }]);
-  });
-
-  it("tells a screen reader what is lit, never a price", () => {
-    expect(runsDrawingWords(RUNS, [0, 3])).toBe("A drawing of the house, lit along Front and Upper gable.");
-    expect(runsDrawingWords(RUNS, [])).toBe("A drawing of the house.");
   });
 });

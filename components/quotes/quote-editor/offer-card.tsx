@@ -3,27 +3,32 @@
 import { ChevronDown, Trash2 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
-import { RunsDrawing } from "@/components/meeting/runs-drawing";
-import { BreakdownList, Choice, Stepper } from "@/components/quotes/quote-editor/parts";
+import { OfferPhoto, type OfferPhotos } from "@/components/quotes/quote-editor/offer-photo";
+import { BreakdownList, Choice, MoneyBox, Stepper, useTyping } from "@/components/quotes/quote-editor/parts";
 import { Input } from "@/components/ui/input";
 import { coverageLine } from "@/lib/meeting/price-screen";
-import { cleanFeet, screenTotal, type QuoteRun, type QuoteTotals } from "@/lib/pricing";
-import { offerNameIssue, toggleOfferRun } from "@/lib/quotes/editor";
-import { OFFER_NAME_EDITOR_MAX, offerRunName, type QuoteOffer } from "@/lib/quotes/offers";
+import { cleanFeet, formatMoney, hasUpperRun, screenTotal, selectRuns, type QuoteRun, type QuoteTotals } from "@/lib/pricing";
+import { areaDisplayName, isGable } from "@/lib/quotes/areas";
+import { automaticUpperAccess, moneyText, offerNameIssue, toggleOfferRun } from "@/lib/quotes/editor";
+import { cleanUpperAccess, OFFER_NAME_EDITOR_MAX, type QuoteOffer } from "@/lib/quotes/offers";
 import { cn } from "@/lib/utils";
 
-// One offer in Keenan's quote editor (round 9, the spec 3.7): its name as
-// customers read it, a tap per run, a small drawing lighting its runs (the
-// rest dashed), its own box count, its live total and the breakdown exactly
-// as the customer sees it. Deleting takes a second tap.
+// One offer in Keenan's quote editor (round 9, the spec 3.7; round 11): its
+// name as customers read it, a tap per area it covers (every gable with its
+// own tick box, so he can leave it out or put it back), its upper access
+// (filled in from its areas, typed over if he likes, 0 included), its own
+// box count, its photo spot (on the lead page), its live total and the
+// breakdown exactly as the customer sees it. Deleting takes a second tap.
 
 export function OfferCard({
   offer,
   runs,
   totals,
   quoteBoxes,
+  fees,
   gstEnabled,
   locked,
+  photos = null,
   autoFocus = false,
   onChange,
   onDelete,
@@ -33,8 +38,13 @@ export function OfferCard({
   totals: QuoteTotals | null;
   // The quote's own box count: the default for an offer that has none.
   quoteBoxes: number;
+  // The quote's own upper access amounts, for the automatic amount.
+  fees: { upperAccessFee: number | null; upperGableAccessFee: number | null };
   gstEnabled: boolean;
   locked: boolean;
+  // The lead's mockups and the taps on them (the lead page); null shows no
+  // photo spot (meeting mode).
+  photos?: OfferPhotos | null;
   // A blank offer just added: its name field takes focus.
   autoFocus?: boolean;
   onChange: (offer: QuoteOffer) => void;
@@ -47,6 +57,16 @@ export function OfferCard({
   const coverage = coverageLine(runs, offer);
   const hasFeet = totals !== null && totals.totalFeet > 0;
   const boxes = offer.boxes ?? Math.min(9, Math.max(1, quoteBoxes));
+  const name = offer.name.trim() || "this offer";
+  const measured = runs.some((run) => cleanFeet(run.feet) > 0);
+
+  // Upper access: the automatic amount from its areas, or what Keenan typed
+  // over it (0 included). The line shows once the offer has an upper area,
+  // and while an amount is typed.
+  const auto = automaticUpperAccess(runs, offer, fees);
+  const typed = cleanUpperAccess(offer.upperAccess);
+  const showAccess = typed !== null || hasUpperRun(selectRuns(runs, offer.runs));
+  const access = useTyping(moneyText(typed ?? auto));
 
   // "Tap again to delete" lasts a few seconds.
   useEffect(() => {
@@ -88,7 +108,7 @@ export function OfferCard({
           <button
             type="button"
             onClick={() => (confirmDelete ? onDelete() : setConfirmDelete(true))}
-            aria-label={confirmDelete ? undefined : `Delete ${offer.name.trim() || "this offer"}`}
+            aria-label={confirmDelete ? undefined : `Delete ${name}`}
             className={cn(
               "inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
               confirmDelete ? "border border-destructive text-destructive" : "min-w-11 text-muted-foreground hover:bg-muted",
@@ -100,48 +120,102 @@ export function OfferCard({
         ) : null}
       </div>
 
-      <RunsDrawing runs={runs} lit={offer.runs} dashedRest decorative className="h-32 w-full rounded-md" />
+      {photos ? <OfferPhoto offerId={offer.id} photos={photos} locked={locked} /> : null}
 
       <div className="flex flex-col gap-2">
-        <p className="text-sm font-semibold text-muted-foreground">Runs it covers</p>
-        {runs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Add the measured runs above first.</p>
+        <p className="text-sm font-semibold text-muted-foreground">Areas it covers</p>
+        {!measured ? (
+          <p className="text-sm text-muted-foreground">Measure the areas above first.</p>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {runs.map((run, at) => (
-              <Choice
-                key={at}
-                on={offer.runs.includes(at)}
-                disabled={locked}
-                onToggle={() => onChange(toggleOfferRun(offer, at))}
-                testId="offer-run"
-              >
-                {offerRunName(run, at)}
-                <span className="font-normal tabular-nums opacity-80">{cleanFeet(run.feet)} ft</span>
-              </Choice>
-            ))}
+            {runs.map((run, at) => {
+              const feet = cleanFeet(run.feet);
+              if (feet === 0) return null;
+              const gable = isGable(run);
+              const chip = (
+                <Choice
+                  on={offer.runs.includes(at)}
+                  disabled={locked}
+                  onToggle={() => onChange(toggleOfferRun(offer, at))}
+                  tick={gable}
+                  testId="offer-run"
+                  data={{ position: String(at), gable: gable ? "true" : undefined }}
+                >
+                  {areaDisplayName(run)}
+                  <span className="font-normal tabular-nums opacity-80">{feet} ft</span>
+                </Choice>
+              );
+              // A gable's tick box, so he can leave it out or put it back.
+              return gable ? (
+                <span key={at} className="inline-flex" data-testid="offer-gable" data-on={offer.runs.includes(at) ? "true" : "false"}>
+                  {chip}
+                </span>
+              ) : (
+                <span key={at} className="inline-flex">
+                  {chip}
+                </span>
+              );
+            })}
           </div>
         )}
-        {offer.runs.length === 0 && runs.length > 0 ? <p className="text-sm text-muted-foreground">Tap the runs it covers.</p> : null}
+        {offer.runs.length === 0 && measured ? <p className="text-sm text-muted-foreground">Tap the areas it covers.</p> : null}
       </div>
 
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
         <div className="flex flex-col gap-1.5">
           <p className="text-sm font-semibold text-muted-foreground">Control boxes</p>
           <Stepper
             value={boxes}
             min={1}
             max={9}
-            label={`control boxes in ${offer.name.trim() || "this offer"}`}
+            label={`control boxes in ${name}`}
             disabled={locked}
             onChange={(value) => onChange({ ...offer, boxes: value })}
             testId="offer-boxes"
           />
         </div>
-        <div className="flex flex-col items-end text-right">
-          <p className="text-sm text-muted-foreground">{coverage || "No measured runs yet"}</p>
+        {showAccess ? (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-sm font-semibold text-muted-foreground">Upper access</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <MoneyBox
+                label={`Upper access in ${name}`}
+                value={access.value}
+                placeholder={auto === null ? "None" : undefined}
+                disabled={locked}
+                onFocus={access.start}
+                onChange={(text) => {
+                  access.type(text);
+                  // Nothing typed yet leaves the offer be; a number (0
+                  // included) sticks for this offer.
+                  const value = cleanUpperAccess(text);
+                  if (value !== null) onChange({ ...offer, upperAccess: value });
+                }}
+                onBlur={() => {
+                  // A box left empty goes back to the automatic amount.
+                  if (access.value === "" && typed !== null) onChange({ ...offer, upperAccess: null });
+                  access.stop();
+                }}
+                testId="offer-upper-access"
+                data={{ auto: typed === null ? "true" : "false" }}
+              />
+              {typed !== null && !locked ? (
+                <button
+                  type="button"
+                  onClick={() => onChange({ ...offer, upperAccess: null })}
+                  className="inline-flex min-h-11 items-center rounded-md px-2 text-sm font-semibold text-muted-foreground underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                  data-testid="offer-upper-access-auto"
+                >
+                  Automatic{auto !== null ? `, ${formatMoney(auto)}` : ""}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        <div className="ml-auto flex flex-col items-end text-right">
+          <p className="text-sm text-muted-foreground">{coverage || "No measured areas yet"}</p>
           <p className="text-2xl font-bold tabular-nums" data-testid="offer-total">
-            {hasFeet && totals ? screenTotal(totals.subtotal, gstEnabled) : offer.runs.length === 0 ? "Pick the runs" : "Not measured yet"}
+            {hasFeet && totals ? screenTotal(totals.subtotal, gstEnabled) : offer.runs.length === 0 ? "Pick the areas" : "Not measured yet"}
           </p>
         </div>
       </div>

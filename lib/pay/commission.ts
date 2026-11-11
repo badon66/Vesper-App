@@ -1,4 +1,4 @@
-import { cleanFeet, type QuoteLineItem, type QuoteRun } from "@/lib/pricing";
+import { cleanFeet, runLightsCents, type QuoteLineItem, type QuoteRun } from "@/lib/pricing";
 import type { Json } from "@/types/database";
 
 // A setter's commission (Keenan, 2026-11-09, round 8): the commission rate
@@ -13,8 +13,10 @@ import type { Json } from "@/types/database";
 // money is counted in whole cents and the rate in basis points, so no
 // floating point rounding can move a cent.
 //
-//   feet      = sum over the accepted runs of least(10000, greatest(0, round(feet)))
-//   track     = round(price_per_ft x 100) x feet                cents
+//   track     = sum over the accepted runs of each run's lights (round 11):
+//               a flat-priced run round(flat x 100), otherwise
+//               least(10000, greatest(0, round(feet))) x round(rate x 100),
+//               the rate being the run's own or the quote's price_per_ft
 //   boxes     = round(box_price x 100) x greatest(box_count, 0)  cents (boxes always count)
 //   discounts = sum of round(greatest(0, amount) x 100)          cents
 //   base      = greatest(0, track + boxes - discounts) / 100
@@ -34,7 +36,7 @@ import type { Json } from "@/types/database";
 // Only the parts of a quote the commission reads. A run's feet and a
 // discount's amount count only when they are numbers, as in the database.
 export type CommissionQuote = {
-  runs: readonly Pick<QuoteRun, "feet">[];
+  runs: readonly Pick<QuoteRun, "feet" | "rate" | "flat">[];
   boxCount: number;
   pricePerFt: number;
   boxPrice: number;
@@ -110,8 +112,22 @@ export function commissionFeet(quote: Pick<CommissionQuote, "runs" | "positions"
 
 // The base in cents: lights and control boxes, less the discounts, never
 // below zero.
+// The lights in cents: every accepted run at what it is priced at, by the
+// foot or flat, the same as lib/pricing.ts and the database.
+export function commissionLightsCents(quote: Pick<CommissionQuote, "runs" | "positions" | "pricePerFt">): number {
+  const wanted = quote.positions === null ? null : new Set(quote.positions);
+  let total = 0;
+  quote.runs.forEach((run, at) => {
+    if (wanted !== null && !wanted.has(at)) return;
+    if (!run) return;
+    const feet = isNumber(run.feet) ? run.feet : 0;
+    total += runLightsCents({ feet, rate: isNumber(run.rate) ? run.rate : null, flat: isNumber(run.flat) ? run.flat : null }, quote.pricePerFt);
+  });
+  return total;
+}
+
 export function commissionBaseCents(quote: CommissionQuote): number {
-  const track = cents(quote.pricePerFt) * commissionFeet(quote);
+  const track = commissionLightsCents(quote);
   const boxes = cents(quote.boxPrice) * Math.max(0, Math.round(isNumber(quote.boxCount) ? quote.boxCount : 0));
   let discounts = 0;
   for (const discount of quote.discounts) {
@@ -154,8 +170,8 @@ export function commissionQuoteFromRow(row: CommissionQuoteRow, positions: reado
   const runs = Array.isArray(row.runs) ? row.runs : [];
   return {
     runs: runs.map((run) => {
-      const feet = run && typeof run === "object" && !Array.isArray(run) ? run.feet : undefined;
-      return { feet: isNumber(feet) ? feet : 0 };
+      const item = run && typeof run === "object" && !Array.isArray(run) ? run : {};
+      return { feet: isNumber(item.feet) ? item.feet : 0, rate: isNumber(item.rate) ? item.rate : null, flat: isNumber(item.flat) ? item.flat : null };
     }),
     boxCount: Number(row.box_count),
     pricePerFt: Number(row.price_per_ft),

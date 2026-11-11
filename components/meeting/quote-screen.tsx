@@ -689,7 +689,7 @@ function EditLayer({
   const status = locked
     ? null
     : !measured
-      ? "Measure a run to save."
+      ? "Measure an area to save."
       : nameIssue
         ? "An offer's name needs fixing first."
         : dirty

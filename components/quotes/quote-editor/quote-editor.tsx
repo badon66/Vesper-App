@@ -3,40 +3,32 @@
 import { ChevronDown, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { RunsDrawing } from "@/components/meeting/runs-drawing";
+import { AreaViews } from "@/components/quotes/quote-editor/area-views";
 import { OfferCard } from "@/components/quotes/quote-editor/offer-card";
+import { useOfferPhotos } from "@/components/quotes/quote-editor/offer-photo";
 import { Choice, cleanMoneyInput, MoneyField, QuietWarning, Stepper } from "@/components/quotes/quote-editor/parts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import type { LeadMockupItem } from "@/lib/leads/mockup-roles";
 import { colourTimingFor, quoteInputs, quoteMinimum, quoteRushFee, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
-import { cleanFeet, defaultValidUntil, formatMoney, guessRunPart, percentWords, RUN_PARTS, totalFeet, usablePercent, type QuoteRun, type RunPart } from "@/lib/pricing";
+import { cleanFeet, defaultValidUntil, formatMoney, percentWords, totalFeet, usablePercent } from "@/lib/pricing";
 import { addQuickStart, editorOffers, editorOrder, offerWarnings, percentDiscountWords, typeDiscountAmount } from "@/lib/quotes/editor";
-import { addRunToOffers, OFFERS_MAX, pricedOffers, quickStartsFor, removeRunFromOffers, type QuickStart, type QuoteOffer } from "@/lib/quotes/offers";
+import { OFFERS_MAX, pricedOffers, quickStartsFor, type QuickStart, type QuoteOffer } from "@/lib/quotes/offers";
 import { cn } from "@/lib/utils";
 
-// Keenan's quote editor (round 9, the spec 3.7): one component in two
-// places, the lead page's Edit the quote sheet and meeting mode's Edit layer,
-// so it is literally the quote the meeting opens with. The sections follow
-// the order a quote is built: the measured runs (the house drawing on top,
-// lighting every run, so a gable on the wrong level shows before the
-// customer sees it), the offers (each picking its runs, biggest first), and
-// the prices for this quote (collapsed, since Settings' values usually
-// stand). Warnings are quiet and never block. An accepted quote is read
-// only. Owner only, never under View as, never customer facing. It holds no
-// state of its own but the screen's: the quote is the caller's, and Save is
-// the caller's too.
-
-const RUN_NAMES = ["Front", "Front upper", "Left gable", "Right gable", "Garage", "Back", "Left side", "Right side"];
-
-const PART_NAMES: Record<RunPart, string> = {
-  eave: "Eave",
-  gable: "Gable",
-  garage: "Garage",
-  porch: "Porch",
-  sides: "Sides",
-  other: "Other",
-};
+// Keenan's quote editor (round 9, the spec 3.7; round 11, quoting by area):
+// one component in two places, the lead page's Edit the quote sheet and
+// meeting mode's Edit layer, so it is literally the quote the meeting opens
+// with. The sections follow the order a quote is built: measuring (the
+// Front and Back views, the Sides and Other, each area a line he types the
+// feet into, priced the quote's way or his own), the offers (each picking
+// its areas, gables ticked on or off, biggest first, with a photo spot on
+// the lead page), and the prices for this quote (collapsed, since Settings'
+// values usually stand). Warnings are quiet and never block. An accepted
+// quote is read only. Owner only, never under View as, never customer
+// facing. It holds no state of its own but the screen's: the quote is the
+// caller's, and Save is the caller's too.
 
 export type QuoteEditorProps = {
   state: QuoteUIState;
@@ -49,14 +41,35 @@ export type QuoteEditorProps = {
   // say why at the top.
   locked?: boolean;
   lockedWords?: string;
+  // Round 11, the lead page only: the lead's mockups for the photo spot on
+  // each offer, who is uploading, and how to catch the page up after a pick
+  // or an upload. Meeting mode passes none and shows no spot.
+  mockups?: LeadMockupItem[];
+  leadId?: string;
+  userId?: string;
+  onMockupsRefresh?: () => void;
 };
 
-export function QuoteEditor({ state, onChange, pricing, colourKind, colourText, today, locked = false, lockedWords }: QuoteEditorProps) {
+export function QuoteEditor({
+  state,
+  onChange,
+  pricing,
+  colourKind,
+  colourText,
+  today,
+  locked = false,
+  lockedWords,
+  mockups,
+  leadId,
+  userId,
+  onMockupsRefresh,
+}: QuoteEditorProps) {
   const set = (patch: Partial<QuoteUIState>) => onChange({ ...state, ...patch });
   const inputs = useMemo(() => quoteInputs(state, pricing), [state, pricing]);
   const offers = useMemo(() => editorOffers(state.runs, state.offers), [state.runs, state.offers]);
   const priced = useMemo(() => new Map(pricedOffers(inputs, offers).map((item) => [item.offer.id, item])), [inputs, offers]);
   const warnings = useMemo(() => offerWarnings(inputs, offers), [inputs, offers]);
+  const photos = useOfferPhotos({ mockups, leadId, userId, onRefresh: onMockupsRefresh });
   const [quickOpen, setQuickOpen] = useState(false);
   const [focusOffer, setFocusOffer] = useState<string | null>(null);
 
@@ -80,19 +93,10 @@ export function QuoteEditor({ state, onChange, pricing, colourKind, colourText, 
   ];
 
   const setOffers = (next: QuoteOffer[], patch: Partial<QuoteUIState> = {}) => set({ offers: next, ...patch });
-  const setRun = (at: number, patch: Partial<QuoteRun>) => set({ runs: state.runs.map((run, which) => (which === at ? { ...run, ...patch } : run)) });
-  const addRun = (run: QuoteRun) =>
-    set({
-      runs: [...state.runs, run],
-      // Full wrap and Main floor keep following their rule as runs are added.
-      offers: state.offers.length > 0 ? addRunToOffers(state.offers, state.runs, run) : [],
-    });
-  const removeRun = (at: number) =>
-    set({ runs: state.runs.filter((_, which) => which !== at), offers: removeRunFromOffers(state.offers, at) });
   const addOffer = (kind: QuickStart) => {
     const next = addQuickStart(offers, kind, state.runs);
     setQuickOpen(false);
-    if (kind === "blank") setFocusOffer(next[next.length - 1]?.id ?? null);
+    if (kind === "custom") setFocusOffer(next[next.length - 1]?.id ?? null);
     setOffers(next);
   };
   const changeOffer = (offer: QuoteOffer) => setOffers(offers.map((item) => (item.id === offer.id ? offer : item)));
@@ -105,6 +109,7 @@ export function QuoteEditor({ state, onChange, pricing, colourKind, colourText, 
   const feet = totalFeet(state.runs);
   const quickStarts = quickStartsFor(state.runs);
   const full = offers.length >= OFFERS_MAX;
+  const fees = { upperAccessFee: inputs.upperAccessFee ?? null, upperGableAccessFee: inputs.upperGableAccessFee ?? null };
 
   return (
     <div
@@ -123,116 +128,22 @@ export function QuoteEditor({ state, onChange, pricing, colourKind, colourText, 
         </p>
       ) : null}
 
-      {/* ------------------------------------------------ measured runs */}
+      {/* ------------------------------------------------ measuring */}
       <section aria-labelledby="editor-runs" className="flex flex-col gap-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 id="editor-runs" className="text-lg font-bold">
-            Measured runs
-          </h3>
+          <div className="flex flex-col gap-0.5">
+            <h3 id="editor-runs" className="text-lg font-bold">
+              Measuring
+            </h3>
+            <p className="text-sm text-pretty text-muted-foreground">
+              The feet on each area. The garage and porch count as Front lower; the sides are one number for both.
+            </p>
+          </div>
           <p className="text-sm text-muted-foreground tabular-nums" data-testid="editor-feet">
             {feet} ft measured
           </p>
         </div>
-        <RunsDrawing runs={state.runs} lit={null} labels labelClassName="text-sm" className="aspect-[378/206] w-full max-w-lg rounded-md border" />
-        <div className="flex flex-col gap-3">
-          {state.runs.map((run, at) => (
-            <div key={at} className="flex flex-wrap items-center gap-2 border-b pb-3 last:border-b-0" data-testid="editor-run">
-              <Input
-                value={run.name}
-                list="editor-run-names"
-                aria-label={`Run ${at + 1} name`}
-                maxLength={60}
-                placeholder="Name"
-                disabled={locked}
-                onChange={(event) => {
-                  const name = event.target.value;
-                  // The part follows the name until Keenan picks one that
-                  // differs from the guess.
-                  setRun(at, { name, part: !run.part || run.part === guessRunPart(run.name) ? guessRunPart(name) : run.part });
-                }}
-                className="w-40 min-w-0 sm:w-44"
-              />
-              <div className="relative">
-                <Input
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  aria-label={`Run ${at + 1} feet`}
-                  value={run.feet === 0 ? "" : String(run.feet)}
-                  placeholder="0"
-                  disabled={locked}
-                  onChange={(event) => setRun(at, { feet: Number(event.target.value.replace(/\D/g, "").slice(0, 5)) || 0 })}
-                  className="w-24 pr-8 text-right tabular-nums"
-                />
-                <span aria-hidden="true" className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm text-muted-foreground">
-                  ft
-                </span>
-              </div>
-              <div role="group" aria-label={`Run ${at + 1} level`} className="flex">
-                {(["lower", "upper"] as const).map((level, which) => (
-                  <button
-                    key={level}
-                    type="button"
-                    aria-pressed={run.level === level}
-                    disabled={locked}
-                    onClick={() => setRun(at, { level })}
-                    className={cn(
-                      "inline-flex min-h-11 items-center border px-3 text-sm font-semibold outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
-                      which === 0 ? "rounded-l-md" : "-ml-px rounded-r-md",
-                      run.level === level ? "border-foreground bg-foreground text-background" : "border-input bg-background hover:bg-muted",
-                    )}
-                  >
-                    {level === "lower" ? "Lower" : "Upper"}
-                  </button>
-                ))}
-              </div>
-              <div role="group" aria-label={`Run ${at + 1} part of the house`} className="flex flex-wrap gap-1.5">
-                {RUN_PARTS.map((part) => (
-                  <Choice
-                    key={part}
-                    on={(run.part ?? guessRunPart(run.name)) === part}
-                    disabled={locked}
-                    onToggle={() => setRun(at, { part })}
-                    className="px-2.5"
-                  >
-                    {PART_NAMES[part]}
-                  </Choice>
-                ))}
-              </div>
-              {!locked ? (
-                <Button type="button" variant="ghost" size="icon" aria-label={`Remove run ${at + 1}`} onClick={() => removeRun(at)} className="ml-auto">
-                  <Trash2 className="size-4" />
-                </Button>
-              ) : null}
-            </div>
-          ))}
-          <datalist id="editor-run-names">
-            {RUN_NAMES.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
-        </div>
-        {!locked ? (
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => addRun({ name: "", feet: 0, level: "lower", part: "other" })}>
-              <Plus aria-hidden="true" className="size-4" />
-              Run
-            </Button>
-            {RUN_NAMES.filter((name) => !state.runs.some((run) => run.name === name))
-              .slice(0, 5)
-              .map((name) => (
-                <Button
-                  key={name}
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="border border-dashed border-input"
-                  onClick={() => addRun({ name, feet: 0, level: /upper/i.test(name) ? "upper" : "lower", part: guessRunPart(name) })}
-                >
-                  + {name}
-                </Button>
-              ))}
-          </div>
-        ) : null}
+        <AreaViews runs={state.runs} offers={state.offers} pricePerFt={inputs.pricePerFt} locked={locked} onChange={(next) => set(next)} />
       </section>
 
       {/* ------------------------------------------------ offers */}
@@ -273,7 +184,7 @@ export function QuoteEditor({ state, onChange, pricing, colourKind, colourText, 
           </div>
         ) : null}
         {cards.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Measure a run above and a full wrap appears here.</p>
+          <p className="text-sm text-muted-foreground">Measure an area above and a full wrap appears here.</p>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {cards.map((offer) => (
@@ -283,8 +194,10 @@ export function QuoteEditor({ state, onChange, pricing, colourKind, colourText, 
                 runs={state.runs}
                 totals={priced.get(offer.id)?.totals ?? null}
                 quoteBoxes={state.boxCount}
+                fees={fees}
                 gstEnabled={pricing.gstEnabled}
                 locked={locked}
+                photos={photos}
                 autoFocus={focusOffer === offer.id}
                 onChange={changeOffer}
                 onDelete={() => deleteOffer(offer.id)}
