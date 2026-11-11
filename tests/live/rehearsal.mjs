@@ -669,7 +669,7 @@ async function rehearse(lead, { deal, tag, chooseName, bookName, pickDay }) {
   });
   const tiles = page.getByTestId("mockup-tile");
   await checkShot(page, "four pictures upload as four tiles, the first one the Main", (await tiles.count()) === 4 && (await tiles.first().getByTestId("mockup-role-main").getAttribute("aria-pressed")) === "true", `${await tiles.count()} tiles in ${seconds(uploadMs)}`, "mockups-uploaded");
-  // Each named, and the three for an offer marked for it.
+  // Each named in the Mockups card.
   for (const [at, picture] of pictures.entries()) {
     const tile = tiles.nth(at);
     const nameBox = tile.getByTestId("mockup-name");
@@ -677,13 +677,38 @@ async function rehearse(lead, { deal, tag, chooseName, bookName, pickDay }) {
     await nameBox.press("Enter");
     taps += 1;
     await until(async () => ((await mockupRows(lead.leadId)).filter((row) => !row.removed_at)[at]?.name === picture.name ? true : null), 15000, 500);
-    if (picture.offer) {
-      const chip = tile.getByTestId("mockup-offer").filter({ hasText: picture.offer });
-      await tap(chip.first());
-      const wanted = offerId(picture.offer);
-      await until(async () => ((await mockupRows(lead.leadId)).filter((row) => !row.removed_at)[at]?.offer_ids ?? []).includes(wanted) ? true : null, 15000, 500);
-    }
   }
+  // Round 13: an offer's picture is set in one place, the photo spot on its
+  // card in the quote editor. The Mockups card marks Main, Day, Night or a
+  // phone scene only, and says which offers use each picture.
+  check("the Mockups card has no offer chips any more", (await page.getByTestId("mockup-offer").count()) === 0);
+  await page.reload();
+  await page.getByTestId("edit-quote").waitFor({ timeout: 30000 });
+  await settle(page);
+  await tap(page.getByTestId("edit-quote"));
+  await page.getByTestId("quote-sheet").waitFor({ timeout: 15000 });
+  const named = (await mockupRows(lead.leadId)).filter((row) => !row.removed_at);
+  for (const [at, picture] of pictures.entries()) {
+    if (!picture.offer) continue;
+    const offerCard = page.locator(`[data-testid="offer-card"][aria-label="${picture.offer}"]`);
+    await offerCard.scrollIntoViewIfNeeded().catch(() => {});
+    await tap(offerCard.getByTestId("offer-photo-pick"));
+    await tap(offerCard.locator(`[data-testid="offer-photo-choice"][data-mockup="${named[at]?.id}"]`));
+    const wanted = offerId(picture.offer);
+    await until(async () => ((await mockupRows(lead.leadId)).filter((row) => !row.removed_at)[at]?.offer_ids ?? []).includes(wanted) ? true : null, 15000, 500);
+  }
+  await shot(page, "offer-pictures-picked");
+  await tap(page.getByTestId("quote-sheet-close"));
+  await page.getByTestId("quote-sheet").waitFor({ state: "hidden", timeout: 10000 }).catch(() => {});
+  await page.reload();
+  await page.getByTestId("mockup-card").waitFor({ timeout: 30000 });
+  await settle(page);
+  const usedBy = await page.getByTestId("mockup-used-by").allInnerTexts();
+  check(
+    "each mockup says which offers use it: the Main none (every offer has its own), each of the others its offer",
+    usedBy.length === 4 && usedBy[0] === "No offer uses it." && pictures.slice(1).every((picture, at) => usedBy[at + 1] === `Used by ${picture.offer}.`),
+    JSON.stringify(usedBy),
+  );
   const rows = (await mockupRows(lead.leadId)).filter((row) => !row.removed_at);
   await checkShot(
     page,
@@ -697,8 +722,6 @@ async function rehearse(lead, { deal, tag, chooseName, bookName, pickDay }) {
   );
   check("the mockups land in Keenan's own folder of lead-photos", rows.every((row) => row.storage_path.startsWith(`${ownerId}/`)));
   await shot(page, "mockups-marked");
-  const offersOnTile = await tiles.first().getByTestId("mockup-offer").count();
-  if (offersOnTile === 0) observe("the Mockups card showed no offer chips, so the pictures could not be marked for an offer");
 
   // ---------------------------------------------------------------- 5. the time confirmed, and Ready
   startStep("Confirm the time, and Ready");

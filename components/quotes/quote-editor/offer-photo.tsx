@@ -15,10 +15,13 @@ import { cn } from "@/lib/utils";
 // a photo spot: the lead's mockup marked for this offer, else the Main with
 // the words "Main shows". Pick opens a row of the lead's mockups to tap;
 // Upload takes one picture, adds it to the lead's mockups and marks it for
-// this offer. The marks are the mockups' own "for an offer" marks
-// (lead_mockups.offer_ids), one picture per offer: picking moves the mark
-// off the picture that had it. The deck and the customer's link already
-// show an offer's own picture, else the Main, so nothing else changes.
+// this offer. The marks are kept on the mockups (lead_mockups.offer_ids),
+// one picture per offer: picking moves the mark off the picture that had
+// it. The deck and the customer's link already show an offer's own
+// picture, else the Main, so nothing else changes. Round 13 (Keenan,
+// 2026-11-11): this spot is the only place an offer gets its picture (the
+// Mockups section only says which offers use each one), so it can also go
+// back to the Main.
 // Only on the lead page (meeting mode's Edit layer passes no mockups), and
 // never while the quote is locked.
 
@@ -33,6 +36,8 @@ export type OfferPhotos = {
   busy: string | null;
   message: { offerId: string; text: string } | null;
   pick: (offerId: string, mockupId: string) => Promise<void>;
+  // Back to the Main: the offer's own picture comes off it.
+  clear: (offerId: string) => Promise<void>;
   upload: (offerId: string, file: File) => Promise<void>;
 };
 
@@ -95,6 +100,28 @@ export function useOfferPhotos({
     }
   }
 
+  async function clear(offerId: string) {
+    const before = list;
+    const own = list.filter((item) => item.offers.includes(offerId));
+    if (own.length === 0) return;
+    setList(list.map((item) => (item.offers.includes(offerId) ? { ...item, offers: item.offers.filter((id) => id !== offerId) } : item)));
+    setMessage(null);
+    try {
+      for (const item of own) {
+        const off = await setLeadMockupOffer(item.id, offerId, false);
+        if (!off.ok) {
+          setList(before);
+          setMessage({ offerId, text: off.message });
+          return;
+        }
+      }
+      onRefresh?.();
+    } catch {
+      setList(before);
+      setMessage({ offerId, text: FAILED });
+    }
+  }
+
   async function upload(offerId: string, file: File) {
     if (!leadId || !userId || busy) return;
     setBusy(offerId);
@@ -141,7 +168,7 @@ export function useOfferPhotos({
     }
   }
 
-  return { list, pending, busy, message, pick, upload };
+  return { list, pending, busy, message, pick, clear, upload };
 }
 
 // The spot on an offer card.
@@ -187,6 +214,20 @@ export function OfferPhoto({ offerId, photos, locked }: { offerId: string; photo
                 <ImagePlus aria-hidden="true" className="size-4" />
                 Upload
               </Button>
+              {found?.own && !uploading ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setPicking(false);
+                    void photos.clear(offerId);
+                  }}
+                  data-testid="offer-photo-clear"
+                >
+                  {photos.list.some((item) => item.main) ? "Use the Main" : "No picture"}
+                </Button>
+              ) : null}
               <input
                 ref={input}
                 type="file"

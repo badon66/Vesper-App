@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { linkLooks, mainPicture, offerPicture, parseLinkMockups, seeItPicture, showsSeeIt } from "@/lib/quote-link/view";
-import { mockupJobs, withOffer, withRole, type LeadMockupItem } from "@/lib/leads/mockup-roles";
+import { mockupJobs, offersUsing, usedByWords, withRole, type LeadMockupItem } from "@/lib/leads/mockup-roles";
 
 // Mockups per house (round 10, Keenan, 2026-11-10): the customer's link
 // shows each option's own mockup, else the Main, else nothing; the lead
@@ -139,11 +139,25 @@ describe("the Mockups section's taps", () => {
     ]);
   });
 
-  it("toggles an offer without doubling it", () => {
-    const list = [item("a", { offers: ["front"] })];
-    expect(withOffer(list, "a", "front", true)[0].offers).toEqual(["front"]);
-    expect(withOffer(list, "a", "full", true)[0].offers).toEqual(["front", "full"]);
-    expect(withOffer(list, "a", "front", false)[0].offers).toEqual([]);
+  it("says which offers use a picture: the one picked for it on the offer, else the Main (round 13)", () => {
+    const main = item("m", { main: true });
+    const front = item("f", { offers: ["front"] });
+    const scene = item("s", { scene: true });
+    const all = [scene, main, front];
+    const offers = [
+      { id: "full", name: "Full wrap" },
+      { id: "front", name: "Front lower" },
+      { id: "pocket", name: "Pocket", hidden: true },
+    ];
+    expect(offersUsing(front, all, offers).map((offer) => offer.id)).toEqual(["front"]);
+    // The Main stands in for every offer with no picture of its own.
+    expect(offersUsing(main, all, offers).map((offer) => offer.id)).toEqual(["full", "pocket"]);
+    expect(offersUsing(scene, all, offers)).toEqual([]);
+    expect(usedByWords(front, all, offers)).toBe("Used by Front lower.");
+    expect(usedByWords(main, all, offers)).toBe("Used by Full wrap and Pocket (hidden).");
+    expect(usedByWords(scene, all, offers)).toBe("No offer uses it.");
+    // No quote yet: nothing to say an offer uses.
+    expect(usedByWords(main, all, [])).toBe("No offer uses it.");
   });
 
   it("names what a picture does", () => {

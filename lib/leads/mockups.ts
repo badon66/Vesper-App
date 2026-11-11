@@ -39,7 +39,9 @@ export async function loadLeadMockups(
       : [];
   const urlByPath = new Map(signed.flatMap((item) => (item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : [])));
   const runCount = Array.isArray(quoteRow?.runs) ? quoteRow.runs.length : 0;
-  const offers = quoteRow ? parseOffers(quoteRow.offers, runCount).map((offer) => ({ id: offer.id, name: offer.name })) : [];
+  const offers = quoteRow
+    ? parseOffers(quoteRow.offers, runCount).map((offer) => ({ id: offer.id, name: offer.name, ...(offer.hidden ? { hidden: true } : {}) }))
+    : [];
   return {
     mockups: list.map((row) => ({
       id: row.id,
