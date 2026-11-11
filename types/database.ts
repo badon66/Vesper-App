@@ -2427,6 +2427,7 @@ export type Database = {
       }
       quote_link_select_offer: { Args: { p_offer: string; p_token: string }; Returns: boolean }
       quote_link_visit: { Args: { p_token: string }; Returns: boolean }
+      photo_file_is_mockup: { Args: { p_name: string }; Returns: boolean }
       quote_link_mockups: { Args: { p_token: string }; Returns: Json }
       quote_mockup_signable: { Args: { p_name: string }; Returns: boolean }
       quote_undo_acceptance: {

@@ -1,19 +1,5 @@
 import { commissionFor, commissionQuoteFromRow, type CommissionQuoteRow } from "@/lib/pay/commission";
-import {
-  formatMoney,
-  priceQuote,
-  resolveDiscounts,
-  RUN_PARTS,
-  screenTotal,
-  selectRuns,
-  totalFeet,
-  usablePercent,
-  type ColourTiming,
-  type QuoteAdder,
-  type QuoteInputs,
-  type QuoteLineItem,
-  type QuoteRun,
-} from "@/lib/pricing";
+import { RUN_PARTS, formatMoney, priceQuote, resolveDiscounts, screenTotal, selectRuns, totalFeet, usablePercent, type ColourTiming, type QuoteAdder, type QuoteInputs, type QuoteLineItem, type QuoteRun } from "@/lib/pricing";
 import {
   FULL_WRAP_ID,
   offerCoverage,
@@ -207,6 +193,21 @@ export function acceptedDiscounts(quote: OfferQuoteRow, offerId: string): Json[]
     return { ...item, amount: line.amount };
   });
   return changed ? next : null;
+}
+
+// The accepted option's own subtotal, GST and total, priced as the link
+// prices it (a percent line worked out on that option), for the quote row
+// to store with the acceptance. Null when the quote has no such option.
+export function acceptedTotals(quote: OfferQuoteRow, offerId: string): { subtotal: number; gst: number; total: number } | null {
+  const selection = acceptedSelection(quote, offerId);
+  if (!selection) return null;
+  const inputs = quoteInputsFromRow(quote);
+  const priced = priceQuote({
+    ...inputs,
+    runs: selectRuns(inputs.runs, selection.positions === null ? null : [...selection.positions]),
+    boxCount: selection.boxes ?? inputs.boxCount,
+  });
+  return { subtotal: priced.subtotal, gst: priced.gst, total: priced.total };
 }
 
 export type BookedLink = {

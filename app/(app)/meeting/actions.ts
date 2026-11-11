@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { NotOwnerError, ReadOnlyError, requireOwnerForAction, type SessionProfile } from "@/lib/auth/profile";
 import { hasDash, hasExclamation } from "@/lib/deck";
-import { guessRunPart, priceQuote, RUN_PARTS, totalFeet, type QuoteInputs } from "@/lib/pricing";
+import { guessRunPart, RUN_PARTS, totalFeet, type QuoteInputs } from "@/lib/pricing";
 import { quoteLockedWords, type QuoteSaveInput } from "@/lib/quotes/draft";
-import { OFFERS_MAX, offersForSave } from "@/lib/quotes/offers";
+import { chosenOfferTotals, OFFERS_MAX, offersForSave } from "@/lib/quotes/offers";
 import { createClient } from "@/lib/supabase/server";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 
@@ -157,7 +157,10 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     gstEnabled: draft.gstEnabled,
     gstRate: draft.gstRate,
   };
-  const priced = priceQuote(inputs);
+  // The stored subtotal, GST and total are the chosen option's own when
+  // one is chosen at the table (round 10 catch-up, 2026-11-11), otherwise
+  // the whole quote's.
+  const priced = chosenOfferTotals(inputs, offers, meetingOffer);
 
   const colourName = lead.track_colours?.name ?? (lead.track_ral_code ? `RAL ${lead.track_ral_code}` : null);
   const row = {

@@ -121,7 +121,6 @@ export function activeLookCount(lightLooks) {
 //                mockups. mockup is read as main, for older callers.
 export function deckOrder(settings, { lead }) {
   const deck = settings.deck;
-  const traced = Boolean(lead.traced);
   const main = Boolean(lead.main ?? lead.mockup);
   const looks = activeLookCount(settings.light_looks);
   const shows = {

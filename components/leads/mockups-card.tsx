@@ -71,11 +71,22 @@ export function MockupsCard({
     const supabase = createClient();
     const added: { path: string }[] = [];
     let failed = chosen.length - batch.length;
+    // A file the browser can't read (a HEIC from the Files app on an older
+    // iPad, say; Photos hands over a JPEG) is told apart from an upload
+    // that failed on signal.
+    let unreadable = 0;
     for (const file of batch) {
+      let small: Blob;
       try {
-        const small = await shrinkPhoto(file, MEETING_PHOTO_MAX_EDGE);
+        small = await shrinkPhoto(file, MEETING_PHOTO_MAX_EDGE);
+      } catch {
+        unreadable += 1;
+        setUploading({ done: added.length + failed + unreadable, of: batch.length, previews: [...previews] });
+        continue;
+      }
+      try {
         previews.push(URL.createObjectURL(small));
-        setUploading({ done: added.length + failed, of: batch.length, previews: [...previews] });
+        setUploading({ done: added.length + failed + unreadable, of: batch.length, previews: [...previews] });
         const path = photoPath(userId, crypto.randomUUID());
         const { error: uploadError } = await supabase.storage
           .from(PHOTO_BUCKET)
@@ -85,7 +96,7 @@ export function MockupsCard({
       } catch {
         failed += 1;
       }
-      setUploading({ done: added.length + failed, of: batch.length, previews: [...previews] });
+      setUploading({ done: added.length + failed + unreadable, of: batch.length, previews: [...previews] });
     }
     try {
       if (added.length > 0) {
@@ -96,13 +107,19 @@ export function MockupsCard({
         }
         router.refresh();
       }
-      if (failed > 0) {
-        setError(
-          failed === 1
-            ? "One picture didn't upload. Check your signal and add it again."
-            : `${failed} pictures didn't upload. Check your signal and add them again.`,
-        );
-      }
+      const problems = [
+        unreadable === 1
+          ? "One picture couldn't be read, so it was skipped. Save it as a JPEG and add it again."
+          : unreadable > 1
+            ? `${unreadable} pictures couldn't be read, so they were skipped. Save them as JPEGs and add them again.`
+            : null,
+        failed === 1
+          ? "One picture didn't upload. Check your signal and add it again."
+          : failed > 1
+            ? `${failed} pictures didn't upload. Check your signal and add them again.`
+            : null,
+      ].filter((line): line is string => line !== null);
+      if (problems.length > 0) setError(problems.join(" "));
     } catch {
       setError("The mockups didn't save. Check your signal and try again.");
     } finally {

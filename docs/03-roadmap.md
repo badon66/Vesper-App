@@ -117,6 +117,23 @@ Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a previe
 - [x] Get tonight ready saves every one of tonight's meetings on the iPad, photos included, so each opens without signal, and shows which ones are saved
 - [x] The full suite passes, including a walk-through that saves tonight with Get tonight ready, stops the server, and opens a meeting that was never opened before
 
+### Round 9: the meeting as one story, offers, and book now, finish later (Keenan, 2026-11-10; shipped inside the knocking window on Keenan's call, no preview)
+- [x] The deck tells one story: the Vesper pages, then their house once, then What happens next, with "Next: {page}" beside the forward arrow
+- [x] Offers: the house's runs once, each offer picking its runs (and its own box count); the quote editor on the lead page with quick starts; the price page biggest first with Choose; the customer's link opens on the booked, chosen or biggest option and Book my install records the offer; Accepted asks which option and commission follows it
+- [x] Book now, finish later: a booking needs only a time plus a name or an address; the reminder bar, the address under the name, To be completed
+- [x] The polish pass was stopped to ship: in were the breakdown fitting, a fixed drawing slot and the 48 px Next button; left were the editor drawing's labels at 390, the editor's Close and Save changes pair, 48 px editor chips, en-CA dates in the editor, the Accepted sheet's footer padding and What happens next's worst case (the drawing ones are moot since round 10 removed the drawing)
+- [ ] `meetings.everyone_deciding_present` is always true (found in round 9, still open)
+
+### Round 10: their own house (Keenan, 2026-11-10 and 11; live at 4:41 pm, the rest at 6:15 pm, both on Keenan's call)
+- [x] Mockups per house on the lead page: as many as Keenan likes, each named and marked Main, Day, Night, a phone scene or an offer's picture; the old mockup carried over as the Main; Keenan's alone, in the database and in storage
+- [x] The deck in order: Cover, Up once there all year, Hidden by day, Run it from your phone, Our 10-year warranty (a timeline), Your price, What happens next; a page missing its mockup is skipped; no house drawing anywhere
+- [x] Your price: the offer's own mockup or the Main, totals with coverage in words, the breakdown one tap away, the colour as one line, initials on a yes; quick starts Full wrap, Front and Front lower
+- [x] Keenan's talking points per page in Settings, shown only while he presses and holds the mark
+- [x] The customer's page shows each option's own mockup or the Main
+- [x] Black Friday: a deal in Settings (percent or dollars), the button on Your price, prices struck through, saved as one "Black Friday" line; a percent follows each option on the link; the minimum still holds; commission reads the line
+- [x] No light picker: Try it on your house left the deck for good and the roofline tracing is hidden; saved traces untouched
+- [x] Catch-up (2026-11-11): the skipped walk-throughs and the RLS suite, mockup privacy proven in storage too, the stored quote numbers are the chosen option's, the editor's percent line reads "15% off", unreadable uploads say so, Black Friday end to end on marked test records
+
 ### Take 2: after Keenan's first meetings
 - [ ] The leave-behind folder: a branded, always-white PDF through AirPrint and a share sheet: the personal quote (runs, feet, track colour, line-by-line prices, valid until), the mockup full page, a one-page overview, the warranty summary, the FAQ from Settings, and the company contact ((403) 895-9915, info@vesperlighting.ca, 448 Strathcona Drive SW, Calgary, AB T3H 1M3, never a unit number)
 - [ ] Mark presented; it writes a lead event and moves the lead to `quoted`. Accepted, declined, cancelled, installed and the commission are no longer part of take 2: round 8 built them on the lead page (Keenan, 2026-11-09)

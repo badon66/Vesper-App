@@ -143,7 +143,11 @@ try {
   const jpeg = await sharp({ create: { width: 1200, height: 800, channels: 3, background: "#1d3445" } }).jpeg().toBuffer();
   const uploaded = await admin.storage.from(BUCKET).upload(mockupPath, jpeg, { contentType: "image/jpeg" });
   if (uploaded.error) throw new Error(`mockup: ${uploaded.error.message}`);
-  await admin.from("lead_photos").insert({ lead_id: tonightLead, storage_path: mockupPath, slot: "mockup" });
+  // Round 10: the mockup is the house's Main in lead_mockups.
+  const mockupRow = await admin
+    .from("lead_mockups")
+    .insert({ lead_id: tonightLead, storage_path: mockupPath, name: "Main", is_main: true, position: 0 }, { defaultToNull: false });
+  if (mockupRow.error) throw new Error(`mockup row: ${mockupRow.error.message}`);
 
   const today = calgaryToday();
   const meeting = (leadId, day) => ({
@@ -245,7 +249,7 @@ try {
   const soonText = (await soonCard.innerText().catch(() => "")).replace(/\s+/g, " ");
   check(
     "tomorrow's meeting is in the Next few days row, with its time and what's left",
-    soonText.includes(`${TEST_LEAD} Later`) && soonText.includes("11:00 p.m. tomorrow") && soonText.includes("6 left"),
+    soonText.includes(`${TEST_LEAD} Later`) && soonText.includes("11:00 p.m. tomorrow") && soonText.includes("5 left"),
     soonText.slice(0, 160),
   );
   check(
@@ -282,7 +286,7 @@ try {
   );
   check(
     "it says Prepare for the meeting with how many are left, and Start is there",
-    (await page.getByTestId("prep-status").innerText()).trim() === "Prepare for the meeting: 6 left" &&
+    (await page.getByTestId("prep-status").innerText()).trim() === "Prepare for the meeting: 5 left" &&
       (await page.getByTestId("prep-start").getAttribute("href")) === `/meeting/${laterLead}#start` &&
       (await page.getByTestId("prep-when").innerText()).trim() === "11:00 p.m. tomorrow",
   );
@@ -443,6 +447,14 @@ try {
     process.kill(-offlineServer.pid, "SIGTERM");
   } catch {}
   for (let i = 0; i < 30 && (await serverAnswers(offlineBase)); i += 1) await sleep(500);
+  // A server still answering after 15 s is made to stop, so the dead-spot
+  // check below is about the browser, not about how long Next takes to go.
+  if (await serverAnswers(offlineBase)) {
+    try {
+      process.kill(-offlineServer.pid, "SIGKILL");
+    } catch {}
+    for (let i = 0; i < 30 && (await serverAnswers(offlineBase)); i += 1) await sleep(500);
+  }
   const gone = !(await serverAnswers(offlineBase));
   // And the browser itself without a network, as in a dead spot.
   await ownerContext.setOffline(true);
@@ -462,15 +474,17 @@ try {
   );
   await ready.getByRole("link", { name: `Start the meeting with ${TEST_LEAD} Tonight` }).click().catch(() => {});
   await ready.locator('ol[aria-label="Where you are"]').waitFor({ timeout: 30000 }).catch(() => {});
-  // Round 9's deck: with no trace, the mockup is "Your house, lit" (its
-  // headline from Settings), standing in for Your house; a page's pictures
-  // load once it is near the screen, so go to it first.
-  const mockupLabel = await ready.locator('section[data-page="mockup"]').getAttribute("aria-label").catch(() => null);
+  // Round 10's deck: the Main mockup is Up once, there all year (its
+  // headline from Settings), full screen; a page's pictures load once it
+  // is near the screen, so go to it first.
+  const mockupLabel = await ready.locator('section[data-page="what_vesper_is"]').getAttribute("aria-label").catch(() => null);
   const { data: deckRow } = await admin.from("settings").select("deck").eq("id", 1).single();
-  const mockupHeadline = (deckRow?.deck?.pages?.mockup?.headline ?? "").trim() || "Your house, lit";
+  const mockupHeadline = (deckRow?.deck?.pages?.what_vesper_is?.headline ?? "").trim() || "Up once, there all year";
   check(
-    "the offline meeting names the mockup page Your house, lit (its headline from Settings), standing in for Your house",
-    mockupLabel === mockupHeadline && mockupHeadline === "Your house, lit" && (await ready.locator('section[data-page="your_house"]').count()) === 0,
+    "the offline meeting has the Main mockup's page, named by its headline from Settings, and no Your house page",
+    mockupLabel === mockupHeadline &&
+      (await ready.locator('section[data-page="your_house"]').count()) === 0 &&
+      (await ready.locator('section[data-page="mockup"]').count()) === 0,
     `${mockupLabel} (Settings: ${mockupHeadline})`,
   );
   if (mockupLabel) {
@@ -478,7 +492,7 @@ try {
   }
   const opened = await ready
     .waitForFunction(() => {
-      const img = document.querySelector('section[data-page="mockup"] img');
+      const img = document.querySelector('section[data-page="what_vesper_is"] img');
       return Boolean(img && img.complete && img.naturalWidth > 0);
     }, null, { timeout: 20000 })
     .then(() => true)
@@ -504,19 +518,39 @@ try {
     "a setter who opens Meetings gets Not for your role, and none of the meetings",
     (await setterPage.getByRole("heading", { name: "Not for your role" }).count()) === 1 && (await setterPage.getByTestId("meeting-item").count()) === 0,
   );
+  // The reminder bar (round 9, book now, finish later) names the setter's
+  // own bookings still to finish, these test leads among them, so names
+  // and addresses are checked outside it; the prep list's own notes and
+  // markup must never reach them at all.
+  const outsideBar = (page) =>
+    page.evaluate(() => {
+      const body = document.body.cloneNode(true);
+      body.querySelector('[data-testid="to-finish-bar"]')?.remove();
+      body.querySelectorAll("script").forEach((script) => script.remove());
+      return body.textContent ?? "";
+    });
   await setterPage.goto(`${base}/app/meetings/prep/${laterLead}`);
   await settle(setterPage);
   const prepSource = await setterPage.content();
   check(
     "a setter who opens a prep list gets Not for your role, and none of it",
-    (await setterPage.getByRole("heading", { name: "Not for your role" }).count()) === 1 && !prepSource.includes("Gate code 4411") && !prepSource.includes(`${TEST_LEAD} Later`),
+    (await setterPage.getByRole("heading", { name: "Not for your role" }).count()) === 1 &&
+      !prepSource.includes("Gate code 4411") &&
+      !prepSource.includes("prep-list") &&
+      !prepSource.includes("prep-brief") &&
+      !(await outsideBar(setterPage)).includes(`${TEST_LEAD} Later`),
   );
   await setterPage.goto(`${base}/app/meetings`);
   await settle(setterPage);
   const setterSource = await setterPage.content();
+  const setterText = await outsideBar(setterPage);
   check(
-    "and its page source carries none of them: no names, no addresses",
-    !setterSource.includes(street) && !setterSource.includes(`${TEST_LEAD} Tonight`) && !setterSource.includes(`${TEST_LEAD} Later`),
+    "and its page carries none of them outside their own reminders: no meetings, no names, no addresses",
+    !setterSource.includes("meeting-item") &&
+      !setterSource.includes("quick-pick") &&
+      !setterText.includes(street) &&
+      !setterText.includes(`${TEST_LEAD} Tonight`) &&
+      !setterText.includes(`${TEST_LEAD} Later`),
   );
   await setterContext.close();
 
@@ -541,6 +575,8 @@ try {
       await admin.from("meetings").update({ rebooked_as: null }).in("lead_id", leadIds);
       await admin.from("meetings").delete().in("lead_id", leadIds);
       await admin.from("quotes").delete().in("lead_id", leadIds);
+      // lead_mockups has no cascade: its rows go before the leads.
+      await admin.from("lead_mockups").delete().in("lead_id", leadIds);
     }
     await admin.from("leads").delete().eq("created_by", setter.id);
     const { data: files } = await admin.storage.from(BUCKET).list(setter.id, { limit: 1000 });

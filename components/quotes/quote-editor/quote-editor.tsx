@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { colourTimingFor, quoteInputs, quoteMinimum, quoteRushFee, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
-import { cleanFeet, defaultValidUntil, formatMoney, guessRunPart, RUN_PARTS, totalFeet, type QuoteRun, type RunPart } from "@/lib/pricing";
+import { cleanFeet, defaultValidUntil, formatMoney, guessRunPart, percentWords, RUN_PARTS, totalFeet, usablePercent, type QuoteRun, type RunPart } from "@/lib/pricing";
 import { addQuickStart, editorOffers, editorOrder, offerWarnings, percentDiscountWords, typeDiscountAmount } from "@/lib/quotes/editor";
 import { addRunToOffers, OFFERS_MAX, pricedOffers, quickStartsFor, removeRunFromOffers, type QuickStart, type QuoteOffer } from "@/lib/quotes/offers";
 import { cn } from "@/lib/utils";
@@ -458,7 +458,10 @@ function Prices({
             {state.customDiscounts.map((discount, at) => {
               const unnamed = discount.label.trim() === "" && Number(discount.amount) > 0;
               // A line worked out on each option (Black Friday as a percent)
-              // says what it comes to on each; typing an amount makes it fixed.
+              // reads "15% off" in its amount box and says what it comes to
+              // on each option underneath; "Use dollars instead" makes it a
+              // fixed amount, the same on every option.
+              const percent = usablePercent(discount.percent);
               const perOption = percentDiscountWords(discount, inputs, state.offers);
               return (
                 <div key={at} className="flex flex-col gap-1">
@@ -475,17 +478,27 @@ function Prices({
                       }
                       className="min-w-0 flex-1"
                     />
-                    <Input
-                      inputMode="decimal"
-                      aria-label={`Discount ${at + 1} amount`}
-                      value={discount.amount}
-                      placeholder="$"
-                      disabled={locked}
-                      onChange={(event) =>
-                        set({ customDiscounts: typeDiscountAmount(state.customDiscounts, at, cleanMoneyInput(event.target.value)) })
-                      }
-                      className="w-28 tabular-nums"
-                    />
+                    {percent !== null ? (
+                      <Input
+                        readOnly
+                        aria-label={`Discount ${at + 1} amount`}
+                        value={`${percentWords(percent)}% off`}
+                        className="w-28 tabular-nums"
+                        data-testid="editor-percent-amount"
+                      />
+                    ) : (
+                      <Input
+                        inputMode="decimal"
+                        aria-label={`Discount ${at + 1} amount`}
+                        value={discount.amount}
+                        placeholder="$"
+                        disabled={locked}
+                        onChange={(event) =>
+                          set({ customDiscounts: typeDiscountAmount(state.customDiscounts, at, cleanMoneyInput(event.target.value)) })
+                        }
+                        className="w-28 tabular-nums"
+                      />
+                    )}
                     {!locked ? (
                       <Button
                         type="button"
@@ -500,7 +513,17 @@ function Prices({
                   </div>
                   {perOption ? (
                     <p className="text-xs text-muted-foreground" data-testid="editor-percent-discount">
-                      {perOption} Type an amount to make it the same on every option.
+                      {perOption}{" "}
+                      {!locked ? (
+                        <button
+                          type="button"
+                          className="underline underline-offset-2"
+                          data-testid="editor-percent-to-dollars"
+                          onClick={() => set({ customDiscounts: typeDiscountAmount(state.customDiscounts, at, discount.amount) })}
+                        >
+                          Use dollars instead
+                        </button>
+                      ) : null}
                     </p>
                   ) : null}
                   {unnamed ? <p className="text-xs font-semibold">Name this discount. Customers see it.</p> : null}
