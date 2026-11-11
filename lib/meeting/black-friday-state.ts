@@ -6,7 +6,10 @@
 //
 // The one rule: the quote carries one Black Friday discount line exactly
 // while the button is on and an option is chosen, worked out on that
-// option. So a yes with it on saves the line with the quote (the link, the
+// option. A percent deal's line also carries its percent (2026-11-11), so
+// lib/pricing.ts gives every option its own percent off (the customer's
+// link switching options included); a dollars deal's line is the same
+// dollars on every option. So a yes with it on saves the line with the quote (the link, the
 // acceptance and commission then read the same quote), choosing another
 // option recomputes it, and turning the button off, or taking the choice
 // back, takes the line off. With the button on and nothing chosen yet,
@@ -57,7 +60,11 @@ export function settleBlackFriday(state: QuoteUIState, pricing: Pricing): QuoteU
   const rest = state.customDiscounts.filter((line) => !isDealLine(line));
   const offer = blackFridayOn(state, deal) && state.chosenOffer ? quoteOffers(state).find((item) => item.id === state.chosenOffer) : undefined;
   const line = offer ? blackFridayLine(quoteInputs(state, pricing), offer, deal) : null;
-  const next = line ? [...rest, { label: BLACK_FRIDAY_LABEL, amount: asTyped(line.amount) }] : rest;
+  // A percent deal's line keeps its percent, so every option on the link
+  // is priced with its own percent off; amount is the chosen option's.
+  const next = line
+    ? [...rest, { label: BLACK_FRIDAY_LABEL, amount: asTyped(line.amount), ...(line.percent ? { percent: line.percent } : {}) }]
+    : rest;
   return JSON.stringify(next) === JSON.stringify(state.customDiscounts) ? state : { ...state, customDiscounts: next };
 }
 

@@ -2,10 +2,12 @@ import { commissionFor, commissionQuoteFromRow, type CommissionQuoteRow } from "
 import {
   formatMoney,
   priceQuote,
+  resolveDiscounts,
   RUN_PARTS,
   screenTotal,
   selectRuns,
   totalFeet,
+  usablePercent,
   type ColourTiming,
   type QuoteAdder,
   type QuoteInputs,
@@ -114,6 +116,10 @@ const label = (value: unknown): string => (typeof value === "string" ? value : "
 
 const COLOUR_TIMINGS: readonly ColourTiming[] = ["stock", "factory_order", "rush"];
 
+// A stored percent, as a number or text that is one, when it is usable.
+const percentOf = (value: unknown): number | null =>
+  usablePercent(typeof value === "string" && value.trim() !== "" ? Number(value) : value);
+
 // The pricing inputs for every run on a stored quote, built the way the
 // customer's link builds them (lib/quote-link/view.ts customerInputs): the
 // rush colour fee only when the quote is rush, both upper access amounts,
@@ -125,10 +131,12 @@ export function quoteInputsFromRow(row: OfferQuoteRow, runs: QuoteRun[] = runsFr
     amount: amountOf(adder.amount),
     ...(adder.upper_only === true ? { upperOnly: true } : {}),
   }));
-  const discounts: QuoteLineItem[] = objects(row.discounts).map((discount) => ({
-    label: label(discount.label),
-    amount: amountOf(discount.amount),
-  }));
+  // A discount keeps a usable percent (Black Friday as a percent,
+  // 2026-11-11), so each option is priced with its own percent off.
+  const discounts: QuoteLineItem[] = objects(row.discounts).map((discount) => {
+    const percent = percentOf(discount.percent);
+    return { label: label(discount.label), amount: amountOf(discount.amount), ...(percent !== null ? { percent } : {}) };
+  });
   return {
     runs,
     boxCount: amountOf(row.box_count),
@@ -144,6 +152,61 @@ export function quoteInputsFromRow(row: OfferQuoteRow, runs: QuoteRun[] = runsFr
     gstEnabled: row.gst_enabled === true,
     gstRate: amountOf(row.gst_rate),
   };
+}
+
+// ------------------------------------------------- discounts per option
+
+// The quote's discounts on one option (2026-11-11): its runs (positions,
+// null for every run) and its boxes (null for the quote's), with a percent
+// line (Black Friday as a percent) worked out by lib/pricing.ts exactly as
+// the customer's link prices that option. Fixed lines as they are. The
+// Accepted sheet's commission preview reads these per option.
+export function optionDiscounts(quote: OfferQuoteRow, positions: readonly number[] | null, boxes: number | null): QuoteLineItem[] {
+  const inputs = quoteInputsFromRow(quote);
+  return resolveDiscounts({
+    ...inputs,
+    runs: selectRuns(inputs.runs, positions === null ? null : [...positions]),
+    boxCount: boxes ?? inputs.boxCount,
+  });
+}
+
+// The option Accepted would record for an offer id, the database's way
+// (quote_accept_offer): the offer's runs and its own boxes; the full quote
+// for "full" when no offer covers a run (round 8's quote_accept). Null when
+// the quote has no such option, which the database refuses anyway.
+export function acceptedSelection(
+  quote: Pick<OfferQuoteRow, "runs" | "offers">,
+  offerId: string,
+): { positions: number[] | null; boxes: number | null } | null {
+  const runCount = runsFromJson(quote.runs).length;
+  const offer = parseOffers(quote.offers, runCount).find((item) => item.id === offerId && item.runs.length > 0);
+  if (offer) return { positions: offer.runs.length === runCount ? null : [...offer.runs], boxes: offer.boxes ?? null };
+  return offerId === FULL_WRAP_ID ? { positions: null, boxes: null } : null;
+}
+
+// What Accepted stores first (2026-11-11): the database's commission takes
+// each discount's stored amount off, so a percent line's amount is set to
+// the accepted option's own amount, keeping its percent; every other line,
+// and anything else on each line, stays as stored. Null when nothing needs
+// to change (no percent line, its amount already right, or no such option).
+export function acceptedDiscounts(quote: OfferQuoteRow, offerId: string): Json[] | null {
+  const raw = Array.isArray(quote.discounts) ? quote.discounts : [];
+  const hasPercent = objects(raw).some((discount) => percentOf(discount.percent) !== null);
+  if (!hasPercent) return null;
+  const selection = acceptedSelection(quote, offerId);
+  if (!selection) return null;
+  const resolved = optionDiscounts(quote, selection.positions, selection.boxes);
+  let at = -1;
+  let changed = false;
+  const next = raw.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+    at += 1;
+    const line = resolved[at];
+    if (!line || percentOf(item.percent) === null || item.amount === line.amount) return item;
+    changed = true;
+    return { ...item, amount: line.amount };
+  });
+  return changed ? next : null;
 }
 
 export type BookedLink = {
@@ -210,7 +273,9 @@ export function acceptOptions({
 }: {
   quote: OfferQuoteRow;
   link: BookedLink | null;
-  commission: (positions: number[] | null, boxes: number | null) => CommissionLine;
+  // discounts: the quote's discounts on this option, a percent line worked
+  // out on it (optionDiscounts), for the commission the database would make.
+  commission: (positions: number[] | null, boxes: number | null, discounts: QuoteLineItem[]) => CommissionLine;
   // The option chosen at the table (quotes.meeting_offer), if any.
   meetingOffer?: string | null;
 }): AcceptOption[] {
@@ -229,7 +294,7 @@ export function acceptOptions({
         total: screenTotal(priceQuote(inputs).subtotal, inputs.gstEnabled),
         booked: false,
         meeting: false,
-        commission: commission(null, null),
+        commission: commission(null, null, optionDiscounts(quote, null, null)),
       },
     ];
   }
@@ -245,7 +310,7 @@ export function acceptOptions({
       total: totals ? screenTotal(totals.subtotal, inputs.gstEnabled) : "",
       booked: offer.id === bookedId,
       meeting: meetingOffer !== null && offer.id === meetingOffer,
-      commission: commission(positions, boxes),
+      commission: commission(positions, boxes, optionDiscounts(quote, positions, boxes)),
     };
   });
 }

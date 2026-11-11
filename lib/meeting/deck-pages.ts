@@ -160,10 +160,11 @@ export function offerMockup(mockups: readonly MeetingMockup[] | undefined, offer
 
 // A page with nothing to show is skipped, never shown empty (round 10): a
 // page missing its mockup is skipped, so a meeting never shows an empty
-// page. What happens next is never skipped.
+// page. What happens next is never skipped. The light picker is never shown
+// (Keenan, 2026-11-11), even with a roofline traced: the payload may still
+// carry a trace (deck.picker), and it is ignored here.
 export function deckPages({ deck, lead, fillEmpty = false }: DeckPagesInput): DeckPage[] {
   void fillEmpty;
-  const traced = lead !== null && deck.picker !== null;
   const jobs = mockupJobs(lead?.mockups ?? []);
   const main = lead !== null && (jobs.main !== null || Boolean(lead.mockupUrl));
   const shows: Record<DeckPageKey, () => boolean> = {
@@ -172,10 +173,11 @@ export function deckPages({ deck, lead, fillEmpty = false }: DeckPagesInput): De
     hidden_by_day: () => jobs.day !== null && jobs.night !== null,
     phone_control: () => jobs.scenes.length > 0,
     warranty: () => true,
-    // Their own house only: never a drawing or another house in its place.
-    light_picker: () => traced && deck.looks.length > 0,
     quote: () => lead !== null,
     next_steps: () => true,
+    // Left the meeting on 2026-11-11 (lib/deck.ts RETIRED_PAGES): no
+    // editor, so no light picker, traced or not.
+    light_picker: () => false,
     // Left the order in round 10 (lib/deck.ts RETIRED_PAGES).
     gallery: () => false,
     your_house: () => false,

@@ -20,7 +20,7 @@
 //                                       Price held until March 4, 2027."
 
 import { hasDash, hasExclamation } from "@/lib/deck";
-import { cleanFeet, formatMoney, screenTotal, type QuoteInputs, type QuoteRun } from "@/lib/pricing";
+import { cleanFeet, formatMoney, percentWords, screenTotal, usablePercent, type QuoteInputs, type QuoteRun } from "@/lib/pricing";
 import {
   cleanOfferName,
   newOfferId,
@@ -167,4 +167,38 @@ export function quoteSummary(
   if (shown.length === 0) return "";
   const list = shown.map((priced) => `${nameOf(priced.offer)} ${screenTotal(priced.totals?.subtotal ?? 0, inputs.gstEnabled)}`).join(", ");
   return validUntil ? `${list}. Price held until ${formatDate(validUntil)}.` : `${list}.`;
+}
+
+// ------------------------------------------------ a discount worked out per option
+
+// A discount line as the editor holds it: percent when it is worked out on
+// each option (Black Friday as a percent, 2026-11-11).
+type EditorDiscount = { label: string; amount: string; percent?: number };
+
+// Keenan types an amount on a discount: a line worked out on each option
+// becomes a fixed amount, dropping its percent; any other line just takes
+// the amount.
+export function typeDiscountAmount<T extends EditorDiscount>(lines: readonly T[], at: number, amount: string): T[] {
+  return lines.map((line, which) => {
+    if (which !== at) return line;
+    const { percent: _dropped, ...rest } = line;
+    void _dropped;
+    return { ...rest, amount } as T;
+  });
+}
+
+// What a percent line comes to on each option, for the line under it in the
+// editor: "Black Friday, 15% off: Full wrap $553.50, Main floor $385.50."
+// Null for a fixed line, or with no option priced yet.
+export function percentDiscountWords(line: EditorDiscount, inputs: QuoteInputs, offers: readonly QuoteOffer[]): string | null {
+  const percent = usablePercent(line.percent);
+  if (percent === null) return null;
+  const label = line.label.trim() || "Discount";
+  const detail = `${percentWords(percent)}% off`;
+  const shown = screenOptions(inputs, offers.length > 0 ? offers : parseOffers([], inputs.runs.length));
+  const each = shown.map((priced) => {
+    const found = priced.totals?.lines.find((item) => item.label === label && item.detail === detail);
+    return `${nameOf(priced.offer)} ${formatMoney(found ? -found.amount : 0)}`;
+  });
+  return each.length > 0 ? `${label}, ${detail}: ${each.join(", ")}.` : `${label}, ${detail} each option.`;
 }

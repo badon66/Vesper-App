@@ -75,6 +75,6 @@ describe("Black Friday", () => {
     ]);
     expect(hasBlackFridayLine(saved)).toBe(true);
     const again = discountsWithBlackFriday(inputs({ discounts: saved }), FULL, { kind: "percent", value: 10 });
-    expect(again.filter((line) => line.label === BLACK_FRIDAY_LABEL)).toEqual([{ label: BLACK_FRIDAY_LABEL, amount: 420 }]);
+    expect(again.filter((line) => line.label === BLACK_FRIDAY_LABEL)).toEqual([{ label: BLACK_FRIDAY_LABEL, amount: 420, percent: 10 }]);
   });
 });

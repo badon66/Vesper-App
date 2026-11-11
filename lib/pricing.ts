@@ -24,7 +24,13 @@
 export const RUN_PARTS = ["eave", "gable", "garage", "porch", "sides", "other"] as const;
 export type RunPart = (typeof RUN_PARTS)[number];
 export type QuoteRun = { name: string; feet: number; level: "lower" | "upper"; part?: RunPart | null };
-export type QuoteLineItem = { label: string; amount: number };
+// percent (Black Friday follows each option, Keenan, 2026-11-11): a
+// discount line with a usable percent (more than 0, at most 90) is worked
+// out on the selection being priced, so every option gets its own percent
+// off; amount then keeps the dollars it came to on the option chosen when
+// it was saved, for anything that reads amount alone. Without a percent the
+// line is a fixed amount.
+export type QuoteLineItem = { label: string; amount: number; percent?: number | null };
 // Extra work. upperOnly: the line counts only while an upper run is in.
 export type QuoteAdder = QuoteLineItem & { upperOnly?: boolean };
 export type ColourTiming = "stock" | "factory_order" | "rush";
@@ -146,6 +152,54 @@ export function selectRuns(runs: QuoteRun[], positions: readonly number[] | null
   return runs.filter((_, at) => wanted.has(at));
 }
 
+// A discount's percent when it is usable: a number more than 0 and at most
+// 90. Anything else (none, 0, more than 90, not a number) is a fixed line.
+export function usablePercent(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 90 ? value : null;
+}
+
+// "15" or "12.5": a percent as a line says it.
+export function percentWords(percent: number): string {
+  return Number.isInteger(percent) ? String(percent) : String(Math.round(percent * 10) / 10);
+}
+
+// percent of an amount in cents, to the cent, never more than the amount
+// and never below zero.
+export function percentOfCents(cents: number, percent: number): number {
+  if (cents <= 0) return 0;
+  return Math.min(cents, Math.max(0, Math.round((cents * percent) / 100)));
+}
+
+// Each discount's cents as priceQuote takes it off, in the discounts' own
+// order: a fixed line its amount (never below zero), a percent line its
+// percent of the gross (lights, boxes, upper access, rush and extra work)
+// less the fixed lines, never below zero.
+function resolveDiscountCents(discounts: readonly QuoteLineItem[], grossCents: number): number[] {
+  const fixedCents = discounts.reduce(
+    (sum, discount) => (usablePercent(discount.percent) === null ? sum + toCents(Math.max(0, discount.amount)) : sum),
+    0,
+  );
+  const base = Math.max(0, grossCents - fixedCents);
+  return discounts.map((discount) => {
+    const percent = usablePercent(discount.percent);
+    return percent === null ? toCents(Math.max(0, discount.amount)) : percentOfCents(base, percent);
+  });
+}
+
+// The quote's discounts with each percent line's amount as priceQuote works
+// it out for these inputs (their runs and boxes), keeping its percent; fixed
+// lines as they are. What the acceptance stores on the accepted option, and
+// what the commission preview reads per option.
+export function resolveDiscounts(inputs: QuoteInputs): QuoteLineItem[] {
+  if (!inputs.discounts.some((discount) => usablePercent(discount.percent) !== null)) return inputs.discounts.map((d) => ({ ...d }));
+  const lines = priceQuote({ ...inputs, minJobTotal: null, gstEnabled: false });
+  const gross = lines.lines.reduce((sum, line) => (line.amount > 0 ? sum + toCents(line.amount) : sum), 0);
+  const cents = resolveDiscountCents(inputs.discounts, gross);
+  return inputs.discounts.map((discount, at) =>
+    usablePercent(discount.percent) === null ? { ...discount } : { ...discount, amount: toDollars(cents[at]) },
+  );
+}
+
 export function priceQuote(inputs: QuoteInputs): QuoteTotals {
   const feet = totalFeet(inputs.runs);
   const lines: QuoteLine[] = [];
@@ -195,13 +249,21 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
     lines.push({ label: adder.label.trim() || "Extra work", detail: null, amount: toDollars(cents) });
   }
 
+  // Fixed discounts first, then each percent line on what is left of the
+  // lights, boxes, upper access, rush and extra work after them.
+  const resolved = resolveDiscountCents(inputs.discounts, trackCents + boxCents + accessCents + rushCents + adderCents);
   let discountCents = 0;
-  for (const discount of inputs.discounts) {
-    const cents = toCents(Math.max(0, discount.amount));
-    if (cents === 0) continue;
+  inputs.discounts.forEach((discount, at) => {
+    const cents = resolved[at];
+    if (cents === 0) return;
     discountCents += cents;
-    lines.push({ label: discount.label.trim() || "Discount", detail: null, amount: -toDollars(cents) });
-  }
+    const percent = usablePercent(discount.percent);
+    lines.push({
+      label: discount.label.trim() || "Discount",
+      detail: percent !== null ? `${percentWords(percent)}% off` : null,
+      amount: -toDollars(cents),
+    });
+  });
 
   // A pile of discounts can never make the house owe less than nothing.
   let subtotalCents = Math.max(0, trackCents + boxCents + accessCents + rushCents + adderCents - discountCents);

@@ -120,9 +120,9 @@ describe("saying yes with Black Friday on", () => {
     const main = chooseWithBlackFriday(on, "main", pricing);
     // Main floor: 90 ft at $23 + $500 = $2,570; 15% off is $385.50.
     expect(main.chosenOffer).toBe("main");
-    expect(dealLines(main)).toEqual([{ label: BLACK_FRIDAY_LABEL, amount: "385.50" }]);
+    expect(dealLines(main)).toEqual([{ label: BLACK_FRIDAY_LABEL, amount: "385.50", percent: 15 }]);
     const full = chooseWithBlackFriday(main, "full", pricing);
-    expect(dealLines(full)).toEqual([{ label: BLACK_FRIDAY_LABEL, amount: "553.50" }]);
+    expect(dealLines(full)).toEqual([{ label: BLACK_FRIDAY_LABEL, amount: "553.50", percent: 15 }]);
     // The chosen option's price on the quote is its Black Friday price.
     expect(priceOffer(quoteInputs(full, pricing), FULL)?.subtotal).toBe(3136.5);
     // The screen still shows the regular price struck through, never the deal twice.
@@ -144,7 +144,7 @@ describe("saying yes with Black Friday on", () => {
     // Turning it on after a yes puts the line on.
     const plain = chooseWithBlackFriday(state(pricing), "main", pricing);
     expect(dealLines(plain)).toEqual([]);
-    expect(dealLines(withBlackFriday(plain, true, pricing))).toEqual([{ label: BLACK_FRIDAY_LABEL, amount: "385.50" }]);
+    expect(dealLines(withBlackFriday(plain, true, pricing))).toEqual([{ label: BLACK_FRIDAY_LABEL, amount: "385.50", percent: 15 }]);
   });
 
   it("keeps the quote's own discounts, and recomputes the line when the quote changes", () => {
@@ -157,10 +157,10 @@ describe("saying yes with Black Friday on", () => {
     // ($2,570 - $100) x 15% = $370.50, after the quote's own discount.
     expect(yes.customDiscounts).toEqual([
       { label: "Referral", amount: "100" },
-      { label: BLACK_FRIDAY_LABEL, amount: "370.50" },
+      { label: BLACK_FRIDAY_LABEL, amount: "370.50", percent: 15 },
     ]);
     const longer = settleBlackFriday({ ...yes, runs: [{ ...RUNS[0], feet: 70 }, RUNS[1], RUNS[2]] }, pricing);
-    expect(dealLines(longer)).toEqual([{ label: BLACK_FRIDAY_LABEL, amount: "405" }]);
+    expect(dealLines(longer)).toEqual([{ label: BLACK_FRIDAY_LABEL, amount: "405", percent: 15 }]);
     // Settling a settled quote changes nothing.
     expect(settleBlackFriday(longer, pricing)).toBe(longer);
   });
@@ -176,7 +176,7 @@ describe("saying yes with Black Friday on", () => {
     const pricing = pricingWith(PERCENT);
     const yes = chooseWithBlackFriday(withBlackFriday(state(pricing), true, pricing), "main", pricing);
     const sent = quoteSaveInput(yes, pricing, "lead-1", "meeting");
-    expect(sent.discounts).toEqual([{ label: BLACK_FRIDAY_LABEL, amount: 385.5 }]);
+    expect(sent.discounts).toEqual([{ label: BLACK_FRIDAY_LABEL, amount: 385.5, percent: 15 }]);
     expect(sent.meetingOffer).toBe("main");
     // The line changes the saved quote; the button alone never does.
     expect(quoteFingerprint(yes)).not.toBe(quoteFingerprint(chooseWithBlackFriday(state(pricing), "main", pricing)));

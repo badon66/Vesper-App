@@ -9,7 +9,7 @@
 // discounts; the minimum job total still applies after it, through
 // lib/pricing.ts like every other line.
 
-import type { QuoteInputs, QuoteLineItem, QuoteTotals } from "@/lib/pricing";
+import { percentOfCents, type QuoteInputs, type QuoteLineItem, type QuoteTotals } from "@/lib/pricing";
 import { priceOffer, type QuoteOffer } from "@/lib/quotes/offers";
 
 export type BlackFridayDeal = { kind: "percent" | "amount"; value: number };
@@ -27,10 +27,13 @@ export function blackFridayFrom(row: { black_friday_kind?: string | null; black_
 
 // What the deal takes off a total before GST, to the cent, never more than
 // the total itself.
+// A percent is worked out exactly as lib/pricing.ts works out a percent
+// line, so the line saved and the price shown never differ by a cent.
 export function blackFridayAmount(deal: BlackFridayDeal, beforeDeal: number): number {
   if (beforeDeal <= 0) return 0;
-  const cents = deal.kind === "percent" ? Math.round(beforeDeal * 100 * (deal.value / 100)) : Math.round(deal.value * 100);
-  return Math.min(cents, Math.round(beforeDeal * 100)) / 100;
+  const total = Math.round(beforeDeal * 100);
+  if (deal.kind === "percent") return percentOfCents(total, deal.value) / 100;
+  return Math.min(Math.round(deal.value * 100), total) / 100;
 }
 
 // The deal's words for the button and the line: "15% off" or "$300 off".
@@ -51,12 +54,17 @@ const withoutDeal = (inputs: QuoteInputs): QuoteInputs => ({
 });
 
 // The discount line for an offer: the deal worked out on that offer's own
-// total before the minimum (the minimum still lifts it afterwards).
+// total before the minimum (the minimum still lifts it afterwards). A
+// percent deal's line carries its percent (2026-11-11), so lib/pricing.ts
+// works it out again on whichever option is priced: each option gets its
+// own percent off on the link, and amount keeps this offer's dollars. A
+// dollars deal's line is a fixed amount, the same on every option.
 export function blackFridayLine(inputs: QuoteInputs, offer: QuoteOffer, deal: BlackFridayDeal): QuoteLineItem | null {
   const regular = priceOffer(withoutDeal(inputs), offer);
   if (!regular) return null;
   const amount = blackFridayAmount(deal, regular.beforeMinimum);
-  return amount > 0 ? { label: BLACK_FRIDAY_LABEL, amount } : null;
+  if (amount <= 0) return null;
+  return deal.kind === "percent" ? { label: BLACK_FRIDAY_LABEL, amount, percent: deal.value } : { label: BLACK_FRIDAY_LABEL, amount };
 }
 
 // An offer at its regular price and at the Black Friday price.

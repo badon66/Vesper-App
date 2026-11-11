@@ -32,7 +32,8 @@ export type QuoteSaveInput = {
   pricePerFt: number;
   boxPrice: number;
   adders: { label: string; amount: number; upperOnly?: boolean }[];
-  discounts: { label: string; amount: number }[];
+  // percent: a line worked out on each option (Black Friday as a percent).
+  discounts: { label: string; amount: number; percent?: number | null }[];
   colourTiming: QuoteUIState["colourTiming"];
   rushFee: number | null;
   upperAccessFee: number | null;

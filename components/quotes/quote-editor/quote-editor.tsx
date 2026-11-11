@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { colourTimingFor, quoteInputs, quoteMinimum, quoteRushFee, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
 import { cleanFeet, defaultValidUntil, formatMoney, guessRunPart, RUN_PARTS, totalFeet, type QuoteRun, type RunPart } from "@/lib/pricing";
-import { addQuickStart, editorOffers, editorOrder, offerWarnings } from "@/lib/quotes/editor";
+import { addQuickStart, editorOffers, editorOrder, offerWarnings, percentDiscountWords, typeDiscountAmount } from "@/lib/quotes/editor";
 import { addRunToOffers, OFFERS_MAX, pricedOffers, quickStartsFor, removeRunFromOffers, type QuickStart, type QuoteOffer } from "@/lib/quotes/offers";
 import { cn } from "@/lib/utils";
 
@@ -457,6 +457,9 @@ function Prices({
             </div>
             {state.customDiscounts.map((discount, at) => {
               const unnamed = discount.label.trim() === "" && Number(discount.amount) > 0;
+              // A line worked out on each option (Black Friday as a percent)
+              // says what it comes to on each; typing an amount makes it fixed.
+              const perOption = percentDiscountWords(discount, inputs, state.offers);
               return (
                 <div key={at} className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
@@ -479,11 +482,7 @@ function Prices({
                       placeholder="$"
                       disabled={locked}
                       onChange={(event) =>
-                        set({
-                          customDiscounts: state.customDiscounts.map((item, which) =>
-                            which === at ? { ...item, amount: cleanMoneyInput(event.target.value) } : item,
-                          ),
-                        })
+                        set({ customDiscounts: typeDiscountAmount(state.customDiscounts, at, cleanMoneyInput(event.target.value)) })
                       }
                       className="w-28 tabular-nums"
                     />
@@ -499,6 +498,11 @@ function Prices({
                       </Button>
                     ) : null}
                   </div>
+                  {perOption ? (
+                    <p className="text-xs text-muted-foreground" data-testid="editor-percent-discount">
+                      {perOption} Type an amount to make it the same on every option.
+                    </p>
+                  ) : null}
                   {unnamed ? <p className="text-xs font-semibold">Name this discount. Customers see it.</p> : null}
                 </div>
               );
