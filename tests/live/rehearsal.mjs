@@ -503,7 +503,7 @@ async function rehearse(lead, { deal, tag, chooseName, bookName, pickDay }) {
   await checkShot(
     page,
     "the prep list opens with its five items, the first three to do, the time to confirm, and all six answers in",
-    JSON.stringify(items) === JSON.stringify(["prep-item-mockup:false", "prep-item-track_colour:false", "prep-item-quote:false", "prep-item-confirmed:false", "prep-item-answers:true"]) &&
+    JSON.stringify(items) === JSON.stringify(["prep-item-quote:false", "prep-item-confirmed:false", "prep-item-mockup:false", "prep-item-track_colour:false", "prep-item-answers:true"]) &&
       status === "Prepare for the meeting: 4 left",
     `${items.join(", ")} | ${status}`,
     "prep-list-items",

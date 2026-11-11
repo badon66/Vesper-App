@@ -230,6 +230,46 @@ export default async function LeadPage({
       )
     : [];
 
+  // Keenan's three quote cards: the quote, the customer's link and the
+  // outcome. Round 13 (Keenan, 2026-11-11): once the lead has a quote they
+  // come first, right under the name, above the meetings, the mockups, the
+  // details and the photos, because after a meeting they are what he came
+  // for. Before there is a quote the page keeps its order, with the empty
+  // Quote card after the mockups.
+  const quoteFirst = isOwner && quoteOutcome !== null;
+  const quoteCards = (
+    <>
+      {quoteEditor ? (
+        <QuoteEditorCard
+          leadId={lead.id}
+          leadName={leadName(lead)}
+          context={{
+            pricing: quoteEditor.pricing,
+            today: quoteEditor.today,
+            lead: { colourKind: trackColour.kind, colourText: trackColourText(trackColour) },
+          }}
+          draft={quoteEditor.draft}
+          mockups={mockupData?.mockups ?? []}
+          userId={me.id}
+        />
+      ) : null}
+      {quoteCard ? <QuoteCard {...quoteCard} /> : null}
+      {quoteOutcome ? (
+        <QuoteOutcome
+          {...quoteOutcome}
+          track={{
+            set: trackColour.kind !== "none",
+            text: trackColourText(trackColour),
+            options: trackOptions,
+            current: { choice: lead.track_ral_code ? "custom" : lead.track_colour_id, ralCode: lead.track_ral_code },
+            ralNames: Object.fromEntries(ralNames),
+          }}
+          today={today}
+        />
+      ) : null}
+    </>
+  );
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
@@ -328,6 +368,8 @@ export default async function LeadPage({
 
       {stillToDo.length > 0 ? <ToBeCompleted items={stillToDo} /> : null}
 
+      {quoteFirst ? quoteCards : null}
+
       {meetings.length > 0 ? (
         <section id="meetings" data-testid="lead-meetings" aria-labelledby="lead-meetings-heading" className="flex scroll-mt-36 flex-col gap-3">
           <h2 id="lead-meetings-heading" className="text-lg font-bold">
@@ -350,34 +392,7 @@ export default async function LeadPage({
       ) : null}
 
       {mockupData ? <MockupsCard leadId={lead.id} userId={me.id} {...mockupData} /> : null}
-      {quoteEditor ? (
-        <QuoteEditorCard
-          leadId={lead.id}
-          leadName={leadName(lead)}
-          context={{
-            pricing: quoteEditor.pricing,
-            today: quoteEditor.today,
-            lead: { colourKind: trackColour.kind, colourText: trackColourText(trackColour) },
-          }}
-          draft={quoteEditor.draft}
-          mockups={mockupData?.mockups ?? []}
-          userId={me.id}
-        />
-      ) : null}
-      {quoteCard ? <QuoteCard {...quoteCard} /> : null}
-      {quoteOutcome ? (
-        <QuoteOutcome
-          {...quoteOutcome}
-          track={{
-            set: trackColour.kind !== "none",
-            text: trackColourText(trackColour),
-            options: trackOptions,
-            current: { choice: lead.track_ral_code ? "custom" : lead.track_colour_id, ralCode: lead.track_ral_code },
-            ralNames: Object.fromEntries(ralNames),
-          }}
-          today={today}
-        />
-      ) : null}
+      {quoteFirst ? null : quoteCards}
       <ScrollToHash />
 
       {statusFromOutcome ? (

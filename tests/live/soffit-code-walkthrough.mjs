@@ -283,6 +283,22 @@ try {
   ]) {
     await op.goto(`${base}${path}`);
     await settle(op);
+    if (where === "the prep list") {
+      // Round 13: on the prep list the soffit colour code is tucked into
+      // the track colour item, saying what is saved, and opens on a tap.
+      const tucked = op.getByTestId("prep-soffit");
+      const saved = ((await op.getByTestId("prep-soffit-saved").textContent().catch(() => "")) ?? "").replace(/\s+/g, " ").trim();
+      check(
+        "the prep list tucks the soffit colour code away, closed, saying the codes that are saved",
+        (await tucked.getAttribute("open")) === null &&
+          !(await op.getByTestId("soffit-code").isVisible().catch(() => false)) &&
+          saved.includes("RAL 9001 Cream") &&
+          saved.includes("RAL 9016 Traffic white"),
+        saved,
+      );
+      await op.getByTestId("prep-soffit-summary").click();
+      check("a tap opens it", (await tucked.getAttribute("open")) !== null && (await op.getByTestId("soffit-code").isVisible().catch(() => false)));
+    }
     const mine = op.getByTestId("soffit-code");
     check(
       `${where}: Keenan sees Use for the track beside the first code, saying what it sets`,
