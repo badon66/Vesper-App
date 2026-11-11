@@ -841,6 +841,53 @@ try {
       JSON.stringify(cards.map((card) => [card.id ?? card.name, card.gable])),
     );
     await shot(page, "lead-editor-offer-cards-1180");
+
+    // Round 13: on the drawn views a tap on a roofline lands on that
+    // roofline right up to where a gable's foot meets it (it used to land
+    // in the gable's box there), on every line that meets a gable; a gable
+    // still takes a tap at its peak. A tap only moves the focus to that
+    // area's feet box: nothing is typed and nothing is written.
+    {
+      const tapOn = async (area, along) => {
+        const line = sheet.locator(`[data-testid="house-line"][data-area="${area}"]`).first();
+        await line.scrollIntoViewIfNeeded().catch(() => {});
+        const point = await line.evaluate((g, fraction) => {
+          const path = g.querySelector("path");
+          const at = path.getPointAtLength(path.getTotalLength() * fraction);
+          const m = path.getScreenCTM();
+          return { x: at.x * m.a + at.y * m.c + m.e, y: at.x * m.b + at.y * m.d + m.f };
+        }, along);
+        await page.mouse.click(point.x, point.y);
+        await page.waitForTimeout(120);
+        return page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? "");
+      };
+      const wrong = [];
+      // The upper gable's feet sit at about 16% and 84% of the upper line;
+      // the lower gable's at the lower line's start and about 34% along.
+      const spots = [
+        ["front_upper", "Front upper", [0.08, 0.14, 0.16, 0.2, 0.5, 0.8, 0.84, 0.86, 0.92]],
+        ["back_upper", "Back upper", [0.08, 0.14, 0.16, 0.2, 0.5, 0.8, 0.84, 0.86, 0.92]],
+        ["front_lower", "Front lower", [0.02, 0.06, 0.3, 0.34, 0.38, 0.7]],
+        ["back_lower", "Back lower", [0.02, 0.06, 0.3, 0.34, 0.38, 0.7]],
+      ];
+      for (const [area, label, alongs] of spots) {
+        for (const along of alongs) {
+          const landed = await tapOn(area, along);
+          if (!landed.startsWith(label) || /gable/i.test(landed)) wrong.push(`${area} at ${along}: ${landed || "nothing"}`);
+        }
+      }
+      check(
+        "on the drawn views a tap on a roofline lands on that roofline right up to where a gable's foot meets it: front and back, upper and lower",
+        wrong.length === 0,
+        wrong.join("; "),
+      );
+      const peaks = [];
+      for (const [area, label] of [["front_upper_gable", "Front upper gable"], ["front_lower_gable", "Front lower gable"], ["back_upper_gable", "Back upper gable"], ["back_lower_gable", "Back lower gable"]]) {
+        const landed = await tapOn(area, 0.5);
+        if (!landed.startsWith(label)) peaks.push(`${area}: ${landed || "nothing"}`);
+      }
+      check("and a tap on a gable's peak still lands on the gable", peaks.length === 0, peaks.join("; "));
+    }
     await sheet.getByTestId("quote-sheet-close").click();
     await page.waitForTimeout(400);
     check("Close after only looking closes the sheet at once", !(await sheet.isVisible().catch(() => false)));
@@ -934,9 +981,10 @@ try {
   );
   const sources = (await acceptSheet.getByTestId("outcome-choice-source").allInnerTexts()).map(flat);
   check(
-    "the Accepted sheet lists the three options biggest first, says where each choice came from, and starts on the meeting's choice and day",
+    "the Accepted sheet lists the three options biggest first, says where each choice came from, opens on the option they booked on their link (round 13) with the table's choice marked beside it, and starts on the table's day",
     JSON.stringify(offered.map((o) => o.offer)) === JSON.stringify(["full", "main", "front"]) &&
-      offered.find((o) => o.checked)?.offer === "main" &&
+      offered.find((o) => o.checked)?.offer === "front" &&
+      (await acceptSheet.locator('[data-testid="outcome-option"][data-offer="main"]').getByTestId("outcome-option-meeting").count()) === 1 &&
       JSON.stringify(sources) === JSON.stringify(["Chosen at the meeting: Main floor", "Booked on their link: Front only"]) &&
       (await page.getByTestId("outcome-planned-on").inputValue()) === tableDay,
     `${JSON.stringify(offered)} | ${sources.join(" | ")}`,

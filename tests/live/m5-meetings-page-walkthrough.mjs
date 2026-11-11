@@ -279,9 +279,9 @@ try {
   await page.getByTestId("prep-list").waitFor({ timeout: 30000 }).catch(() => {});
   const itemKeys = await page.getByTestId("prep-list").locator("> li").evaluateAll((items) => items.map((item) => `${item.getAttribute("data-testid")}:${item.getAttribute("data-done")}`));
   check(
-    "the prep list has the five items in order, none done yet (round 10: no roofline item)",
+    "the prep list has the five items in order, the quote and the time to confirm first (round 13), none done yet (round 10: no roofline item)",
     JSON.stringify(itemKeys) ===
-      JSON.stringify(["prep-item-mockup:false", "prep-item-track_colour:false", "prep-item-quote:false", "prep-item-confirmed:false", "prep-item-answers:false"]),
+      JSON.stringify(["prep-item-quote:false", "prep-item-confirmed:false", "prep-item-mockup:false", "prep-item-track_colour:false", "prep-item-answers:false"]),
     itemKeys.join(", "),
   );
   check(

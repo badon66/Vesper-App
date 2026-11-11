@@ -378,6 +378,13 @@ export function QuoteOutcome({
         testId="outcome-accept-sheet"
         actions={
           <>
+            {/* Round 13: while it saves, the sheet says what it is doing
+                (it was only "Saving" on the button for a few seconds). */}
+            {pending ? (
+              <p role="status" className="mr-auto max-w-prose self-center text-sm text-pretty text-muted-foreground" data-testid="outcome-accept-working">
+                Marking it accepted, moving the lead to Sold and working out the commission.
+              </p>
+            ) : null}
             <Button type="button" variant="outline" onClick={close} disabled={pending}>
               Back
             </Button>
@@ -398,7 +405,7 @@ export function QuoteOutcome({
                 )
               }
             >
-              {pending ? "Saving" : trackReady ? "Mark accepted" : "Set the track colour first"}
+              {pending ? "Marking accepted" : trackReady ? "Mark accepted" : "Set the track colour first"}
             </Button>
           </>
         }
@@ -747,6 +754,13 @@ function OfferText({ option, withCommission = false }: { option: OutcomeOption; 
       {option.booked ? (
         <span className="font-semibold" data-testid="outcome-option-booked">
           They booked this on their link
+        </span>
+      ) : null}
+      {/* Round 13: the sheet opens on what they booked; the table's choice
+          is marked on its own row, beside it. */}
+      {option.meeting ? (
+        <span className="font-semibold" data-testid="outcome-option-meeting">
+          Chosen at the meeting
         </span>
       ) : null}
     </span>

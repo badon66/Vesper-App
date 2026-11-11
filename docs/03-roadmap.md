@@ -152,6 +152,15 @@ Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a previe
 - [x] One full rehearsal, twice (no deal, then dollars off, then the deal back to None) on marked test records, every record removed afterwards; what felt slow, awkward or confusing reported in plain words
 - [x] The Black Friday walk-through removes its test records at the end (it runs in the daily suite); the rehearsal script stays out of the daily suite
 
+### Round 13: Keenan's calls from the round 12 report (Keenan, 2026-11-11; merge outside the knocking window, no preview; live before Saturday's meetings)
+- [x] Show to customer on every offer, on to start; a hidden offer stays in the editor marked Hidden and shows nowhere the customer looks (Your price, the link, the Accepted sheet); the link follows the switch; at least one offer always shown; an accepted offer can't be hidden; all of it held in the database
+- [x] The Accepted sheet opens on the option the customer booked on their link, with the table's choice beside it; otherwise on the table's choice
+- [x] See it on your house on the customer's link: one picture, a Looks row (the phone scenes by name) and an Options row (the shown offers); tapping an option picks it in the price and picking in the price swaps the picture; no scenes, no Looks row; an offer with no picture shows the Main
+- [x] An offer's picture is set in one place, the photo spot on its card; the Mockups section marks Main, Day, Night or a phone scene only and says which offers use each picture; pictures already set carried over
+- [x] iPad: the prep list starts with the quote and the time to confirm, the soffit colour code tucked into its item; the lead page starts with Quote, Customer's link and Outcome once there is a quote
+- [x] Small things: "Already at our lowest price." under a deal option at the minimum; Save quote until saved once, then Save changes; a roofline takes the tap where a gable's foot meets it, on every line that meets a gable; meeting mode at phone widths left as it is
+- [x] Speed: the lead page in two rounds of reads instead of about eleven one after another; mockups go up together; an offer's picture in one call; Mark accepted says what it is doing; before and after times in the report
+
 ### Take 2: after Keenan's first meetings
 - [ ] The leave-behind folder: a branded, always-white PDF through AirPrint and a share sheet: the personal quote (runs, feet, track colour, line-by-line prices, valid until), the mockup full page, a one-page overview, the warranty summary, the FAQ from Settings, and the company contact ((403) 895-9915, info@vesperlighting.ca, 448 Strathcona Drive SW, Calgary, AB T3H 1M3, never a unit number)
 - [ ] Mark presented; it writes a lead event and moves the lead to `quoted`. Accepted, declined, cancelled, installed and the commission are no longer part of take 2: round 8 built them on the lead page (Keenan, 2026-11-09)

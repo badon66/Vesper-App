@@ -3,7 +3,7 @@
 import { ImagePlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { addLeadMockups, setLeadMockupOffer } from "@/app/(app)/app/leads/mockup-actions";
+import { addLeadMockups, setOfferPicture } from "@/app/(app)/app/leads/mockup-actions";
 import { Button } from "@/components/ui/button";
 import type { LeadMockupItem } from "@/lib/leads/mockup-roles";
 import { MEETING_PHOTO_MAX_EDGE, PHOTO_BUCKET, photoPath, shrinkPhoto } from "@/lib/photos";
@@ -15,10 +15,13 @@ import { cn } from "@/lib/utils";
 // a photo spot: the lead's mockup marked for this offer, else the Main with
 // the words "Main shows". Pick opens a row of the lead's mockups to tap;
 // Upload takes one picture, adds it to the lead's mockups and marks it for
-// this offer. The marks are the mockups' own "for an offer" marks
-// (lead_mockups.offer_ids), one picture per offer: picking moves the mark
-// off the picture that had it. The deck and the customer's link already
-// show an offer's own picture, else the Main, so nothing else changes.
+// this offer. The marks are kept on the mockups (lead_mockups.offer_ids),
+// one picture per offer: picking moves the mark off the picture that had
+// it. The deck and the customer's link already show an offer's own
+// picture, else the Main, so nothing else changes. Round 13 (Keenan,
+// 2026-11-11): this spot is the only place an offer gets its picture (the
+// Mockups section only says which offers use each one), so it can also go
+// back to the Main.
 // Only on the lead page (meeting mode's Edit layer passes no mockups), and
 // never while the quote is locked.
 
@@ -33,6 +36,8 @@ export type OfferPhotos = {
   busy: string | null;
   message: { offerId: string; text: string } | null;
   pick: (offerId: string, mockupId: string) => Promise<void>;
+  // Back to the Main: the offer's own picture comes off it.
+  clear: (offerId: string) => Promise<void>;
   upload: (offerId: string, file: File) => Promise<void>;
 };
 
@@ -68,24 +73,39 @@ export function useOfferPhotos({
 
   if (!mockups) return null;
 
+  // Round 13: each tap is one call (it was two or three, each waiting on
+  // the one before), and the save brings the page's own list back with it.
   async function pick(offerId: string, mockupId: string) {
+    if (!leadId) return;
     const before = list;
-    const { list: next, previous } = pickMockupForOffer(list, mockupId, offerId);
-    setList(next);
+    setList(pickMockupForOffer(list, mockupId, offerId).list);
     setMessage(null);
     try {
-      if (previous) {
-        const off = await setLeadMockupOffer(previous, offerId, false);
-        if (!off.ok) {
-          setList(before);
-          setMessage({ offerId, text: off.message });
-          return;
-        }
-      }
-      const on = await setLeadMockupOffer(mockupId, offerId, true);
-      if (!on.ok) {
+      const saved = await setOfferPicture(leadId, offerId, mockupId);
+      if (!saved.ok) {
         setList(before);
-        setMessage({ offerId, text: on.message });
+        setMessage({ offerId, text: saved.message });
+        return;
+      }
+      onRefresh?.();
+    } catch {
+      setList(before);
+      setMessage({ offerId, text: FAILED });
+    }
+  }
+
+  async function clear(offerId: string) {
+    const before = list;
+    const own = list.filter((item) => item.offers.includes(offerId));
+    if (own.length === 0) return;
+    if (!leadId) return;
+    setList(list.map((item) => (item.offers.includes(offerId) ? { ...item, offers: item.offers.filter((id) => id !== offerId) } : item)));
+    setMessage(null);
+    try {
+      const saved = await setOfferPicture(leadId, offerId, null);
+      if (!saved.ok) {
+        setList(before);
+        setMessage({ offerId, text: saved.message });
         return;
       }
       onRefresh?.();
@@ -116,21 +136,13 @@ export function useOfferPhotos({
         setMessage({ offerId, text: "The picture didn't upload. Check your signal and try again." });
         return;
       }
-      const added = await addLeadMockups(leadId, [{ path }]);
+      // Added to the house's mockups as this offer's own picture, in one
+      // call (round 13; it was an add, a read and two marks).
+      const added = await addLeadMockups(leadId, [{ path }], { forOffer: offerId });
       if (!added.ok) {
         setPending(null);
         setMessage({ offerId, text: added.message });
         return;
-      }
-      // Its row, to mark it for this offer (the owner's own session reads it).
-      const { data: row } = await supabase.from("lead_mockups").select("id").eq("storage_path", path).is("removed_at", null).maybeSingle();
-      if (row) {
-        const previous = list.find((item) => item.offers.includes(offerId));
-        if (previous) await setLeadMockupOffer(previous.id, offerId, false);
-        const marked = await setLeadMockupOffer(row.id, offerId, true);
-        if (!marked.ok) setMessage({ offerId, text: marked.message });
-      } else {
-        setMessage({ offerId, text: "The picture is in Mockups now. Pick it for this offer." });
       }
       onRefresh?.();
     } catch {
@@ -141,7 +153,7 @@ export function useOfferPhotos({
     }
   }
 
-  return { list, pending, busy, message, pick, upload };
+  return { list, pending, busy, message, pick, clear, upload };
 }
 
 // The spot on an offer card.
@@ -187,6 +199,20 @@ export function OfferPhoto({ offerId, photos, locked }: { offerId: string; photo
                 <ImagePlus aria-hidden="true" className="size-4" />
                 Upload
               </Button>
+              {found?.own && !uploading ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setPicking(false);
+                    void photos.clear(offerId);
+                  }}
+                  data-testid="offer-photo-clear"
+                >
+                  {photos.list.some((item) => item.main) ? "Use the Main" : "No picture"}
+                </Button>
+              ) : null}
               <input
                 ref={input}
                 type="file"

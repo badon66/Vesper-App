@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, Circle, CircleAlert } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, Circle, CircleAlert } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -161,14 +161,32 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
         return (
           <div className="flex flex-col gap-5 text-sm">
             {/* The item's answer first, right under its name; then the
-                soffit's code with Use for the track; then the form. */}
+                soffit's code with Use for the track, tucked away until it
+                is tapped open (round 13: it pushed the quote and the time
+                to confirm under the fold); then the form. */}
             {item.done ? (
               <p className="text-base font-semibold" data-testid="prep-track-colour">
                 {trackColourText(trackColour)}
                 {needsPowderCoating(trackColour) ? <span className="font-normal text-muted-foreground"> · needs powder coating</span> : null}
               </p>
             ) : null}
-            <SoffitCode leadId={leadId} userId={me.id} blocks={soffitBlocks} canEdit ralNames={Object.fromEntries(ralNames)} layout="prep" />
+            <details className="group overflow-hidden rounded-md border" data-testid="prep-soffit">
+              <summary
+                className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset [&::-webkit-details-marker]:hidden"
+                data-testid="prep-soffit-summary"
+              >
+                <span className="flex min-w-0 flex-col">
+                  <span className="font-semibold">Soffit colour code</span>
+                  <span className="truncate text-muted-foreground" data-testid="prep-soffit-saved">
+                    {soffitBlocks.map((block) => `${block.colourName ? `${block.colourName}: ` : ""}${block.codeLabel ?? "no code yet"}`).join(" · ")}
+                  </span>
+                </span>
+                <ChevronDown aria-hidden="true" className="size-5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="border-t p-3">
+                <SoffitCode leadId={leadId} userId={me.id} blocks={soffitBlocks} canEdit ralNames={Object.fromEntries(ralNames)} layout="prep" />
+              </div>
+            </details>
             <TrackColourForm
               // Use for the track can set the colour: start again from what
               // is saved then, and keep "Saved." after the form's own save.

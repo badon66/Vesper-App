@@ -7,7 +7,7 @@ import { hasDash, hasExclamation } from "@/lib/deck";
 import { guessRunPart, RUN_PARTS, totalFeet, type QuoteInputs } from "@/lib/pricing";
 import { quoteLockedWords, type QuoteSaveInput } from "@/lib/quotes/draft";
 import { AREA_KINDS } from "@/lib/quotes/areas";
-import { chosenOfferTotals, OFFERS_MAX, offersForSave } from "@/lib/quotes/offers";
+import { chosenOfferTotals, NO_OFFER_SHOWN, noOfferShown, OFFERS_MAX, offersForSave } from "@/lib/quotes/offers";
 import { createClient } from "@/lib/supabase/server";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 
@@ -94,6 +94,8 @@ const quoteDraftSchema = z.object({
         boxes: z.number().int().min(1).max(9).nullable().optional(),
         // Round 11: the upper access amount typed over for this offer.
         upperAccess: z.number().min(0).max(100_000).nullable().optional(),
+        // Round 13: Show to customer, off. Left out, the offer is shown.
+        hidden: z.boolean().optional(),
       }),
     )
     .max(OFFERS_MAX)
@@ -140,7 +142,10 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     (draft.offers ?? []).map((offer) => ({ ...offer, boxes: offer.boxes ?? null, upperAccess: offer.upperAccess ?? null })),
     draft.runs.length,
   );
-  const offerIds = offers.length > 0 ? offers.map((offer) => offer.id) : draft.runs.length > 0 ? ["full"] : [];
+  // Round 13: at least one offer is always shown to the customer.
+  if (noOfferShown(offers)) return { ok: false, code: "no_offer_shown", message: NO_OFFER_SHOWN };
+  // The table's choice only while it names an offer the customer sees.
+  const offerIds = offers.length > 0 ? offers.filter((offer) => offer.hidden !== true).map((offer) => offer.id) : draft.runs.length > 0 ? ["full"] : [];
   const meetingOffer = draft.meetingOffer && offerIds.includes(draft.meetingOffer) ? draft.meetingOffer : null;
 
   const supabase = await createClient();
@@ -217,8 +222,9 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     min_job_total: draft.minJobTotal ?? null,
     // Round 9: the offers, the table's choice and the install day picked
     // there (never written to the lead before Accepted). Stored the way the
-    // database cleans them: upper_access for the typed amount (round 11).
-    offers: offers.map(({ upperAccess, ...offer }) => ({ ...offer, upper_access: upperAccess ?? null })),
+    // database cleans them: upper_access for the typed amount (round 11),
+    // hidden only when the switch is off (round 13).
+    offers: offers.map(({ upperAccess, hidden, ...offer }) => ({ ...offer, upper_access: upperAccess ?? null, ...(hidden === true ? { hidden: true } : {}) })),
     meeting_offer: meetingOffer,
     meeting_install_on: draft.meetingInstallOn ?? null,
   };

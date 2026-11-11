@@ -53,15 +53,19 @@ export function missingAnswers(lead: QuestionLead): CountedQuestion[] {
 
 // The prep list's items, in order. No "Roofline traced" item since
 // 2026-11-11: the light picker left the meeting, so a meeting's readiness
-// never asks for a trace ("roofline" stays in PrepKey, unused).
+// never asks for a trace ("roofline" stays in PrepKey, unused). Round 13
+// (Keenan, 2026-11-11): the quote and the time to confirm come first, so
+// they sit above the fold on the iPad however many mockups the house has;
+// the mockups follow (an offer's picture is picked on the offer, in the
+// quote, so the quote comes before them anyway), then the track colour.
 export function prepItems(facts: PrepFacts): PrepItem[] {
   const missing = missingAnswers(facts.lead);
-  const items: PrepItem[] = [
+  const items: PrepItem[] = [{ key: "quote", label: PREP_LABELS.quote, done: facts.hasQuoteWithRuns }];
+  if (facts.hasMeeting) items.push({ key: "confirmed", label: PREP_LABELS.confirmed, done: Boolean(facts.confirmedAt) });
+  items.push(
     { key: "mockup", label: PREP_LABELS.mockup, done: facts.hasMockup },
     { key: "track_colour", label: PREP_LABELS.track_colour, done: facts.hasTrackColour },
-    { key: "quote", label: PREP_LABELS.quote, done: facts.hasQuoteWithRuns },
-  ];
-  if (facts.hasMeeting) items.push({ key: "confirmed", label: PREP_LABELS.confirmed, done: Boolean(facts.confirmedAt) });
+  );
   items.push({
     key: "answers",
     label: PREP_LABELS.answers,

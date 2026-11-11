@@ -49,6 +49,27 @@ function refused(me: { id: string } | { ok: false; message: string }): me is { o
 }
 
 const nameSchema = z.string().trim().max(MOCKUP_NAME_MAX);
+const offerSchema = z.string().trim().min(1).max(64);
+
+// Takes an offer off every picture that has it, except one. True when every
+// change saved.
+async function takeOfferOff(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  rows: { id: string; offer_ids: string[] | null }[],
+  offerId: string,
+  except: string | null,
+): Promise<boolean> {
+  const had = rows.filter((row) => row.id !== except && (row.offer_ids ?? []).includes(offerId));
+  const results = await Promise.all(
+    had.map((row) =>
+      supabase
+        .from("lead_mockups")
+        .update({ offer_ids: (row.offer_ids ?? []).filter((id) => id !== offerId) })
+        .eq("id", row.id),
+    ),
+  );
+  return results.every((result) => !result.error);
+}
 
 async function done(leadId: string): Promise<MockupResult> {
   revalidatePath(`/app/leads/${leadId}`);
@@ -73,10 +94,13 @@ async function liveMockup(supabase: Awaited<ReturnType<typeof createClient>>, mo
 // Pictures already uploaded to Keenan's own folder in lead-photos. The
 // first one on a house with no Main becomes its Main; asMain makes the
 // first one the Main whatever (the prep list's "Replace the mockup").
+// forOffer (round 13): the one picture is that offer's own from the start
+// (the offer card's Upload), taking the offer off the picture that had it,
+// in this one call instead of three.
 export async function addLeadMockups(
   leadId: string,
   items: { path: string; name?: string }[],
-  options: { asMain?: boolean } = {},
+  options: { asMain?: boolean; forOffer?: string } = {},
 ): Promise<MockupResult> {
   const me = await owner();
   if (refused(me)) return me;
@@ -92,15 +116,22 @@ export async function addLeadMockups(
   }
   const names = items.map((item) => nameSchema.safeParse(item.name ?? ""));
   if (names.some((name) => !name.success)) return { ok: false, message: "Keep each name to 40 characters." };
+  const forOffer = options.forOffer === undefined ? null : offerSchema.safeParse(options.forOffer);
+  if (forOffer && (!forOffer.success || items.length !== 1)) return { ok: false, message: FAILED };
 
   const supabase = await createClient();
   const { data: rows, error: readError } = await supabase
     .from("lead_mockups")
-    .select("id, is_main, position")
+    .select("id, is_main, position, offer_ids")
     .eq("lead_id", id.data)
     .is("removed_at", null);
   if (readError) return { ok: false, message: FAILED };
   const current = rows ?? [];
+  // One picture per offer: the offer comes off the picture that had it.
+  if (forOffer?.success) {
+    const cleared = await takeOfferOff(supabase, current, forOffer.data, null);
+    if (!cleared) return { ok: false, message: FAILED };
+  }
   const hasMain = current.some((row) => row.is_main);
   if (options.asMain && hasMain) {
     const { error } = await supabase
@@ -119,6 +150,7 @@ export async function addLeadMockups(
       name: names[at].success ? names[at].data : "",
       is_main: at === 0 && (options.asMain === true || !hasMain),
       position: start + at,
+      ...(forOffer?.success ? { offer_ids: [forOffer.data] } : {}),
     })),
   );
   if (error) return { ok: false, message: error.code === "42501" ? "Only Keenan adds mockups." : FAILED };
@@ -164,20 +196,43 @@ export async function setLeadMockupRole(mockupId: string, role: MockupRole, on: 
 }
 
 // The offers (quotes.offers ids) a picture shows, one tap per offer.
-export async function setLeadMockupOffer(mockupId: string, offerId: string, on: boolean): Promise<MockupResult> {
+// The offer card's photo spot (round 13: the only place an offer gets its
+// picture): this picture for that offer, or none (mockupId null: back to
+// the Main). One picture per offer, so the offer comes off any other
+// picture of the house, all in one call.
+export async function setOfferPicture(leadId: string, offerId: string, mockupId: string | null): Promise<MockupResult> {
   const me = await owner();
   if (refused(me)) return me;
-  const offer = z.string().trim().min(1).max(64).safeParse(offerId);
-  if (!offer.success || typeof on !== "boolean") return { ok: false, message: FAILED };
+  const lead = z.uuid().safeParse(leadId);
+  const offer = offerSchema.safeParse(offerId);
+  const picked = mockupId === null ? null : z.uuid().safeParse(mockupId);
+  if (!lead.success || !offer.success || (picked && !picked.success)) return { ok: false, message: FAILED };
   const supabase = await createClient();
-  const mockup = await liveMockup(supabase, mockupId);
-  if (!mockup) return { ok: false, message: "That mockup was not found." };
-  const without = (mockup.offer_ids ?? []).filter((id) => id !== offer.data);
-  const next = on ? [...without, offer.data] : without;
-  if (next.length > MOCKUP_OFFERS_MAX) return { ok: false, message: `A picture can show ${MOCKUP_OFFERS_MAX} offers at most.` };
-  const { error } = await supabase.from("lead_mockups").update({ offer_ids: next }).eq("id", mockup.id);
-  if (error) return { ok: false, message: FAILED };
-  return done(mockup.lead_id);
+  const { data: rows, error: readError } = await supabase
+    .from("lead_mockups")
+    .select("id, offer_ids")
+    .eq("lead_id", lead.data)
+    .is("removed_at", null);
+  if (readError) return { ok: false, message: FAILED };
+  const current = rows ?? [];
+  const target = picked ? current.find((row) => row.id === picked.data) : null;
+  if (picked && !target) return { ok: false, message: "That mockup was not found." };
+  if (target && !(target.offer_ids ?? []).includes(offer.data)) {
+    const next = [...(target.offer_ids ?? []), offer.data];
+    if (next.length > MOCKUP_OFFERS_MAX) return { ok: false, message: `A picture can show ${MOCKUP_OFFERS_MAX} offers at most.` };
+  }
+  const [cleared, marked] = await Promise.all([
+    takeOfferOff(supabase, current, offer.data, target?.id ?? null),
+    target && !(target.offer_ids ?? []).includes(offer.data)
+      ? supabase
+          .from("lead_mockups")
+          .update({ offer_ids: [...(target.offer_ids ?? []), offer.data] })
+          .eq("id", target.id)
+          .then(({ error }) => !error)
+      : Promise.resolve(true),
+  ]);
+  if (!cleared || !marked) return { ok: false, message: FAILED };
+  return done(lead.data);
 }
 
 // Off the lead page, kept in the database, its jobs cleared.

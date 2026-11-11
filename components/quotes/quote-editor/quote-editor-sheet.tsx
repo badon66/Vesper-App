@@ -8,7 +8,7 @@ import { hasMeasuredRun, QuoteEditor } from "@/components/quotes/quote-editor/qu
 import { useQuoteSave } from "@/components/quotes/quote-editor/use-quote-save";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { offerNameIssue, quoteSummary } from "@/lib/quotes/editor";
+import { offersBlock, quoteSummary } from "@/lib/quotes/editor";
 import type { LeadMockupItem } from "@/lib/leads/mockup-roles";
 import { QUOTE_LOCKED_LEAD, savedLine } from "@/lib/quotes/draft";
 import {
@@ -162,8 +162,9 @@ function QuoteSheet({
   const [leaving, setLeaving] = useState(false);
   const { busy, message, save } = useQuoteSave({ leadId, pricing: context.pricing, from: "lead" });
   const dirty = saved.fingerprint === null ? hasMeasuredRun(state) : quoteFingerprint(state) !== saved.fingerprint;
-  const nameIssue = quoteOffers(state).some((offer) => offerNameIssue(offer.name) !== null);
-  const canSave = !accepted && !busy && hasMeasuredRun(state) && !nameIssue;
+  // A name that needs fixing, or (round 13) nothing shown to the customer.
+  const offersIssue = offersBlock(quoteOffers(state));
+  const canSave = !accepted && !busy && hasMeasuredRun(state) && offersIssue === null;
 
   useEffect(() => {
     const element = dialog.current;
@@ -261,14 +262,14 @@ function QuoteSheet({
                   <>
                     <p className="text-muted-foreground">Meeting mode opens with this quote.</p>
                     <p data-testid="quote-sheet-status">
-                      {[status, nameIssue ? "An offer's name needs fixing first." : !hasMeasuredRun(state) ? "Measure an area to save." : null, "Saving needs signal."]
+                      {[status, offersIssue ?? (!hasMeasuredRun(state) ? "Measure an area to save." : null), "Saving needs signal."]
                         .filter(Boolean)
                         .join(" ")}
                     </p>
                   </>
               )}
             </div>
-            <EditorSave onClick={() => void onSave()} disabled={!canSave} busy={busy} testId="quote-sheet-save" />
+            <EditorSave onClick={() => void onSave()} disabled={!canSave} busy={busy} first={!saved.quoteId} testId="quote-sheet-save" />
           </div>
         </footer>
         )}

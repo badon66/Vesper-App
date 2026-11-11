@@ -58,6 +58,8 @@ import {
   addRunToOffers,
   cleanOfferName,
   newOfferId,
+  NO_OFFER_SHOWN,
+  noOfferShown,
   OFFERS_MAX,
   parseOffers,
   pricedOffers,
@@ -99,6 +101,14 @@ export function toggleOfferRun(offer: QuoteOffer, position: number): QuoteOffer 
 export function offerNameIssue(name: string): string | null {
   if (hasDash(name)) return "No dashes. Use a comma or a full stop instead.";
   if (hasExclamation(name)) return "No exclamation marks.";
+  return null;
+}
+
+// What stops a save, in words, or null: an offer's name that needs fixing,
+// or (round 13) every offer that covers an area being hidden.
+export function offersBlock(offers: readonly QuoteOffer[]): string | null {
+  if (offers.some((offer) => offerNameIssue(offer.name) !== null)) return "An offer's name needs fixing first.";
+  if (noOfferShown(offers)) return NO_OFFER_SHOWN;
   return null;
 }
 
@@ -201,7 +211,10 @@ export function quoteSummary(
   const shown = screenOptions(inputs, offers.length > 0 ? offers : parseOffers([], inputs.runs.length));
   if (shown.length === 0) return "";
   const list = shown.map((priced) => `${nameOf(priced.offer)} ${screenTotal(priced.totals?.subtotal ?? 0, inputs.gstEnabled)}`).join(", ");
-  return validUntil ? `${list}. Price held until ${formatDate(validUntil)}.` : `${list}.`;
+  // Round 13: the offers Keenan keeps from the customer, counted, never priced here.
+  const hidden = offers.filter((offer) => offer.hidden === true).length;
+  const kept = hidden > 0 ? ` ${hidden} hidden from the customer.` : "";
+  return validUntil ? `${list}.${kept} Price held until ${formatDate(validUntil)}.` : `${list}.${kept}`;
 }
 
 // ------------------------------------------------ a discount worked out per option
@@ -399,6 +412,18 @@ export function automaticUpperAccess(
   fees: { upperAccessFee?: number | null; upperGableAccessFee?: number | null },
 ): number | null {
   return upperAccessAmount(selectRuns([...runs], offer.runs), fees);
+}
+
+// The order the drawn views draw their lines in (round 13, Keenan,
+// 2026-11-11). Each line has a wide invisible band to land a finger on;
+// where a gable's foot meets a roofline the two bands overlap, and the one
+// drawn last takes the tap. The gables are drawn first and the rooflines
+// after them, so a tap on a roofline lands on that roofline right to its
+// ends (it used to land in the gable's box near the gable's feet); the
+// gable keeps the rest of its two legs and its peak.
+export function drawOrder<T extends { key: string }>(lines: readonly T[]): T[] {
+  const gable = (line: T) => (line.key.endsWith("_gable") ? 0 : 1);
+  return [...lines].sort((a, b) => gable(a) - gable(b));
 }
 
 // ------------------------------------------------ a photo on every offer

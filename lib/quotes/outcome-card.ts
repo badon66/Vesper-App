@@ -329,15 +329,16 @@ export function acceptOptions({
   });
 }
 
-// The option to start on when Accepted opens: the one they booked on their
-// link, else the biggest.
-// The option to start on when Accepted opens: the one chosen at the table,
-// else the one booked on their link, else the biggest (the five seats,
-// 2026-11-10).
+// The option to start on when Accepted opens (round 13, Keenan,
+// 2026-11-11): the one the customer booked on their link, since that is
+// the last thing they asked for, with the table's choice shown beside it;
+// otherwise the one chosen at the table; otherwise the biggest. (Round 9
+// started on the table's choice, so a quick Mark accepted took the option
+// the customer had not asked for.)
 export function startingChoice(options: readonly Pick<AcceptOption, "booked" | "meeting">[]): number {
-  const meeting = options.findIndex((option) => option.meeting);
-  if (meeting >= 0) return meeting;
-  return Math.max(0, options.findIndex((option) => option.booked));
+  const booked = options.findIndex((option) => option.booked);
+  if (booked >= 0) return booked;
+  return Math.max(0, options.findIndex((option) => option.meeting));
 }
 
 // Where the starting choice came from, for the line above the list: "Chosen

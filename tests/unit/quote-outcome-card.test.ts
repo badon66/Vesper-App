@@ -424,9 +424,12 @@ describe("what a tap does to the commission", () => {
 
 describe("where Accepted starts", () => {
   const option = (label: string, booked: boolean, meeting: boolean) => ({ label, booked, meeting });
-  it("starts on the option chosen at the table, else the one booked on the link, else the biggest", () => {
-    expect(startingChoice([option("Full wrap", false, false), option("Main floor", true, false), option("Front only", false, true)])).toBe(2);
+  it("starts on the option they booked on their link, else the one chosen at the table, else the biggest (round 13)", () => {
+    // Booked on the link and a different choice at the table: the booking wins.
+    expect(startingChoice([option("Full wrap", false, false), option("Main floor", true, false), option("Front only", false, true)])).toBe(1);
     expect(startingChoice([option("Full wrap", false, false), option("Main floor", true, false)])).toBe(1);
+    // Nothing booked: the table's choice.
+    expect(startingChoice([option("Full wrap", false, false), option("Main floor", false, false), option("Front only", false, true)])).toBe(2);
     expect(startingChoice([option("Full wrap", false, false), option("Main floor", false, false)])).toBe(0);
   });
 

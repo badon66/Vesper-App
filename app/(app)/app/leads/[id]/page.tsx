@@ -66,7 +66,7 @@ import { screenTotal, totalFeet } from "@/lib/pricing";
 import { quoteBaseUrl, requestOrigin } from "@/lib/quote-link/server";
 import { loadQuoteOutcome } from "./quote-outcome-data";
 import { loadQuoteEditor } from "@/lib/quotes/editor-data";
-import { loadLeadMockups } from "@/lib/leads/mockups";
+import { loadLeadMockupRows, signLeadMockups } from "@/lib/leads/mockups";
 import {
   FALLBACK_COMPANY,
   offerChoice,
@@ -94,20 +94,28 @@ export default async function LeadPage({
   if (!z.uuid().safeParse(id).success) notFound();
 
   const supabase = await createClient();
-  const { data: row } = await supabase.from("leads").select(LEAD_FIELDS).eq("id", id).maybeSingle();
-  if (!row) notFound();
-  // Contact privacy (2026-11-04): the phone and email only on the viewer's
-  // own leads, or every lead for Keenan; View as shows the viewed setter's.
-  const contactShown = maySeeContact(me, row);
-  // Round 6 (2026-11-07): the notes follow the same rule, from lead_notes.
-  const [contact, leadNotes] = contactShown
-    ? await Promise.all([contactFor(supabase, me, row.id), notesFor(supabase, me, row.id)])
-    : [NO_CONTACT, NO_NOTES];
-  const lead = { ...row, ...contact, notes: leadNotes.notes };
-
   const isOwner = me.role === "owner";
-  const canEdit = isOwner || lead.created_by === me.id || lead.assigned_to === me.id;
-  const [{ data: photoRows }, { data: eventRows }, reasons, sessionResult, { data: colourRows }, meetingRows, { data: outcomeSettings }] = await Promise.all([
+  // Speed (round 13, Keenan, 2026-11-11). The page used to ask the database
+  // one thing after another, about eleven trips deep. Now everything that
+  // needs only the lead's id goes out at once, with the lead itself, and
+  // what needs the lead's own row goes out together right after. Nothing
+  // more is read than before, and the same rules decide what is shown: the
+  // owner's cards only for the owner (never under View as), the contact
+  // and the notes only on the viewer's own leads.
+  const [
+    { data: row },
+    { data: photoRows },
+    { data: eventRows },
+    reasons,
+    { data: colourRows },
+    meetingRows,
+    { data: outcomeSettings },
+    quoteEditor,
+    mockupRows,
+    ownerRal,
+    cardRows,
+  ] = await Promise.all([
+    supabase.from("leads").select(LEAD_FIELDS).eq("id", id).maybeSingle(),
     supabase.from("lead_photos").select("id, storage_path, slot").eq("lead_id", id).order("created_at"),
     supabase
       .from("lead_events")
@@ -116,63 +124,83 @@ export default async function LeadPage({
       .order("created_at", { ascending: false })
       .limit(200),
     lostReasons(supabase),
-    lead.knock_session_id
-      ? supabase.from("knock_sessions").select("neighbourhood").eq("id", lead.knock_session_id).maybeSingle()
-      : Promise.resolve({ data: null }),
     supabase.from("track_colours").select("id, name, ral_code, sort_order, active"),
     meetingsForLead(supabase, id),
     isOwner
       ? supabase.from("settings").select("not_qualified_reasons, company").eq("id", 1).maybeSingle()
       : Promise.resolve({ data: null }),
+    // Round 9: the quote editor's quote and prices, the same meeting mode
+    // opens. Round 10: the Mockups section. The owner's only.
+    isOwner ? loadQuoteEditor(supabase, id) : Promise.resolve(null),
+    isOwner ? loadLeadMockupRows(supabase, id) : Promise.resolve(null),
+    // The owner gets the whole RAL Classic list, to name a custom number
+    // as he types it.
+    isOwner ? supabase.from("ral_classic_colours").select("code, name") : Promise.resolve(null),
+    // The customer's link card reads the latest quote and the newest link.
+    isOwner ? quoteCardRows(supabase, id) : Promise.resolve(null),
   ]);
+  if (!row) notFound();
+  // Contact privacy (2026-11-04): the phone and email only on the viewer's
+  // own leads, or every lead for Keenan; View as shows the viewed setter's.
+  const contactShown = maySeeContact(me, row);
+  const canEdit = isOwner || row.created_by === me.id || row.assigned_to === me.id;
   // Notes on the timeline: the lead's setter and Keenan only (round 6). The
   // database keeps them from other setters; View as, reading with Keenan's
   // session, drops them here for the person viewed.
   const events = (eventRows ?? []).filter((event) => contactShown || event.type !== "note");
   const timelineNotes = events.filter((event) => event.type === "note");
-  // The quote and its customer link, and the quote's outcome (round 8):
-  // the owner's only (View as a setter never loads them).
-  // Round 9: the quote editor's quote and prices, the same meeting mode
-  // opens (the owner's only, never under View as).
-  // Round 10: the Mockups section, Keenan's alone.
-  const [quoteCard, quoteOutcome, quoteEditor, mockupData] = isOwner
-    ? await Promise.all([
-        loadQuoteCard(supabase, lead, outcomeSettings?.company ?? null),
-        loadQuoteOutcome(supabase, lead),
-        loadQuoteEditor(supabase, lead.id),
-        loadLeadMockups(supabase, lead.id),
-      ])
-    : [null, null, null, null];
+
+  // Track colour and the soffit colour code. The owner gets the whole RAL
+  // Classic list (asked for above), and so does the lead's own setter, to
+  // name the soffit's code as they type it (2026-11-09); everyone else only
+  // the names shown.
+  const colours = sortTrackColours(colourRows ?? []);
+  const colourById = new Map(colours.map((colour) => [colour.id, colour]));
+  const listColour = row.track_colour_id ? colourById.get(row.track_colour_id) : undefined;
+  const ralCodes = [row.track_ral_code, listColour?.ral_code, ...soffitCodes(row)].filter((code): code is string => Boolean(code));
+  const ralQuery = () => supabase.from("ral_classic_colours").select("code, name");
+  const paths = (photoRows ?? []).map((photo) => photo.storage_path);
+
+  // The second round: what needs the lead's own row. Round 6: the notes
+  // follow the contact's rule, from lead_notes. The quote's customer link
+  // and its outcome (round 8) are the owner's only.
+  const [contact, leadNotes, sessionResult, quoteCardBare, quoteOutcome, ralResult, signedResult, names, mockupData] = await Promise.all([
+    contactShown ? contactFor(supabase, me, row.id) : NO_CONTACT,
+    contactShown ? notesFor(supabase, me, row.id) : NO_NOTES,
+    row.knock_session_id
+      ? supabase.from("knock_sessions").select("neighbourhood").eq("id", row.knock_session_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    isOwner && cardRows ? loadQuoteCard(supabase, row, outcomeSettings?.company ?? null, cardRows) : null,
+    isOwner ? loadQuoteOutcome(supabase, row) : null,
+    isOwner && ownerRal ? ownerRal : canEdit ? ralQuery() : ralCodes.length > 0 ? ralQuery().in("code", ralCodes) : { data: [] },
+    paths.length > 0 ? supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : null,
+    namesById(supabase, [
+      row.created_by,
+      row.assigned_to,
+      ...events.map((event) => event.actor_id),
+      ...meetingRows.flatMap((meeting) => [meeting.setter_id, meeting.booked_by, meeting.outcome_by]),
+    ]),
+    // The mockups' pictures, signed alongside the lead's photos.
+    mockupRows ? signLeadMockups(supabase, mockupRows) : null,
+  ]);
+  const lead = { ...row, ...contact, notes: leadNotes.notes };
+  // The customer's own number, for texting the link, comes with the contact.
+  const quoteCard = quoteCardBare ? { ...quoteCardBare, customerPhone: lead.phone } : null;
   const meetings = meetingRows.map((meeting) => ({ ...meeting, lead }));
   const liveMeeting = meetings.find((meeting) => isLive(meeting.status));
   const canBook = canEdit && (lead.status === "new" || lead.status === "follow_up") && !liveMeeting;
   const justBooked = bookedParam ? meetings.find((meeting) => meeting.id === bookedParam) : undefined;
 
-  // Track colour and the soffit colour code. The owner gets the whole RAL
-  // Classic list, to name a custom number as he types it, and so does the
-  // lead's own setter, to name the soffit's code as they type it
-  // (2026-11-09); everyone else only the names shown.
-  const colours = sortTrackColours(colourRows ?? []);
-  const colourById = new Map(colours.map((colour) => [colour.id, colour]));
-  const listColour = lead.track_colour_id ? colourById.get(lead.track_colour_id) : undefined;
-  const ralCodes = [lead.track_ral_code, listColour?.ral_code, ...soffitCodes(lead)].filter((code): code is string => Boolean(code));
-  const ralQuery = supabase.from("ral_classic_colours").select("code, name");
-  const { data: ralRows } = isOwner || canEdit
-    ? await ralQuery
-    : ralCodes.length > 0
-      ? await ralQuery.in("code", ralCodes)
-      : { data: [] };
+
+  const ralRows = ralResult.data;
   const ralNames = new Map((ralRows ?? []).map((row) => [row.code, row.name]));
   const trackColour = leadTrackColour(lead, colourById, ralNames);
   const trackOptions = colours
     .filter((colour) => colour.active || colour.id === lead.track_colour_id)
     .map((colour) => ({ value: colour.id, label: colour.active ? colour.name : `${colour.name} (retired)` }));
 
-  const paths = (photoRows ?? []).map((photo) => photo.storage_path);
-  const signed =
-    paths.length > 0
-      ? ((await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600)).data ?? [])
-      : [];
+
+  const signed = signedResult?.data ?? [];
   const urlByPath = new Map(
     signed.flatMap((item) => (item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : [])),
   );
@@ -189,12 +217,6 @@ export default async function LeadPage({
   // A soffit that is no longer split keeps its second colour book photo,
   // shown with the extras so it never goes out of sight.
   if (!lead.soffit_colour_2 && slotUrls.soffit_book_2) extraUrls.push(slotUrls.soffit_book_2);
-  const names = await namesById(supabase, [
-    lead.created_by,
-    lead.assigned_to,
-    ...events.map((event) => event.actor_id),
-    ...meetings.flatMap((meeting) => [meeting.setter_id, meeting.booked_by, meeting.outcome_by]),
-  ]);
   const owner = names.get(lead.created_by) ?? "someone";
   const choices = canEdit ? statusChoices(me.role, lead.status) : [];
   // Round 8 (2026-11-09): on a Sold or Installed lead with an accepted
@@ -229,6 +251,46 @@ export default async function LeadPage({
         "lead",
       )
     : [];
+
+  // Keenan's three quote cards: the quote, the customer's link and the
+  // outcome. Round 13 (Keenan, 2026-11-11): once the lead has a quote they
+  // come first, right under the name, above the meetings, the mockups, the
+  // details and the photos, because after a meeting they are what he came
+  // for. Before there is a quote the page keeps its order, with the empty
+  // Quote card after the mockups.
+  const quoteFirst = isOwner && quoteOutcome !== null;
+  const quoteCards = (
+    <>
+      {quoteEditor ? (
+        <QuoteEditorCard
+          leadId={lead.id}
+          leadName={leadName(lead)}
+          context={{
+            pricing: quoteEditor.pricing,
+            today: quoteEditor.today,
+            lead: { colourKind: trackColour.kind, colourText: trackColourText(trackColour) },
+          }}
+          draft={quoteEditor.draft}
+          mockups={mockupData?.mockups ?? []}
+          userId={me.id}
+        />
+      ) : null}
+      {quoteCard ? <QuoteCard {...quoteCard} /> : null}
+      {quoteOutcome ? (
+        <QuoteOutcome
+          {...quoteOutcome}
+          track={{
+            set: trackColour.kind !== "none",
+            text: trackColourText(trackColour),
+            options: trackOptions,
+            current: { choice: lead.track_ral_code ? "custom" : lead.track_colour_id, ralCode: lead.track_ral_code },
+            ralNames: Object.fromEntries(ralNames),
+          }}
+          today={today}
+        />
+      ) : null}
+    </>
+  );
 
   return (
     <div className="flex flex-col gap-5">
@@ -328,6 +390,8 @@ export default async function LeadPage({
 
       {stillToDo.length > 0 ? <ToBeCompleted items={stillToDo} /> : null}
 
+      {quoteFirst ? quoteCards : null}
+
       {meetings.length > 0 ? (
         <section id="meetings" data-testid="lead-meetings" aria-labelledby="lead-meetings-heading" className="flex scroll-mt-36 flex-col gap-3">
           <h2 id="lead-meetings-heading" className="text-lg font-bold">
@@ -350,34 +414,7 @@ export default async function LeadPage({
       ) : null}
 
       {mockupData ? <MockupsCard leadId={lead.id} userId={me.id} {...mockupData} /> : null}
-      {quoteEditor ? (
-        <QuoteEditorCard
-          leadId={lead.id}
-          leadName={leadName(lead)}
-          context={{
-            pricing: quoteEditor.pricing,
-            today: quoteEditor.today,
-            lead: { colourKind: trackColour.kind, colourText: trackColourText(trackColour) },
-          }}
-          draft={quoteEditor.draft}
-          mockups={mockupData?.mockups ?? []}
-          userId={me.id}
-        />
-      ) : null}
-      {quoteCard ? <QuoteCard {...quoteCard} /> : null}
-      {quoteOutcome ? (
-        <QuoteOutcome
-          {...quoteOutcome}
-          track={{
-            set: trackColour.kind !== "none",
-            text: trackColourText(trackColour),
-            options: trackOptions,
-            current: { choice: lead.track_ral_code ? "custom" : lead.track_colour_id, ralCode: lead.track_ral_code },
-            ralNames: Object.fromEntries(ralNames),
-          }}
-          today={today}
-        />
-      ) : null}
+      {quoteFirst ? null : quoteCards}
       <ScrollToHash />
 
       {statusFromOutcome ? (
@@ -685,18 +722,18 @@ export default async function LeadPage({
 
 // The Quote card's facts, from the lead's latest quote and its newest link.
 // Totals come from the same lib/pricing.ts the customer's page uses.
-async function loadQuoteCard(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  lead: { id: string; first_name: string; phone: string | null },
-  company: unknown,
-): Promise<QuoteCardProps> {
+type QuoteCardRows = Awaited<ReturnType<typeof quoteCardRows>>;
+
+// The latest quote and the newest link, for the card below. Asked for with
+// the page's first round (round 13).
+async function quoteCardRows(supabase: Awaited<ReturnType<typeof createClient>>, leadId: string) {
   const [{ data: quoteRow }, { data: linkRow }] = await Promise.all([
     supabase
       .from("quotes")
       .select(
         "runs, offers, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, min_job_total, gst_enabled, gst_rate, valid_until",
       )
-      .eq("lead_id", lead.id)
+      .eq("lead_id", leadId)
       .in("status", ["draft", "presented", "accepted"])
       .order("created_at", { ascending: false })
       .limit(1)
@@ -704,11 +741,20 @@ async function loadQuoteCard(
     supabase
       .from("quote_links")
       .select("token, created_at, revoked_at, view_count, last_viewed_at, booked_at, booked_option, booked_selection, selection_offer, booked_offer")
-      .eq("lead_id", lead.id)
+      .eq("lead_id", leadId)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
   ]);
+  return { quoteRow, linkRow };
+}
+
+async function loadQuoteCard(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  lead: { id: string; first_name: string },
+  company: unknown,
+  { quoteRow, linkRow }: QuoteCardRows,
+): Promise<QuoteCardProps> {
   const phone =
     company && typeof company === "object" && typeof (company as { phone?: unknown }).phone === "string"
       ? ((company as { phone: string }).phone.trim() || FALLBACK_COMPANY.phone)
@@ -718,7 +764,8 @@ async function loadQuoteCard(
     leadId: lead.id,
     firstName: lead.first_name,
     phone,
-    customerPhone: lead.phone,
+    // Filled in by the page, from the contact it reads alongside.
+    customerPhone: null,
     quote: null,
     link: null,
   };

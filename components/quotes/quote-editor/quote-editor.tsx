@@ -14,7 +14,7 @@ import type { LeadMockupItem } from "@/lib/leads/mockup-roles";
 import { colourTimingFor, quoteInputs, quoteMinimum, quoteRushFee, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
 import { cleanFeet, defaultValidUntil, formatMoney, percentWords, totalFeet, usablePercent } from "@/lib/pricing";
 import { addQuickStart, editorOffers, editorOrder, offerLitPositions, offerWarnings, percentDiscountWords, typeDiscountAmount } from "@/lib/quotes/editor";
-import { OFFERS_MAX, pricedOffers, quickStartsFor, type QuickStart, type QuoteOffer } from "@/lib/quotes/offers";
+import { canHideOffer, keepOneShown, OFFERS_MAX, pricedOffers, quickStartsFor, setOfferHidden, type QuickStart, type QuoteOffer } from "@/lib/quotes/offers";
 import { cn } from "@/lib/utils";
 
 // Keenan's quote editor (round 9, the spec 3.7; round 11, quoting by area):
@@ -109,11 +109,17 @@ export function QuoteEditor({
   const changeOffer = (offer: QuoteOffer) => setOffers(offers.map((item) => (item.id === offer.id ? offer : item)));
   const deleteOffer = (id: string) => {
     if (activeOffer === id) setActiveOffer(null);
+    // At least one offer is always shown (round 13): if only hidden ones
+    // are left, the first of them shows again.
     setOffers(
-      offers.filter((item) => item.id !== id),
+      keepOneShown(offers.filter((item) => item.id !== id)),
       state.chosenOffer === id ? { chosenOffer: null } : {},
     );
   };
+  // Show to customer (round 13). Hiding the offer chosen at the table
+  // drops that choice: the customer no longer sees it.
+  const showOffer = (id: string, shown: boolean) =>
+    setOffers(setOfferHidden(offers, id, !shown), !shown && state.chosenOffer === id ? { chosenOffer: null } : {});
 
   const feet = totalFeet(state.runs);
   const quickStarts = quickStartsFor(state.runs);
@@ -210,14 +216,20 @@ export function QuoteEditor({
                 locked={locked}
                 photos={photos}
                 autoFocus={focusOffer === offer.id}
+                canHide={canHideOffer(offers, offer.id)}
                 onActivate={() => setActiveOffer(offer.id)}
                 onChange={changeOffer}
+                onShow={(shown) => showOffer(offer.id, shown)}
                 onDelete={() => deleteOffer(offer.id)}
               />
             ))}
           </div>
         )}
-        {cards.length > 0 ? <p className="text-sm text-muted-foreground">Customers see these biggest first.</p> : null}
+        {cards.length > 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {cards.some((offer) => offer.hidden === true) ? "Customers see the shown ones biggest first. Hidden ones stay here." : "Customers see these biggest first."}
+          </p>
+        ) : null}
         {warnings.length > 0 ? (
           <div className="flex flex-col gap-2" data-testid="editor-warnings">
             {warnings.map((warning) => (

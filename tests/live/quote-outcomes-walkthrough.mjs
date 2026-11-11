@@ -486,17 +486,18 @@ try {
       JSON.stringify(optionRows),
     );
     check(
-      "it says where each choice came from, and starts on the meeting's choice (Main floor) over the one booked on the link (Full wrap)",
+      "it says where each choice came from, and opens on the one booked on the link (Full wrap), with the meeting's choice (Main floor) marked beside it (round 13)",
       JSON.stringify(sources) === JSON.stringify(["Chosen at the meeting: Main floor", "Booked on their link: Full wrap"]) &&
         optionRows.find((row) => row.meeting === "yes")?.offer === "main" &&
         optionRows.find((row) => row.booked === "yes")?.offer === "full" &&
-        optionRows.find((row) => row.checked)?.offer === "main",
+        optionRows.find((row) => row.checked)?.offer === "full" &&
+        (await sheet.locator('[data-testid="outcome-option"][data-offer="main"]').getByTestId("outcome-option-meeting").count()) === 1,
       `${sources.join(" | ")} ${JSON.stringify(optionRows.map((row) => [row.offer, row.checked]))}`,
     );
     check(
-      "the install day starts from the day picked at the table, and the commission line names the chosen option's amount",
+      "the install day starts from the day picked at the table, and the commission line names the amount for the option on screen (the booked one)",
       (await op.getByTestId("outcome-planned-on").inputValue()) === installOn &&
-        (await textOf(op.getByTestId("outcome-accept-commission"))).includes(money(commissionOn(SOLD_BASE_CENTS))),
+        (await textOf(op.getByTestId("outcome-accept-commission"))).includes(money(commissionOn(FULL_BASE_CENTS))),
       `${await op.getByTestId("outcome-planned-on").inputValue()} | ${await textOf(op.getByTestId("outcome-accept-commission"))}`,
     );
     await sheet.screenshot({ path: `${out}/outcome-owner-accept-sheet-1180.png` }).catch(() => {});
@@ -797,7 +798,8 @@ try {
     const coming = await textOf(payCard.getByTestId("pay-commission-coming"));
     check(
       "Pay lists the commission coming on the sale: the lead, the base of lights and boxes after discounts, and the amount",
-      coming.includes(`${SOLD_NAME}, ${SOLD_STREET}`) && coming.includes(`of ${payMoney(SOLD_BASE_CENTS / 100)}`) && coming.includes(payMoney(soldCommission)),
+      // The base reads like every other price (round 12), without ".00".
+      coming.includes(`${SOLD_NAME}, ${SOLD_STREET}`) && coming.includes(`of ${money(SOLD_BASE_CENTS / 100)} `) && coming.includes(payMoney(soldCommission)),
       coming,
     );
     check(

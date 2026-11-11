@@ -41,12 +41,15 @@ const ready: PrepFacts = {
 describe("The prep list", () => {
   it("is Ready when every item is done", () => {
     expect(prepSummary(ready)).toMatchObject({ ready: true, left: 0, line: "Ready" });
-    expect(prepItems(ready).map((item) => item.key)).toEqual(["mockup", "track_colour", "quote", "confirmed", "answers"]);
+    // Round 13: the quote and the time to confirm first, above the fold.
+    expect(prepItems(ready).map((item) => item.key)).toEqual(["quote", "confirmed", "mockup", "track_colour", "answers"]);
+    // No booked meeting (someone walking in): no time to confirm.
+    expect(prepItems({ ...ready, hasMeeting: false }).map((item) => item.key)).toEqual(["quote", "mockup", "track_colour", "answers"]);
   });
 
   it("says how many are left, and which", () => {
     const summary = prepSummary({ ...ready, hasMockup: false, confirmedAt: null });
-    expect(summary).toMatchObject({ ready: false, left: 2, line: "2 left: mockup, confirm the time" });
+    expect(summary).toMatchObject({ ready: false, left: 2, line: "2 left: confirm the time, mockup" });
   });
 
   it("names the questions left Not collected or never answered", () => {

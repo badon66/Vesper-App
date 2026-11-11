@@ -9,6 +9,10 @@ import type { Database, Json } from "@/types/database";
 // link gets only the Main and the pictures marked for offers, Main first,
 // for a live token; a bad or revoked token gets []. Storage signs those
 // pictures for a request carrying a live token, and nothing else.
+// Round 13 (Keenan, 2026-11-11): the link also gets the house's phone
+// scenes, each by name, for "See it on your house" (until then a scene was
+// never listed or signed for a link), and an offer's picture only while
+// Keenan shows that offer to the customer.
 //
 // One throwaway setter with a test-prefixed email; the leads are named
 // "TEST LEAD (automated)". The service role stands in for Keenan, who is
@@ -56,9 +60,11 @@ let leadA = "";
 let leadB = "";
 let tokenA = "";
 let tokenB = "";
-const paths: Record<"main" | "front" | "scene" | "day" | "removed" | "other" | "legacy", string> = {
+const paths: Record<"main" | "front" | "pocket" | "scene" | "day" | "removed" | "other" | "legacy", string> = {
   main: "",
   front: "",
+  // The picture of an offer Keenan hides from the customer (round 13).
+  pocket: "",
   scene: "",
   day: "",
   removed: "",
@@ -76,6 +82,8 @@ const RUNS = [
 const OFFERS = [
   { id: "full", name: "Full wrap", runs: [0, 1] },
   { id: "front_lower", name: "Front lower", runs: [0] },
+  // Round 13: hidden from the customer, so its picture never reaches the link.
+  { id: "pocket", name: "Pocket offer", runs: [1], hidden: true },
 ];
 
 function calgaryDay(offsetDays: number): string {
@@ -140,7 +148,7 @@ async function picture(): Promise<string> {
   return path;
 }
 
-type LinkMockup = { path: string; main: boolean; offers: string[] };
+type LinkMockup = { path: string; main: boolean; scene: boolean; name: string; offers: string[] };
 const linkMockups = async (client: Client, token: string) =>
   (await client.rpc("quote_link_mockups", { p_token: token })).data as LinkMockup[] | null;
 
@@ -171,7 +179,8 @@ beforeAll(async () => {
   const { error: rowsError } = await admin.from("lead_mockups").insert([
     { lead_id: leadA, storage_path: paths.scene, name: "Christmas", is_scene: true, position: 0, created_by: ownerId },
     { lead_id: leadA, storage_path: paths.main, name: "Main", is_main: true, position: 1, created_by: ownerId },
-    { lead_id: leadA, storage_path: paths.front, name: "Front lower", offer_ids: ["front_lower"], position: 2, created_by: ownerId },
+    { lead_id: leadA, storage_path: paths.front, name: "Front lower", offer_ids: ["front_lower", "pocket"], position: 2, created_by: ownerId },
+    { lead_id: leadA, storage_path: paths.pocket, name: "Pocket only", offer_ids: ["pocket"], position: 5, created_by: ownerId },
     { lead_id: leadA, storage_path: paths.day, name: "Day", is_day: true, position: 3, created_by: ownerId },
     {
       lead_id: leadA,
@@ -222,7 +231,7 @@ describe("lead_mockups is Keenan's alone", () => {
   it("Keenan (the service role standing in) reads every picture, removed ones included", async () => {
     const { data, error } = await admin.from("lead_mockups").select("storage_path").eq("lead_id", leadA);
     expect(error).toBeNull();
-    expect((data ?? []).length).toBe(5);
+    expect((data ?? []).length).toBe(6);
   });
 
   it("a setter reads nothing, even on their own lead", async () => {
@@ -306,28 +315,39 @@ describe("a setter can't reach a mockup file or row", () => {
     expect((his ?? []).map((row) => row.slot).sort()).toEqual(["front", "mockup"]);
   });
 
-  it("a customer's token lists nothing of another house, and only its own Main and offer pictures", async () => {
+  it("a customer's token lists nothing of another house, and only its own Main, scenes and shown offers' pictures", async () => {
     const other = await withToken(tokenA).storage.from(BUCKET).list(ownerId, { search: basename(paths.other) });
     expect((other.data ?? []).map((file) => file.name)).toEqual([]);
+    const day = await withToken(tokenA).storage.from(BUCKET).list(ownerId, { search: basename(paths.day) });
+    expect((day.data ?? []).map((file) => file.name)).toEqual([]);
+    const pocket = await withToken(tokenA).storage.from(BUCKET).list(ownerId, { search: basename(paths.pocket) });
+    expect((pocket.data ?? []).map((file) => file.name)).toEqual([]);
+    // Round 13: a scene is the link's now.
     const scene = await withToken(tokenA).storage.from(BUCKET).list(ownerId, { search: basename(paths.scene) });
-    expect((scene.data ?? []).map((file) => file.name)).toEqual([]);
+    expect((scene.data ?? []).map((file) => file.name)).toEqual([basename(paths.scene)]);
     const main = await withToken(tokenA).storage.from(BUCKET).list(ownerId, { search: basename(paths.main) });
     expect((main.data ?? []).map((file) => file.name)).toEqual([basename(paths.main)]);
   });
 });
 
 describe("quote_link_mockups", () => {
-  it("returns the Main first, then the pictures for offers, for a live token", async () => {
+  it("returns the Main first, then the scenes by name and the shown offers' pictures, for a live token", async () => {
+    // A scene carries its name (the Looks row); no other picture does. The
+    // picture for Front lower is also marked for the hidden offer: only the
+    // shown offer is named.
     expect(await linkMockups(anon, tokenA)).toEqual([
-      { path: paths.main, main: true, offers: [] },
-      { path: paths.front, main: false, offers: ["front_lower"] },
+      { path: paths.main, main: true, scene: false, name: "", offers: [] },
+      { path: paths.scene, main: false, scene: true, name: "Christmas", offers: [] },
+      { path: paths.front, main: false, scene: false, name: "", offers: ["front_lower"] },
     ]);
   });
 
-  it("never returns a scene, a Day, a removed picture or another house's", async () => {
+  it("never returns a hidden offer's picture, a Day, a removed picture or another house's", async () => {
     const list = (await linkMockups(anon, tokenA)) ?? [];
     const shown = list.map((item) => item.path);
-    for (const hidden of [paths.scene, paths.day, paths.removed, paths.other]) expect(shown).not.toContain(hidden);
+    for (const hidden of [paths.pocket, paths.day, paths.removed, paths.other]) expect(shown).not.toContain(hidden);
+    expect(JSON.stringify(list)).not.toContain("pocket");
+    expect(JSON.stringify(list)).not.toContain("Pocket");
   });
 
   it("is empty for a bad token", async () => {
@@ -345,15 +365,28 @@ describe("storage signs the link's pictures for a live token only", () => {
   const sign = async (client: Client, path: string) =>
     (await client.storage.from(BUCKET).createSignedUrl(path, 60)).data?.signedUrl ?? null;
 
-  it("signs the Main and an offer's picture", async () => {
+  it("signs the Main, a scene and a shown offer's picture", async () => {
     expect(await sign(withToken(tokenA), paths.main)).not.toBeNull();
+    expect(await sign(withToken(tokenA), paths.scene)).not.toBeNull();
     expect(await sign(withToken(tokenA), paths.front)).not.toBeNull();
   });
 
-  it("never signs a scene, a Day, a removed picture or another house's", async () => {
-    for (const hidden of [paths.scene, paths.day, paths.removed, paths.other]) {
+  it("never signs a hidden offer's picture, a Day, a removed picture or another house's", async () => {
+    for (const hidden of [paths.pocket, paths.day, paths.removed, paths.other]) {
       expect(await sign(withToken(tokenA), hidden)).toBeNull();
     }
+  });
+
+  it("follows the switch: shown, the offer's picture is listed and signed; hidden again, it is neither", async () => {
+    const quoteOf = async () => (await admin.from("quotes").select("id").eq("lead_id", leadA).single()).data!.id;
+    const id = await quoteOf();
+    const shownNow = OFFERS.map((offer) => ({ id: offer.id, name: offer.name, runs: offer.runs }));
+    expect((await admin.from("quotes").update({ offers: shownNow as unknown as Json }).eq("id", id)).error).toBeNull();
+    expect(((await linkMockups(anon, tokenA)) ?? []).map((item) => item.path)).toContain(paths.pocket);
+    expect(await sign(withToken(tokenA), paths.pocket)).not.toBeNull();
+    expect((await admin.from("quotes").update({ offers: OFFERS as unknown as Json }).eq("id", id)).error).toBeNull();
+    expect(((await linkMockups(anon, tokenA)) ?? []).map((item) => item.path)).not.toContain(paths.pocket);
+    expect(await sign(withToken(tokenA), paths.pocket)).toBeNull();
   });
 
   it("signs nothing without a live token", async () => {

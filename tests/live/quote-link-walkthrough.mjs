@@ -158,6 +158,9 @@ let page = null;
 let leadId = null;
 let mockupPath = null;
 let frontMockupPath = null;
+// Round 13: a phone scene (a look on the link) and the hidden offer's picture.
+let sceneMockupPath = null;
+let pocketMockupPath = null;
 
 try {
   // ---------------------------------------------------------------- setup
@@ -229,6 +232,8 @@ try {
         { id: "front", name: "Front only", runs: [0] },
         { id: "full", name: "Full wrap", runs: [0, 1, 2, 3] },
         { id: "main", name: "Main floor", runs: [0, 2] },
+        // Round 13: an offer Keenan hides. It must show nowhere on the page.
+        { id: "pocket", name: "Pocket offer", runs: [2], hidden: true },
       ],
       notes: INTERNAL,
       valid_until: validUntil,
@@ -255,9 +260,20 @@ try {
   frontMockupPath = `${setter.id}/${crypto.randomUUID()}.jpg`;
   const uploadedFront = await admin.storage.from(BUCKET).upload(frontMockupPath, jpeg, { contentType: "image/jpeg" });
   if (uploadedFront.error) throw new Error(`front mockup: ${uploadedFront.error.message}`);
+  // Round 13: a phone scene, which the link shows as a look by its name,
+  // and a picture for the hidden offer, which the link never gets.
+  sceneMockupPath = `${setter.id}/${crypto.randomUUID()}.jpg`;
+  const scene = await sharp(Buffer.from(svg.replaceAll("#f4e3b5", "#d83a3a"))).jpeg({ quality: 82 }).toBuffer();
+  const uploadedScene = await admin.storage.from(BUCKET).upload(sceneMockupPath, scene, { contentType: "image/jpeg" });
+  if (uploadedScene.error) throw new Error(`scene mockup: ${uploadedScene.error.message}`);
+  pocketMockupPath = `${setter.id}/${crypto.randomUUID()}.jpg`;
+  const uploadedPocket = await admin.storage.from(BUCKET).upload(pocketMockupPath, jpeg, { contentType: "image/jpeg" });
+  if (uploadedPocket.error) throw new Error(`pocket mockup: ${uploadedPocket.error.message}`);
   const mockupRows = await admin.from("lead_mockups").insert([
     { lead_id: leadId, storage_path: mockupPath, name: "Main", is_main: true, position: 0, created_by: setter.id },
     { lead_id: leadId, storage_path: frontMockupPath, name: "Front only", offer_ids: ["front"], position: 1, created_by: setter.id },
+    { lead_id: leadId, storage_path: sceneMockupPath, name: "Christmas", is_scene: true, position: 2, created_by: setter.id },
+    { lead_id: leadId, storage_path: pocketMockupPath, name: "Pocket picture", offer_ids: ["pocket"], position: 3, created_by: setter.id },
   ], { defaultToNull: false });
   if (mockupRows.error) throw new Error(`mockup rows: ${mockupRows.error.message}`);
 
@@ -430,15 +446,19 @@ try {
       (await page.getByTestId("option-mockup").evaluate((img) => img.complete && img.naturalWidth > 0).catch(() => false)) &&
       (await page.getByTestId("option-mockup-caption").count()) === 0,
   );
+  // Round 13: the picture sits in See it on your house, with its Looks and
+  // Options right under it, so those are what must share a screen with it.
   const fit = await page.evaluate(() => {
     const figure = document.querySelector('[data-testid="option-picture"]').getBoundingClientRect();
+    const section = document.querySelector('[data-testid="see-it"]').getBoundingClientRect();
     const rows = [...document.querySelectorAll('[data-testid="option-row"]')].map((row) => row.getBoundingClientRect());
+    const chips = [...document.querySelectorAll('[data-testid="see-it-look"], [data-testid="see-it-option"]')].map((chip) => Math.round(chip.getBoundingClientRect().height));
     const bar = document.querySelector('[data-testid="quote-bar"]').getBoundingClientRect();
-    return { span: Math.round(rows[rows.length - 1].bottom - figure.top), room: Math.round(window.innerHeight - bar.height), heights: rows.map((r) => Math.round(r.height)) };
+    return { span: Math.round(section.bottom - figure.top), room: Math.round(window.innerHeight - bar.height), heights: rows.map((r) => Math.round(r.height)), chips };
   });
   check(
-    "the option's picture and the three rows fit on one screen at 390, above the bar, so a tap and the house changing are in view together; rows 44 to 88 px (name and total, then what it covers in two lines at most)",
-    fit.span <= fit.room && fit.heights.every((h) => h >= 44 && h <= 88),
+    "the picture, its Looks and its Options fit on one screen at 390, above the bar, so a tap and the house changing are in view together; buttons 48 px; price rows 44 to 88 px",
+    fit.span <= fit.room && fit.heights.every((h) => h >= 44 && h <= 88) && fit.chips.length === 4 && fit.chips.every((h) => h >= 48),
     JSON.stringify(fit),
   );
   const explainer = page.getByTestId("quote-explainer");
@@ -524,7 +544,7 @@ try {
     `${galleryCount} gallery photos`,
   );
   const order = await page.evaluate(() =>
-    ["hero-total", "quote-christmas", "quote-points", "quote-options", "option-picture", "option-rows", "whats-in", "quote-lines", "quote-includes", "quote-colour", "quote-next-steps", "quote-more", "quote-footer"]
+    ["hero-total", "quote-christmas", "quote-points", "see-it", "option-picture", "see-it-looks", "see-it-options", "quote-options", "option-rows", "whats-in", "quote-lines", "quote-includes", "quote-colour", "quote-next-steps", "quote-more", "quote-footer"]
       .map((id) => [id, document.querySelector(`[data-testid="${id}"]`)])
       .filter(([, el]) => el)
       .map(([id, el]) => [id, Math.round(el.getBoundingClientRect().top + window.scrollY)]),
@@ -619,6 +639,61 @@ try {
     (await pictureOwn(page)) === "true" && (await pictureSrc(page)) !== mainSrc && (await page.getByTestId("option-mockup-caption").count()) === 0,
   );
   check("prices, footage and discounts can't be changed: the rows are the only choice", (await page.locator("input:not([type=radio]), textarea, select").count()) === 0);
+
+  // Round 13: See it on your house, and the offer Keenan hides.
+  {
+    const seeIt = page.getByTestId("see-it");
+    const looks = await seeIt.getByTestId("see-it-look").allInnerTexts();
+    const chips = await seeIt.getByTestId("see-it-option").evaluateAll((els) => els.map((el) => [el.getAttribute("data-offer"), el.getAttribute("aria-pressed")]));
+    check(
+      "See it on your house: one picture, the house's scenes by name as Looks, and the shown offers as Options, biggest first, the one on screen pressed",
+      flat(await seeIt.locator("h2").innerText()) === "See it on your house" &&
+        looks.join() === "Christmas" &&
+        chips.map(([id]) => id).join() === "full,main,front" &&
+        chips.filter(([, on]) => on === "true").map(([id]) => id).join() === "front",
+      JSON.stringify({ looks, chips }),
+    );
+    const html = await page.content();
+    check(
+      "the offer Keenan hides shows nowhere on the page: not in the rows, not under the picture, not by name, and neither does its picture",
+      (await page.getByTestId("option-row").count()) === 3 && !html.includes("Pocket") && !html.includes("pocket") && !html.includes(pocketMockupPath.split("/").pop()),
+    );
+    await seeIt.getByTestId("see-it-look").first().click();
+    // The look is a new picture: give it a moment to arrive.
+    for (let i = 0; i < 40; i += 1) {
+      if (await page.getByTestId("option-mockup").evaluate((img) => img.complete && img.naturalWidth > 0).catch(() => false)) break;
+      await page.waitForTimeout(250);
+    }
+    const lookSrc = await pictureSrc(page);
+    check(
+      "tapping a look shows the house in that look, loaded, and the price below stays on their option",
+      (await page.getByTestId("option-picture").getAttribute("data-kind")) === "look" &&
+        lookSrc !== mainSrc &&
+        (await page.getByTestId("option-mockup").evaluate((img) => img.complete && img.naturalWidth > 0).catch(() => false)) &&
+        (await seeIt.getByTestId("see-it-look").first().getAttribute("aria-pressed")) === "true" &&
+        (await optionRows(page)).find((row) => row.selected)?.offer === "front" &&
+        (await totalOf(page, "hero-total")) === "$2,500",
+      `kind ${await page.getByTestId("option-picture").getAttribute("data-kind")}`,
+    );
+    await page.screenshot({ path: `${out}/ql-phone-see-it-look.png`, fullPage: true });
+    await seeIt.locator('[data-testid="see-it-option"][data-offer="full"]').click();
+    await page.waitForTimeout(500);
+    check(
+      "tapping an option under the picture shows that option's picture (the Main for Full wrap) and picks it in the price below",
+      (await page.getByTestId("option-picture").getAttribute("data-kind")) === "main" &&
+        (await pictureSrc(page)) === mainSrc &&
+        (await optionRows(page)).find((row) => row.selected)?.offer === "full" &&
+        (await totalOf(page, "hero-total")) === "$4,959" &&
+        (await seeIt.getByTestId("see-it-look").first().getAttribute("aria-pressed")) === "false",
+    );
+    await pickOption(page, "front");
+    check(
+      "picking an option in the price swaps the picture to that option's own, and presses its button under the picture",
+      (await page.getByTestId("option-picture").getAttribute("data-kind")) === "own" &&
+        (await seeIt.locator('[data-testid="see-it-option"][data-offer="front"]').getAttribute("aria-pressed")) === "true",
+    );
+    await page.screenshot({ path: `${out}/ql-phone-see-it.png`, fullPage: true });
+  }
   await page.screenshot({ path: `${out}/ql-phone-front-only.png`, fullPage: true });
   await page.waitForTimeout(2000);
   const { data: chosen } = await admin.from("quote_links").select("selection, selection_offer").eq("id", link.data.id).single();
@@ -848,9 +923,9 @@ try {
     cardText.slice(0, 300),
   );
   check(
-    "Keenan's quote editor card sums up every option a customer sees, biggest first, and the price-held date",
+    "Keenan's quote editor card sums up every option a customer sees, biggest first, counts the one he hides (round 13) without a price, and the price-held date",
     flat(await owner.getByTestId("quote-summary-line").innerText().catch(() => "")) ===
-      `Full wrap $4,959, Main floor $2,633, Front only $2,500. Price held until ${fullDate(validUntil)}.`,
+      `Full wrap $4,959, Main floor $2,633, Front only $2,500. 1 hidden from the customer. Price held until ${fullDate(validUntil)}.`,
     flat(await owner.getByTestId("quote-summary-line").innerText().catch(() => "no summary")),
   );
   const previewHref = await card.getByRole("link", { name: "Preview" }).getAttribute("href").catch(() => "");
@@ -1041,7 +1116,7 @@ try {
   if (page) await page.screenshot({ path: `${out}/ql-failure.png`, fullPage: true }).catch(() => {});
 } finally {
   if (ownerSession) await ownerSession.close().catch(() => {});
-  const stored = [mockupPath, frontMockupPath].filter(Boolean);
+  const stored = [mockupPath, frontMockupPath, sceneMockupPath, pocketMockupPath].filter(Boolean);
   if (stored.length > 0) await admin.storage.from(BUCKET).remove(stored).catch(() => {});
   if (setter.id) {
     const { data: owned } = await admin.from("leads").select("id").eq("created_by", setter.id);

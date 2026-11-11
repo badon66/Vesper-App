@@ -394,6 +394,8 @@ const priceRows = (region) =>
       onScreen: button.getAttribute("data-on-screen"),
       chosen: button.getAttribute("data-chosen"),
       regular: button.querySelector('[data-testid="price-option-regular"]')?.textContent ?? null,
+      // Round 13: "Already at our lowest price." under an option the deal can't lower.
+      lowest: button.querySelector('[data-testid="price-option-lowest"]')?.textContent ?? null,
       total: button.querySelector('[data-testid="price-option-total"]')?.textContent ?? "",
       name: button.querySelector('[data-testid="price-option-name"]')?.textContent ?? button.textContent ?? "",
     })),
@@ -503,7 +505,7 @@ async function rehearse(lead, { deal, tag, chooseName, bookName, pickDay }) {
   await checkShot(
     page,
     "the prep list opens with its five items, the first three to do, the time to confirm, and all six answers in",
-    JSON.stringify(items) === JSON.stringify(["prep-item-mockup:false", "prep-item-track_colour:false", "prep-item-quote:false", "prep-item-confirmed:false", "prep-item-answers:true"]) &&
+    JSON.stringify(items) === JSON.stringify(["prep-item-quote:false", "prep-item-confirmed:false", "prep-item-mockup:false", "prep-item-track_colour:false", "prep-item-answers:true"]) &&
       status === "Prepare for the meeting: 4 left",
     `${items.join(", ")} | ${status}`,
     "prep-list-items",
@@ -669,7 +671,7 @@ async function rehearse(lead, { deal, tag, chooseName, bookName, pickDay }) {
   });
   const tiles = page.getByTestId("mockup-tile");
   await checkShot(page, "four pictures upload as four tiles, the first one the Main", (await tiles.count()) === 4 && (await tiles.first().getByTestId("mockup-role-main").getAttribute("aria-pressed")) === "true", `${await tiles.count()} tiles in ${seconds(uploadMs)}`, "mockups-uploaded");
-  // Each named, and the three for an offer marked for it.
+  // Each named in the Mockups card.
   for (const [at, picture] of pictures.entries()) {
     const tile = tiles.nth(at);
     const nameBox = tile.getByTestId("mockup-name");
@@ -677,13 +679,38 @@ async function rehearse(lead, { deal, tag, chooseName, bookName, pickDay }) {
     await nameBox.press("Enter");
     taps += 1;
     await until(async () => ((await mockupRows(lead.leadId)).filter((row) => !row.removed_at)[at]?.name === picture.name ? true : null), 15000, 500);
-    if (picture.offer) {
-      const chip = tile.getByTestId("mockup-offer").filter({ hasText: picture.offer });
-      await tap(chip.first());
-      const wanted = offerId(picture.offer);
-      await until(async () => ((await mockupRows(lead.leadId)).filter((row) => !row.removed_at)[at]?.offer_ids ?? []).includes(wanted) ? true : null, 15000, 500);
-    }
   }
+  // Round 13: an offer's picture is set in one place, the photo spot on its
+  // card in the quote editor. The Mockups card marks Main, Day, Night or a
+  // phone scene only, and says which offers use each picture.
+  check("the Mockups card has no offer chips any more", (await page.getByTestId("mockup-offer").count()) === 0);
+  await page.reload();
+  await page.getByTestId("edit-quote").waitFor({ timeout: 30000 });
+  await settle(page);
+  await tap(page.getByTestId("edit-quote"));
+  await page.getByTestId("quote-sheet").waitFor({ timeout: 15000 });
+  const named = (await mockupRows(lead.leadId)).filter((row) => !row.removed_at);
+  for (const [at, picture] of pictures.entries()) {
+    if (!picture.offer) continue;
+    const offerCard = page.locator(`[data-testid="offer-card"][aria-label="${picture.offer}"]`);
+    await offerCard.scrollIntoViewIfNeeded().catch(() => {});
+    await tap(offerCard.getByTestId("offer-photo-pick"));
+    await tap(offerCard.locator(`[data-testid="offer-photo-choice"][data-mockup="${named[at]?.id}"]`));
+    const wanted = offerId(picture.offer);
+    await until(async () => ((await mockupRows(lead.leadId)).filter((row) => !row.removed_at)[at]?.offer_ids ?? []).includes(wanted) ? true : null, 15000, 500);
+  }
+  await shot(page, "offer-pictures-picked");
+  await tap(page.getByTestId("quote-sheet-close"));
+  await page.getByTestId("quote-sheet").waitFor({ state: "hidden", timeout: 10000 }).catch(() => {});
+  await page.reload();
+  await page.getByTestId("mockup-card").waitFor({ timeout: 30000 });
+  await settle(page);
+  const usedBy = await page.getByTestId("mockup-used-by").allInnerTexts();
+  check(
+    "each mockup says which offers use it: the Main none (every offer has its own), each of the others its offer",
+    usedBy.length === 4 && usedBy[0] === "No offer uses it." && pictures.slice(1).every((picture, at) => usedBy[at + 1] === `Used by ${picture.offer}.`),
+    JSON.stringify(usedBy),
+  );
   const rows = (await mockupRows(lead.leadId)).filter((row) => !row.removed_at);
   await checkShot(
     page,
@@ -697,8 +724,6 @@ async function rehearse(lead, { deal, tag, chooseName, bookName, pickDay }) {
   );
   check("the mockups land in Keenan's own folder of lead-photos", rows.every((row) => row.storage_path.startsWith(`${ownerId}/`)));
   await shot(page, "mockups-marked");
-  const offersOnTile = await tiles.first().getByTestId("mockup-offer").count();
-  if (offersOnTile === 0) observe("the Mockups card showed no offer chips, so the pictures could not be marked for an offer");
 
   // ---------------------------------------------------------------- 5. the time confirmed, and Ready
   startStep("Confirm the time, and Ready");
@@ -822,14 +847,14 @@ async function rehearse(lead, { deal, tag, chooseName, bookName, pickDay }) {
     // An option already at the minimum keeps one price, nothing struck.
     await checkShot(
       page,
-      `on, every option the deal lowers shows its regular price struck through beside $${deal} off, and one at the minimum keeps its price`,
+      `on, every option the deal lowers shows its regular price struck through beside $${deal} off, and one at the minimum keeps its price and says "Already at our lowest price." under it (round 13)`,
       flat(await dealButton.innerText()).includes(`$${deal} off`) &&
         priceOptions.every((row) =>
           expectedDeal[row.id] < expectedPlain[row.id]
-            ? row.regular !== null && dollarsIn(row.regular) === expectedPlain[row.id] && dollarsIn(row.total) === expectedDeal[row.id]
-            : row.regular === null && dollarsIn(row.total) === expectedDeal[row.id],
+            ? row.regular !== null && dollarsIn(row.regular) === expectedPlain[row.id] && dollarsIn(row.total) === expectedDeal[row.id] && row.lowest === null
+            : row.regular === null && dollarsIn(row.total) === expectedDeal[row.id] && flat(row.lowest ?? "") === "Already at our lowest price.",
         ),
-      JSON.stringify(priceOptions.map((row) => [row.id, row.regular, row.total])),
+      JSON.stringify(priceOptions.map((row) => [row.id, row.regular, row.total, row.lowest])),
       "your-price-deal",
     );
   } else {
@@ -1019,9 +1044,9 @@ async function rehearse(lead, { deal, tag, chooseName, bookName, pickDay }) {
   const acceptRow = offered.find((row) => row.offer === acceptId);
   await checkShot(
     page,
-    "the Accepted sheet lists the three options, says where each choice came from, starts on the meeting's choice, and prices each with its commission",
+    "the Accepted sheet lists the three options, says where each choice came from, opens on the option the customer booked on their link (round 13), and prices each with its commission",
     offered.length === 3 &&
-      [chosenId, bookId].includes(offered.find((row) => row.checked)?.offer) &&
+      offered.find((row) => row.checked)?.offer === bookId &&
       sources.includes(`Chosen at the meeting: ${chooseName}`) &&
       sources.includes(`Booked on their link: ${bookName}`) &&
       acceptRow !== undefined &&
@@ -1031,10 +1056,15 @@ async function rehearse(lead, { deal, tag, chooseName, bookName, pickDay }) {
     "accepted-sheet",
   );
   if (bookName !== chooseName) {
-    const startedOn = offered.find((row) => row.checked)?.offer === bookId ? "the option the customer booked" : `the meeting's choice (${chooseName})`;
-    observe(`the Accepted sheet opened on ${startedOn} when the meeting's choice (${chooseName}) and the customer's booked option (${bookName}) differ; both are named above the options, and Keenan picks the booked one himself`);
-    await tap(acceptSheet.locator(`[data-testid="outcome-option"][data-offer="${acceptId}"]`));
-    await page.waitForTimeout(300);
+    // Round 13: it opens on what they booked, with the table's choice
+    // marked on its own row; nothing to pick.
+    check(
+      "with a different choice at the table, the sheet still opens on what they booked, and the table's choice is marked on its own row",
+      offered.find((row) => row.checked)?.offer === bookId &&
+        acceptId === bookId &&
+        flat(await acceptSheet.locator(`[data-testid="outcome-option"][data-offer="${chosenId}"]`).getByTestId("outcome-option-meeting").innerText().catch(() => "")) === "Chosen at the meeting",
+      JSON.stringify(offered.map((row) => [row.offer, row.checked, row.meeting, row.booked])),
+    );
   }
   const plannedOn = await page.getByTestId("outcome-planned-on").inputValue().catch(() => "");
   if (installDay) check("the sheet starts on the install day picked at the table", plannedOn === installDay, plannedOn);

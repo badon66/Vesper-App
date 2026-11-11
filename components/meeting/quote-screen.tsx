@@ -17,7 +17,7 @@ import { quoteInputs, quoteOffers, quoteRushFee, type MeetingMockup, type Meetin
 import { MOTION, transition } from "@/lib/motion";
 import { formatMoney, type QuoteTotals } from "@/lib/pricing";
 import { QUOTE_LOCKED_MEETING, savedLine } from "@/lib/quotes/draft";
-import { offerNameIssue } from "@/lib/quotes/editor";
+import { offersBlock } from "@/lib/quotes/editor";
 import { BLACK_FRIDAY_LABEL, blackFridayWords } from "@/lib/quotes/black-friday";
 import { cleanOfferName, type PricedOffer } from "@/lib/quotes/offers";
 import { formatFullDate } from "@/lib/time";
@@ -157,6 +157,13 @@ export function QuoteScreen({
     const price = prices.get(option.offer.id);
     return price?.deal && price.regular ? price.regular.subtotal : null;
   };
+  // Round 13 (Keenan, 2026-11-11): with the deal on, an option already at
+  // the minimum job total shows one price and nothing struck, so a quiet
+  // line under it says why: "Already at our lowest price."
+  const atLowest = (option: PricedOffer) => {
+    const price = prices.get(option.offer.id);
+    return dealOn && deal !== null && price?.deal == null && Boolean(price?.regular?.minimumApplied);
+  };
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [ownEdit, setOwnEdit] = useState(false);
   const [ownBreakdown, setOwnBreakdown] = useState(false);
@@ -190,7 +197,7 @@ export function QuoteScreen({
   const lastPick = useRef(pickKey);
   const [pickWaiting, setPickWaiting] = useState(false);
   const quietSave = useEffectEvent(async () => {
-    if (readOnly || locked || !hasMeasuredRun(state) || quoteOffers(state).some((offer) => offerNameIssue(offer.name))) return;
+    if (readOnly || locked || !hasMeasuredRun(state) || offersBlock(quoteOffers(state)) !== null) return;
     const result = await save(state, { quiet: true, quoteId });
     setPickWaiting(result === null);
     if (result) onSaved(result.quoteId, result.savedAt, result.fingerprint);
@@ -289,6 +296,7 @@ export function QuoteScreen({
                   option={option}
                   total={shownTotals(option)?.subtotal ?? 0}
                   regular={struckTotal(option)}
+                  lowest={atLowest(option) ? deckLine(lines, "price_lowest") : null}
                   coverage={coverageLine(state.runs, option.offer)}
                   onScreen={option.offer.id === viewing.offer.id}
                   chosen={option.offer.id === chosen?.offer.id}
@@ -513,6 +521,7 @@ function OptionButton({
   option,
   total,
   regular,
+  lowest = null,
   coverage,
   onScreen,
   chosen,
@@ -525,6 +534,9 @@ function OptionButton({
   // Black Friday is on (null otherwise).
   total: number;
   regular: number | null;
+  // "Already at our lowest price.", while the deal is on and can't lower
+  // this option (round 13); null otherwise.
+  lowest?: string | null;
   coverage: string;
   onScreen: boolean;
   chosen: boolean;
@@ -577,6 +589,11 @@ function OptionButton({
       <span className={cn("line-clamp-2 text-pretty text-[19px] leading-snug", chosen ? "text-background/85" : "text-muted-foreground")} data-testid="price-option-coverage">
         {say(coverage)}
       </span>
+      {lowest ? (
+        <span className={cn("text-pretty text-[17px] leading-snug", chosen ? "text-background/85" : "text-muted-foreground")} data-testid="price-option-lowest">
+          {say(lowest)}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -664,7 +681,9 @@ function EditLayer({
   const { busy, message, save } = useQuoteSave({ leadId, pricing, from: "meeting", readOnly });
   const [shown, setShown] = useState(false);
   const title = useRef<HTMLHeadingElement>(null);
-  const nameIssue = quoteOffers(state).some((offer) => offerNameIssue(offer.name) !== null);
+  // A name that needs fixing, or (round 13) nothing shown to the customer.
+  const offersIssue = offersBlock(quoteOffers(state));
+  const nameIssue = offersIssue !== null;
   const measured = hasMeasuredRun(state);
 
   useEffect(() => {
@@ -695,8 +714,8 @@ function EditLayer({
     ? null
     : !measured
       ? "Measure an area to save."
-      : nameIssue
-        ? "An offer's name needs fixing first."
+      : offersIssue
+        ? offersIssue
         : dirty
           ? savedAt
             ? "Changes not saved yet."
@@ -755,7 +774,9 @@ function EditLayer({
         </div>
         <div className="flex items-center gap-3">
           <EditorClose onClick={onClose} testId="quote-edit-done" />
-          {!locked ? <EditorSave onClick={() => void onSave()} disabled={busy || !measured || nameIssue} busy={busy} testId="quote-edit-save" /> : null}
+          {!locked ? (
+            <EditorSave onClick={() => void onSave()} disabled={busy || !measured || nameIssue} busy={busy} first={!quoteId} testId="quote-edit-save" />
+          ) : null}
         </div>
       </footer>
     </div>,

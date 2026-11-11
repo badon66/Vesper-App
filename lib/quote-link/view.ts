@@ -444,7 +444,8 @@ export function offerChoice(
   offerId: string | null,
 ): { id: string; name: string; total: string; totals: QuoteTotals; offer: QuoteOffer } | null {
   if (!offerId) return null;
-  const offer = quote.offers.find((candidate) => candidate.id === offerId);
+  // Never a hidden one (round 13): the customer can't see or book it.
+  const offer = quote.offers.find((candidate) => candidate.id === offerId && candidate.hidden !== true);
   const totals = offer ? priceOffer(customerInputs(quote, null), offer) : null;
   if (!offer || !totals) return null;
   return { id: offer.id, name: offer.name, total: screenTotal(totals.subtotal, quote.gstEnabled), totals, offer };
@@ -593,12 +594,17 @@ export const lineAmount = (amount: number) => (amount < 0 ? `\u2212${formatMoney
 
 // Mockups per house (round 10): the pictures the link may show, from
 // quote_link_mockups: the Main and the ones Keenan marked for offers, Main
-// first. Paths only; the server signs each for a live token.
-export type LinkMockup = { path: string; main: boolean; offers: string[] };
+// first. Paths only; the server signs each for a live token. Round 13: the
+// house's phone scenes come too, each by name, for the Looks row of "See it
+// on your house" (only a scene carries a name), and an offer's picture
+// comes only while that offer is shown to the customer.
+export type LinkMockup = { path: string; main: boolean; scene: boolean; name: string; offers: string[] };
 
 const linkMockupSchema = z.object({
   path: z.string().min(1),
   main: z.boolean().catch(false),
+  scene: z.boolean().catch(false),
+  name: z.string().catch(""),
   offers: z.array(z.string()).catch([]),
 });
 
@@ -611,7 +617,7 @@ export function parseLinkMockups(data: unknown): LinkMockup[] {
 }
 
 // A mockup the page may show, signed for ten minutes (lib/quote-link/server.ts).
-export type LinkPicture = { url: string; main: boolean; offers: string[] };
+export type LinkPicture = { url: string; main: boolean; scene: boolean; name: string; offers: string[] };
 
 // The Main picture, or none.
 export function mainPicture<T extends { main: boolean }>(pictures: readonly T[]): T | null {
@@ -629,4 +635,43 @@ export function offerPicture<T extends { main: boolean; offers: readonly string[
   if (own) return { picture: own, own: true };
   const main = mainPicture(pictures);
   return main ? { picture: main, own: false } : null;
+}
+
+// ---------------------------------------------------------------- see it on your house
+
+// "See it on your house" (round 13, Keenan, 2026-11-11): one picture of
+// their house with two rows of buttons under it. Looks are the house's
+// phone scenes by name (Christmas, Halloween, Warm white); Options are the
+// offers they are shown.
+
+// The Looks row: the scenes with a name, in Keenan's order, each name once.
+export function linkLooks<T extends { scene: boolean; name: string }>(pictures: readonly T[]): T[] {
+  const seen = new Set<string>();
+  return pictures.filter((picture) => {
+    const name = picture.name.trim();
+    if (!picture.scene || name === "" || seen.has(name.toLowerCase())) return false;
+    seen.add(name.toLowerCase());
+    return true;
+  });
+}
+
+// The picture on screen: the look they tapped, else the option's own
+// picture, else the Main, else none. kind says which, for the caption (only
+// an option's own picture shows exactly what that option covers).
+export function seeItPicture<T extends { main: boolean; scene: boolean; name: string; offers: readonly string[] }>(
+  pictures: readonly T[],
+  offerId: string | null | undefined,
+  look: string | null,
+): { picture: T; kind: "look" | "own" | "main" } | null {
+  const scene = look ? linkLooks(pictures).find((picture) => picture.name.trim() === look) : undefined;
+  if (scene) return { picture: scene, kind: "look" };
+  const chosen = offerPicture(pictures, offerId);
+  return chosen ? { picture: chosen.picture, kind: chosen.own ? "own" : "main" } : null;
+}
+
+// Whether the page shows the section with its rows: there is a picture, and
+// something to switch (a look, or more than one option). With one option
+// and no scene the picture sits in Your price, as before.
+export function showsSeeIt(pictures: readonly { scene: boolean; name: string }[], optionCount: number): boolean {
+  return pictures.length > 0 && (linkLooks(pictures).length > 0 || optionCount > 1);
 }

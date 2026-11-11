@@ -42,6 +42,7 @@ export async function loadQuoteOutcome(supabase: Client, lead: LeadForOutcome): 
     { data: settings },
     { data: receiverRow },
     { data: planned },
+    receiverNames,
   ] = await Promise.all([
     supabase
       .from("quotes")
@@ -70,6 +71,8 @@ export async function loadQuoteOutcome(supabase: Client, lead: LeadForOutcome): 
     // The planned install day, read here so the lead page's shared field
     // list stays as it is.
     supabase.from("leads").select("install_on").eq("id", lead.id).maybeSingle(),
+    // The setter's name, asked for with the rest (round 13).
+    namesById(supabase, [receiverId]),
   ]);
 
   const quote = pickOutcomeQuote(quoteRows ?? []);
@@ -77,7 +80,12 @@ export async function loadQuoteOutcome(supabase: Client, lead: LeadForOutcome): 
 
   const earnings: CommissionRow[] = (earningRows ?? []).map((row) => ({ ...row, amount: Number(row.amount) }));
   const earning = currentCommission(earnings, quote.id);
-  const names = await namesById(supabase, [receiverId, earning?.profile_id]);
+  // A standing commission that went to someone else (the lead changed
+  // hands since) needs that person's name too: one more lookup, only then.
+  const names =
+    earning?.profile_id && earning.profile_id !== receiverId
+      ? new Map([...receiverNames, ...(await namesById(supabase, [earning.profile_id]))])
+      : receiverNames;
   const receiver = { name: names.get(receiverId) ?? "the setter", role: receiverRow?.role ?? null };
   const rate = Number(settings?.commission_rate ?? 0);
   // The quote's own prices as numbers. The commission reads only the runs,

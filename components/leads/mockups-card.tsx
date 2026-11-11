@@ -7,7 +7,6 @@ import {
   addLeadMockups,
   removeLeadMockup,
   renameLeadMockup,
-  setLeadMockupOffer,
   setLeadMockupRole,
 } from "@/app/(app)/app/leads/mockup-actions";
 import { Button } from "@/components/ui/button";
@@ -15,7 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import {
   MOCKUP_NAME_MAX,
   MOCKUP_ROLES,
-  withOffer,
+  usedByWords,
   withRole,
   type LeadMockupItem,
   type MockupOffer,
@@ -28,9 +27,11 @@ import { cn } from "@/lib/utils";
 // Mockups per house (round 10, Keenan, 2026-11-10): Keenan's alone, on the
 // lead page and the prep list. He uploads as many as he likes from the iPad
 // or his phone, names each one ("Christmas", "Warm white") and marks what
-// each is for, one tap each, saved on the tap: Main (lights on), Day, Night,
-// a Phone scene, and the offers on the quote it shows. One picture can do
-// more than one job. Remove takes a second tap.
+// each is for, one tap each, saved on the tap: Main (lights on), Day, Night
+// or a Phone scene. One picture can do more than one job. Remove takes a
+// second tap. Round 13 (Keenan, 2026-11-11): an offer's picture is set in
+// one place, the photo spot on the offer's card in the quote editor; here
+// each picture only says which offers use it.
 // bare: without the card around it, for the prep list.
 export function MockupsCard({
   leadId,
@@ -69,35 +70,54 @@ export function MockupsCard({
     setError(null);
     setUploading({ done: 0, of: batch.length, previews });
     const supabase = createClient();
-    const added: { path: string }[] = [];
+    // Round 13 (Keenan, 2026-11-11): the pictures go up together. Each is
+    // made smaller in turn (the iPad's own work, one at a time), and its
+    // upload starts at once, without waiting for the one before. Each keeps
+    // its place in the order they were picked, so the first is still the
+    // Main on a house with none.
+    const slots: ({ path: string } | null)[] = batch.map(() => null);
     let failed = chosen.length - batch.length;
     // A file the browser can't read (a HEIC from the Files app on an older
     // iPad, say; Photos hands over a JPEG) is told apart from an upload
     // that failed on signal.
     let unreadable = 0;
-    for (const file of batch) {
+    let finished = 0;
+    const show = () => setUploading({ done: finished, of: batch.length, previews: [...previews] });
+    const uploads: Promise<void>[] = [];
+    for (const [at, file] of batch.entries()) {
       let small: Blob;
       try {
         small = await shrinkPhoto(file, MEETING_PHOTO_MAX_EDGE);
       } catch {
         unreadable += 1;
-        setUploading({ done: added.length + failed + unreadable, of: batch.length, previews: [...previews] });
+        finished += 1;
+        show();
         continue;
       }
-      try {
-        previews.push(URL.createObjectURL(small));
-        setUploading({ done: added.length + failed + unreadable, of: batch.length, previews: [...previews] });
-        const path = photoPath(userId, crypto.randomUUID());
-        const { error: uploadError } = await supabase.storage
+      previews.push(URL.createObjectURL(small));
+      show();
+      const path = photoPath(userId, crypto.randomUUID());
+      uploads.push(
+        supabase.storage
           .from(PHOTO_BUCKET)
-          .upload(path, small, { contentType: "image/jpeg", upsert: false });
-        if (uploadError) throw uploadError;
-        added.push({ path });
-      } catch {
-        failed += 1;
-      }
-      setUploading({ done: added.length + failed + unreadable, of: batch.length, previews: [...previews] });
+          .upload(path, small, { contentType: "image/jpeg", upsert: false })
+          .then(
+            ({ error: uploadError }) => {
+              if (uploadError) failed += 1;
+              else slots[at] = { path };
+            },
+            () => {
+              failed += 1;
+            },
+          )
+          .finally(() => {
+            finished += 1;
+            show();
+          }),
+      );
     }
+    await Promise.all(uploads);
+    const added = slots.filter((slot): slot is { path: string } => slot !== null);
     try {
       if (added.length > 0) {
         const result = await addLeadMockups(leadId, added);
@@ -161,7 +181,7 @@ export function MockupsCard({
         data-testid="mockups-add"
       >
         <ImagePlus aria-hidden="true" />
-        {busy ? `Uploading ${Math.min(uploading.done + 1, uploading.of)} of ${uploading.of}` : none ? (bare ? "Upload the mockup" : "Upload mockups") : "Add mockups"}
+        {busy ? uploadingWords(uploading.done, uploading.of) : none ? (bare ? "Upload the mockup" : "Upload mockups") : "Add mockups"}
       </Button>
       <input
         ref={input}
@@ -182,7 +202,8 @@ export function MockupsCard({
       {none && !busy ? (
         <p className="text-sm text-pretty text-muted-foreground" data-testid="mockups-empty">
           No mockups yet. Upload one or more, name each, and mark what it&apos;s for: Main shows full screen with the
-          lights on, Day and Night share the slider, Phone scenes are the buttons on the phone page.
+          lights on, Day and Night share the slider, Phone scenes are the buttons on the phone page and the looks on
+          their link. An offer&apos;s own picture is set on the offer, in the quote.
         </p>
       ) : null}
       {list.length > 0 || busy ? (
@@ -191,7 +212,7 @@ export function MockupsCard({
             <MockupTile
               key={item.id}
               item={item}
-              offers={offers}
+              usedBy={usedByWords(item, list, offers)}
               onRename={(name) =>
                 save(
                   list.map((other) => (other.id === item.id ? { ...other, name } : other)),
@@ -199,9 +220,6 @@ export function MockupsCard({
                 )
               }
               onRole={(role, on) => save(withRole(list, item.id, role, on), () => setLeadMockupRole(item.id, role, on))}
-              onOffer={(offerId, on) =>
-                save(withOffer(list, item.id, offerId, on), () => setLeadMockupOffer(item.id, offerId, on))
-              }
               onRemove={() =>
                 save(
                   list.filter((other) => other.id !== item.id),
@@ -238,7 +256,7 @@ export function MockupsCard({
         <CardTitle>Mockups</CardTitle>
         <CardDescription>
           Your pictures of this house, for meeting mode and their quote link. Mark what each one is for; one picture can do
-          more than one job. Only you see these here.
+          more than one job. An offer&apos;s own picture is set on the offer, in the quote. Only you see these here.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -257,17 +275,16 @@ export function MockupsCard({
 
 function MockupTile({
   item,
-  offers,
+  usedBy,
   onRename,
   onRole,
-  onOffer,
   onRemove,
 }: {
   item: LeadMockupItem;
-  offers: MockupOffer[];
+  // Which offers use this picture, in words (set on the offer, in the quote).
+  usedBy: string;
   onRename: (name: string) => Promise<void>;
   onRole: (role: MockupRole, on: boolean) => Promise<void>;
-  onOffer: (offerId: string, on: boolean) => Promise<void>;
   onRemove: () => Promise<void>;
 }) {
   const [name, setName] = useState(item.name);
@@ -342,31 +359,10 @@ function MockupTile({
             ))}
           </div>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">For an offer</span>
-          {offers.length > 0 ? (
-            <div className="flex flex-wrap gap-2" role="group" aria-label={`The offers ${label} shows`}>
-              {offers.map((offer) => {
-                const on = item.offers.includes(offer.id);
-                return (
-                  <Chip
-                    key={offer.id}
-                    on={on}
-                    onToggle={() => void onOffer(offer.id, !on)}
-                    testId="mockup-offer"
-                    className="max-w-full"
-                  >
-                    <span className="truncate">{offer.name}</span>
-                  </Chip>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-sm text-pretty text-muted-foreground">
-              The offers show here once the quote is saved.
-            </p>
-          )}
-        </div>
+        {/* Round 13: read only. An offer's picture is picked on the offer. */}
+        <p className="text-sm text-pretty text-muted-foreground" data-testid="mockup-used-by">
+          {usedBy}
+        </p>
         <button
           type="button"
           onClick={() => {
@@ -389,6 +385,13 @@ function MockupTile({
       </div>
     </li>
   );
+}
+
+// What the button says while pictures go up together (round 13): how many
+// are up so far, then that they are being saved to the house.
+export function uploadingWords(done: number, of: number): string {
+  if (done >= of) return "Saving";
+  return of === 1 ? "Uploading" : `Uploading, ${done} of ${of} up`;
 }
 
 // A one-tap toggle: filled navy when on, with a tick, so it never relies on

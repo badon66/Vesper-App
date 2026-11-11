@@ -355,10 +355,25 @@ export function EditorClose({ onClick, leaving = false, testId }: { onClick: () 
   );
 }
 
-export function EditorSave({ onClick, disabled, busy, testId }: { onClick: () => void; disabled?: boolean; busy?: boolean; testId?: string }) {
+// first (round 13, Keenan, 2026-11-11): the quote has never been saved, so
+// the button reads "Save quote"; once it has, "Save changes". The same in
+// both shells, so the pair still matches.
+export function EditorSave({
+  onClick,
+  disabled,
+  busy,
+  first = false,
+  testId,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+  first?: boolean;
+  testId?: string;
+}) {
   return (
-    <Button type="button" size="lg" onClick={onClick} disabled={disabled} data-testid={testId}>
-      {busy ? "Saving" : "Save changes"}
+    <Button type="button" size="lg" onClick={onClick} disabled={disabled} data-testid={testId} data-first={first ? "true" : "false"}>
+      {busy ? "Saving" : first ? "Save quote" : "Save changes"}
     </Button>
   );
 }

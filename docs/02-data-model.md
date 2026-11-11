@@ -223,14 +223,16 @@ name text not null default ''            -- "Christmas", "Warm white", at most 4
 is_main boolean                          -- lights on: Up once there all year, Your price's fallback, the link's hero
 is_day boolean                           -- Hidden by day, with is_night
 is_night boolean
-is_scene boolean                         -- a button on the phone page
-offer_ids text[]                         -- the quotes.offers ids this picture shows (Your price, the link's options)
+is_scene boolean                         -- a button on the phone page; round 13: also a look on the customer's link, by its name
+offer_ids text[]                         -- the quotes.offers ids this picture shows (Your price, the link's options); round 13: set only from the offer card's photo spot in the quote editor, one picture per offer
 position integer
 created_by uuid, created_at timestamptz
 removed_at timestamptz                   -- taken off the lead page; rows are kept, never shown
 ```
 
 One Main, one Day and one Night per lead among rows not removed (partial unique indexes). Each lead's old mockup (`lead_photos` slot `mockup`) was carried over as its Main; the old row stays and nothing reads it for the deck. The customer's link reads them through `quote_link_mockups(token)` (the Main and the offer pictures only, paths only), and `quote_mockup_signable` signs those paths for a live token.
+
+Round 13 (Keenan, 2026-11-11): `quote_link_mockups(token)` returns `{path, main, scene, name, offers}` for the Main, the phone scenes (the only pictures whose name is sent) and the pictures of offers shown to the customer, with each picture's offers narrowed to the shown ones; `quote_mockup_signable` signs the same set for a live token. A hidden offer's picture, a Day or Night picture, a removed one and another house's are never listed or signed. `quote_for_customer`, `quote_link_select_offer` and `quote_link_book_offer` read `quote_offers_shown`; `quote_accept_offer` refuses a hidden offer (hint `hidden_offer`).
 
 ### lead_photos
 ```
@@ -412,7 +414,7 @@ decline_reason text                              -- round 8: one of price | timi
 cancel_reason text                               -- round 8: the same five, for a yes taken back
 cancelled_at timestamptz                         -- round 8
 outcome_note text                                -- round 8: the note with Other, at most 300 characters; owner only like every quote column, never copied anywhere setters read
-offers jsonb not null default '[]'               -- round 9 (2026-11-10): [{id, name, runs, boxes, upper_access}], runs = positions into runs, boxes 1..9 or null for box_count, upper_access (round 11) = the upper access amount typed over for this offer, 0 included, or null for the automatic amount; at most 4 in the app; empty = one "Full wrap" over every run (quote_offers_clean)
+offers jsonb not null default '[]'               -- round 9 (2026-11-10): [{id, name, runs, boxes, upper_access}], runs = positions into runs, boxes 1..9 or null for box_count, upper_access (round 11) = the upper access amount typed over for this offer, 0 included, or null for the automatic amount; at most 4 in the app; empty = one "Full wrap" over every run (quote_offers_clean). Round 13: an offer may carry "hidden": true (Keenan's Show to customer switch, off; kept only when true); `quote_offers_shown` is the same list without the hidden ones, which is all the customer's link reads; check `quotes_offers_one_shown`: never every offer hidden
 meeting_offer text                               -- round 9: the option chosen at the table (an offer id); prefills Accepted
 meeting_install_on date                          -- round 9: the install day picked at the table; prefills Accepted, never written to the lead before it
 accepted_offer text                              -- round 9: the option Accepted recorded (an offer id); cleared by Undo
