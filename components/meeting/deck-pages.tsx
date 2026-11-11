@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { CornerPair } from "@/components/drawings/corner-pair";
 import { useBoxSize } from "@/components/lights/light-canvas";
-import { Wordmark } from "@/components/brand/wordmark";
+import { Logo } from "@/components/brand/logo";
 import { DayNightSlider } from "@/components/meeting/day-night-slider";
 import {
   BandPage,
@@ -19,7 +19,10 @@ import {
   SlotPicture,
   SplitPage,
   slotHasPicture,
+  PHOTO_FRAME,
+  PhotoFrame,
   useDeck,
+  useImageAspect,
 } from "@/components/meeting/deck-parts";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
 import { SLOT_BY_KEY, type Look, type PageWords } from "@/lib/deck";
@@ -94,13 +97,13 @@ export function bandWords(words: PageWords): ReactNode {
 // A brief introduction made for the iPad (round 10): the wordmark, their
 // name large, their address under it, then one line naming what's coming,
 // the price included. No photo, greeting or date. With no lead
-// (rehearsal), the wordmark and the line. The wordmark's letters are
-// centred, its gold dot hanging outside the centring.
+// (rehearsal), the logo and the line. Since 2026-11-11 the real logo, the
+// version that suits the theme (white on the dark deck).
 export function CoverPage({ name, line, tagline }: { name?: string | null; line: string | null; tagline?: string | null }) {
   const shownName = name?.trim() || null;
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-10 px-16 text-center" data-testid="deck-cover">
-      <Wordmark hangDot className="text-[length:var(--deck-wordmark)] leading-none" />
+      <Logo className="h-[calc(var(--deck-wordmark)*1.85)]" />
       {shownName || line || tagline ? (
         <div className="flex max-w-[44em] flex-col items-center gap-3">
           {shownName ? (
@@ -135,10 +138,17 @@ export function WhatVesperPage({
 }: Omit<PageProps, "fillEmpty"> & { main: MeetingMockup; addressLine: string; onSwipe: (delta: number) => void }) {
   const words = deck.words.pages.what_vesper_is;
   const layer = moreWords(words);
+  const aspect = useImageAspect(main.url);
   return (
     <>
       <BandPage
-        picture={near ? <PinchZoom src={main.url} alt={`${addressLine}, with the lights on`} onSwipe={onSwipe} /> : null}
+        picture={
+          near ? (
+            <PhotoFrame aspect={aspect} testId="what-vesper-frame">
+              <PinchZoom src={main.url} alt={`${addressLine}, with the lights on`} onSwipe={onSwipe} />
+            </PhotoFrame>
+          ) : null
+        }
         headline={words.headline}
         more={layer ? <MoreButton more={more} label={layer.label} /> : null}
       >
@@ -157,11 +167,14 @@ export function HiddenByDayPage({ deck, near, more, day, night }: Omit<PageProps
   const words = deck.words.pages.hidden_by_day;
   const layer = moreWords(words);
   const centre: [number, number] = [0.5, 0.5];
+  const aspect = useImageAspect(day.url);
   const slider = (
-    <DayNightSlider
-      day={<DeckImage photo={{ url: day.url, focus: centre }} alt="Your house by day" />}
-      night={<DeckImage photo={{ url: night.url, focus: centre }} alt="Your house at night" />}
-    />
+    <PhotoFrame aspect={aspect} testId="hidden-by-day-frame">
+      <DayNightSlider
+        day={<DeckImage photo={{ url: day.url, focus: centre }} alt="Your house by day" />}
+        night={<DeckImage photo={{ url: night.url, focus: centre }} alt="Your house at night" />}
+      />
+    </PhotoFrame>
   );
   return (
     <>
@@ -220,7 +233,7 @@ function PhotoPair({ sides, looks }: { sides: [SlotView, SlotView]; looks: [Look
         <div className={cn("absolute inset-0 flex items-center justify-center", layout.direction === "column" && "flex-col")} style={{ gap }}>
           {sides.map((side, at) => (
             <figure key={at} className="m-0 flex shrink-0 flex-col items-center" style={{ width }}>
-              <div className="relative overflow-hidden" style={{ width, height }}>
+              <div className={PHOTO_FRAME} style={{ width, height }}>
                 <PairSide
                   view={side}
                   slotKey={at === 0 ? "whites_first.warm" : "whites_first.cool"}
@@ -289,11 +302,16 @@ export function PhonePage({ deck, near, scenes }: { deck: DeckPayload; near: boo
   const [shownId, setShownId] = useState<string | null>(null);
   const shown = scenes.find((scene) => scene.id === shownId) ?? scenes[0];
   const headline = words.headline.trim();
+  const aspect = useImageAspect(shown?.url);
   return (
     <div className="grid h-full w-full grid-cols-[minmax(0,1fr)_400px]" data-testid="phone-page">
       <div className="relative min-w-0 overflow-hidden" style={{ marginBottom: "var(--deck-clear, 78px)" }} data-testid="phone-house">
-        {near
-          ? scenes.map((scene) => (
+        {near ? (
+          // Framed (2026-11-11), the frame easing to each scene's shape
+          // while the scenes cross-fade inside it; clear of the left edge
+          // at the page's margin.
+          <PhotoFrame aspect={aspect} className="left-10" testId="phone-frame">
+            {scenes.map((scene) => (
               <DeckImage
                 key={scene.id}
                 photo={{ url: scene.url, focus: [0.5, 0.5] }}
@@ -301,8 +319,9 @@ export function PhonePage({ deck, near, scenes }: { deck: DeckPayload; near: boo
                 fit="contain"
                 className={cn(!reduced && "transition-opacity duration-300", scene.id === shown?.id ? "opacity-100" : "opacity-0")}
               />
-            ))
-          : null}
+            ))}
+          </PhotoFrame>
+        ) : null}
       </div>
       <div className="flex min-h-0 min-w-0 flex-col items-center gap-5 pt-16 pr-12 pl-6" style={{ paddingBottom: "var(--deck-clear, 78px)" }}>
         {headline ? <h2 className={cn(DECK_TYPE.headline, "self-start")}>{keepHyphens(headline)}</h2> : null}

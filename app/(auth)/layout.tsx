@@ -1,4 +1,4 @@
-import { Wordmark } from "@/components/brand/wordmark";
+import { Logo } from "@/components/brand/logo";
 
 export default function AuthLayout({
   children,
@@ -7,7 +7,9 @@ export default function AuthLayout({
 }) {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center px-4 pt-[max(2.5rem,env(safe-area-inset-top))] pb-[max(2.5rem,env(safe-area-inset-bottom))]">
-      <Wordmark className="mb-8 text-xl" />
+      <div className="mb-8">
+        <Logo className="h-16" />
+      </div>
       {children}
     </div>
   );

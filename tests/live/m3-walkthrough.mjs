@@ -442,13 +442,13 @@ try {
   const headerText = (await sheet(pageA).locator("header").innerText()).replace(/\s+/g, " ").trim();
   const leftAtStart = await secondsLeft(pageA);
   check(
-    "the header has the Vesper wordmark on the left and the held time on the right, counting down from the hold length",
-    /^VESPER/.test(headerText) && headerText.includes(timeLabel(X)) && leftAtStart !== null && leftAtStart <= holdMinutes * 60 && leftAtStart > holdMinutes * 60 - 30,
+    "the header has the Vesper logo on the left and the held time on the right, counting down from the hold length",
+    (await sheet(pageA).locator("header").getByRole("img", { name: "Vesper Lighting" }).count()) === 1 && headerText.includes(timeLabel(X)) && leftAtStart !== null && leftAtStart <= holdMinutes * 60 && leftAtStart > holdMinutes * 60 - 30,
     `${headerText} (${leftAtStart} s)`,
   );
-  const wordmarkBox = await sheet(pageA).locator("header").getByText("Vesper", { exact: true }).boundingBox();
+  const wordmarkBox = await sheet(pageA).locator("header").getByRole("img", { name: "Vesper Lighting" }).boundingBox();
   const timeBox = await sheet(pageA).getByTestId("sheet-held").boundingBox();
-  check("the wordmark sits left and the time right", wordmarkBox && timeBox && wordmarkBox.x < 60 && timeBox.x + timeBox.width > pageA.viewportSize().width - 40);
+  check("the logo sits left and the time right", wordmarkBox && timeBox && wordmarkBox.x < 60 && timeBox.x + timeBox.width > pageA.viewportSize().width - 40);
   await pageA.waitForTimeout(2100);
   const leftLater = await secondsLeft(pageA);
   check("the countdown ticks down on its own", leftLater !== null && leftAtStart !== null && leftLater < leftAtStart, `${leftAtStart} then ${leftLater}`);

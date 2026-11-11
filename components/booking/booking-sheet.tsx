@@ -34,7 +34,7 @@ import {
   WhoScreen,
 } from "@/components/booking/sheet-screens";
 import { NoteText } from "@/components/booking/step-notes";
-import { Wordmark } from "@/components/brand/wordmark";
+import { Logo } from "@/components/brand/logo";
 import { TimePicker } from "@/components/schedule/time-picker";
 import { Button } from "@/components/ui/button";
 import { DialogPanel } from "@/components/ui/dialog-panel";
@@ -1541,7 +1541,7 @@ function BookingSheet({
             </div>
           ) : null}
           <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3 px-4 py-2">
-            <Wordmark className="text-sm min-[420px]:text-base" />
+            <Logo className="h-8 min-[420px]:h-9" />
             {done || view === "moved" ? (
               <p className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold min-[420px]:text-base" data-testid="sheet-held" data-held="booked">
                 <Check aria-hidden="true" className="size-4" />

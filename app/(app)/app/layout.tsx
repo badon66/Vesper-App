@@ -3,7 +3,7 @@ import { AdminGear } from "@/components/admin-gear";
 import { AppTabs } from "@/components/app-tabs";
 import { BookingSheetHost } from "@/components/booking/booking-sheet";
 import { BellLink } from "@/components/notifications/bell-link";
-import { Wordmark } from "@/components/brand/wordmark";
+import { Logo } from "@/components/brand/logo";
 import { SignOutButton } from "@/components/sign-out-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ToFinishBar } from "@/components/to-finish/to-finish-bar";
@@ -48,7 +48,7 @@ export default async function AppLayout({
               href="/app"
               className="inline-flex min-h-11 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <Wordmark />
+              <Logo className="h-9" />
             </Link>
             <div className="flex items-center gap-1">
               {showsAdminGear(profile.role) ? <AdminGear /> : null}
