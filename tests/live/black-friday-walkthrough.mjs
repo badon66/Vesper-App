@@ -2,10 +2,12 @@
 // 2026-11-11), against a running build. Unlike every other walk-through,
 // this one WRITES with the owner's one-time session (owner-session.mjs), on
 // test records only, because Keenan asked for the real path: Settings, Your
-// price's yes, the customer's link and the Accepted sheet. It never deletes
-// anything and leaves every record in place (the setters, the leads, their
-// quotes, links, mockups and the commission), and says at the end which
-// ones they are, in a KEPT block, so Keenan can find them.
+// price's yes, the customer's link and the Accepted sheet. Since round 12
+// (Keenan, 2026-11-11: "remove every test record afterwards and say so") it
+// removes everything it made at the end (the setters, the leads, their
+// quotes, links, mockups, the uploaded mockup and the commission) and says
+// so in a REMOVED block. KEEP=1 leaves them in place instead, named in a
+// KEPT block, as the first run did at Keenan's request.
 //
 // Keenan's words: "Use a test lead and quote, clearly marked as test. Set a
 // 15% deal, go through Your price with it on, say yes, switch options on
@@ -246,7 +248,7 @@ async function makeSetter(person) {
 }
 
 // A lead by the setter, Keenan's draft quote, White track, a live link
-// handed to the setter, and three mockups. Nothing here is ever removed.
+// handed to the setter, and three mockups. Removed at the end unless KEEP=1.
 async function stageLead({ setter, firstName, address, ownerId, white, gstRate, picture }) {
   const lead = await admin
     .from("leads")
@@ -457,10 +459,64 @@ browser = await chromium.launch();
 let dealTouched = false;
 const staged = { percent: null, dollars: null };
 const kept = { earningsId: null, uiMockupId: null };
+const keep = process.env.KEEP === "1";
+
+// Everything the run made, gone: each staged lead with what hangs off it
+// (the commission, the links, the quote, the mockup rows and their files,
+// the uploaded mockup included, photos and events), then the setters.
+async function removeEverything() {
+  const lines = [];
+  const leadIds = Object.values(staged)
+    .filter(Boolean)
+    .map((lead) => lead.leadId);
+  const del = async (table, column, values) => {
+    if (values.length === 0) return;
+    const { error } = await admin.from(table).delete().in(column, values);
+    if (error) lines.push(`SCRIPT ERROR removing ${table}: ${error.message}`);
+  };
+  if (leadIds.length > 0) {
+    const { data: mockups } = await admin.from("lead_mockups").select("storage_path").in("lead_id", leadIds);
+    const { data: photos } = await admin.from("lead_photos").select("storage_path").in("lead_id", leadIds);
+    const paths = [...(mockups ?? []), ...(photos ?? [])].map((row) => row.storage_path).filter(Boolean);
+    if (paths.length > 0) {
+      const { error } = await admin.storage.from(BUCKET).remove(paths);
+      if (error) lines.push(`SCRIPT ERROR removing ${paths.length} files: ${error.message}`);
+    }
+    await del("earnings", "lead_id", leadIds);
+    await del("slot_holds", "lead_id", leadIds);
+    await admin.from("meetings").update({ rebooked_as: null }).in("lead_id", leadIds);
+    await del("meetings", "lead_id", leadIds);
+    await del("quote_links", "lead_id", leadIds);
+    await del("quotes", "lead_id", leadIds);
+    await del("lead_mockups", "lead_id", leadIds);
+    await del("roofline_traces", "lead_id", leadIds);
+    await del("lead_photos", "lead_id", leadIds);
+    await del("lead_events", "lead_id", leadIds);
+    await del("leads", "id", leadIds);
+    lines.push(`REMOVED ${leadIds.length} test ${leadIds.length === 1 ? "lead" : "leads"} with their quotes, links, mockups (${paths.length} files), photos, events and the commission`);
+  }
+  for (const person of Object.values(setters)) {
+    if (!person.id) continue;
+    await admin.from("slot_holds").delete().eq("holder_id", person.id);
+    await admin.from("knock_sessions").delete().eq("user_id", person.id);
+    await admin.from("leads").delete().eq("created_by", person.id);
+    const { error } = await admin.auth.admin.deleteUser(person.id);
+    lines.push(error ? `SCRIPT ERROR removing setter ${person.email}: ${error.message}` : `REMOVED setter ${person.email}`);
+  }
+  const { count: leadsLeft } = leadIds.length > 0 ? await admin.from("leads").select("id", { count: "exact", head: true }).in("id", leadIds) : { count: 0 };
+  const { data: people } = await admin.auth.admin.listUsers({ perPage: 1000 });
+  const settersLeft = (people?.users ?? []).filter((u) => (u.email ?? "").startsWith(`bf-live-${stamp}`)).length;
+  lines.push(`${(leadsLeft ?? 0) === 0 && settersLeft === 0 ? "PASS" : "FAIL"} every test record this run made is gone [${leadsLeft ?? 0} leads, ${settersLeft} setters left]`);
+  return lines;
+}
 let ownerId = null;
 
 try {
-  note("this walk-through writes with the owner's one-time session, on test records only; nothing is deleted and the records stay");
+  note(
+    keep
+      ? "this walk-through writes with the owner's one-time session, on test records only; KEEP=1, so nothing is deleted and the records stay"
+      : "this walk-through writes with the owner's one-time session, on test records only, and removes them at the end",
+  );
 
   // ---------------------------------------------------------------- staging
   await makeSetter(setters.percent);
@@ -839,23 +895,27 @@ try {
     check("Settings' Black Friday deal was never changed: both columns null", (after.black_friday_kind ?? null) === null && (after.black_friday_value ?? null) === null, JSON.stringify(after));
   }
 
-  // ---------------------------------------------------------------- 7. what stays, for Keenan
-  results.push("KEPT the test records left in place (nothing was deleted):");
-  for (const person of Object.values(setters)) {
-    results.push(`KEPT setter ${person.email} (${person.name})${person.id ? `, id ${person.id}` : ", not made"}`);
-  }
-  for (const [key, lead] of Object.entries(staged)) {
-    if (!lead) {
-      results.push(`KEPT lead (${key}) was not staged`);
-      continue;
+  // ---------------------------------------------------------------- 7. the test records: removed, or kept for Keenan with KEEP=1
+  if (keep) {
+    results.push("KEPT the test records left in place (nothing was deleted):");
+    for (const person of Object.values(setters)) {
+      results.push(`KEPT setter ${person.email} (${person.name})${person.id ? `, id ${person.id}` : ", not made"}`);
     }
-    results.push(`KEPT lead ${lead.leadId}: ${lead.firstName} ${stamp}, ${lead.address}, by ${lead.setter.email}`);
-    results.push(`KEPT quote ${lead.quoteId} on lead ${lead.leadId}`);
-    results.push(`KEPT quote link ${lead.linkId} on lead ${lead.leadId} (token not printed)`);
-    results.push(`KEPT mockups ${lead.mockupIds.join(", ")} on lead ${lead.leadId}`);
+    for (const [key, lead] of Object.entries(staged)) {
+      if (!lead) {
+        results.push(`KEPT lead (${key}) was not staged`);
+        continue;
+      }
+      results.push(`KEPT lead ${lead.leadId}: ${lead.firstName} ${stamp}, ${lead.address}, by ${lead.setter.email}`);
+      results.push(`KEPT quote ${lead.quoteId} on lead ${lead.leadId}`);
+      results.push(`KEPT quote link ${lead.linkId} on lead ${lead.leadId} (token not printed)`);
+      results.push(`KEPT mockups ${lead.mockupIds.join(", ")} on lead ${lead.leadId}`);
+    }
+    if (kept.uiMockupId) results.push(`KEPT mockup ${kept.uiMockupId} uploaded through the lead page by Keenan, in the owner's folder of ${BUCKET}`);
+    results.push(kept.earningsId ? `KEPT earnings ${kept.earningsId}: the commission on the first lead's quote` : "KEPT earnings: none made");
+  } else {
+    results.push(...(await removeEverything().catch((error) => [`SCRIPT ERROR removing the test records: ${error?.message ?? String(error)}`])));
   }
-  if (kept.uiMockupId) results.push(`KEPT mockup ${kept.uiMockupId} uploaded through the lead page by Keenan, in the owner's folder of ${BUCKET}`);
-  results.push(kept.earningsId ? `KEPT earnings ${kept.earningsId}: the commission on the first lead's quote` : "KEPT earnings: none made");
   if (browser) await browser.close().catch(() => {});
   if (shots) results.push(`NOTE screenshots in ${shots}: ${shotNames.join(", ")}`);
   console.log(results.join("\n"));
