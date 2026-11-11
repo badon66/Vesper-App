@@ -134,6 +134,16 @@ Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a previe
 - [x] No light picker: Try it on your house left the deck for good and the roofline tracing is hidden; saved traces untouched
 - [x] Catch-up (2026-11-11): the skipped walk-throughs and the RLS suite, mockup privacy proven in storage too, the stored quote numbers are the chosen option's, the editor's percent line reads "15% off", unreadable uploads say so, Black Friday end to end on marked test records
 
+### Round 11: quoting by area (Keenan, 2026-11-11; merge outside the knocking window, no preview)
+- [x] The Black Friday test records removed first, listed before, nothing else touched
+- [x] Measuring on two views, front and back, plus the sides and Other: each area a line with its feet; garage and porch count as Front lower; an area with no feet is never stored; no house drawing anywhere
+- [x] Presets: Front lower only, Full front, Front upper, Full wrap, Front plus back, Full back, Custom; only those the measurements can fill; names editable; every measured gable its own tick on each offer
+- [x] A photo spot on every offer: one of the lead's mockups or an upload; the Main shows when none is picked
+- [x] Every area at the quote's price a foot, or Keenan's own price a foot for it, or a flat price; upper access automatic with the amount shown on each offer and typed over, 0 included; the breakdown names the feet at each rate and a flat area by name, never "level"
+- [x] Commission stays 5% of lights and box after discounts, the lights being each area at what it is priced at; upper access out
+- [x] Old quotes keep their exact prices and open; old runs mapped onto areas where obvious, the rest Other
+- [x] Pricing unit tests, the quote-link, meeting and quote-outcomes walk-throughs one after another, with a custom per-foot area, a flat area, an edited upper access, a gable ticked off and an old quote; test records cleaned up
+
 ### Take 2: after Keenan's first meetings
 - [ ] The leave-behind folder: a branded, always-white PDF through AirPrint and a share sheet: the personal quote (runs, feet, track colour, line-by-line prices, valid until), the mockup full page, a one-page overview, the warranty summary, the FAQ from Settings, and the company contact ((403) 895-9915, info@vesperlighting.ca, 448 Strathcona Drive SW, Calgary, AB T3H 1M3, never a unit number)
 - [ ] Mark presented; it writes a lead event and moves the lead to `quoted`. Accepted, declined, cancelled, installed and the commission are no longer part of take 2: round 8 built them on the lead page (Keenan, 2026-11-09)

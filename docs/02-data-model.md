@@ -381,7 +381,7 @@ status quote_status not null default 'draft'
 price_per_ft numeric(10,2) not null              -- copied from settings at creation
 box_price numeric(10,2) not null
 box_count int not null default 1
-runs jsonb not null default '[]'                 -- [{name, feet, level, part}]; part (2026-11-04): eave | gable | garage | porch | sides | other, guessed from the name in the quote builder and changeable; a run saved before then has none and its name gives the guess
+runs jsonb not null default '[]'                 -- [{name, feet, level, part, area?, gable?, rate?, flat?}]; part (2026-11-04): eave | gable | garage | porch | sides | other, guessed from the name in the quote builder and changeable; a run saved before then has none and its name gives the guess. Round 11 (2026-11-11), quoting by area: each run is an area, area = front | back | sides | other (the view it is on), gable = true for a gable, rate = Keenan's own price a foot for it (> 0) or absent for the quote's, flat = a flat price for it (>= 0) instead of feet x rate; a run from before has none and prices as before
 total_feet int not null default 0
 adders jsonb not null default '[]'               -- [{label, amount, upper_only?}]; upper_only (2026-11-02): the line counts only while an upper run is selected
 discounts jsonb not null default '[]'            -- [{label, amount}]
@@ -411,7 +411,7 @@ decline_reason text                              -- round 8: one of price | timi
 cancel_reason text                               -- round 8: the same five, for a yes taken back
 cancelled_at timestamptz                         -- round 8
 outcome_note text                                -- round 8: the note with Other, at most 300 characters; owner only like every quote column, never copied anywhere setters read
-offers jsonb not null default '[]'               -- round 9 (2026-11-10): [{id, name, runs, boxes}], runs = positions into runs, boxes 1..9 or null for box_count; at most 4 in the app; empty = one "Full wrap" over every run (quote_offers_clean)
+offers jsonb not null default '[]'               -- round 9 (2026-11-10): [{id, name, runs, boxes, upper_access}], runs = positions into runs, boxes 1..9 or null for box_count, upper_access (round 11) = the upper access amount typed over for this offer, 0 included, or null for the automatic amount; at most 4 in the app; empty = one "Full wrap" over every run (quote_offers_clean)
 meeting_offer text                               -- round 9: the option chosen at the table (an offer id); prefills Accepted
 meeting_install_on date                          -- round 9: the install day picked at the table; prefills Accepted, never written to the lead before it
 accepted_offer text                              -- round 9: the option Accepted recorded (an offer id); cleared by Undo
@@ -462,6 +462,7 @@ The page shows the lead's latest quote, so updating the quote updates what the s
 Functions (all `security definer`, `search_path = ''`):
 - `issue_quote_link(lead_id)`: owner only. Returns the live link's token, making one (and a `quote_link_created` event) when there is none and the lead has a quote.
 - `revoke_quote_link(lead_id)`: owner only. Stamps the live link revoked and writes `quote_link_revoked`.
+- `quote_lights_cents(quote, runs)` (round 11): the lights of the runs counted, in cents, each run its flat price or its feet at its own rate or the quote's price a foot; what `quote_commission_base_boxes` and `quote_commission_base` now count as lights. Internal.
 - `quote_for_customer(token)`: anyone. One call returns what the page shows: `{state: 'live', first_name, last_name, address, city, valid_until, today, quote: {runs (with parts), runs_fingerprint, price_per_ft, box_price, box_count, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, min_job_total, gst_enabled, gst_rate, track_colour_name, track_custom}, warranty, service_call_fee, christmas, product_points, install_day, gallery, company, mockup_path, selection, booked_at, booked_option}` for a live token. `today` is Calgary's date, so the page knows whether the price hold has passed without trusting the phone's clock; `christmas` is `{title, text}` only while Settings has it on and the date is September 1 to November 30, otherwise null; `install_day` is the presentation's install day page; `gallery` is the presentation gallery's photo paths. For anything else (unknown or revoked) it returns `{state: 'closed', company: {name, phone, email}}` (2026-11-04; it was 'expired'): Vesper's public contact for the call and text buttons, with no customer name and no prices. No notes, costs, setter, status, timeline or other customer, ever.
 - `quote_gallery_signable(name)`: storage's rule for the presentation bucket (2026-11-04): true only for a request carrying a live token in `x-quote-token` and an object that is one of the gallery's photos. Nothing else in that bucket can be signed or listed by an anonymous caller.
 - `quote_link_visit(token)`: anyone. Adds one visit and stamps the time; the first visit writes `quote_link_opened`.
