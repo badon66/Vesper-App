@@ -1,19 +1,24 @@
 "use client";
 
-import { Check, Minus, Plus, Square, SquareCheck } from "lucide-react";
+import { CalendarDays, Check, Minus, Plus, Square, SquareCheck, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { breakdownRows, minimumSentence } from "@/lib/meeting/price-screen";
 import { screenTotal, type QuoteTotals } from "@/lib/pricing";
+import { formatFullDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 // The quote editor's small parts (round 9): one-tap choices, a stepper, a
-// money field, a quiet warning and the breakdown as the customer sees it,
-// in the app's dark form style. DESIGN.md: a chosen answer is Night Text
-// with a tick, never gold; a warning that doesn't block has a neutral
-// border and a bold first line.
+// money field, a date field, the sheet's Close and Save changes pair, a
+// quiet warning and the breakdown as the customer sees it, in the app's
+// dark form style. DESIGN.md: a chosen answer is Night Text with a tick,
+// never gold; a warning that doesn't block has a neutral border and a bold
+// first line. Round 12 (Keenan, from round 9): every chip in the editor is
+// 48 px tall, the two shells' Close and Save changes buttons are these same
+// two, and a date reads in words ("November 25, 2026"), never as numerals.
 
 // A one-tap answer: outline, or Night Text fill with a tick when on. tick
 // (round 11): a tick box that is always drawn, empty or ticked, so a gable
@@ -51,7 +56,7 @@ export function Choice({
       data-testid={testId}
       {...attributes}
       className={cn(
-        "inline-flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm font-semibold whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
+        "inline-flex min-h-12 items-center gap-1.5 rounded-md border px-3 text-sm font-semibold whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
         on ? "border-foreground bg-foreground text-background" : "border-input bg-background text-foreground hover:bg-muted",
         className,
       )}
@@ -103,7 +108,7 @@ export function Segmented<T extends string>({
           onClick={() => onChange(option.value)}
           data-value={option.value}
           className={cn(
-            "inline-flex min-h-11 items-center justify-center border font-semibold whitespace-nowrap outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
+            "inline-flex min-h-12 items-center justify-center border font-semibold whitespace-nowrap outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
             size === "small" ? "px-2.5 text-xs" : "px-3 text-sm",
             which === 0 ? "rounded-l-md" : "-ml-px",
             which === options.length - 1 ? "rounded-r-md" : "",
@@ -136,7 +141,7 @@ export function Stepper({
   testId?: string;
 }) {
   const button =
-    "inline-flex size-11 items-center justify-center rounded-md border border-input bg-background outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40";
+    "inline-flex size-12 items-center justify-center rounded-md border border-input bg-background outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40";
   return (
     <div className="flex items-center gap-2" role="group" aria-label={label} data-testid={testId}>
       <button type="button" aria-label={`Fewer: ${label}`} disabled={disabled || value <= min} onClick={() => onChange(value - 1)} className={button}>
@@ -271,6 +276,91 @@ export function useTyping(shown: string): {
     type: (text: string) => setTyped(text),
     stop: () => setTyped(null),
   };
+}
+
+// A day in words over the phone's own date picker (round 12, Keenan's
+// "Canadian dates in the editor"): the box reads "November 25, 2026", or
+// the empty words, and a native date input lies over it unseen, so a tap
+// opens the device's picker and the keyboard reads it as a date field. The
+// value is YYYY-MM-DD, as the form keeps it.
+export function DateField({
+  id,
+  value,
+  onChange,
+  min,
+  max,
+  disabled,
+  required,
+  empty = "Pick a day",
+  className,
+  testId,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  min?: string;
+  max?: string;
+  disabled?: boolean;
+  required?: boolean;
+  // What the box says with no day in it.
+  empty?: string;
+  className?: string;
+  testId?: string;
+}) {
+  const shown = /^\d{4}-\d{2}-\d{2}$/.test(value) ? formatFullDate(value) : null;
+  return (
+    <div className={cn("relative w-56 max-w-full", className)}>
+      {/* The input sits over the box (positioned, so it paints on top) and
+          stays unseen; the box shows its focus ring and its disabled tone. */}
+      <input
+        id={id}
+        type="date"
+        value={value}
+        min={min}
+        max={max}
+        disabled={disabled}
+        required={required}
+        onChange={(event) => onChange(event.target.value)}
+        data-testid={testId}
+        className="peer absolute inset-0 size-full cursor-pointer rounded-md opacity-0 outline-none disabled:cursor-not-allowed"
+      />
+      <div
+        aria-hidden="true"
+        className="flex h-11 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-base peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-disabled:opacity-60"
+        data-testid={testId ? `${testId}-shown` : undefined}
+      >
+        <span className={cn("truncate tabular-nums", !shown && "text-muted-foreground")}>{shown ?? empty}</span>
+        <CalendarDays aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+      </div>
+    </div>
+  );
+}
+
+// The editor's way out and its save, the same pair in both shells (the lead
+// page's sheet and meeting mode's Edit layer; Keenan, round 9): Close,
+// outlined with its cross, and Save changes in gold, both 48 px. leaving:
+// the sheet asks once before dropping unsaved changes.
+export function EditorClose({ onClick, leaving = false, testId }: { onClick: () => void; leaving?: boolean; testId?: string }) {
+  return (
+    <Button type="button" variant="outline" size="lg" onClick={onClick} data-testid={testId}>
+      {leaving ? (
+        "Close without saving"
+      ) : (
+        <>
+          <X aria-hidden="true" />
+          Close
+        </>
+      )}
+    </Button>
+  );
+}
+
+export function EditorSave({ onClick, disabled, busy, testId }: { onClick: () => void; disabled?: boolean; busy?: boolean; testId?: string }) {
+  return (
+    <Button type="button" size="lg" onClick={onClick} disabled={disabled} data-testid={testId}>
+      {busy ? "Saving" : "Save changes"}
+    </Button>
+  );
 }
 
 // A warning that never blocks: neutral border, bold first line.

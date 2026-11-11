@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { AreaViews } from "@/components/quotes/quote-editor/area-views";
 import { OfferCard } from "@/components/quotes/quote-editor/offer-card";
 import { useOfferPhotos } from "@/components/quotes/quote-editor/offer-photo";
-import { Choice, cleanMoneyInput, MoneyField, QuietWarning, Stepper } from "@/components/quotes/quote-editor/parts";
+import { Choice, cleanMoneyInput, DateField, MoneyField, QuietWarning, Stepper } from "@/components/quotes/quote-editor/parts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -524,14 +524,13 @@ function Prices({
           <div className="flex flex-wrap items-end gap-5">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="editor-valid">Price held until</Label>
-              <Input
+              {/* In words, over the device's own picker (round 12). */}
+              <DateField
                 id="editor-valid"
-                type="date"
                 min={today}
                 value={state.validUntil}
                 disabled={locked}
-                onChange={(event) => set({ validUntil: event.target.value || defaultValidUntil(today, pricing.priceHoldDays) })}
-                className="w-44"
+                onChange={(value) => set({ validUntil: value || defaultValidUntil(today, pricing.priceHoldDays) })}
               />
             </div>
             <Choice on={state.financingOffered} disabled={locked} onToggle={() => set({ financingOffered: !state.financingOffered })}>

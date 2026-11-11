@@ -6,7 +6,9 @@ import { cn } from "@/lib/utils";
 // A pop-up on the browser's own dialog element: it sits above everything,
 // including the tab bar and the booking sheet, keeps focus inside and closes
 // with Escape. On a phone it is a panel along the bottom, in thumb reach;
-// from 640 px wide it is a centred box. Its actions sit at the bottom right.
+// from 640 px wide it is a centred box. Its actions sit at the bottom right,
+// with the same 16 px around them as the body has (round 12: the Accepted
+// sheet's footer read tighter than the rest of the sheet at 12 px).
 // It opens with its title in focus, so a phone's keyboard stays down until
 // a field is tapped, and a screen reader reads the title first.
 export function DialogPanel({
@@ -63,7 +65,7 @@ export function DialogPanel({
           </h2>
           <div className="overflow-y-auto px-5 py-4">{children}</div>
           {actions ? (
-            <div className="flex flex-wrap justify-end gap-3 border-t px-5 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+            <div className="flex flex-wrap justify-end gap-3 border-t px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
               {actions}
             </div>
           ) : null}
