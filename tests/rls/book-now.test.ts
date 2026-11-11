@@ -171,14 +171,17 @@ describe("booking with only a name or an address", () => {
     expect(booked.error).toBeNull();
     const { data: meeting } = await admin
       .from("meetings")
-      .select("status, everyone_deciding_present, photos_skipped, photos_skip_note, setter_id, booked_by")
+      .select("status, everyone_deciding_present, everyone_deciding, photos_skipped, photos_skip_note, setter_id, booked_by")
       .eq("id", booked.data as string)
       .single();
-    // The meetings table still needs everyone_deciding_present true, and
-    // book_meeting still writes true; the lead keeps its own answer (none).
+    // The old everyone_deciding_present column still says true (its rule
+    // can't be dropped additively; nothing reads it); since round 12 the
+    // meeting carries the lead's real answer in everyone_deciding, here
+    // not asked yet.
     expect(meeting).toEqual({
       status: "booked",
       everyone_deciding_present: true,
+      everyone_deciding: "not_asked",
       photos_skipped: null,
       photos_skip_note: null,
       setter_id: users.a.id,

@@ -16,6 +16,7 @@ import {
 } from "@/lib/schedule/meetings";
 import type { MeetingWithLead } from "@/lib/schedule/queries";
 import { readLine } from "@/lib/leads/extras";
+import { everyoneDecidingLine, everyoneDecidingOf } from "@/lib/meetings/everyone-deciding";
 import { completenessLabel } from "@/lib/leads/questions";
 import { leadName } from "@/lib/leads/status";
 import { formatPhone } from "@/lib/phone";
@@ -85,6 +86,9 @@ export function MeetingCard({
   const whose = (id: string | null) => (id && id === viewerId ? "Your" : `${who(id)}'s`);
   const by = (id: string | null) => (id && id === viewerId ? "you" : who(id));
   const position = positionSourceText(lead.position_source, lead.position_accuracy_m);
+  // Round 12: the meeting's own answer to "everyone who decides will be
+  // there", for Keenan while the meeting is still to come.
+  const everyone = isOwner && live && !started ? everyoneDecidingLine(everyoneDecidingOf(meeting.everyone_deciding)) : null;
 
   return (
     <article
@@ -134,6 +138,11 @@ export function MeetingCard({
               {completenessLabel(lead)}
             </span>
           </p>
+          {everyone ? (
+            <p className="text-sm font-semibold text-pretty" data-testid="everyone-deciding">
+              {everyone}
+            </p>
+          ) : null}
           {prep && readLine(lead) ? (
             // Keenan's Home (round 3): the setter's read and hot buttons, so
             // he knows before he walks in.
