@@ -220,8 +220,8 @@ try {
   const tonightPrep = tonightItem.getByTestId("prep-line");
   const tonightPrepText = ((await tonightPrep.innerText().catch(() => "")) || "").replace(/\s+/g, " ").trim();
   check(
-    "its prep line says Prepare for the meeting with what's left (the quote, the missing answers and the roofline; mockup, colour and time are done), and opens the prep list",
-    tonightPrepText === "Prepare for the meeting · 3 left: quote, missing answers, roofline" &&
+    "its prep line says Prepare for the meeting with what's left (the quote and the missing answers; mockup, colour and time are done; round 10: no roofline), and opens the prep list",
+    tonightPrepText === "Prepare for the meeting · 2 left: quote, missing answers" &&
       (await tonightPrep.getAttribute("href")) === `/app/meetings/prep/${tonightLead}`,
     tonightPrepText,
   );
@@ -275,9 +275,9 @@ try {
   await page.getByTestId("prep-list").waitFor({ timeout: 30000 }).catch(() => {});
   const itemKeys = await page.getByTestId("prep-list").locator("> li").evaluateAll((items) => items.map((item) => `${item.getAttribute("data-testid")}:${item.getAttribute("data-done")}`));
   check(
-    "the prep list has the six items in order, none done yet (round 7: the roofline is the sixth)",
+    "the prep list has the five items in order, none done yet (round 10: no roofline item)",
     JSON.stringify(itemKeys) ===
-      JSON.stringify(["prep-item-mockup:false", "prep-item-track_colour:false", "prep-item-quote:false", "prep-item-confirmed:false", "prep-item-answers:false", "prep-item-roofline:false"]),
+      JSON.stringify(["prep-item-mockup:false", "prep-item-track_colour:false", "prep-item-quote:false", "prep-item-confirmed:false", "prep-item-answers:false"]),
     itemKeys.join(", "),
   );
   check(
@@ -337,7 +337,7 @@ try {
   const homePrep = ((await homeCard.getByTestId("prep-line").innerText().catch(() => "")) || "").replace(/\s+/g, " ").trim();
   check(
     "his Home shows how many items are left, and the tick for a confirmed time",
-    homePrep === "3 left: quote, missing answers, roofline" && (await homeCard.getByTestId("confirmed-tick").count()) === 1,
+    homePrep === "2 left: quote, missing answers" && (await homeCard.getByTestId("confirmed-tick").count()) === 1,
     homePrep,
   );
   // Tonight's evening by name: on a day with no evening schedule (a Sunday),

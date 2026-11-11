@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  blackFridayFromForm,
   fractionToPercentString,
   parseSettingsForm,
   settingsFormDataToInput,
@@ -50,6 +51,8 @@ const valid = {
   service_call_fee: "95",
   price_hold_days: "120",
   min_job_total: "2500",
+  black_friday_kind: "none",
+  black_friday_value: "",
   faq_text: "Q.\r\nA.",
   presentation_pages: [
     { kind: "what_vesper_is", title: "Permanent roofline lighting", body: "An investment in the home." },
@@ -270,17 +273,23 @@ describe("settingsRowToFormDefaults", () => {
 
   it("survives a company value that is not an object", () => {
     const defaults = settingsRowToFormDefaults({
-      id: 1, price_per_ft: 1, box_price: 1, neighbour_discount: 0, referral_credit: 0, gst_rate: 0, gst_enabled: false, gst_number: null, black_friday_kind: null, black_friday_value: null,
-      booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], door_guide: "g", step_note_at_door: "a", step_note_after_door: "b", step_note_book: "c", confirm_text: "Hi {first_name}", deck: {}, light_looks: [], not_qualified_reasons: ["Other"], booking_cutoff_minutes: 30, hold_grace_minutes: 2, hold_minutes: 5, booking_window_days: 14, meeting_host_id: null, meeting_days: [1],
-      meeting_start: "18:00:00", meeting_slot_minutes: 45, meeting_slot_count: 4, distance_warning_km: 10,
-      company: "nonsense", rush_colour_fee_per_ft: null, service_call_fee: null, quote_valid_days: 14, min_job_total: 2500, faq_text: "",
-      rush_colour_fee: null, upper_access_fee: 200, upper_gable_access_fee: 400, price_hold_days: 120,
-      christmas_banner_on: true, christmas_banner_title: "T", christmas_banner_text: "", product_points: [],
-      updated_at: "2026-10-26T00:00:00Z",
+      ...ROW,
+      company: "nonsense",
     });
     expect(defaults.company_name).toBe("");
   });
 });
+
+// A stored settings row, as the form reads it.
+const ROW: Parameters<typeof settingsRowToFormDefaults>[0] = {
+  id: 1, price_per_ft: 1, box_price: 1, neighbour_discount: 0, referral_credit: 0, gst_rate: 0, gst_enabled: false, gst_number: null, black_friday_kind: null, black_friday_value: null,
+  booking_pay: 0, commission_rate: 0, warranty_text: "w", presentation: [], lost_reasons: [], door_guide: "g", step_note_at_door: "a", step_note_after_door: "b", step_note_book: "c", confirm_text: "Hi {first_name}", deck: {}, light_looks: [], not_qualified_reasons: ["Other"], booking_cutoff_minutes: 30, hold_grace_minutes: 2, hold_minutes: 5, booking_window_days: 14, meeting_host_id: null, meeting_days: [1],
+  meeting_start: "18:00:00", meeting_slot_minutes: 45, meeting_slot_count: 4, distance_warning_km: 10,
+  company: "nonsense", rush_colour_fee_per_ft: null, service_call_fee: null, quote_valid_days: 14, min_job_total: 2500, faq_text: "",
+  rush_colour_fee: null, upper_access_fee: 200, upper_gable_access_fee: 400, price_hold_days: 120,
+  christmas_banner_on: true, christmas_banner_title: "T", christmas_banner_text: "", product_points: [],
+  updated_at: "2026-10-26T00:00:00Z",
+};
 
 describe("settingsFormDataToInput", () => {
   it("reads checkbox groups and the GST switch from FormData", () => {
@@ -302,5 +311,60 @@ describe("fractionToPercentString", () => {
     expect(fractionToPercentString(0.05)).toBe("5");
     expect(fractionToPercentString(0.1235)).toBe("12.35");
     expect(fractionToPercentString(0)).toBe("0");
+  });
+});
+
+describe("the Black Friday deal (Keenan, 2026-11-10)", () => {
+  const save = (kind: string, value: string) => {
+    const parsed = parseSettingsForm({ ...valid, black_friday_kind: kind, black_friday_value: value });
+    return parsed.ok ? { ok: true as const, update: settingsUpdateFromValues(parsed.values) } : { ok: false as const, errors: parsed.errors };
+  };
+
+  it("saves None as no deal, whatever the amount box held", () => {
+    const none = save("none", "15");
+    expect(none.ok && [none.update.black_friday_kind, none.update.black_friday_value]).toEqual([null, null]);
+  });
+
+  it("saves a percent off up to 90 and a dollar amount off, to the cent", () => {
+    const percent = save("percent", " 15 ");
+    expect(percent.ok && [percent.update.black_friday_kind, percent.update.black_friday_value]).toEqual(["percent", 15]);
+    expect(save("percent", "90").ok).toBe(true);
+    const amount = save("amount", "300.456");
+    expect(amount.ok && [amount.update.black_friday_kind, amount.update.black_friday_value]).toEqual(["amount", 300.46]);
+  });
+
+  it("refuses an empty, zero, negative or too large amount, on the amount's own field", () => {
+    for (const [kind, value, message] of [
+      ["percent", "", "type the percent off"],
+      ["amount", "  ", "type the dollar amount off"],
+      ["percent", "0", "must be more than 0"],
+      ["amount", "-5", "must be more than 0"],
+      ["percent", "91", "can be at most 90%"],
+      ["amount", "abc", "must be a number"],
+    ] as const) {
+      const result = save(kind, value);
+      expect(result.ok, `${kind} ${value}`).toBe(false);
+      if (!result.ok) expect(result.errors.black_friday_value).toBe(message);
+    }
+    expect(save("half", "10").ok).toBe(false);
+    expect(blackFridayFromForm("amount", "100000000")).toEqual({ ok: false, error: "is too large" });
+  });
+
+  it("reads the form's two fields, None when the deal isn't picked", () => {
+    const fd = new FormData();
+    expect(settingsFormDataToInput(fd).black_friday_kind).toBe("none");
+    fd.set("black_friday_kind", "amount");
+    fd.set("black_friday_value", "250");
+    const input = settingsFormDataToInput(fd);
+    expect([input.black_friday_kind, input.black_friday_value]).toEqual(["amount", "250"]);
+  });
+
+  it("opens the form on the stored deal", () => {
+    const row = (kind: string | null, value: number | null) =>
+      settingsRowToFormDefaults({ ...ROW, black_friday_kind: kind, black_friday_value: value });
+    expect([row(null, null).black_friday_kind, row(null, null).black_friday_value]).toEqual(["none", ""]);
+    expect([row("percent", 15).black_friday_kind, row("percent", 15).black_friday_value]).toEqual(["percent", "15"]);
+    expect([row("amount", 300).black_friday_kind, row("amount", 300).black_friday_value]).toEqual(["amount", "300.00"]);
+    expect(row("other", 5).black_friday_kind).toBe("none");
   });
 });

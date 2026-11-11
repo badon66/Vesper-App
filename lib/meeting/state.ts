@@ -5,8 +5,9 @@
 
 import type { SoffitColour } from "@/lib/leads/status";
 import type { TrackColour } from "@/lib/leads/track-colour";
-import { defaultValidUntil, guessRunPart, RUN_PARTS, type ColourTiming, type QuoteInputs, type QuoteRun, type RunPart } from "@/lib/pricing";
+import { defaultValidUntil, guessRunPart, RUN_PARTS, usablePercent, type ColourTiming, type QuoteInputs, type QuoteRun, type RunPart } from "@/lib/pricing";
 import { EFFECTS, type DeckPageKey, type DeckWords, type Effect, type Look, type Trace } from "@/lib/deck";
+import type { BlackFridayDeal } from "@/lib/quotes/black-friday";
 import { cleanPositions, offersForSave, parseOffers, type QuoteOffer } from "@/lib/quotes/offers";
 
 // Round 7 (Keenan, 2026-11-08): the deck's own part of the payload. Keenan's
@@ -111,6 +112,9 @@ export type MeetingPayload = {
     priceHoldDays: number;
     // The least a job can cost before GST (Settings); null = no minimum.
     minJobTotal: number | null;
+    // Black Friday (Keenan, 2026-11-10): the deal set in Settings, a percent
+    // or a dollar amount off; null shows no Black Friday button.
+    blackFriday: BlackFridayDeal | null;
   };
   draft: {
     quoteId: string;
@@ -171,7 +175,10 @@ export type QuoteUIState = {
   adders: { label: string; amount: string; upperOnly?: boolean }[];
   neighbourOn: boolean;
   neighbourAmount: string;
-  customDiscounts: { label: string; amount: string }[];
+  // percent: a line worked out on each option (Black Friday as a percent,
+  // 2026-11-11); amount then holds the chosen option's dollars. Left out, a
+  // fixed amount.
+  customDiscounts: { label: string; amount: string; percent?: number }[];
   colourTiming: ColourTiming | null;
   // This quote's own flat rush colour fee and upper access amounts, as
   // typed; "" is none (a quote made before 2026-11-04, or cleared).
@@ -194,6 +201,11 @@ export type QuoteUIState = {
   // This quote's own minimum job total, as typed ("" is none). Left out
   // (a new quote, or an iPad copy from before round 9), Settings' minimum.
   minJobTotal?: string;
+  // The Black Friday button on Your price, as the iPad left it. Left out (a
+  // quote opened from the server), it reads as on when the quote carries
+  // the Black Friday line (lib/meeting/black-friday-state.ts). Never saved
+  // as such: the line in customDiscounts is what saves.
+  blackFriday?: boolean;
 };
 
 // The offers as shown: an empty list is one full wrap over every run.
@@ -228,6 +240,15 @@ const feeString = (value: number | null | undefined) => (value === null || value
 // switching to rush at the table finds it. Null: none.
 export function quoteRushFee(state: QuoteUIState): number | null {
   return moneyOrNone(state.rushFee);
+}
+
+// Each stored discount's percent, in the order items() keeps the lines
+// (objects with a label), undefined where it has none.
+function discountPercents(value: unknown): unknown[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) =>
+    item && typeof item === "object" && typeof (item as { label?: unknown }).label === "string" ? [(item as { percent?: unknown }).percent] : [],
+  );
 }
 
 // A run's part as stored, or the guess from its name.
@@ -282,7 +303,13 @@ export function quoteStateFromDraft(draft: QuoteDraft, payload: QuoteContext): Q
             : [],
         )
       : [];
-  const discounts = items(draft.discounts);
+  // Discounts keep a usable percent (a line worked out on each option).
+  const percents = discountPercents(draft.discounts);
+  const discounts = items(draft.discounts).map((item, at) => {
+    const raw = percents[at];
+    const percent = usablePercent(typeof raw === "string" && raw.trim() !== "" ? Number(raw) : raw);
+    return percent !== null ? { ...item, percent } : item;
+  });
   const upperOnly = new Map(
     (Array.isArray(draft.adders) ? draft.adders : []).map((item, at) => [
       at,
@@ -361,8 +388,11 @@ export function quoteFingerprint(state: QuoteUIState): string {
       .map((item) => [item.label.trim(), parseMoney(item.amount), Boolean(item.upperOnly)]),
     state.neighbourOn ? parseMoney(state.neighbourAmount) : null,
     state.customDiscounts
-      .filter((item) => parseMoney(item.amount) > 0)
-      .map((item) => [item.label.trim(), parseMoney(item.amount)]),
+      .filter((item) => parseMoney(item.amount) > 0 || usablePercent(item.percent) !== null)
+      .map((item) => {
+        const percent = usablePercent(item.percent);
+        return percent !== null ? [item.label.trim(), parseMoney(item.amount), percent] : [item.label.trim(), parseMoney(item.amount)];
+      }),
     state.colourTiming,
     moneyOrNone(state.rushFee),
     moneyOrNone(state.upperAccessFee),
@@ -381,8 +411,11 @@ export function quoteInputs(state: QuoteUIState, pricing: MeetingPayload["pricin
   const discounts = [
     ...(state.neighbourOn ? [{ label: "Neighbour discount", amount: parseMoney(state.neighbourAmount) }] : []),
     ...state.customDiscounts
-      .filter((item) => parseMoney(item.amount) > 0)
-      .map((item) => ({ label: item.label.trim() || "Discount", amount: parseMoney(item.amount) })),
+      .filter((item) => parseMoney(item.amount) > 0 || usablePercent(item.percent) !== null)
+      .map((item) => {
+        const percent = usablePercent(item.percent);
+        return { label: item.label.trim() || "Discount", amount: parseMoney(item.amount), ...(percent !== null ? { percent } : {}) };
+      }),
   ];
   return {
     runs: state.runs,

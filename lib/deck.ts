@@ -16,14 +16,18 @@ import type { Json } from "@/types/database";
 // In the order the customer sees them (round 10, Keenan, 2026-11-10): the
 // cover, then their own house lit (Up once, there all year: the Main
 // mockup), by day and by night (Hidden by day: the Day and Night mockups),
-// their scenes on a phone (Run it from your phone), the warranty, the light
-// picker when the roofline is traced, the price and What happens next. A
-// page missing its mockup is skipped (lib/meeting/deck-pages.ts deckPages).
+// their scenes on a phone (Run it from your phone), the warranty, the price
+// and What happens next. A page missing its mockup is skipped
+// (lib/meeting/deck-pages.ts deckPages).
 //
 // The round 9 pages that left the order (the gallery, Your house, its
 // stand-in, Warm white and the colour page, which folds into the price) keep
 // their keys after these, so words saved for them still parse and nothing
-// saved breaks; deckPages never shows them.
+// saved breaks; deckPages never shows them. The light picker (Try it on
+// your house) left too (Keenan, 2026-11-11: no editor; he uploads a photo
+// of the house for each look, and the phone page's scenes are the colour
+// picker): its key keeps its place, its words and looks are kept, and it is
+// never shown, traced or not.
 export const DECK_PAGES = [
   "cover",
   "what_vesper_is",
@@ -41,8 +45,9 @@ export const DECK_PAGES = [
 ] as const;
 export type DeckPageKey = (typeof DECK_PAGES)[number];
 
-// The pages that left the order in round 10: kept for what is saved, never shown.
-export const RETIRED_PAGES = ["gallery", "your_house", "mockup", "whites_first", "colour"] as const satisfies readonly DeckPageKey[];
+// The pages that left the order in round 10 (the light picker on
+// 2026-11-11): kept for what is saved, never shown.
+export const RETIRED_PAGES = ["gallery", "your_house", "mockup", "whites_first", "colour", "light_picker"] as const satisfies readonly DeckPageKey[];
 export const isRetired = (key: DeckPageKey): boolean => (RETIRED_PAGES as readonly string[]).includes(key);
 
 // The round 9 stand-ins, and the page each one stood in for (both retired
@@ -51,7 +56,7 @@ export const STAND_INS = { mockup: "your_house", whites_first: "light_picker" } 
 export type StandInKey = keyof typeof STAND_INS;
 export const isStandIn = (key: DeckPageKey): key is StandInKey => Object.hasOwn(STAND_INS, key);
 
-// The pages in the story's order: 8, and the most a meeting ever shows.
+// The pages in the story's order: 7, and the most a meeting ever shows.
 export const STORY_PAGES: readonly DeckPageKey[] = DECK_PAGES.filter((key) => !isStandIn(key) && !isRetired(key));
 export const MAX_SHOWN_PAGES = STORY_PAGES.length;
 

@@ -397,8 +397,8 @@ try {
   await page.waitForTimeout(800);
   const labels = await dots(page).getByRole("button").evaluateAll((buttons) => buttons.map((b) => b.getAttribute("aria-label")));
   check(
-    "round 10's order: the cover, the Main, day and night, the phone, the warranty, Try it on your house, the price and What happens next",
-    JSON.stringify(labels) === JSON.stringify(expected) && expected.length === 8 && Boolean(PICKER),
+    "round 10's order: the cover, the Main, day and night, the phone, the warranty, the price and What happens next, with no light picker even though the roofline is traced",
+    JSON.stringify(labels) === JSON.stringify(expected) && expected.length === 7 && PICKER === null,
     `${labels.join(" | ")}${JSON.stringify(labels) === JSON.stringify(expected) ? "" : ` (expected ${expected.join(" | ")})`}`,
   );
   for (const [at, pageLabel] of labels.entries()) {
@@ -587,6 +587,79 @@ try {
   }
   check("looking at the chosen state wrote nothing", (await leadFootprint(leadId)) === looked);
   await closeOwner(owner.context);
+
+  // ---------------------------------------------------------------- Black Friday (round 10), looked at only
+  // The walk-through never changes Settings. With no deal set, Your price has
+  // no button. Then it shows a 15% deal to its own browser only, by rewriting
+  // the page it was served, with the service worker off and every save
+  // stopped before it leaves the browser, so nothing is written.
+  {
+    const { data: dealRow } = await admin.from("settings").select("black_friday_kind").eq("id", 1).single();
+    const context = await browser.newContext({ ...IPAD, serviceWorkers: "block" });
+    session = await openOwnerSession({ url, anonKey, admin, base, context });
+    page = await context.newPage();
+    looked = await leadFootprint(leadId);
+    if (!dealRow?.black_friday_kind) {
+      await page.goto(`${base}/meeting/${leadId}#quote`);
+      await dots(page).waitFor({ timeout: 30000 });
+      await goToScreen(page, PRICE);
+      check("with no deal in Settings, Your price shows no Black Friday button", (await page.getByTestId("price-black-friday").count()) === 0);
+    }
+    let rewritten = 0;
+    let stopped = 0;
+    const meetingPath = `/meeting/${leadId}`;
+    await context.route(
+      (target) => target.pathname === meetingPath,
+      async (route) => {
+        if (route.request().method() !== "GET") {
+          stopped += 1;
+          return route.abort();
+        }
+        const response = await route.fetch();
+        const html = await response.text();
+        const body = html.replaceAll('\\"blackFriday\\":null', '\\"blackFriday\\":{\\"kind\\":\\"percent\\",\\"value\\":15}');
+        if (body !== html) rewritten += 1;
+        return route.fulfill({ response, body });
+      },
+    );
+    // A fresh tab, so the page is fetched again through the rewrite.
+    await page.close().catch(() => {});
+    page = await context.newPage();
+    await page.goto(`${base}/meeting/${leadId}#quote`);
+    await dots(page).waitFor({ timeout: 30000 });
+    await goToScreen(page, PRICE);
+    const region = page.getByRole("region", { name: PRICE, exact: true });
+    const button = region.getByTestId("price-black-friday");
+    check("with a deal set, Your price shows the Black Friday button, off", rewritten > 0 && (await button.count()) === 1, `rewritten ${rewritten}`);
+    if ((await button.count()) === 1) {
+      await button.click();
+      await page.waitForTimeout(600);
+      const regulars = await region.getByTestId("price-option-regular").allInnerTexts();
+      const deals = await region.getByTestId("price-option-total").allInnerTexts();
+      const dollars = (text) => Number(text.replace(/[^0-9.]/g, ""));
+      // Full wrap and Main floor drop by 15%; Front only is already at the
+      // $2,500 minimum, so it keeps one price and nothing is struck.
+      check(
+        "turned on, it names the deal; the options above the minimum show their regular price struck through beside 15% less, and one at the minimum keeps its price",
+        flat(await button.innerText()).includes("15% off") &&
+          regulars.length === 2 &&
+          deals.length === 3 &&
+          regulars.every((text, at) => Math.abs(dollars(deals[at]) - Math.round(dollars(text) * 85) / 100) < 0.01) &&
+          dollars(deals[2]) === 2500,
+        `${regulars.join(", ")} / ${deals.join(", ")}`,
+      );
+      await shot(page, "meeting-your-price-black-friday");
+      await goToScreen(page, NEXT);
+      const next = page.getByRole("region", { name: NEXT, exact: true });
+      check("What happens next shows the chosen option's regular price struck through", (await next.getByTestId("next-steps-regular").count()) === 1);
+      await shot(page, "meeting-what-happens-next-black-friday");
+    }
+    await page.waitForTimeout(1500);
+    check("the Black Friday look saved nothing (its saves were stopped in the browser)", (await leadFootprint(leadId)) === looked, `${stopped} stopped`);
+    await session.close().catch(() => {});
+    session = null;
+    await context.close().catch(() => {});
+  }
 
   // ---------------------------------------------------------------- a made-to-order colour on Your price (staged)
   if (madeToOrder) {

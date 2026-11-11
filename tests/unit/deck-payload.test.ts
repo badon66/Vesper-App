@@ -127,6 +127,7 @@ function meetingPayload(): MeetingPayload {
       upperGableAccessFee: null,
       priceHoldDays: 120,
       minJobTotal: null,
+      blackFriday: null,
     },
     draft: null,
     today: "2026-11-08",

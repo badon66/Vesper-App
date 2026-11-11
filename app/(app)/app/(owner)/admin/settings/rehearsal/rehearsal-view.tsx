@@ -18,8 +18,9 @@ import { customerViewFor, landingPage, PRESENTATION_SETTINGS, REHEARSAL_WORDS, r
 // empty slot shows its example to copy; the Customer view switch shows
 // exactly what a real meeting would show today, fallbacks and skipped pages
 // included, with the bar still on. "Rehearse with" picks one of the upcoming
-// meetings, or no lead (Your house, the picker, mockup, colour and price pages are then
-// skipped). Choosing a lead turns the Customer view on, so a run-through of
+// meetings, or no lead (the mockup pages and the price are then skipped).
+// It shows the pages deckPages shows, so never the light picker
+// (2026-11-11). Choosing a lead turns the Customer view on, so a run-through of
 // tonight's meeting shows what the customer will see; No lead turns it off,
 // for studying the examples. Keenan can switch it either way after.
 //

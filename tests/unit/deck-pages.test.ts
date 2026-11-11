@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DECK_PAGES, DEFAULT_LINES, MAX_SHOWN_PAGES, parseDeckWords, parseLooks, STORY_PAGES, type DeckWords } from "@/lib/deck";
+import { DECK_PAGES, DEFAULT_LINES, isRetired, MAX_SHOWN_PAGES, parseDeckWords, parseLooks, STORY_PAGES, type DeckWords } from "@/lib/deck";
 import { CUSTOM_CHOICE } from "@/lib/leads/track-colour";
 import { WARM_WHITE } from "@/lib/lights/looks";
 import {
@@ -136,14 +136,14 @@ const LOWER = mock("lower", { offers: ["front_lower"], name: "Front lower" });
 const EVERY = [MAIN, DAY, NIGHT, XMAS, LOWER];
 
 describe("the pages a meeting shows (round 10: mockups per house)", () => {
-  it("follows Keenan's order: cover, the Main, day and night, the phone, the warranty, the picker, the price, What happens next", () => {
+  it("follows Keenan's order: cover, the Main, day and night, the phone, the warranty, the price, What happens next", () => {
     const pages = deckPages({ deck: deck({ picker: PICKER, gallery: [photo("g1")] }), lead: { mockupUrl: MAIN.url, mockups: EVERY } });
-    expect(keys(pages)).toEqual(["cover", "what_vesper_is", "hidden_by_day", "phone_control", "warranty", "light_picker", "quote", "next_steps"]);
+    expect(keys(pages)).toEqual(["cover", "what_vesper_is", "hidden_by_day", "phone_control", "warranty", "quote", "next_steps"]);
     expect(keys(pages)).toEqual([...STORY_PAGES]);
     expect(pages.length).toBe(MAX_SHOWN_PAGES);
-    expect(MAX_SHOWN_PAGES).toBe(8);
-    // The round 9 pages keep their keys, after the shown ones, and never show.
-    for (const key of ["gallery", "your_house", "mockup", "whites_first", "colour"] as const) {
+    expect(MAX_SHOWN_PAGES).toBe(7);
+    // The round 9 pages and the light picker keep their keys and never show.
+    for (const key of ["gallery", "your_house", "mockup", "whites_first", "colour", "light_picker"] as const) {
       expect(DECK_PAGES).toContain(key);
       expect(keys(pages)).not.toContain(key);
     }
@@ -158,10 +158,18 @@ describe("the pages a meeting shows (round 10: mockups per house)", () => {
     expect(keys(deckPages({ deck: deck(), lead: { mockupUrl: MAIN.url, mockups: [MAIN] } }))).not.toContain("phone_control");
   });
 
-  it("shows the picker only when the roofline is traced and a look is on", () => {
-    expect(keys(deckPages({ deck: deck({ picker: PICKER }), lead: { mockupUrl: null } }))).toContain("light_picker");
-    expect(keys(deckPages({ deck: deck({ picker: PICKER, looks: [] }), lead: { mockupUrl: null } }))).not.toContain("light_picker");
-    expect(keys(deckPages({ deck: deck(), lead: { mockupUrl: null } }))).not.toContain("light_picker");
+  // Keenan, 2026-11-11: no light picker, even with a roofline traced and
+  // looks on, in a meeting and in the rehearsal alike.
+  it("never shows the light picker, traced or not", () => {
+    expect(isRetired("light_picker")).toBe(true);
+    expect(STORY_PAGES).not.toContain("light_picker");
+    for (const fillEmpty of [false, true]) {
+      expect(keys(deckPages({ deck: deck({ picker: PICKER }), lead: { mockupUrl: null }, fillEmpty }))).not.toContain("light_picker");
+      expect(keys(deckPages({ deck: deck({ picker: PICKER }), lead: { mockupUrl: MAIN.url, mockups: EVERY }, fillEmpty }))).not.toContain("light_picker");
+      expect(keys(deckPages({ deck: deck({ picker: PICKER, looks: [] }), lead: { mockupUrl: null }, fillEmpty }))).not.toContain("light_picker");
+      expect(keys(deckPages({ deck: deck(), lead: { mockupUrl: null }, fillEmpty }))).not.toContain("light_picker");
+      expect(keys(deckPages({ deck: deck({ picker: PICKER }), lead: null, fillEmpty }))).not.toContain("light_picker");
+    }
   });
 
   it("with no lead (the rehearsal), shows the cover, the warranty and What happens next", () => {
@@ -196,7 +204,6 @@ describe("the pages a meeting shows (round 10: mockups per house)", () => {
       "Hidden by day",
       "Run it from your phone",
       "Our 10-year warranty",
-      "Try it on your house",
       "Your price",
       "What happens next",
     ]);
@@ -612,7 +619,10 @@ describe("deck mechanics", () => {
   it("opens #quote on the price page, #start at the cover, and a reload where it was", () => {
     expect(pages[startIndex(pages, "quote", { index: 2, screenKey: "warranty" })].key).toBe("quote");
     expect(startIndex(pages, "start", { index: 2, screenKey: "warranty" })).toBe(0);
-    expect(pages[startIndex(pages, "resume", { index: 2, screenKey: "light_picker" })].key).toBe("light_picker");
+    expect(pages[startIndex(pages, "resume", { index: 2, screenKey: "quote" })].key).toBe("quote");
+    // A reload saved on the light picker, which never shows now, opens where
+    // it was by index.
+    expect(pages[startIndex(pages, "resume", { index: 2, screenKey: "light_picker" })].key).toBe("quote");
     expect(startIndex(pages, "resume", { index: 2, screenKey: "gallery" })).toBe(2);
     expect(startIndex(pages, "resume", { index: 99, screenKey: null })).toBe(pages.length - 1);
     expect(startIndex([{ key: "cover" }], "quote", { index: 0, screenKey: null })).toBe(0);

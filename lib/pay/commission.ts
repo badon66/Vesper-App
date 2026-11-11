@@ -23,6 +23,13 @@ import type { Json } from "@/types/database";
 // It reads only the runs, the boxes, the two prices and the discounts, so
 // what is left out is left out by construction, whatever the quote's other
 // lines are called now or later.
+//
+// A percent discount line (Black Friday as a percent, 2026-11-11) counts at
+// its stored amount, like the database. Accepted first sets that amount to
+// the accepted option's own (lib/quotes/outcome-card.ts acceptedDiscounts,
+// from app/(app)/app/leads/quote-outcome-actions.ts), and the Accepted
+// sheet's preview passes each option's own (optionDiscounts), so the
+// commission reads the line as the customer's link priced that option.
 
 // Only the parts of a quote the commission reads. A run's feet and a
 // discount's amount count only when they are numbers, as in the database.
@@ -31,7 +38,7 @@ export type CommissionQuote = {
   boxCount: number;
   pricePerFt: number;
   boxPrice: number;
-  discounts: readonly Pick<QuoteLineItem, "amount">[];
+  discounts: readonly Pick<QuoteLineItem, "amount" | "percent">[];
   // The accepted runs, as 0-based positions into runs; null means every
   // run (the full quote). A "Start smaller" acceptance counts only its own.
   positions: readonly number[] | null;
@@ -155,6 +162,8 @@ export function commissionQuoteFromRow(row: CommissionQuoteRow, positions: reado
     boxPrice: Number(row.box_price),
     discounts: objectsOf(row.discounts).map((discount) => ({
       amount: isNumber(discount.amount) ? discount.amount : 0,
+      // Kept for reading; the amount is what counts, as in the database.
+      ...(isNumber(discount.percent) ? { percent: discount.percent } : {}),
     })),
     positions,
   };

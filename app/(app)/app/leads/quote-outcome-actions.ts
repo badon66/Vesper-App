@@ -12,6 +12,7 @@ import {
   type AcceptResult,
 } from "@/lib/quotes/outcome";
 import { FULL_WRAP_ID } from "@/lib/quotes/offers";
+import { acceptedDiscounts } from "@/lib/quotes/outcome-card";
 import { createClient } from "@/lib/supabase/server";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 
@@ -74,6 +75,48 @@ export async function acceptQuote(input: z.input<typeof acceptSchema>): Promise<
   }
   const { quoteId, leadId, offerId, runs, installOn } = parsed.data;
   const supabase = await createClient();
+  // Black Friday as a percent (2026-11-11): the line is worked out on each
+  // option, but the database's commission takes off each discount's stored
+  // amount. So the line's amount is set to the accepted option's own first,
+  // worked out by lib/pricing.ts as the customer's link prices it, keeping
+  // its percent, while the quote is not yet accepted. If that can't be
+  // saved, nothing is accepted.
+  const { data: row } = await supabase
+    .from("quotes")
+    .select(
+      "id, status, runs, offers, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, min_job_total, gst_enabled, gst_rate",
+    )
+    .eq("id", quoteId)
+    .maybeSingle();
+  if (!row) return notFound;
+  const rewritten =
+    row.status === "accepted"
+      ? null
+      : acceptedDiscounts(
+          {
+            ...row,
+            box_count: Number(row.box_count),
+            price_per_ft: Number(row.price_per_ft),
+            box_price: Number(row.box_price),
+            gst_rate: Number(row.gst_rate),
+          },
+          offerId,
+        );
+  if (rewritten) {
+    const { data: updated, error: updateError } = await supabase
+      .from("quotes")
+      .update({ discounts: rewritten })
+      .eq("id", quoteId)
+      .neq("status", "accepted")
+      .select("id");
+    if (updateError || !updated || updated.length === 0) {
+      return {
+        ok: false,
+        code: "deal_not_saved",
+        message: "The Black Friday price for this option could not be saved, so nothing was accepted. Check your signal and try again.",
+      };
+    }
+  }
   // Round 9: accept the option by its id, so the database records it with
   // its runs and boxes and works the commission out on that option's lights
   // and boxes. A quote whose offers cover no run offers the full quote as

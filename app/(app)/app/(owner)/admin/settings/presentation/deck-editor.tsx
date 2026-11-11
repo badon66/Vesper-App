@@ -94,20 +94,20 @@ type Section =
   | { kind: "built"; page: "cover" | "colour" | "quote"; lines: LineGroup }
   | { kind: "lines"; lines: LineGroup };
 
-// Round 10 (Keenan, 2026-11-10): the meeting's eight pages first, in their
-// order, the colour's lines just before Your price (where they show now),
-// then the round 9 pages that left the meeting, whose words and photos are
-// kept.
+// Round 10 (Keenan, 2026-11-10): the meeting's pages first, in their order,
+// the colour's lines just before Your price (where they show now), then the
+// pages that left the meeting, whose words and photos are kept: the light
+// picker (2026-11-11), with its looks, and the round 9 pages.
 const SECTIONS: Section[] = [
   { kind: "built", page: "cover", lines: "cover" },
   { kind: "page", page: "what_vesper_is" },
   { kind: "page", page: "hidden_by_day" },
   { kind: "page", page: "phone_control" },
   { kind: "page", page: "warranty" },
-  { kind: "page", page: "light_picker" },
   { kind: "built", page: "colour", lines: "colour" },
   { kind: "built", page: "quote", lines: "price" },
   { kind: "page", page: "next_steps", lines: "next_steps" },
+  { kind: "page", page: "light_picker" },
   { kind: "page", page: "gallery" },
   { kind: "page", page: "your_house", lines: "your_house" },
   { kind: "page", page: "mockup" },
@@ -696,9 +696,6 @@ function Overview({
                   );
                 })}
               </ol>
-              <p className="mt-2 px-2 text-sm text-muted-foreground">
-                A stand-in shows only when the page it stands in for can&apos;t: no roofline traced, or no mockup either.
-              </p>
             </CardContent>
           </Card>
         </nav>

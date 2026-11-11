@@ -12,14 +12,15 @@ export const TALKING_MAX = 1000;
 export type TalkingPoints = Partial<Record<DeckPageKey, string>>;
 
 // The pages Settings asks him to write for, in the deck's order, with the
-// deck's own page names.
+// deck's own page names. The light picker left the meeting on 2026-11-11:
+// a light_picker entry already saved still parses, and a Settings save
+// keeps it as it is (deckWithTalking), but Settings no longer asks for one.
 export const TALKING_PAGES: readonly { key: DeckPageKey; name: string }[] = [
   { key: "cover", name: "Cover" },
   { key: "what_vesper_is", name: "Up once, there all year" },
   { key: "hidden_by_day", name: "Hidden by day" },
   { key: "phone_control", name: "Run it from your phone" },
   { key: "warranty", name: "Our 10-year warranty" },
-  { key: "light_picker", name: "Try it on your house" },
   { key: "quote", name: "Your price" },
   { key: "next_steps", name: "What happens next" },
 ];

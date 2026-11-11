@@ -11,6 +11,7 @@ import {
 import { pickEditableQuote, type DeckPayload, type MeetingPayload, type QuoteDraft } from "@/lib/meeting/state";
 import { DECK_BUCKET } from "@/lib/photos-deck";
 import { PHOTO_BUCKET } from "@/lib/photos";
+import { blackFridayFrom } from "@/lib/quotes/black-friday";
 import type { createClient } from "@/lib/supabase/server";
 import { calgaryToday } from "@/lib/time";
 
@@ -198,7 +199,7 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
 // The prices Settings gives a new quote (shared with the lead page's quote
 // editor, lib/quotes/editor-data.ts).
 export const PRICING_SETTINGS =
-  "price_per_ft, box_price, neighbour_discount, gst_enabled, gst_rate, gst_number, rush_colour_fee, upper_access_fee, upper_gable_access_fee, price_hold_days, min_job_total";
+  "price_per_ft, box_price, neighbour_discount, gst_enabled, gst_rate, gst_number, rush_colour_fee, upper_access_fee, upper_gable_access_fee, price_hold_days, min_job_total, black_friday_kind, black_friday_value";
 
 type PricingRow = {
   price_per_ft: number;
@@ -212,6 +213,8 @@ type PricingRow = {
   upper_gable_access_fee: number | null;
   price_hold_days: number;
   min_job_total: number | null;
+  black_friday_kind?: string | null;
+  black_friday_value?: number | null;
 };
 
 export function pricingFrom(settings: PricingRow): MeetingPayload["pricing"] {
@@ -227,6 +230,7 @@ export function pricingFrom(settings: PricingRow): MeetingPayload["pricing"] {
     upperGableAccessFee: settings.upper_gable_access_fee,
     priceHoldDays: settings.price_hold_days,
     minJobTotal: settings.min_job_total,
+    blackFriday: blackFridayFrom(settings),
   };
 }
 

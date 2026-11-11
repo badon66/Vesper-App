@@ -51,7 +51,11 @@ const quoteDraftSchema = z.object({
   adders: z
     .array(z.object({ label: z.string().trim().max(80), amount: money, upperOnly: z.boolean().optional() }))
     .max(20),
-  discounts: z.array(z.object({ label: z.string().trim().max(80), amount: money })).max(20),
+  // percent (2026-11-11): a line worked out on each option, Black Friday as
+  // a percent; more than 0 and at most 90. Left out, a fixed amount.
+  discounts: z
+    .array(z.object({ label: z.string().trim().max(80), amount: money, percent: z.number().gt(0).max(90).nullable().optional() }))
+    .max(20),
   colourTiming: z.enum(["stock", "factory_order", "rush"]).nullable(),
   // This quote's flat rush colour fee and upper access amounts (2026-11-04),
   // copied from Settings and changed at the table if Keenan wants. Null on
@@ -110,7 +114,12 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
   if (!parsed.success) {
     return { ok: false, code: "bad_input", message: "Something in the quote doesn't look right. Check the numbers." };
   }
-  const draft = { ...parsed.data, runs: parsed.data.runs.map((run) => ({ ...run, part: run.part ?? guessRunPart(run.name) })) };
+  const draft = {
+    ...parsed.data,
+    runs: parsed.data.runs.map((run) => ({ ...run, part: run.part ?? guessRunPart(run.name) })),
+    // Stored as {label, amount}, with percent only when the line has one.
+    discounts: parsed.data.discounts.map(({ label, amount, percent }) => ({ label, amount, ...(percent ? { percent } : {}) })),
+  };
   const locked = { ok: false as const, code: "quote_locked", message: quoteLockedWords(draft.from ?? "meeting") };
   // An option's name is read by the customer: the deck's word checks.
   if ((draft.offers ?? []).some((offer) => hasDash(offer.name) || hasExclamation(offer.name))) {

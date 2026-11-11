@@ -130,7 +130,8 @@ export function deckOrder(settings, { lead }) {
     hidden_by_day: Boolean(lead.day) && Boolean(lead.night),
     phone_control: Number(lead.scenes ?? 0) > 0,
     warranty: true,
-    light_picker: traced && looks > 0,
+    // Round 10 follow-up (Keenan, 2026-11-11): the picker never shows, traced or not.
+    light_picker: false,
     quote: true,
     next_steps: true,
   };

@@ -13,8 +13,10 @@ import {
   runPart,
   screenTotal,
   selectRuns,
+  usablePercent,
   type ColourTiming,
   type QuoteInputs,
+  type QuoteLineItem,
   type QuoteRun,
   type QuoteTotals,
 } from "@/lib/pricing";
@@ -69,7 +71,9 @@ export type CustomerQuote = {
     boxPrice: number;
     boxCount: number;
     adders: { label: string; amount: number; upperOnly: boolean }[];
-    discounts: { label: string; amount: number }[];
+    // percent: a line worked out on the option being priced (Black Friday
+    // as a percent, 2026-11-11), so switching options switches its amount.
+    discounts: QuoteLineItem[];
     colourTiming: ColourTiming | null;
     // The quote's flat rush colour fee and upper access amounts
     // (2026-11-04); null on a quote made before then, so no line.
@@ -170,7 +174,15 @@ const quoteSchema = z.object({
   adders: z
     .array(z.object({ label: z.string().catch(""), amount: number, upper_only: z.boolean().optional().catch(false) }))
     .catch([]),
-  discounts: z.array(z.object({ label: z.string().catch(""), amount: number })).catch([]),
+  discounts: z
+    .array(
+      z.object({
+        label: z.string().catch(""),
+        amount: number,
+        percent: z.coerce.number().nullable().optional().catch(null),
+      }),
+    )
+    .catch([]),
   colour_timing: z.enum(["stock", "factory_order", "rush"]).nullable().catch(null),
   rush_fee: z.coerce.number().nullable().optional().catch(null),
   upper_access_fee: z.coerce.number().nullable().optional().catch(null),
@@ -200,7 +212,10 @@ function toQuote(q: z.infer<typeof quoteSchema>): CustomerQuote["quote"] {
     boxPrice: q.box_price,
     boxCount: q.box_count,
     adders: q.adders.map((a) => ({ label: a.label, amount: a.amount, upperOnly: a.upper_only === true })),
-    discounts: q.discounts,
+    discounts: q.discounts.map((d) => {
+      const percent = usablePercent(d.percent);
+      return percent !== null ? { label: d.label, amount: d.amount, percent } : { label: d.label, amount: d.amount };
+    }),
     colourTiming: q.colour_timing,
     rushFee: q.rush_fee ?? null,
     upperAccessFee: q.upper_access_fee ?? null,

@@ -43,18 +43,26 @@ describe("parseTalkingPoints", () => {
     expect(cleanTalking(7)).toBeNull();
   });
 
-  it("asks for the eight pages of the deck, in its order, by their names", () => {
+  it("asks for the seven pages of the deck, in its order, by their names", () => {
     expect(TALKING_PAGES.map((page) => page.key)).toEqual([
       "cover",
       "what_vesper_is",
       "hidden_by_day",
       "phone_control",
       "warranty",
-      "light_picker",
       "quote",
       "next_steps",
     ]);
     expect(TALKING_PAGES.find((page) => page.key === "quote")?.name).toBe("Your price");
+  });
+
+  // 2026-11-11: the light picker left the meeting. What was saved for it
+  // still reads and survives a save; Settings no longer asks for it.
+  it("keeps a saved light picker entry without asking for one", () => {
+    expect(TALKING_PAGES.map((page) => page.key)).not.toContain("light_picker");
+    expect(parseTalkingPoints({ talking: { light_picker: "Old words" } })).toEqual({ light_picker: "Old words" });
+    expect(deckWithTalking({ talking: { light_picker: "Old words" } }, { cover: "Hi" }).talking).toEqual({ light_picker: "Old words", cover: "Hi" });
+    expect(parseTalkingInput({ light_picker: "New" }).ok).toBe(false);
   });
 });
 

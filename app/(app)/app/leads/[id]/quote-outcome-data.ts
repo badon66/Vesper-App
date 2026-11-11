@@ -97,8 +97,10 @@ export async function loadQuoteOutcome(supabase: Client, lead: LeadForOutcome): 
   const options = acceptOptions({
     quote: priced,
     link: linkRow ?? null,
-    commission: (positions, boxes) =>
-      previewCommission({ receiver, existing: standing, quote: priced, positions, boxes, rate }),
+    // A percent line (Black Friday as a percent) counts at this option's
+    // own amount, as Accepted stores it before the database works it out.
+    commission: (positions, boxes, discounts) =>
+      previewCommission({ receiver, existing: standing, quote: { ...priced, discounts }, positions, boxes, rate }),
     meetingOffer: quote.meeting_offer,
   });
 

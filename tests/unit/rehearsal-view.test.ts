@@ -20,7 +20,7 @@ import {
   type ReferenceLinkRow,
   type UpcomingRow,
 } from "@/app/(app)/app/(owner)/admin/settings/rehearsal/rehearsal";
-import { DECK_PAGES, DECK_SLOTS, hasDash, hasExclamation, SLOT_BY_KEY, type DeckPageKey } from "@/lib/deck";
+import { DECK_PAGES, DECK_SLOTS, hasDash, hasExclamation, SLOT_BY_KEY, STORY_PAGES, type DeckPageKey } from "@/lib/deck";
 import { buildDeckPayload, deckPages } from "@/lib/meeting/deck-pages";
 import { REHEARSAL_PAGE } from "@/lib/offline";
 import { formatDay, formatTime } from "@/lib/time";
@@ -229,6 +229,13 @@ describe("staying on the page after a switch", () => {
     expect(landingPage(round10, "quote")).toBe("next_steps");
     expect(landingPage(round10, "phone_control")).toBe("warranty");
     expect(landingPage(keys("cover", "what_vesper_is", "warranty"), "hidden_by_day")).toBe("warranty");
+  });
+
+  // 2026-11-11: the light picker never shows, so a rehearsal left on it
+  // lands on Your price, the page after it, with a lead.
+  it("lands past the light picker, which never shows", () => {
+    expect(landingPage([...STORY_PAGES], "light_picker")).toBe("quote");
+    expect(STORY_PAGES).not.toContain("light_picker");
   });
 
   it("has nothing to land on in an empty deck", () => {

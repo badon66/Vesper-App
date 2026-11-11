@@ -18,7 +18,9 @@ import {
 import { MoreButton, type MoreState } from "@/components/meeting/deck-pages";
 import { deckLine, NO_PAYMENT_LINE, SLOT_BY_KEY, type DeckLines, type PageWords } from "@/lib/deck";
 import { installDayGrid, moreWords, slotView } from "@/lib/meeting/deck-pages";
+import type { RecapView } from "@/lib/meeting/black-friday-state";
 import type { DeckPayload } from "@/lib/meeting/state";
+import { BLACK_FRIDAY_LABEL } from "@/lib/quotes/black-friday";
 import { formatLongDay } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -42,8 +44,9 @@ export type NextStepsPageProps = {
   lines: DeckLines;
   near: boolean;
   fillEmpty: boolean;
-  // "Your choice: Main floor, $3,380 + GST", or null until one is chosen.
-  recap: string | null;
+  // "Your choice: Main floor, $3,380 + GST" in parts, or null until one is
+  // chosen; with Black Friday on, regular is the total struck through.
+  recap: RecapView | null;
   // The day picked at the table (YYYY-MM-DD) or null; onInstallOn is null
   // with no quote (the rehearsal with no lead), which hides Pick a day.
   installOn: string | null;
@@ -77,7 +80,19 @@ export function NextStepsPage({ deck, words, lines, near, fillEmpty, recap, inst
       {headline ? <h2 className={DECK_TYPE.headline}>{keepHyphens(headline)}</h2> : null}
       {recap ? (
         <p className={cn(DECK_TYPE.body, "-mt-2 font-semibold")} data-testid="next-steps-recap">
-          {say(recap)}
+          {say(recap.before)}
+          {recap.total ? " " : null}
+          {recap.regular ? (
+            <>
+              <s className="font-normal text-muted-foreground" data-testid="next-steps-regular">
+                <span className="sr-only">Regular price </span>
+                {recap.regular}
+              </s>{" "}
+              <span className="sr-only">{`${BLACK_FRIDAY_LABEL} price `}</span>
+            </>
+          ) : null}
+          {recap.total}
+          {recap.after ? (/^[,.:;?]/.test(recap.after) ? say(recap.after) : ` ${say(recap.after)}`) : null}
         </p>
       ) : null}
       <ul className="flex flex-col gap-4" aria-label={headline ? say(headline) : undefined}>

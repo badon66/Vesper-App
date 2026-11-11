@@ -1,5 +1,5 @@
 import "server-only";
-import { prepSummary, quoteDraftedAhead, rooflineFacts, rooflineState, type PrepSummary, type RooflineState } from "@/lib/meetings/prep";
+import { prepSummary, quoteDraftedAhead, rooflineState, type RooflineState, type PrepSummary } from "@/lib/meetings/prep";
 import type { QuestionLead } from "@/lib/leads/questions";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
@@ -9,9 +9,9 @@ type PhotoSlot = Database["public"]["Enums"]["photo_slot"];
 
 // The prep list's facts for some leads (round 7, Keenan, 2026-11-08): the
 // mockup, the track colour, a quote drafted ahead (round 9: an offer with a
-// measured run), the six questions, and (round
-// 7, Branch B) the roofline traced for the light picker. Owner only: quotes
-// and traces are his alone, and the screens that call this are his.
+// measured run) and the six questions. No roofline since 2026-11-11: the
+// light picker left the meeting, so traces are not read for readiness.
+// Owner only: quotes are his alone, and the screens that call this are his.
 export type PrepLead = QuestionLead & { id: string };
 export type PrepMeeting = { id: string; confirmed_at: string | null } | null;
 
@@ -23,11 +23,9 @@ export async function prepFor(
   const out = new Map<string, PrepSummary>();
   const ids = [...new Set(leads.map((lead) => lead.id))];
   if (ids.length === 0) return out;
-  const [{ data: colours }, { data: photos }, { data: quotes }, { data: traces }, { data: mains }] = await Promise.all([
+  const [{ data: colours }, { data: quotes }, { data: mains }] = await Promise.all([
     supabase.from("leads").select("id, track_colour_id, track_ral_code").in("id", ids),
-    supabase.from("lead_photos").select("id, lead_id, slot").in("lead_id", ids),
     supabase.from("quotes").select("lead_id, runs, offers").in("lead_id", ids),
-    supabase.from("roofline_traces").select("lead_id, photo_id, photo_slot").in("lead_id", ids),
     // Round 10: the mockup is the house's Main in lead_mockups.
     supabase.from("lead_mockups").select("lead_id").eq("is_main", true).is("removed_at", null).in("lead_id", ids),
   ]);
@@ -35,7 +33,6 @@ export async function prepFor(
   const hasMockup = new Set((mains ?? []).map((row) => row.lead_id));
   // Round 9: a quote counts once an offer covers a measured run.
   const hasQuote = new Set((quotes ?? []).filter((row) => quoteDraftedAhead(row)).map((row) => row.lead_id));
-  const roofline = rooflineStates(traces ?? [], photos ?? []);
   for (const lead of leads) {
     const meeting = meetingFor(lead.id);
     out.set(
@@ -47,14 +44,15 @@ export async function prepFor(
         hasMeeting: meeting !== null,
         confirmedAt: meeting?.confirmed_at ?? null,
         lead,
-        ...rooflineFacts(roofline.get(lead.id) ?? "none"),
       }),
     );
   }
   return out;
 }
 
-function rooflineStates(
+// Unused since 2026-11-11 (no light picker); kept with rooflineFor for the
+// tracer, which nothing links to now.
+export function rooflineStates(
   traces: { lead_id: string; photo_id: string; photo_slot: PhotoSlot | null }[],
   photos: { id: string; lead_id: string; slot: PhotoSlot | null }[],
 ): Map<string, RooflineState> {

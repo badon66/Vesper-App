@@ -25,8 +25,10 @@ export type PrepFacts = {
   // The lead's six questions, for any left Not collected or unanswered.
   lead: QuestionLead;
   // Round 7, Branch B: the roofline traced for the light picker, on a photo
-  // still on the lead and still in its slot (rooflineState below). Left out,
-  // the item doesn't show.
+  // still on the lead and still in its slot (rooflineState below). Since
+  // 2026-11-11 (Keenan: no light picker, no tracing) these are ignored and
+  // no roofline item shows; the fields stay so nothing that passes them
+  // breaks.
   rooflineTraced?: boolean;
   // A trace was saved, but its photo was replaced or removed since.
   rooflinePhotoChanged?: boolean;
@@ -49,6 +51,9 @@ export function missingAnswers(lead: QuestionLead): CountedQuestion[] {
   return COUNTED_QUESTIONS.filter((question) => questionState(lead, question) !== "answered");
 }
 
+// The prep list's items, in order. No "Roofline traced" item since
+// 2026-11-11: the light picker left the meeting, so a meeting's readiness
+// never asks for a trace ("roofline" stays in PrepKey, unused).
 export function prepItems(facts: PrepFacts): PrepItem[] {
   const missing = missingAnswers(facts.lead);
   const items: PrepItem[] = [
@@ -63,14 +68,6 @@ export function prepItems(facts: PrepFacts): PrepItem[] {
     done: missing.length === 0,
     detail: missing.length > 0 ? missing.map((question) => QUESTION_LABELS[question]).join(", ") : undefined,
   });
-  if (facts.rooflineTraced !== undefined) {
-    items.push({
-      key: "roofline",
-      label: PREP_LABELS.roofline,
-      done: facts.rooflineTraced,
-      detail: facts.rooflineTraced ? undefined : facts.rooflinePhotoChanged ? ROOFLINE_PHOTO_CHANGED : ROOFLINE_NOT_TRACED,
-    });
-  }
   return items;
 }
 
@@ -92,7 +89,9 @@ export function draftedOfferCount(quote: { runs: unknown; offers?: unknown } | n
   return parseOffers(quote.offers ?? [], feet.length).filter((offer) => offer.runs.some((p) => feet[p] > 0)).length;
 }
 
-// Prep item 6 (light_picker.tracing), word for word.
+// Prep item 6 (light_picker.tracing), word for word. Not on the prep list
+// since 2026-11-11; the tracer, which nothing links to now, still reads
+// ROOFLINE_PHOTO_CHANGED.
 export const ROOFLINE_NOT_TRACED = "Roofline not traced. The light picker page is skipped.";
 export const ROOFLINE_PHOTO_CHANGED = "The front photo changed. Trace it again.";
 

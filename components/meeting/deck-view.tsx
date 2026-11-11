@@ -13,7 +13,6 @@ import {
   type ReactNode,
 } from "react";
 
-import { PickerPage } from "@/components/meeting/picker-page";
 import { confirmedTonight, type Confirmation, type DeckColour } from "@/components/meeting/colour-page";
 import { DeckContext, type DeckContextValue, type EmptySlotRenderer } from "@/components/meeting/deck-parts";
 import { CoverPage, HiddenByDayPage, PhonePage, WhatVesperPage, type MoreState } from "@/components/meeting/deck-pages";
@@ -24,6 +23,7 @@ import { TalkingPoints } from "@/components/meeting/talking-points";
 import { WarrantyPage } from "@/components/meeting/warranty-page";
 import type { DeckPageKey } from "@/lib/deck";
 import { coolWhiteOf, warmWhiteOf } from "@/lib/lights/looks";
+import { blackFridayOn, offerPrice, recapParts, settleBlackFriday } from "@/lib/meeting/black-friday-state";
 import {
   bottomRowWidth,
   coverLine,
@@ -40,7 +40,6 @@ import {
   mockupJobs,
   measuredFeet,
   nextLabelParts,
-  recapLine,
   shownInstallDay,
   startIndex,
   stepFor,
@@ -56,11 +55,9 @@ import {
   type DeckPayload,
   type MeetingPayload,
   type MeetingStored,
-  type PickerStored,
   type QuoteUIState,
 } from "@/lib/meeting/state";
-import { EASE_QUIET, useReducedMotion } from "@/lib/motion";
-import { priceOffer } from "@/lib/quotes/offers";
+import { useReducedMotion } from "@/lib/motion";
 import { smartApostrophes } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 
@@ -71,20 +68,18 @@ import { cn } from "@/lib/utils";
 // whatever the device's theme. Meeting mode renders it for one lead; the
 // rehearsal view renders the same deck under its own bar. The cover, their
 // Main mockup, their Day and Night mockups, their scenes on a phone, the
-// warranty, the light picker (traced only), Your price (with the colour and
-// its initials) and What happens next; a page missing its mockup is
-// skipped. No drawing of the house anywhere. A quiet
-// "Next: {headline}" sits right of the forward chevron on every page but
-// the last; the turn from Your house to the light picker (and back)
-// cross-fades the band instead of sliding, so their photo stays put.
+// warranty, Your price (with the colour and its initials) and What happens
+// next; a page missing its mockup is skipped. No drawing of the house
+// anywhere, and no light picker (Keenan, 2026-11-11: it left the meeting,
+// traced or not). A quiet "Next: {headline}" sits right of the forward
+// chevron on every page but the last.
 //
 // CONTRACT
 //   <Deck
 //     deck             the deck's payload (MeetingPayload.deck, or the
 //                      rehearsal's own loadDeckPayload with no lead)
 //     meeting          the lead's whole payload; null with no lead (rehearsal
-//                      only), which skips Your house, the picker, the mockup,
-//                      the colour and the price
+//                      only), which skips the mockup pages and the price
 //     mode?            "meeting" (default): keeps the iPad's copy in
 //                      localStorage, guards against an edge swipe back, and
 //                      saves through the meeting's server actions.
@@ -108,7 +103,7 @@ import { cn } from "@/lib/utils";
 // the deck, so a frame smaller than the screen keeps them. While one is open
 // the pager is locked, the dots and chevrons hide (Back is the way out), and
 // any page change closes it. The deck's root sets --deck-band (the band's
-// and the picker tray's height), the type sizes, --deck-row-bottom (the
+// height), the type sizes, --deck-row-bottom (the
 // bottom row's foot) and --deck-clear (where a picture ends above that row)
 // as CSS variables, in container units of the deck's own frame.
 
@@ -178,12 +173,6 @@ function acceptedQuote(meeting: MeetingPayload | null): boolean {
   return draft?.accepted === true;
 }
 
-// The turn that cross-fades: Your house and the light picker show the same
-// photo in the same place, so only the band changes.
-const isHouseTurn = (a: DeckPageKey | undefined, b: DeckPageKey | undefined) =>
-  (a === "your_house" && b === "light_picker") || (a === "light_picker" && b === "your_house");
-const HOUSE_FADE_MS = 300;
-
 // The iPad's own copy lives in localStorage, which only the browser has. The
 // server and the first browser render both show the cover; the deck then
 // starts from that copy, so the two renders always agree.
@@ -228,7 +217,9 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
     const opened = start?.quote ?? null;
     if (!opened || accepted) return opened;
     const timing = colourTimingFor(colour.kind, colour.text, opened.colourTiming);
-    return timing === opened.colourTiming ? opened : { ...opened, colourTiming: timing };
+    const timed = timing === opened.colourTiming ? opened : { ...opened, colourTiming: timing };
+    // Its Black Friday line as Settings' deal works it out now.
+    return meeting ? settleBlackFriday(timed, meeting.pricing) : timed;
   });
 
   const frontPhotoUrl = meeting ? frontPhotoOf(meeting) : null;
@@ -246,7 +237,6 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
     return asked >= 0 ? asked : startIndex(pages, entry, { index: start?.index ?? 0, screenKey: start?.screenKey ?? null });
   });
   const [index, setIndex] = useState(startAt);
-  const [settled, setSettled] = useState(true);
   // The open layer: a page's key (its More, the contact sheet, the colour
   // chooser) or "next_steps:day" (Pick a day).
   const [layer, setLayer] = useState<string | null>(null);
@@ -257,7 +247,6 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
   const [savedAt, setSavedAt] = useState<string | null>(start?.savedAt ?? null);
   const [savedQuote, setSavedQuote] = useState<string | null>(start?.savedQuote ?? null);
   const [initialsDraft, setInitialsDraft] = useState(start?.initialsDraft ?? "");
-  const [picker, setPicker] = useState<PickerStored | null>(start?.picker ?? null);
   const [confirmation, setConfirmation] = useState<Confirmation>(() =>
     meeting?.lead.initials && meeting.lead.initialledAt ? { initials: meeting.lead.initials, at: meeting.lead.initialledAt } : null,
   );
@@ -265,7 +254,6 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
 
   const pager = useRef<HTMLDivElement>(null);
   const indexRef = useRef(index);
-  const settleTimer = useRef<number | undefined>(undefined);
   const current = Math.min(index, pages.length - 1);
   const currentKey = pages[current]?.key;
 
@@ -312,8 +300,6 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => () => window.clearTimeout(settleTimer.current), []);
-
   // A real meeting: drop #start or #quote from the address (a reload then
   // resumes), and hold a step of history so an edge swipe back stays in the
   // deck instead of opening the lead page with its notes in front of the
@@ -346,9 +332,8 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
       initialsDraft,
       savedQuote,
       screen: { index: current, at: Date.now(), key: currentKey },
-      ...(picker ? { picker } : {}),
     });
-  }, [persist, meeting, quote, quoteId, savedAt, initialsDraft, savedQuote, current, currentKey, picker]);
+  }, [persist, meeting, quote, quoteId, savedAt, initialsDraft, savedQuote, current, currentKey]);
 
   const scrollToPage = useCallback(
     (at: number) => {
@@ -360,30 +345,17 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
     [pages.length, reduced],
   );
 
-  // A page turn from code (a swipe on the picker's photo, Your house or the
-  // mockup, a chevron, a key). Changing page closes any open layer. Between
-  // Your house and the light picker the photo is the same and in the same
-  // place, so the turn is a jump with the band fading in over 300 ms: the
-  // photo stays put and dusk falls on it (instant with Reduce Motion).
+  // A page turn from code (a swipe on the Main mockup, a chevron, a key).
+  // Changing page closes any open layer.
   const turnPage = useCallback(
     (delta: number) => {
       const box = pager.current;
       if (!box || box.clientWidth === 0) return;
       setLayer(null);
       const from = Math.round(box.scrollLeft / box.clientWidth);
-      const to = Math.min(pages.length - 1, Math.max(0, from + delta));
-      const toKey = pages[to]?.key;
-      if (to !== from && isHouseTurn(pages[from]?.key, toKey)) {
-        box.scrollTo({ left: to * box.clientWidth, behavior: "instant" });
-        if (!reduced) {
-          const band = box.querySelector(`section[data-page="${toKey}"] [data-deck-tray]`);
-          band?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: HOUSE_FADE_MS, easing: EASE_QUIET });
-        }
-        return;
-      }
       scrollToPage(from + delta);
     },
-    [scrollToPage, pages, reduced],
+    [scrollToPage],
   );
 
   const goTo = useCallback(
@@ -434,20 +406,29 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
       setIndex(next);
       setLayer(null);
     }
-    setSettled(false);
-    window.clearTimeout(settleTimer.current);
-    settleTimer.current = window.setTimeout(() => setSettled(true), 150);
   }
 
   // What happens next reads back the option chosen on the price page, priced
   // as the price page prices it.
+  // With Black Friday on, the regular total struck through before the
+  // Black Friday one (lib/meeting/black-friday-state.ts).
   const recap = useMemo(() => {
     if (!meeting || !quote?.chosenOffer) return null;
     const offer = quoteOffers(quote).find((item) => item.id === quote.chosenOffer);
-    const totals = offer ? priceOffer(quoteInputs(quote, meeting.pricing), offer) : null;
-    if (!offer || !totals || totals.totalFeet <= 0) return null;
-    return recapLine(deck.words.lines, offer.name, totals.subtotal, meeting.pricing.gstEnabled);
-  }, [meeting, quote, deck.words.lines]);
+    if (!offer) return null;
+    const deal = meeting.pricing.blackFriday;
+    const price = offerPrice(quoteInputs(quote, meeting.pricing), offer, deal, !accepted && blackFridayOn(quote, deal));
+    const totals = price.deal ?? price.regular;
+    if (!totals || !price.regular || totals.totalFeet <= 0) return null;
+    return recapParts(deck.words.lines, offer.name, price.regular.subtotal, price.deal ? price.deal.subtotal : null, meeting.pricing.gstEnabled);
+  }, [meeting, quote, deck.words.lines, accepted]);
+  // Every change to the quote keeps its Black Friday line as the button
+  // says (an edit to the runs recomputes it); the accepted quote stays as
+  // agreed.
+  const changeQuote = useCallback(
+    (next: QuoteUIState) => setQuote(accepted || !meeting ? next : settleBlackFriday(next, meeting.pricing)),
+    [accepted, meeting],
+  );
 
   const context = useMemo<DeckContextValue>(
     () => ({
@@ -488,20 +469,6 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             moreLabel={deck.words.pages.warranty.moreLabel.trim() || undefined}
           />
         );
-      case "light_picker":
-        return deck.picker && near ? (
-          <PickerPage
-            picker={deck.picker}
-            looks={deck.looks}
-            headline={deck.words.pages.light_picker.headline}
-            words={deck.words.pages.light_picker.words}
-            current={at === current && settled}
-            stored={picker ?? undefined}
-            onStored={setPicker}
-            layerOpen={layer !== null}
-            onSwipe={turnPage}
-          />
-        ) : null;
       case "quote":
         return meeting && quote ? (
           <QuoteScreen
@@ -510,7 +477,7 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             colourKind={colour.kind}
             colourText={colour.text}
             state={quote}
-            onChange={setQuote}
+            onChange={changeQuote}
             quoteId={quoteId}
             savedAt={savedAt}
             dirty={dirty}
@@ -559,7 +526,9 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
           />
         );
       }
-      // Left the order in round 10 (lib/deck.ts RETIRED_PAGES): never shown.
+      // Left the order in round 10, and the light picker on 2026-11-11
+      // (lib/deck.ts RETIRED_PAGES): never shown, traced or not.
+      case "light_picker":
       case "gallery":
       case "your_house":
       case "mockup":

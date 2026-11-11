@@ -615,7 +615,7 @@ describe("will the words fit at the meeting?", () => {
   it("stays in step with the deck's bottom row and More button", () => {
     for (const width of MORE_FIT.widths) expect(moreRowRight(width)).toBe(bottomRowRight(width, MORE_FIT.pages));
     // The most pages a meeting shows at once.
-    expect(MORE_FIT.pages).toBe(8);
+    expect(MORE_FIT.pages).toBe(7);
     expect(MORE_FIT.row).toEqual({ dot: DECK_ROW.dot, pillEnds: DECK_ROW.pillEnds, chevron: DECK_ROW.chevron, gap: DECK_ROW.gap });
     // DeckButton: 20 px semibold, 24 px padding and a 1 px border each side;
     // BottomCorner: 48 px from the left edge (round 9), the row centred, so
@@ -668,22 +668,22 @@ const MANROPE_LABELS: Record<string, number> = {
 const labelMeasure: TextMeasure = (text, font) => (font.size === 20 && font.weight === 600 && text in MANROPE_LABELS ? MANROPE_LABELS[text] : approx(text, font));
 
 describe("will a More button's label fit the bottom row?", () => {
-  it("leaves 16 px between the button and the dots and chevrons, with the 8 pages a meeting can show", () => {
-    // Round 10: 428 px of dots and chevrons, centred: they span 376 to 804
-    // at 1180 and 469 to 897 at 1366.
-    expect(moreRowRight(1180)).toBe(804);
-    expect(moreRowRight(1366)).toBe(897);
+  it("leaves 16 px between the button and the dots and chevrons, with the 7 pages a meeting can show", () => {
+    // 2026-11-11 (no light picker): 388 px of dots and chevrons, centred:
+    // they span 396 to 784 at 1180 and 489 to 877 at 1366.
+    expect(moreRowRight(1180)).toBe(784);
+    expect(moreRowRight(1366)).toBe(877);
     // The button sits 48 px from the edge, with 24 px padding and a 1 px border each side.
-    expect(moreLabelRoom(1180)).toBe(1180 - 48 - (804 + 16) - 50);
-    expect(moreLabelRoom(1180)).toBe(1180 - 804 - 16 - 48 - 50);
-    expect(moreLabelRoom(1366)).toBe(1366 - 48 - (897 + 16) - 50);
+    expect(moreLabelRoom(1180)).toBe(1180 - 48 - (784 + 16) - 50);
+    expect(moreLabelRoom(1180)).toBe(1180 - 784 - 16 - 48 - 50);
+    expect(moreLabelRoom(1366)).toBe(1366 - 48 - (877 + 16) - 50);
   });
 
   it("passes every seeded label at Manrope's own widths, and refuses one that would reach the dots", () => {
     for (const page of WORDS_PAGES) {
       expect(deckFitIssues(DECK_SEED, labelMeasure)[`${page}.moreLabel`], page).toBeUndefined();
     }
-    // "What the app does" leaves 83 px at 1180 (its button ends at 277, the dots start at 376).
+    // "What the app does" leaves 103 px at 1180 (its button ends at 277, the dots start at 396).
     expect(moreLabelFitIssue("What the app does", labelMeasure)).toBeNull();
     expect(moreLabelFitIssue("What the app can do", labelMeasure)).toBeNull();
     // About 344 px: its button would end at 442, past the dots.
