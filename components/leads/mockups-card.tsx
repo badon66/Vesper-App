@@ -70,35 +70,54 @@ export function MockupsCard({
     setError(null);
     setUploading({ done: 0, of: batch.length, previews });
     const supabase = createClient();
-    const added: { path: string }[] = [];
+    // Round 13 (Keenan, 2026-11-11): the pictures go up together. Each is
+    // made smaller in turn (the iPad's own work, one at a time), and its
+    // upload starts at once, without waiting for the one before. Each keeps
+    // its place in the order they were picked, so the first is still the
+    // Main on a house with none.
+    const slots: ({ path: string } | null)[] = batch.map(() => null);
     let failed = chosen.length - batch.length;
     // A file the browser can't read (a HEIC from the Files app on an older
     // iPad, say; Photos hands over a JPEG) is told apart from an upload
     // that failed on signal.
     let unreadable = 0;
-    for (const file of batch) {
+    let finished = 0;
+    const show = () => setUploading({ done: finished, of: batch.length, previews: [...previews] });
+    const uploads: Promise<void>[] = [];
+    for (const [at, file] of batch.entries()) {
       let small: Blob;
       try {
         small = await shrinkPhoto(file, MEETING_PHOTO_MAX_EDGE);
       } catch {
         unreadable += 1;
-        setUploading({ done: added.length + failed + unreadable, of: batch.length, previews: [...previews] });
+        finished += 1;
+        show();
         continue;
       }
-      try {
-        previews.push(URL.createObjectURL(small));
-        setUploading({ done: added.length + failed + unreadable, of: batch.length, previews: [...previews] });
-        const path = photoPath(userId, crypto.randomUUID());
-        const { error: uploadError } = await supabase.storage
+      previews.push(URL.createObjectURL(small));
+      show();
+      const path = photoPath(userId, crypto.randomUUID());
+      uploads.push(
+        supabase.storage
           .from(PHOTO_BUCKET)
-          .upload(path, small, { contentType: "image/jpeg", upsert: false });
-        if (uploadError) throw uploadError;
-        added.push({ path });
-      } catch {
-        failed += 1;
-      }
-      setUploading({ done: added.length + failed + unreadable, of: batch.length, previews: [...previews] });
+          .upload(path, small, { contentType: "image/jpeg", upsert: false })
+          .then(
+            ({ error: uploadError }) => {
+              if (uploadError) failed += 1;
+              else slots[at] = { path };
+            },
+            () => {
+              failed += 1;
+            },
+          )
+          .finally(() => {
+            finished += 1;
+            show();
+          }),
+      );
     }
+    await Promise.all(uploads);
+    const added = slots.filter((slot): slot is { path: string } => slot !== null);
     try {
       if (added.length > 0) {
         const result = await addLeadMockups(leadId, added);
@@ -162,7 +181,7 @@ export function MockupsCard({
         data-testid="mockups-add"
       >
         <ImagePlus aria-hidden="true" />
-        {busy ? `Uploading ${Math.min(uploading.done + 1, uploading.of)} of ${uploading.of}` : none ? (bare ? "Upload the mockup" : "Upload mockups") : "Add mockups"}
+        {busy ? uploadingWords(uploading.done, uploading.of) : none ? (bare ? "Upload the mockup" : "Upload mockups") : "Add mockups"}
       </Button>
       <input
         ref={input}
@@ -366,6 +385,13 @@ function MockupTile({
       </div>
     </li>
   );
+}
+
+// What the button says while pictures go up together (round 13): how many
+// are up so far, then that they are being saved to the house.
+export function uploadingWords(done: number, of: number): string {
+  if (done >= of) return "Saving";
+  return of === 1 ? "Uploading" : `Uploading, ${done} of ${of} up`;
 }
 
 // A one-tap toggle: filled navy when on, with a tick, so it never relies on

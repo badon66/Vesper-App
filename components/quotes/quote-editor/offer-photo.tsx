@@ -3,7 +3,7 @@
 import { ImagePlus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { addLeadMockups, setLeadMockupOffer } from "@/app/(app)/app/leads/mockup-actions";
+import { addLeadMockups, setOfferPicture } from "@/app/(app)/app/leads/mockup-actions";
 import { Button } from "@/components/ui/button";
 import type { LeadMockupItem } from "@/lib/leads/mockup-roles";
 import { MEETING_PHOTO_MAX_EDGE, PHOTO_BUCKET, photoPath, shrinkPhoto } from "@/lib/photos";
@@ -73,24 +73,18 @@ export function useOfferPhotos({
 
   if (!mockups) return null;
 
+  // Round 13: each tap is one call (it was two or three, each waiting on
+  // the one before), and the save brings the page's own list back with it.
   async function pick(offerId: string, mockupId: string) {
+    if (!leadId) return;
     const before = list;
-    const { list: next, previous } = pickMockupForOffer(list, mockupId, offerId);
-    setList(next);
+    setList(pickMockupForOffer(list, mockupId, offerId).list);
     setMessage(null);
     try {
-      if (previous) {
-        const off = await setLeadMockupOffer(previous, offerId, false);
-        if (!off.ok) {
-          setList(before);
-          setMessage({ offerId, text: off.message });
-          return;
-        }
-      }
-      const on = await setLeadMockupOffer(mockupId, offerId, true);
-      if (!on.ok) {
+      const saved = await setOfferPicture(leadId, offerId, mockupId);
+      if (!saved.ok) {
         setList(before);
-        setMessage({ offerId, text: on.message });
+        setMessage({ offerId, text: saved.message });
         return;
       }
       onRefresh?.();
@@ -104,16 +98,15 @@ export function useOfferPhotos({
     const before = list;
     const own = list.filter((item) => item.offers.includes(offerId));
     if (own.length === 0) return;
+    if (!leadId) return;
     setList(list.map((item) => (item.offers.includes(offerId) ? { ...item, offers: item.offers.filter((id) => id !== offerId) } : item)));
     setMessage(null);
     try {
-      for (const item of own) {
-        const off = await setLeadMockupOffer(item.id, offerId, false);
-        if (!off.ok) {
-          setList(before);
-          setMessage({ offerId, text: off.message });
-          return;
-        }
+      const saved = await setOfferPicture(leadId, offerId, null);
+      if (!saved.ok) {
+        setList(before);
+        setMessage({ offerId, text: saved.message });
+        return;
       }
       onRefresh?.();
     } catch {
@@ -143,21 +136,13 @@ export function useOfferPhotos({
         setMessage({ offerId, text: "The picture didn't upload. Check your signal and try again." });
         return;
       }
-      const added = await addLeadMockups(leadId, [{ path }]);
+      // Added to the house's mockups as this offer's own picture, in one
+      // call (round 13; it was an add, a read and two marks).
+      const added = await addLeadMockups(leadId, [{ path }], { forOffer: offerId });
       if (!added.ok) {
         setPending(null);
         setMessage({ offerId, text: added.message });
         return;
-      }
-      // Its row, to mark it for this offer (the owner's own session reads it).
-      const { data: row } = await supabase.from("lead_mockups").select("id").eq("storage_path", path).is("removed_at", null).maybeSingle();
-      if (row) {
-        const previous = list.find((item) => item.offers.includes(offerId));
-        if (previous) await setLeadMockupOffer(previous.id, offerId, false);
-        const marked = await setLeadMockupOffer(row.id, offerId, true);
-        if (!marked.ok) setMessage({ offerId, text: marked.message });
-      } else {
-        setMessage({ offerId, text: "The picture is in Mockups now. Pick it for this offer." });
       }
       onRefresh?.();
     } catch {

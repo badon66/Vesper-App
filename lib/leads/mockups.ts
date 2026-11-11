@@ -8,13 +8,27 @@ export type { LeadMockupItem, MockupOffer } from "@/lib/leads/mockup-roles";
 
 // The Mockups section's facts (round 10): the lead's mockups, signed for an
 // hour, in Keenan's order, and the offers on the same quote the Quote card
-// shows (the latest draft, presented or accepted one), for the "for an
-// offer" chips. Owner only: the database returns nothing to anyone else,
-// and the pages call this only for Keenan, never under View as.
-export async function loadLeadMockups(
+// shows (the latest draft, presented or accepted one), to say which offers
+// use each picture. Owner only: the database returns nothing to anyone
+// else, and the pages call this only for Keenan, never under View as.
+// Round 13: in two halves, so the lead page reads the rows with everything
+// else it asks for first, and signs the pictures alongside the rest after.
+type MockupRow = {
+  id: string;
+  storage_path: string;
+  name: string;
+  is_main: boolean;
+  is_day: boolean;
+  is_night: boolean;
+  is_scene: boolean;
+  offer_ids: string[] | null;
+};
+export type LeadMockupRows = { rows: MockupRow[]; offers: MockupOffer[] };
+
+export async function loadLeadMockupRows(
   supabase: Awaited<ReturnType<typeof createClient>>,
   leadId: string,
-): Promise<{ mockups: LeadMockupItem[]; offers: MockupOffer[] }> {
+): Promise<LeadMockupRows> {
   const [{ data: rows }, { data: quoteRow }] = await Promise.all([
     supabase
       .from("lead_mockups")
@@ -32,18 +46,24 @@ export async function loadLeadMockups(
       .limit(1)
       .maybeSingle(),
   ]);
-  const list = rows ?? [];
-  const signed =
-    list.length > 0
-      ? ((await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(list.map((row) => row.storage_path), 3600)).data ?? [])
-      : [];
-  const urlByPath = new Map(signed.flatMap((item) => (item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : [])));
   const runCount = Array.isArray(quoteRow?.runs) ? quoteRow.runs.length : 0;
   const offers = quoteRow
     ? parseOffers(quoteRow.offers, runCount).map((offer) => ({ id: offer.id, name: offer.name, ...(offer.hidden ? { hidden: true } : {}) }))
     : [];
+  return { rows: rows ?? [], offers };
+}
+
+export async function signLeadMockups(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  { rows, offers }: LeadMockupRows,
+): Promise<{ mockups: LeadMockupItem[]; offers: MockupOffer[] }> {
+  const signed =
+    rows.length > 0
+      ? ((await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(rows.map((row) => row.storage_path), 3600)).data ?? [])
+      : [];
+  const urlByPath = new Map(signed.flatMap((item) => (item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : [])));
   return {
-    mockups: list.map((row) => ({
+    mockups: rows.map((row) => ({
       id: row.id,
       url: urlByPath.get(row.storage_path) ?? null,
       name: row.name,
@@ -55,4 +75,11 @@ export async function loadLeadMockups(
     })),
     offers,
   };
+}
+
+export async function loadLeadMockups(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  leadId: string,
+): Promise<{ mockups: LeadMockupItem[]; offers: MockupOffer[] }> {
+  return signLeadMockups(supabase, await loadLeadMockupRows(supabase, leadId));
 }

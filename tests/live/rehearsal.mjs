@@ -394,6 +394,8 @@ const priceRows = (region) =>
       onScreen: button.getAttribute("data-on-screen"),
       chosen: button.getAttribute("data-chosen"),
       regular: button.querySelector('[data-testid="price-option-regular"]')?.textContent ?? null,
+      // Round 13: "Already at our lowest price." under an option the deal can't lower.
+      lowest: button.querySelector('[data-testid="price-option-lowest"]')?.textContent ?? null,
       total: button.querySelector('[data-testid="price-option-total"]')?.textContent ?? "",
       name: button.querySelector('[data-testid="price-option-name"]')?.textContent ?? button.textContent ?? "",
     })),
@@ -845,14 +847,14 @@ async function rehearse(lead, { deal, tag, chooseName, bookName, pickDay }) {
     // An option already at the minimum keeps one price, nothing struck.
     await checkShot(
       page,
-      `on, every option the deal lowers shows its regular price struck through beside $${deal} off, and one at the minimum keeps its price`,
+      `on, every option the deal lowers shows its regular price struck through beside $${deal} off, and one at the minimum keeps its price and says "Already at our lowest price." under it (round 13)`,
       flat(await dealButton.innerText()).includes(`$${deal} off`) &&
         priceOptions.every((row) =>
           expectedDeal[row.id] < expectedPlain[row.id]
-            ? row.regular !== null && dollarsIn(row.regular) === expectedPlain[row.id] && dollarsIn(row.total) === expectedDeal[row.id]
-            : row.regular === null && dollarsIn(row.total) === expectedDeal[row.id],
+            ? row.regular !== null && dollarsIn(row.regular) === expectedPlain[row.id] && dollarsIn(row.total) === expectedDeal[row.id] && row.lowest === null
+            : row.regular === null && dollarsIn(row.total) === expectedDeal[row.id] && flat(row.lowest ?? "") === "Already at our lowest price.",
         ),
-      JSON.stringify(priceOptions.map((row) => [row.id, row.regular, row.total])),
+      JSON.stringify(priceOptions.map((row) => [row.id, row.regular, row.total, row.lowest])),
       "your-price-deal",
     );
   } else {
@@ -1042,9 +1044,9 @@ async function rehearse(lead, { deal, tag, chooseName, bookName, pickDay }) {
   const acceptRow = offered.find((row) => row.offer === acceptId);
   await checkShot(
     page,
-    "the Accepted sheet lists the three options, says where each choice came from, starts on the meeting's choice, and prices each with its commission",
+    "the Accepted sheet lists the three options, says where each choice came from, opens on the option the customer booked on their link (round 13), and prices each with its commission",
     offered.length === 3 &&
-      [chosenId, bookId].includes(offered.find((row) => row.checked)?.offer) &&
+      offered.find((row) => row.checked)?.offer === bookId &&
       sources.includes(`Chosen at the meeting: ${chooseName}`) &&
       sources.includes(`Booked on their link: ${bookName}`) &&
       acceptRow !== undefined &&
@@ -1054,10 +1056,15 @@ async function rehearse(lead, { deal, tag, chooseName, bookName, pickDay }) {
     "accepted-sheet",
   );
   if (bookName !== chooseName) {
-    const startedOn = offered.find((row) => row.checked)?.offer === bookId ? "the option the customer booked" : `the meeting's choice (${chooseName})`;
-    observe(`the Accepted sheet opened on ${startedOn} when the meeting's choice (${chooseName}) and the customer's booked option (${bookName}) differ; both are named above the options, and Keenan picks the booked one himself`);
-    await tap(acceptSheet.locator(`[data-testid="outcome-option"][data-offer="${acceptId}"]`));
-    await page.waitForTimeout(300);
+    // Round 13: it opens on what they booked, with the table's choice
+    // marked on its own row; nothing to pick.
+    check(
+      "with a different choice at the table, the sheet still opens on what they booked, and the table's choice is marked on its own row",
+      offered.find((row) => row.checked)?.offer === bookId &&
+        acceptId === bookId &&
+        flat(await acceptSheet.locator(`[data-testid="outcome-option"][data-offer="${chosenId}"]`).getByTestId("outcome-option-meeting").innerText().catch(() => "")) === "Chosen at the meeting",
+      JSON.stringify(offered.map((row) => [row.offer, row.checked, row.meeting, row.booked])),
+    );
   }
   const plannedOn = await page.getByTestId("outcome-planned-on").inputValue().catch(() => "");
   if (installDay) check("the sheet starts on the install day picked at the table", plannedOn === installDay, plannedOn);
