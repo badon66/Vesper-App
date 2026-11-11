@@ -6,9 +6,9 @@ import { createPortal } from "react-dom";
 
 import { InitialsConfirm, type Confirmation } from "@/components/meeting/colour-page";
 import { DeckButton, DeckImage, DECK_TYPE, MoreLayer, say, useDeck } from "@/components/meeting/deck-parts";
+import { EditorClose, EditorSave } from "@/components/quotes/quote-editor/parts";
 import { hasMeasuredRun, QuoteEditor } from "@/components/quotes/quote-editor/quote-editor";
 import { useQuoteSave } from "@/components/quotes/quote-editor/use-quote-save";
-import { Button } from "@/components/ui/button";
 import { DEFAULT_LINES, deckLine, priceSubLine, type DeckLines } from "@/lib/deck";
 import { breakdownRows, coverageLine, minimumSentence, NO_PAYMENT, screenOptions, type BreakdownRow } from "@/lib/meeting/price-screen";
 import { blackFridayOn, chooseWithBlackFriday, offerPrice, withBlackFriday } from "@/lib/meeting/black-friday-state";
@@ -621,9 +621,10 @@ function Breakdown({ totals }: { totals: QuoteTotals }) {
 }
 
 // Keenan's Edit layer: the shared quote editor, full screen inside the deck
-// (over the pages, under the way out), with Save in gold, the save's state
-// and the signal note. Done goes back to the price page; anything unsaved
-// stays on the iPad.
+// (over the pages, under the way out), with Save changes in gold, the
+// save's state and the signal note. Close goes back to the price page;
+// anything unsaved stays on the iPad. The pair is the editor's own
+// (parts.tsx), the same two the lead page's sheet shows (round 12).
 function EditLayer({
   leadId,
   pricing,
@@ -749,14 +750,8 @@ function EditLayer({
           )}
         </div>
         <div className="flex items-center gap-3">
-          <Button type="button" variant="outline" size="lg" onClick={onClose} data-testid="quote-edit-done">
-            Done
-          </Button>
-          {!locked ? (
-            <Button type="button" size="lg" onClick={() => void onSave()} disabled={busy || !measured || nameIssue} data-testid="quote-edit-save">
-              {busy ? "Saving" : quoteId ? "Save changes" : "Save quote"}
-            </Button>
-          ) : null}
+          <EditorClose onClick={onClose} testId="quote-edit-done" />
+          {!locked ? <EditorSave onClick={() => void onSave()} disabled={busy || !measured || nameIssue} busy={busy} testId="quote-edit-save" /> : null}
         </div>
       </footer>
     </div>,

@@ -1,9 +1,9 @@
 "use client";
 
-import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { EditorClose, EditorSave } from "@/components/quotes/quote-editor/parts";
 import { hasMeasuredRun, QuoteEditor } from "@/components/quotes/quote-editor/quote-editor";
 import { useQuoteSave } from "@/components/quotes/quote-editor/use-quote-save";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,8 @@ import { formatFullDate } from "@/lib/time";
 // only, saying why. Opened from prep with #edit-quote in the address, the
 // sheet opens at once. Round 11: the lead's mockups go in for the photo
 // spot on each offer, and a pick or an upload refreshes the page's read.
+// Round 12: Close and Save changes are the editor's own pair (parts.tsx),
+// the same two meeting mode's Edit layer shows.
 
 export type QuoteEditorCardProps = {
   leadId: string;
@@ -225,16 +227,7 @@ function QuoteSheet({
               </h2>
               <p className="truncate text-sm text-muted-foreground">{leadName}</p>
             </div>
-            <Button type="button" variant="outline" onClick={tryClose} data-testid="quote-sheet-close">
-              {leaving ? (
-                "Close without saving"
-              ) : (
-                <>
-                  <X aria-hidden="true" />
-                  Close
-                </>
-              )}
-            </Button>
+            <EditorClose onClick={tryClose} leaving={leaving} testId="quote-sheet-close" />
           </div>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
@@ -275,9 +268,7 @@ function QuoteSheet({
                   </>
               )}
             </div>
-            <Button type="button" onClick={() => void onSave()} disabled={!canSave} data-testid="quote-sheet-save">
-              {busy ? "Saving" : "Save"}
-            </Button>
+            <EditorSave onClick={() => void onSave()} disabled={!canSave} busy={busy} testId="quote-sheet-save" />
           </div>
         </footer>
         )}
