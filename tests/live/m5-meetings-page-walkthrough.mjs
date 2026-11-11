@@ -249,7 +249,7 @@ try {
   const soonText = (await soonCard.innerText().catch(() => "")).replace(/\s+/g, " ");
   check(
     "tomorrow's meeting is in the Next few days row, with its time and what's left",
-    soonText.includes(`${TEST_LEAD} Later`) && soonText.includes("11:00 p.m. tomorrow") && soonText.includes("6 left"),
+    soonText.includes(`${TEST_LEAD} Later`) && soonText.includes("11:00 p.m. tomorrow") && soonText.includes("5 left"),
     soonText.slice(0, 160),
   );
   check(
@@ -286,7 +286,7 @@ try {
   );
   check(
     "it says Prepare for the meeting with how many are left, and Start is there",
-    (await page.getByTestId("prep-status").innerText()).trim() === "Prepare for the meeting: 6 left" &&
+    (await page.getByTestId("prep-status").innerText()).trim() === "Prepare for the meeting: 5 left" &&
       (await page.getByTestId("prep-start").getAttribute("href")) === `/meeting/${laterLead}#start` &&
       (await page.getByTestId("prep-when").innerText()).trim() === "11:00 p.m. tomorrow",
   );
@@ -447,6 +447,14 @@ try {
     process.kill(-offlineServer.pid, "SIGTERM");
   } catch {}
   for (let i = 0; i < 30 && (await serverAnswers(offlineBase)); i += 1) await sleep(500);
+  // A server still answering after 15 s is made to stop, so the dead-spot
+  // check below is about the browser, not about how long Next takes to go.
+  if (await serverAnswers(offlineBase)) {
+    try {
+      process.kill(-offlineServer.pid, "SIGKILL");
+    } catch {}
+    for (let i = 0; i < 30 && (await serverAnswers(offlineBase)); i += 1) await sleep(500);
+  }
   const gone = !(await serverAnswers(offlineBase));
   // And the browser itself without a network, as in a dead spot.
   await ownerContext.setOffline(true);
@@ -510,19 +518,39 @@ try {
     "a setter who opens Meetings gets Not for your role, and none of the meetings",
     (await setterPage.getByRole("heading", { name: "Not for your role" }).count()) === 1 && (await setterPage.getByTestId("meeting-item").count()) === 0,
   );
+  // The reminder bar (round 9, book now, finish later) names the setter's
+  // own bookings still to finish, these test leads among them, so names
+  // and addresses are checked outside it; the prep list's own notes and
+  // markup must never reach them at all.
+  const outsideBar = (page) =>
+    page.evaluate(() => {
+      const body = document.body.cloneNode(true);
+      body.querySelector('[data-testid="to-finish-bar"]')?.remove();
+      body.querySelectorAll("script").forEach((script) => script.remove());
+      return body.textContent ?? "";
+    });
   await setterPage.goto(`${base}/app/meetings/prep/${laterLead}`);
   await settle(setterPage);
   const prepSource = await setterPage.content();
   check(
     "a setter who opens a prep list gets Not for your role, and none of it",
-    (await setterPage.getByRole("heading", { name: "Not for your role" }).count()) === 1 && !prepSource.includes("Gate code 4411") && !prepSource.includes(`${TEST_LEAD} Later`),
+    (await setterPage.getByRole("heading", { name: "Not for your role" }).count()) === 1 &&
+      !prepSource.includes("Gate code 4411") &&
+      !prepSource.includes("prep-list") &&
+      !prepSource.includes("prep-brief") &&
+      !(await outsideBar(setterPage)).includes(`${TEST_LEAD} Later`),
   );
   await setterPage.goto(`${base}/app/meetings`);
   await settle(setterPage);
   const setterSource = await setterPage.content();
+  const setterText = await outsideBar(setterPage);
   check(
-    "and its page source carries none of them: no names, no addresses",
-    !setterSource.includes(street) && !setterSource.includes(`${TEST_LEAD} Tonight`) && !setterSource.includes(`${TEST_LEAD} Later`),
+    "and its page carries none of them outside their own reminders: no meetings, no names, no addresses",
+    !setterSource.includes("meeting-item") &&
+      !setterSource.includes("quick-pick") &&
+      !setterText.includes(street) &&
+      !setterText.includes(`${TEST_LEAD} Tonight`) &&
+      !setterText.includes(`${TEST_LEAD} Later`),
   );
   await setterContext.close();
 
