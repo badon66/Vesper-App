@@ -1,6 +1,7 @@
 import { createClient, type PostgrestError, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { commissionAmountCents, commissionFor, commissionQuoteFromRow } from "@/lib/pay/commission";
+import { commissionAmountCents, commissionFor, commissionLightsCents, commissionQuoteFromRow } from "@/lib/pay/commission";
+import { parseOffers } from "@/lib/quotes/offers";
 import type { Database, Json } from "@/types/database";
 
 // Proves round 8 in the database itself (Keenan, 2026-11-09): only Keenan
@@ -13,7 +14,9 @@ import type { Database, Json } from "@/types/database";
 // payable once installed, paid in Pay, and voided with its reason when the
 // sale is undone, cancelled or the lead leaves Sold, unless it was already
 // paid. Timeline events never carry an amount or a typed note, and the
-// install and sale dates are Keenan's to set.
+// install and sale dates are Keenan's to set. Round 11 (quoting by area) is
+// near the end: each area at its own price, flat or a foot, and upper access
+// never counted.
 //
 // Two throwaway setters and an account with no profile, with test-prefixed
 // emails; their leads are named "TEST LEAD (automated)". Everything made
@@ -839,6 +842,142 @@ describe("accepting an option", () => {
     expect((await users.a.client.from("quotes").select("meeting_offer").eq("id", quote)).data ?? []).toEqual([]);
     expect((await admin.rpc("quote_accept_offer", { p_quote: quote, p_offer: "full" })).error).toBeNull();
     expect(hintOf((await admin.from("quotes").update({ meeting_offer: "full" }).eq("id", quote)).error)).toBe("quote_locked");
+  });
+});
+
+// Round 11 (Keenan, 2026-11-11): quoting by area. A run may carry its own
+// price a foot (rate) or a flat price (flat); the commission counts each
+// accepted run's lights at what it is priced at (quote_lights_cents, now
+// under quote_commission_base_boxes), and upper access stays out whether
+// automatic or typed over on the offer. Keenan's cases: a custom per-foot
+// area, a flat area, an edited upper access, a gable ticked off, and an old
+// quote. Everything made here is a TEST LEAD of the throwaway setter and is
+// removed with the rest at the end.
+describe("commission by area (round 11)", () => {
+  // The house: the front lower at the quote's $24, the front upper at
+  // Keenan's own $28, an upper gable at $24, and a shed at a flat $600.
+  const AREA_RUNS = [
+    { name: "Front lower", feet: 64, level: "lower", part: "eave", area: "front", gable: false },
+    { name: "Front upper", feet: 38, level: "upper", part: "eave", area: "front", gable: false, rate: 28 },
+    { name: "Front upper gable", feet: 10, level: "upper", part: "gable", area: "front", gable: true },
+    { name: "Shed", feet: 20, level: "lower", part: "other", area: "other", gable: false, flat: 600 },
+  ];
+  // The full wrap, hand-worked in cents:
+  //   lights    = 64 x 2,400 + 38 x 2,800 + 10 x 2,400 + 60,000 = 344,000
+  //   boxes     = 50,000 x 1
+  //   discounts = 15,000
+  //   base      = 379,000 cents = $3,790.00 (at 5%, $189.50)
+  // The $400 upper gable access the full wrap carries is never in it.
+  const FULL_LIGHTS_CENTS = 344_000;
+  const FULL_AREA_BASE_CENTS = 379_000;
+  // No gable (the gable ticked off, upper access typed 0): the gable's
+  // 24,000 cents of lights come off, so 320,000 + 50,000 - 15,000 = 355,000
+  // cents = $3,550.00 (at 5%, $177.50). The typed 0 changes nothing here:
+  // upper access never counts, automatic or typed.
+  const NO_GABLE_LIGHTS_CENTS = 320_000;
+  const NO_GABLE_BASE_CENTS = 355_000;
+  const AREA_OFFERS = [
+    { id: "full", name: "Full wrap", runs: [0, 1, 2, 3] },
+    { id: "nogable", name: "No gable", runs: [0, 1, 3], upper_access: 0 },
+  ];
+  const areaQuote = (leadId: string) =>
+    newQuote(leadId, {
+      price_per_ft: 24,
+      box_count: 1,
+      runs: AREA_RUNS as unknown as Json,
+      total_feet: 132,
+      adders: [],
+      discounts: [{ label: "Neighbour discount", amount: 150 }],
+      colour_timing: "stock",
+      min_job_total: null,
+      offers: AREA_OFFERS as unknown as Json,
+      subtotal: 4190,
+      total: 4190,
+    });
+  const acceptOffer = (quote: string, offer: string) => admin.rpc("quote_accept_offer", { p_quote: quote, p_offer: offer });
+  // A live link whose token the test keeps, to read the cleaned offers back
+  // through quote_for_customer, the one function that hands them out.
+  async function liveToken(leadId: string): Promise<string> {
+    const token = Array.from({ length: 24 }, () => TOKEN_CHARS[Math.floor(Math.random() * TOKEN_CHARS.length)]).join("");
+    const { error } = await admin.from("quote_links").insert({ lead_id: leadId, token, created_by: users.a.id });
+    if (error) throw new Error(`link: ${error.message}`);
+    return token;
+  }
+
+  it("the full wrap pays on each area at its own price (a custom rate, a flat shed, the gable), with upper access left out", async () => {
+    const lead = await newLead(users.a);
+    const quote = await areaQuote(lead);
+    const { data, error } = await acceptOffer(quote, "full");
+    expect(error).toBeNull();
+    const amount = amountFor(FULL_AREA_BASE_CENTS);
+    expect(data).toEqual({ commission: { profile_id: users.a.id, amount }, reason: null });
+    const stored = await quoteRow(quote);
+    expect(stored).toMatchObject({ status: "accepted", accepted_offer: "full", accepted_runs: null, accepted_boxes: 1 });
+    expect(await commissions(lead)).toMatchObject([{ base_amount: dollars(FULL_AREA_BASE_CENTS), amount, status: "pending" }]);
+    // The TypeScript mirror gives exactly the database's numbers, lights included.
+    const mirrored = commissionQuoteFromRow(stored, null);
+    expect(commissionLightsCents(mirrored)).toBe(FULL_LIGHTS_CENTS);
+    expect(commissionFor(mirrored, rate)).toEqual({ base: dollars(FULL_AREA_BASE_CENTS), amount });
+  });
+
+  it("the gable ticked off and upper access typed 0: the commission drops the gable's feet and nothing else", async () => {
+    const lead = await newLead(users.a);
+    const quote = await areaQuote(lead);
+    expect((await acceptOffer(quote, "full")).error).toBeNull();
+    expect((await undo(quote)).error).toBeNull();
+
+    const { data, error } = await acceptOffer(quote, "nogable");
+    expect(error).toBeNull();
+    const amount = amountFor(NO_GABLE_BASE_CENTS);
+    expect(data).toEqual({ commission: { profile_id: users.a.id, amount }, reason: null });
+    const stored = await quoteRow(quote);
+    expect(stored).toMatchObject({ status: "accepted", accepted_offer: "nogable", accepted_runs: [0, 1, 3], accepted_boxes: 1 });
+    const rows = await commissions(lead);
+    expect(rows.map((row) => row.status)).toEqual(["void", "pending"]);
+    expect(rows[1]).toMatchObject({ base_amount: dollars(NO_GABLE_BASE_CENTS), amount });
+    const mirrored = commissionQuoteFromRow(stored, stored.accepted_runs);
+    expect(commissionLightsCents(mirrored)).toBe(NO_GABLE_LIGHTS_CENTS);
+    expect(commissionFor(mirrored, rate)).toEqual({ base: dollars(NO_GABLE_BASE_CENTS), amount });
+    // The timeline names the option, never an amount.
+    expect(await lastEvent(lead, "quote_accepted")).toMatchObject({ quote_id: quote, option: "No gable" });
+  });
+
+  it("an old quote, whose runs carry no area keys, prices exactly as before", async () => {
+    const lead = await newLead(users.a);
+    const quote = await newQuote(lead);
+    expect((await acceptOffer(quote, "full")).error).toBeNull();
+    const stored = await quoteRow(quote);
+    expect(await commissions(lead)).toMatchObject([{ base_amount: dollars(FULL_BASE_CENTS), amount: amountFor(FULL_BASE_CENTS) }]);
+    // 115 ft at $23.50: the run typed as text counts nothing, as it always did.
+    expect(commissionLightsCents(commissionQuoteFromRow(stored, null))).toBe(270_250);
+  });
+
+  it("quote_offers_clean keeps a typed upper access amount to the cent, 0 included, and drops one that isn't usable", async () => {
+    const lead = await newLead(users.a);
+    const quote = await areaQuote(lead);
+    const token = await liveToken(lead);
+    const offers = [
+      { id: "zero", name: "Typed 0", runs: [0], upper_access: 0 },
+      { id: "cents", name: "To the cent", runs: [0], upper_access: 123.456 },
+      { id: "minus", name: "Below zero", runs: [0], upper_access: -5 },
+      { id: "text", name: "Typed as text", runs: [0], upper_access: "150" },
+      { id: "big", name: "Too big", runs: [0], upper_access: 100_000.01 },
+      { id: "auto", name: "Automatic", runs: [0] },
+    ];
+    expect((await admin.from("quotes").update({ offers: offers as unknown as Json }).eq("id", quote)).error).toBeNull();
+    const { data, error } = await anon.rpc("quote_for_customer", { p_token: token });
+    expect(error).toBeNull();
+    const cleaned = (data as unknown as { quote: { offers: { id: string; upper_access?: number | null }[] } }).quote.offers;
+    expect(cleaned.map((offer) => [offer.id, offer.upper_access])).toEqual([
+      ["zero", 0],
+      ["cents", 123.46],
+      ["minus", null],
+      ["text", null],
+      ["big", null],
+      ["auto", null],
+    ]);
+    // One shape everywhere: lib/quotes/offers.ts cleans it the same way.
+    expect(parseOffers(offers, AREA_RUNS.length).map((offer) => offer.upperAccess)).toEqual([0, 123.46, null, null, null, null]);
   });
 });
 
