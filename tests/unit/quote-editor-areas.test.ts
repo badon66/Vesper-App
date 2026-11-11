@@ -11,7 +11,10 @@ import {
   areaShortLabel,
   automaticUpperAccess,
   dropRun,
+  houseLineLabel,
+  houseLines,
   moneyText,
+  offerLitPositions,
   offerPhoto,
   pickMockupForOffer,
   runByTheFoot,
@@ -24,9 +27,10 @@ import {
 import { parseOffers, quickStartsFor, type QuoteOffer } from "@/lib/quotes/offers";
 
 // The quote editor by area (round 11, Keenan, 2026-11-11): the two views'
-// lines, the feet typed on them with the offers kept in step, an area priced
-// Keenan's way, the upper access an offer fills in itself, and the photo on
-// every offer.
+// lines, the feet typed on them with the offers kept in step, the lines as
+// drawn (measured, empty, lit by the active offer), an area priced Keenan's
+// way, the upper access an offer fills in itself, and the photo on every
+// offer.
 
 const HOUSE: QuoteRun[] = [
   newAreaRun("front_lower", 64),
@@ -68,6 +72,47 @@ describe("the views", () => {
     expect(areaShortLabel("front_lower_gable")).toBe("Lower gable");
     expect(areaShortLabel("back_upper_gable")).toBe("Upper gable");
     expect(areaShortLabel("sides_upper")).toBe("Upper");
+  });
+});
+
+describe("the views, drawn", () => {
+  it("knows each line's state: its run and feet when measured, empty otherwise, and lit when the active offer covers it", () => {
+    const lit = offerLitPositions(HOUSE, { runs: [0, 1, 2] });
+    expect([...lit]).toEqual([0, 1, 2]);
+    const lines = houseLines(HOUSE, lit);
+    expect(lines.front_lower).toEqual({ at: 0, feet: 64, measured: true, lit: true });
+    expect(lines.front_upper_gable).toEqual({ at: 1, feet: 10, measured: true, lit: true });
+    expect(lines.front_upper).toEqual({ at: 2, feet: 38, measured: true, lit: true });
+    // Measured, but the offer leaves it out: it stays as it is.
+    expect(lines.back_lower).toEqual({ at: 3, feet: 50, measured: true, lit: false });
+    expect(lines.sides_lower).toEqual({ at: null, feet: 0, measured: false, lit: false });
+    expect(lines.back_upper_gable).toEqual({ at: null, feet: 0, measured: false, lit: false });
+    // An Other is never a line on the drawings.
+    expect(Object.values(lines).some((line) => line.at === 4)).toBe(false);
+    expect(Object.keys(lines)).toHaveLength(10);
+  });
+
+  it("with no active offer nothing is lit; a run with no feet is an empty line and never lights", () => {
+    expect(offerLitPositions(HOUSE, null).size).toBe(0);
+    expect(Object.values(houseLines(HOUSE)).every((line) => !line.lit)).toBe(true);
+    // The new quote's one empty Front run is the Front lower line, unmeasured.
+    const fresh: QuoteRun[] = [{ name: "Front", feet: 0, level: "lower", part: "eave" }];
+    expect(houseLines(fresh, new Set([0])).front_lower).toEqual({ at: 0, feet: 0, measured: false, lit: false });
+    // Positions off the quote, and runs with no feet, light nothing.
+    expect([...offerLitPositions(fresh, { runs: [0, 7] })]).toEqual([]);
+    expect([...offerLitPositions(HOUSE, { runs: [3, 9] })]).toEqual([3]);
+  });
+
+  it("an old quote's extra run on an area is a row under the drawing, never the line: the line is the area's own run", () => {
+    // Front 60 ft and Garage 30 ft are both on the front lower; the line is Front.
+    expect(houseLines(OLD, new Set([1])).front_lower).toEqual({ at: 0, feet: 60, measured: true, lit: false });
+    expect(houseLines(OLD, new Set([0, 1])).front_lower).toEqual({ at: 0, feet: 60, measured: true, lit: true });
+  });
+
+  it("says what a line is in words", () => {
+    expect(houseLineLabel("front_lower", { feet: 64, measured: true })).toBe("Front lower, 64 ft");
+    expect(houseLineLabel("back_upper_gable", { feet: 0, measured: false })).toBe("Back upper gable, not measured");
+    expect(houseLineLabel("sides_upper", houseLines(HOUSE).sides_upper)).toBe("Sides upper, not measured");
   });
 });
 

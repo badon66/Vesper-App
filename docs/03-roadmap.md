@@ -143,6 +143,7 @@ Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a previe
 - [x] Commission stays 5% of lights and box after discounts, the lights being each area at what it is priced at; upper access out
 - [x] Old quotes keep their exact prices and open; old runs mapped onto areas where obvious, the rest Other
 - [x] Pricing unit tests, the quote-link, meeting and quote-outcomes walk-throughs one after another, with a custom per-foot area, a flat area, an edited upper access, a gable ticked off and an old quote; test records cleaned up
+- [x] The views drawn (2026-11-11): Front and Back house outlines with tappable lines, the Sides as two lines, an offer's lines lit from its card; the update notice, "Vesper updated. Reopen to get the latest.", never over a booking or in a meeting
 
 ### Take 2: after Keenan's first meetings
 - [ ] The leave-behind folder: a branded, always-white PDF through AirPrint and a share sheet: the personal quote (runs, feet, track colour, line-by-line prices, valid until), the mockup full page, a one-page overview, the warranty summary, the FAQ from Settings, and the company contact ((403) 895-9915, info@vesperlighting.ca, 448 Strathcona Drive SW, Calgary, AB T3H 1M3, never a unit number)

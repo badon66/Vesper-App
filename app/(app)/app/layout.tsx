@@ -7,6 +7,7 @@ import { Wordmark } from "@/components/brand/wordmark";
 import { SignOutButton } from "@/components/sign-out-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ToFinishBar } from "@/components/to-finish/to-finish-bar";
+import { UpdateNotice } from "@/components/update-notice";
 import { ViewAsBar } from "@/components/view-as-bar";
 import { ViewAsProvider } from "@/components/view-as-context";
 import { getViewer } from "@/lib/auth/profile";
@@ -61,6 +62,10 @@ export default async function AppLayout({
             that still miss something, as one slim line under the header.
             While Keenan views the app as a setter, it is that setter's. */}
         <ToFinishBar person={{ id: profile.id, role: profile.role }} />
+        {/* A quiet line when a newer build is live (Keenan, 2026-11-11);
+            meeting mode has its own layout without it, and it hides while
+            the booking sheet is open. */}
+        <UpdateNotice />
       </div>
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-10">
         {children}

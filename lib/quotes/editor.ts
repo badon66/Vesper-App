@@ -26,6 +26,10 @@
 //                                       the run's feet, or (0) the run taken off
 //   setRunFeet(state, at, feet)         feet typed on a run's own line
 //   appendRun, dropRun, addOtherRun     the runs and the offers kept in step
+//   houseLines(runs, lit)               each line on the drawn views: its run, its
+//                                       feet, measured or empty, lit by the offer
+//   offerLitPositions(runs, offer)      the measured positions an offer covers
+//   houseLineLabel(key, line)           "Front lower, 64 ft", what a line says
 //   runPricingMode(run)                 "quote", "rate" or "flat"
 //   setRunPricing(run, mode, value)     Keenan's own price a foot, or a flat price
 //   runByTheFoot(run, pricePerFt)       what the area comes to by the foot
@@ -107,7 +111,7 @@ export const LEVEL_WARNING = 'Customers may read "level" as the basement.';
 const nameOf = (offer: QuoteOffer) => cleanOfferName(offer.name);
 
 // The runs an offer really covers: those with measured feet.
-function measured(runs: readonly QuoteRun[], offer: QuoteOffer): number[] {
+function measured(runs: readonly QuoteRun[], offer: Pick<QuoteOffer, "runs">): number[] {
   return offer.runs.filter((p) => p >= 0 && p < runs.length && cleanFeet(runs[p].feet) > 0);
 }
 
@@ -302,6 +306,43 @@ export function setRunFeet(state: RunsAndOffers, at: number, feet: number): Runs
 // and measured on its line.
 export function addOtherRun(state: RunsAndOffers): RunsAndOffers {
   return appendRun(state, newOtherRun("", 0, "lower"));
+}
+
+// ------------------------------------------------ the views, drawn (Keenan, 2026-11-11)
+
+// A line on the drawn views: the area's own run (the first on it; an old
+// quote's extra runs on the area have rows of their own under the drawing,
+// never the line), its feet, whether it is on the house, and whether the
+// active offer lights it.
+export type HouseLine = { at: number | null; feet: number; measured: boolean; lit: boolean };
+
+// The measured positions an offer covers: what lights up on the drawings
+// while its card is active. Empty with no active offer.
+export function offerLitPositions(runs: readonly QuoteRun[], offer: Pick<QuoteOffer, "runs"> | null): Set<number> {
+  return new Set(offer ? measured(runs, offer) : []);
+}
+
+// Every line on the drawings from the runs and the lit positions: measured
+// when the area's run has feet (the new quote's empty Front run is an empty
+// line), lit when that run is among the lit ones. An area's extra runs
+// never measure or light its line.
+export function houseLines(runs: readonly QuoteRun[], lit: ReadonlySet<number> = new Set()): Record<AreaKey, HouseLine> {
+  const lines = areaLines(runs);
+  return Object.fromEntries(
+    AREA_KEYS.map((key) => {
+      const at = lines[key].length > 0 ? lines[key][0] : null;
+      const feet = at !== null ? cleanFeet(runs[at].feet) : 0;
+      const isMeasured = feet > 0;
+      const line: HouseLine = { at, feet, measured: isMeasured, lit: isMeasured && at !== null && lit.has(at) };
+      return [key, line];
+    }),
+  ) as Record<AreaKey, HouseLine>;
+}
+
+// What a line says to a screen reader: "Front lower, 64 ft", or "Front
+// lower, not measured".
+export function houseLineLabel(key: AreaKey, line: Pick<HouseLine, "feet" | "measured">): string {
+  return `${AREA_LABELS[key]}, ${line.measured ? `${line.feet} ft` : "not measured"}`;
 }
 
 // ------------------------------------------------ pricing an area Keenan's way

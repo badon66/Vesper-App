@@ -19,6 +19,9 @@ import { cn } from "@/lib/utils";
 // (filled in from its areas, typed over if he likes, 0 included), its own
 // box count, its photo spot (on the lead page), its live total and the
 // breakdown exactly as the customer sees it. Deleting takes a second tap.
+// A tap or focus anywhere on the card makes it the active offer, and the
+// areas it covers light up on the drawings above (onActivate); that writes
+// nothing.
 
 export function OfferCard({
   offer,
@@ -30,6 +33,7 @@ export function OfferCard({
   locked,
   photos = null,
   autoFocus = false,
+  onActivate,
   onChange,
   onDelete,
 }: {
@@ -47,6 +51,8 @@ export function OfferCard({
   photos?: OfferPhotos | null;
   // A blank offer just added: its name field takes focus.
   autoFocus?: boolean;
+  // Pointer down or focus within the card: it is the active offer.
+  onActivate?: () => void;
   onChange: (offer: QuoteOffer) => void;
   onDelete: () => void;
 }) {
@@ -80,6 +86,8 @@ export function OfferCard({
       data-offer-card={offer.id}
       data-testid="offer-card"
       aria-label={offer.name.trim() || "New offer"}
+      onPointerDown={onActivate}
+      onFocus={onActivate}
       className="flex min-w-0 flex-col gap-4 rounded-lg border bg-card p-4"
     >
       <div className="flex items-start gap-3">
