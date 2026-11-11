@@ -444,7 +444,8 @@ export function offerChoice(
   offerId: string | null,
 ): { id: string; name: string; total: string; totals: QuoteTotals; offer: QuoteOffer } | null {
   if (!offerId) return null;
-  const offer = quote.offers.find((candidate) => candidate.id === offerId);
+  // Never a hidden one (round 13): the customer can't see or book it.
+  const offer = quote.offers.find((candidate) => candidate.id === offerId && candidate.hidden !== true);
   const totals = offer ? priceOffer(customerInputs(quote, null), offer) : null;
   if (!offer || !totals) return null;
   return { id: offer.id, name: offer.name, total: screenTotal(totals.subtotal, quote.gstEnabled), totals, offer };

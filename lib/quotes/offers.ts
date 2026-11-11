@@ -16,8 +16,13 @@ import { areaOf, hasArea } from "@/lib/quotes/areas";
 // boxes: this offer's control box count, 1 to 9; null uses the quote's
 // box count (the five seats, 2026-11-10). upperAccess (round 11): the
 // upper access amount Keenan typed over for this offer, 0 included, kept
-// as upper_access in quotes.offers; null is the automatic amount.
-export type QuoteOffer = { id: string; name: string; runs: number[]; boxes?: number | null; upperAccess?: number | null };
+// as upper_access in quotes.offers; null is the automatic amount. hidden
+// (round 13, Keenan, 2026-11-11): Keenan's "Show to customer" switch, off.
+// A hidden offer stays in the editor, marked Hidden, and shows nowhere the
+// customer looks: not on Your price, not on their link (the database leaves
+// it out of what the link reads), not on the Accepted sheet. Kept only
+// when true.
+export type QuoteOffer = { id: string; name: string; runs: number[]; boxes?: number | null; upperAccess?: number | null; hidden?: boolean };
 
 export const OFFER_NAME_MAX = 60;
 // What the editor lets Keenan type, so an iPad button never wraps at three
@@ -125,6 +130,7 @@ export function parseOffers(value: unknown, runCount: number): QuoteOffer[] {
       runs: cleanPositions(runCount, record.runs),
       boxes: cleanBoxes(record.boxes),
       upperAccess: cleanUpperAccess(record.upper_access ?? record.upperAccess),
+      ...(record.hidden === true ? { hidden: true } : {}),
     });
   }
   if (offers.length > 0) return offers;
@@ -294,10 +300,48 @@ export function pricedOffers(inputs: QuoteInputs, offers: readonly QuoteOffer[])
   return priced.map(({ offer, totals, feet, everyRun }) => ({ offer, totals, feet, everyRun }));
 }
 
-// The offers worth showing a customer: those that cover at least one run.
+// The offers a customer sees: those that cover at least one run and that
+// Keenan hasn't hidden (round 13).
 export function shownOffers(inputs: QuoteInputs, offers: readonly QuoteOffer[]): PricedOffer[] {
-  return pricedOffers(inputs, offers).filter((priced) => priced.totals !== null);
+  return pricedOffers(inputs, offers).filter((priced) => priced.totals !== null && priced.offer.hidden !== true);
 }
+
+// Show to customer (round 13). At least one offer is always shown: a quote
+// with a hidden offer must keep a shown one that covers an area, or the
+// customer would open their link to nothing. True when that rule is broken.
+export function noOfferShown(offers: readonly QuoteOffer[]): boolean {
+  if (!offers.some((offer) => offer.hidden === true)) return false;
+  return !offers.some((offer) => offer.hidden !== true && offer.runs.length > 0);
+}
+
+// Whether this offer may be hidden: only while another one stays shown.
+export function canHideOffer(offers: readonly QuoteOffer[], id: string): boolean {
+  if (!offers.some((offer) => offer.id === id)) return false;
+  return !noOfferShown(offers.map((offer) => (offer.id === id ? { ...offer, hidden: true } : offer)));
+}
+
+// Flip an offer's switch. Hiding the last shown offer changes nothing.
+export function setOfferHidden(offers: readonly QuoteOffer[], id: string, hidden: boolean): QuoteOffer[] {
+  if (hidden && !canHideOffer(offers, id)) return [...offers];
+  return offers.map((offer) => {
+    if (offer.id !== id) return offer;
+    const { hidden: _was, ...rest } = offer;
+    void _was;
+    return hidden ? { ...rest, hidden: true } : rest;
+  });
+}
+
+// After an offer is deleted: if only hidden ones are left covering an
+// area, the first of them is shown again, so the rule holds and Keenan sees
+// its switch flip on the card.
+export function keepOneShown(offers: readonly QuoteOffer[]): QuoteOffer[] {
+  if (!noOfferShown(offers)) return [...offers];
+  const reveal = offers.find((offer) => offer.hidden === true && offer.runs.length > 0) ?? offers.find((offer) => offer.hidden === true);
+  return reveal ? setOfferHidden(offers, reveal.id, false) : [...offers];
+}
+
+export const ONE_OFFER_SHOWN = "At least one offer is always shown.";
+export const NO_OFFER_SHOWN = "Every offer that covers an area is hidden. Show at least one to the customer.";
 
 // True once the quote has an offer covering at least one run: what prep's
 // "Quote drafted ahead" counts.
@@ -327,6 +371,7 @@ export function offersForSave(offers: readonly QuoteOffer[], runCount: number): 
       runs: cleanPositions(runCount, offer.runs),
       boxes: cleanBoxes(offer.boxes),
       upperAccess: cleanUpperAccess(offer.upperAccess),
+      ...(offer.hidden === true ? { hidden: true } : {}),
     });
     if (out.length === OFFERS_MAX) break;
   }
@@ -340,6 +385,6 @@ export function offersForSave(offers: readonly QuoteOffer[], runCount: number): 
 // does should see the chosen option's real numbers, not a percent line
 // worked out over every run.
 export function chosenOfferTotals(inputs: QuoteInputs, offers: readonly QuoteOffer[], meetingOffer: string | null): QuoteTotals {
-  const chosen = meetingOffer ? offers.find((offer) => offer.id === meetingOffer) : undefined;
+  const chosen = meetingOffer ? offers.find((offer) => offer.id === meetingOffer && offer.hidden !== true) : undefined;
   return (chosen ? priceOffer(inputs, chosen) : null) ?? priceQuote(inputs);
 }

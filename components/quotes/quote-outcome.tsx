@@ -749,6 +749,13 @@ function OfferText({ option, withCommission = false }: { option: OutcomeOption; 
           They booked this on their link
         </span>
       ) : null}
+      {/* Round 13: the sheet opens on what they booked; the table's choice
+          is marked on its own row, beside it. */}
+      {option.meeting ? (
+        <span className="font-semibold" data-testid="outcome-option-meeting">
+          Chosen at the meeting
+        </span>
+      ) : null}
     </span>
   );
 }

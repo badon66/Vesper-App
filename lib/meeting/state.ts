@@ -412,6 +412,8 @@ export function quoteFingerprint(state: QuoteUIState): string {
       cleanPositions(state.runs.length, offer.runs),
       offer.boxes ?? null,
       offer.upperAccess ?? null,
+      // Round 13: only when hidden, so a quote saved before reads the same.
+      ...(offer.hidden === true ? ["hidden"] : []),
     ]),
     state.chosenOffer,
     state.installOn,

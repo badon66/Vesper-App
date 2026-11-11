@@ -6,11 +6,12 @@ import { useEffect, useId, useState } from "react";
 import { OfferPhoto, type OfferPhotos } from "@/components/quotes/quote-editor/offer-photo";
 import { BreakdownList, Choice, MoneyBox, Stepper, useTyping } from "@/components/quotes/quote-editor/parts";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { coverageLine } from "@/lib/meeting/price-screen";
 import { cleanFeet, formatMoney, hasUpperRun, screenTotal, selectRuns, type QuoteRun, type QuoteTotals } from "@/lib/pricing";
 import { areaDisplayName, isGable } from "@/lib/quotes/areas";
 import { automaticUpperAccess, moneyText, offerNameIssue, toggleOfferRun } from "@/lib/quotes/editor";
-import { cleanUpperAccess, OFFER_NAME_EDITOR_MAX, type QuoteOffer } from "@/lib/quotes/offers";
+import { cleanUpperAccess, OFFER_NAME_EDITOR_MAX, ONE_OFFER_SHOWN, type QuoteOffer } from "@/lib/quotes/offers";
 import { cn } from "@/lib/utils";
 
 // One offer in Keenan's quote editor (round 9, the spec 3.7; round 11): its
@@ -21,7 +22,10 @@ import { cn } from "@/lib/utils";
 // breakdown exactly as the customer sees it. Deleting takes a second tap.
 // A tap or focus anywhere on the card makes it the active offer, and the
 // areas it covers light up on the drawings above (onActivate); that writes
-// nothing.
+// nothing. Round 13 (Keenan, 2026-11-11): a "Show to customer" switch, on
+// to start. Off, the card is marked Hidden and the offer shows nowhere the
+// customer looks (Your price, their link); the last shown offer's switch
+// stays on (canHide), because at least one offer is always shown.
 
 export function OfferCard({
   offer,
@@ -33,8 +37,10 @@ export function OfferCard({
   locked,
   photos = null,
   autoFocus = false,
+  canHide = true,
   onActivate,
   onChange,
+  onShow,
   onDelete,
 }: {
   offer: QuoteOffer;
@@ -51,12 +57,18 @@ export function OfferCard({
   photos?: OfferPhotos | null;
   // A blank offer just added: its name field takes focus.
   autoFocus?: boolean;
+  // False on the last offer the customer sees: it can't be hidden.
+  canHide?: boolean;
+  // The Show to customer switch (round 13).
+  onShow?: (shown: boolean) => void;
   // Pointer down or focus within the card: it is the active offer.
   onActivate?: () => void;
   onChange: (offer: QuoteOffer) => void;
   onDelete: () => void;
 }) {
   const nameId = useId();
+  const showId = useId();
+  const hidden = offer.hidden === true;
   const [open, setOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const issue = offerNameIssue(offer.name);
@@ -88,7 +100,8 @@ export function OfferCard({
       aria-label={offer.name.trim() || "New offer"}
       onPointerDown={onActivate}
       onFocus={onActivate}
-      className="flex min-w-0 flex-col gap-4 rounded-lg border bg-card p-4"
+      data-hidden={hidden ? "true" : "false"}
+      className={cn("flex min-w-0 flex-col gap-4 rounded-lg border p-4", hidden ? "border-dashed bg-muted/30" : "bg-card")}
     >
       <div className="flex items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -109,7 +122,7 @@ export function OfferCard({
             data-testid="offer-name"
           />
           <p id={`${nameId}-hint`} className={cn("text-xs", issue ? "font-semibold text-destructive" : "text-muted-foreground")}>
-            {issue ?? "Customers see this name."}
+            {issue ?? (hidden ? "Hidden. Customers don't see this offer." : "Customers see this name.")}
           </p>
         </div>
         {!locked ? (
@@ -127,6 +140,36 @@ export function OfferCard({
           </button>
         ) : null}
       </div>
+
+      {onShow ? (
+        <div className="flex flex-col">
+          <div className="flex flex-wrap items-center gap-x-3">
+            {/* The label is the tap target (48 px); the switch itself is small. */}
+            <label htmlFor={showId} className="flex min-h-12 cursor-pointer items-center gap-3 text-sm font-semibold">
+              <Switch
+                id={showId}
+                checked={!hidden}
+                disabled={locked || (!hidden && !canHide)}
+                onCheckedChange={(shown) => onShow(shown)}
+                data-testid="offer-show"
+              />
+              Show to customer
+            </label>
+            {hidden ? (
+              <span className="rounded-md border border-foreground px-2 py-0.5 text-xs font-bold tracking-wide uppercase" data-testid="offer-hidden">
+                Hidden
+              </span>
+            ) : null}
+          </div>
+          {hidden ? (
+            <p className="text-xs text-pretty text-muted-foreground">Not on Your price in the meeting, and not on their link.</p>
+          ) : !canHide && !locked ? (
+            <p className="text-xs text-muted-foreground" data-testid="offer-show-note">
+              {ONE_OFFER_SHOWN}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {photos ? <OfferPhoto offerId={offer.id} photos={photos} locked={locked} /> : null}
 

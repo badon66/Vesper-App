@@ -54,7 +54,7 @@ export type QuoteSaveInput = {
   gstEnabled: boolean;
   gstRate: number;
   gstNumber: string | null;
-  offers: { id: string; name: string; runs: number[]; boxes: number | null; upperAccess: number | null }[];
+  offers: { id: string; name: string; runs: number[]; boxes: number | null; upperAccess: number | null; hidden?: boolean }[];
   meetingOffer: string | null;
   meetingInstallOn: string | null;
 };
@@ -67,7 +67,8 @@ export function quoteSaveInput(state: QuoteUIState, pricing: MeetingPayload["pri
   const runCount = state.runs.length;
   const offers = offersForSave(state.offers, runCount).map((offer) => ({ ...offer, boxes: offer.boxes ?? null, upperAccess: offer.upperAccess ?? null }));
   // An empty list stands for one full wrap under the id "full".
-  const ids = offers.length > 0 ? offers.map((offer) => offer.id) : runCount > 0 ? ["full"] : [];
+  // The table's choice only while the customer sees that offer (round 13).
+  const ids = offers.length > 0 ? offers.filter((offer) => offer.hidden !== true).map((offer) => offer.id) : runCount > 0 ? ["full"] : [];
   return {
     leadId,
     from,

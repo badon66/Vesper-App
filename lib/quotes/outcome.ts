@@ -249,6 +249,8 @@ export const OUTCOME_MESSAGES = {
   track_colour_needed: "Set the track colour first. It goes on the accepted quote.",
   bad_runs: "Pick the option they said yes to.",
   bad_offer: "That option isn't on this quote any more. Refresh to see the quote as it is now.",
+  // Round 13: an accepted offer is never one Keenan hides from the customer.
+  hidden_offer: "That option is hidden from the customer. Turn Show to customer on for it on the quote, then mark it accepted.",
   bad_reason: "Pick a reason.",
   bad_note: `A note goes with Other only, up to ${OUTCOME_NOTE_MAX} characters.`,
   not_accepted: "Only an accepted quote can be cancelled. Refresh to see it.",

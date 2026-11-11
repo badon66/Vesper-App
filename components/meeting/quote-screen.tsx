@@ -17,7 +17,7 @@ import { quoteInputs, quoteOffers, quoteRushFee, type MeetingMockup, type Meetin
 import { MOTION, transition } from "@/lib/motion";
 import { formatMoney, type QuoteTotals } from "@/lib/pricing";
 import { QUOTE_LOCKED_MEETING, savedLine } from "@/lib/quotes/draft";
-import { offerNameIssue } from "@/lib/quotes/editor";
+import { offersBlock } from "@/lib/quotes/editor";
 import { BLACK_FRIDAY_LABEL, blackFridayWords } from "@/lib/quotes/black-friday";
 import { cleanOfferName, type PricedOffer } from "@/lib/quotes/offers";
 import { formatFullDate } from "@/lib/time";
@@ -190,7 +190,7 @@ export function QuoteScreen({
   const lastPick = useRef(pickKey);
   const [pickWaiting, setPickWaiting] = useState(false);
   const quietSave = useEffectEvent(async () => {
-    if (readOnly || locked || !hasMeasuredRun(state) || quoteOffers(state).some((offer) => offerNameIssue(offer.name))) return;
+    if (readOnly || locked || !hasMeasuredRun(state) || offersBlock(quoteOffers(state)) !== null) return;
     const result = await save(state, { quiet: true, quoteId });
     setPickWaiting(result === null);
     if (result) onSaved(result.quoteId, result.savedAt, result.fingerprint);
@@ -664,7 +664,9 @@ function EditLayer({
   const { busy, message, save } = useQuoteSave({ leadId, pricing, from: "meeting", readOnly });
   const [shown, setShown] = useState(false);
   const title = useRef<HTMLHeadingElement>(null);
-  const nameIssue = quoteOffers(state).some((offer) => offerNameIssue(offer.name) !== null);
+  // A name that needs fixing, or (round 13) nothing shown to the customer.
+  const offersIssue = offersBlock(quoteOffers(state));
+  const nameIssue = offersIssue !== null;
   const measured = hasMeasuredRun(state);
 
   useEffect(() => {
@@ -695,8 +697,8 @@ function EditLayer({
     ? null
     : !measured
       ? "Measure an area to save."
-      : nameIssue
-        ? "An offer's name needs fixing first."
+      : offersIssue
+        ? offersIssue
         : dirty
           ? savedAt
             ? "Changes not saved yet."
