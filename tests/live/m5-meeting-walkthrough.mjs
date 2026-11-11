@@ -640,7 +640,9 @@ try {
     "Edit opens the quote editor as a full-screen layer over the deck, the dots hidden; Save waits until there are feet to price",
     (await editLayer.getByTestId("quote-editor").count()) === 1 && (await dots(page).count()) === 0 && (await editSave.isDisabled()),
   );
-  await editLayer.getByLabel("Run 1 feet", { exact: true }).fill("120");
+  // Round 11: the editor measures areas on views; the new quote's one
+  // empty Front run is the Front lower line.
+  await editLayer.getByLabel("Front lower feet", { exact: true }).fill("120");
   await page.waitForTimeout(300);
   const ppf = Number(settings.price_per_ft);
   const minimum = Number(settings.min_job_total ?? 0) || 0;
@@ -659,16 +661,23 @@ try {
       (await editLayer.getByTestId("quote-edit-status").innerText()).includes("Saving needs signal.") &&
       (await editSave.isEnabled()),
   );
-  await editLayer.getByLabel("Run 1 feet", { exact: true }).press("ArrowLeft");
+  await editLayer.getByLabel("Front lower feet", { exact: true }).press("ArrowLeft");
   await page.waitForTimeout(500);
   check(
     "arrow keys stay with the field being typed in",
     (await page.locator('section[data-page="quote"]:not([inert])').count()) === 1 && (await editLayer.count()) === 1,
   );
-  // Run parts and upper access (2026-11-04): the part follows the name, and
-  // upper access follows the runs, from this quote's own two amounts.
-  const partGroup = editLayer.getByRole("group", { name: "Run 1 part of the house" });
-  check("a run's part of the house is guessed from its name", (await partGroup.getByRole("button", { name: "Eave" }).getAttribute("aria-pressed")) === "true");
+  // Round 11: the measured line sits on the Front view as Front lower,
+  // priced at the quote's price a foot until Keenan says otherwise; upper
+  // access follows the areas, from this quote's own two amounts.
+  const frontLine = editLayer.locator('[data-testid="editor-run"][data-area="front_lower"]');
+  check(
+    "the measured line is Front lower on the Front view, at the quote's price a foot",
+    (await frontLine.count()) === 1 &&
+      (await editLayer.locator('[data-testid="area-view"][data-view="front"]').count()) === 1 &&
+      (await editLayer.locator('[data-testid="area-price-mode"]').first().getAttribute("data-mode")) === "quote",
+    `${await frontLine.count()} front lower lines`,
+  );
   const upperAmount = Number(settings.upper_access_fee ?? 0);
   const gableAmount = Number(settings.upper_gable_access_fee ?? 0);
   await editLayer.getByTestId("editor-prices-toggle").click();
@@ -735,20 +744,23 @@ try {
   );
   await page.screenshot({ path: `${out}/m5-price.png` });
 
-  // Upper access follows the runs: an upper run, then an upper gable, then back.
-  const setRun = async (level, part) => {
+  // Upper access follows the areas: an upper area, then an upper gable, then
+  // both taken off again (a line cleared comes off the house on blur).
+  const setArea = async (label, feet) => {
     await editButton.click();
     await editLayer.waitFor({ timeout: 5000 }).catch(() => {});
-    if (level) await editLayer.getByRole("group", { name: "Run 1 level" }).getByRole("button", { name: level }).click();
-    if (part) await editLayer.getByRole("group", { name: "Run 1 part of the house" }).getByRole("button", { name: part }).click();
+    const box = editLayer.getByLabel(label, { exact: true });
+    await box.fill(feet);
+    await box.press("Tab");
+    await page.waitForTimeout(300);
     await editLayer.getByTestId("quote-edit-done").click();
     await editLayer.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
     await page.waitForTimeout(300);
   };
-  check("no upper run, no upper access line", !(await breakdown()).includes("Upper roof access"));
-  await setRun("Upper", null);
+  check("no upper area, no upper access line", !(await breakdown()).includes("Upper roof access"));
+  await setArea("Front upper feet", "30");
   const withUpper = await breakdown();
-  await setRun(null, "Gable");
+  await setArea("Front upper gable feet", "8");
   const withGable = await breakdown();
   check(
     "an upper run adds upper access, and an upper gable the gable amount instead, with its reason",
@@ -757,8 +769,9 @@ try {
       withGable.split("Upper roof access").length === 2,
     `${withUpper.slice(0, 160)} | ${withGable.slice(0, 160)}`,
   );
-  await setRun("Lower", "Eave");
-  check("back to a lower eave, the line goes and the total is as before", !(await breakdown()).includes("Upper roof access") && (await priceTotal()).includes(tight(money(priced()))));
+  await setArea("Front upper gable feet", "");
+  await setArea("Front upper feet", "");
+  check("back to the lower front alone, the line goes and the total is as before", !(await breakdown()).includes("Upper roof access") && (await priceTotal()).includes(tight(money(priced()))));
 
   // ---------------------------------------------------------------- a reload mid-meeting
   await page.reload();

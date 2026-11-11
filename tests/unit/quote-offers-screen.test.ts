@@ -17,7 +17,6 @@ import {
   toggleOfferRun,
 } from "@/lib/quotes/editor";
 import type { QuoteOffer } from "@/lib/quotes/offers";
-import { litPositions, runLabels, runPartStates, runsDrawingWords } from "@/lib/quotes/runs-drawing";
 
 // Round 9 (Keenan, 2026-11-10; the five seats' spec, 3.4, 3.5 and 3.7): the
 // price page's options, the quote editor's warnings and quick starts, the
@@ -207,36 +206,5 @@ describe("saving the quote", () => {
     expect(QUOTE_LOCKED_MEETING).toBe(
       "This quote is accepted, so its prices are locked. To change them, undo the acceptance under Outcome on the lead page.",
     );
-  });
-});
-
-describe("the house drawing for an option", () => {
-  it("lights the option's runs, dashes the measured runs it leaves out, and leaves the rest as outline", () => {
-    const states = runPartStates(RUNS, [0, 1], true);
-    expect(states["lower-eave"]).toBe("lit");
-    expect(states.garage).toBe("lit");
-    expect(states["upper-eave"]).toBe("dashed");
-    expect(states["upper-gable"]).toBe("dashed");
-    expect(states.porch).toBe("outline");
-    // Without dashedRest, a run left out is the plain outline.
-    expect(runPartStates(RUNS, [0], false)["upper-eave"]).toBe("outline");
-    // Every run (null), and a run with no feet lights nothing.
-    const unmeasured = [...RUNS, { name: "Porch", feet: 0, level: "lower" as const, part: "porch" as const }];
-    expect(runPartStates(unmeasured, null).porch).toBe("outline");
-    expect(litPositions(RUNS, [0, 9, -1])).toEqual(new Set([0]));
-  });
-
-  it("names each lit run with its feet beside its part, and a run drawn nowhere along the foot", () => {
-    const runs: QuoteRun[] = [...RUNS, { name: "Back", feet: 50, level: "lower", part: "eave" }, { name: "Shed", feet: 12, level: "lower", part: "other" }];
-    const { parts, loose } = runLabels(runs, null);
-    expect(parts.find((label) => label.part === "lower-eave")?.lines).toEqual(["Front 60 ft", "Back 50 ft"]);
-    expect(parts.find((label) => label.part === "upper-gable")?.lines).toEqual(["Upper gable 20 ft"]);
-    expect(loose).toEqual(["Shed 12 ft"]);
-    expect(runLabels(runs, [1]).parts).toEqual([{ part: "garage", lines: ["Garage 30 ft"] }]);
-  });
-
-  it("tells a screen reader what is lit, never a price", () => {
-    expect(runsDrawingWords(RUNS, [0, 3])).toBe("A drawing of the house, lit along Front and Upper gable.");
-    expect(runsDrawingWords(RUNS, [])).toBe("A drawing of the house.");
   });
 });
