@@ -157,6 +157,13 @@ export function QuoteScreen({
     const price = prices.get(option.offer.id);
     return price?.deal && price.regular ? price.regular.subtotal : null;
   };
+  // Round 13 (Keenan, 2026-11-11): with the deal on, an option already at
+  // the minimum job total shows one price and nothing struck, so a quiet
+  // line under it says why: "Already at our lowest price."
+  const atLowest = (option: PricedOffer) => {
+    const price = prices.get(option.offer.id);
+    return dealOn && deal !== null && price?.deal == null && Boolean(price?.regular?.minimumApplied);
+  };
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [ownEdit, setOwnEdit] = useState(false);
   const [ownBreakdown, setOwnBreakdown] = useState(false);
@@ -289,6 +296,7 @@ export function QuoteScreen({
                   option={option}
                   total={shownTotals(option)?.subtotal ?? 0}
                   regular={struckTotal(option)}
+                  lowest={atLowest(option) ? deckLine(lines, "price_lowest") : null}
                   coverage={coverageLine(state.runs, option.offer)}
                   onScreen={option.offer.id === viewing.offer.id}
                   chosen={option.offer.id === chosen?.offer.id}
@@ -513,6 +521,7 @@ function OptionButton({
   option,
   total,
   regular,
+  lowest = null,
   coverage,
   onScreen,
   chosen,
@@ -525,6 +534,9 @@ function OptionButton({
   // Black Friday is on (null otherwise).
   total: number;
   regular: number | null;
+  // "Already at our lowest price.", while the deal is on and can't lower
+  // this option (round 13); null otherwise.
+  lowest?: string | null;
   coverage: string;
   onScreen: boolean;
   chosen: boolean;
@@ -577,6 +589,11 @@ function OptionButton({
       <span className={cn("line-clamp-2 text-pretty text-[19px] leading-snug", chosen ? "text-background/85" : "text-muted-foreground")} data-testid="price-option-coverage">
         {say(coverage)}
       </span>
+      {lowest ? (
+        <span className={cn("text-pretty text-[17px] leading-snug", chosen ? "text-background/85" : "text-muted-foreground")} data-testid="price-option-lowest">
+          {say(lowest)}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -757,7 +774,9 @@ function EditLayer({
         </div>
         <div className="flex items-center gap-3">
           <EditorClose onClick={onClose} testId="quote-edit-done" />
-          {!locked ? <EditorSave onClick={() => void onSave()} disabled={busy || !measured || nameIssue} busy={busy} testId="quote-edit-save" /> : null}
+          {!locked ? (
+            <EditorSave onClick={() => void onSave()} disabled={busy || !measured || nameIssue} busy={busy} first={!quoteId} testId="quote-edit-save" />
+          ) : null}
         </div>
       </footer>
     </div>,

@@ -10,6 +10,7 @@ import {
   areaLines,
   areaShortLabel,
   automaticUpperAccess,
+  drawOrder,
   dropRun,
   houseLineLabel,
   houseLines,
@@ -289,5 +290,22 @@ describe("a photo on every offer", () => {
     // A picture can show several offers: the other offers' marks stay.
     const two = pickMockupForOffer([mockup("a", { offers: ["full"] }), mockup("b")], "a", "front");
     expect(two.list[0].offers).toEqual(["full", "front"]);
+  });
+});
+
+describe("the drawn views' tap order (round 13)", () => {
+  it("draws the gables first and the rooflines after, so a roofline takes the tap where a gable's foot meets it", () => {
+    const front = [{ key: "front_lower" }, { key: "front_lower_gable" }, { key: "front_upper" }, { key: "front_upper_gable" }];
+    expect(drawOrder(front).map((line) => line.key)).toEqual(["front_lower_gable", "front_upper_gable", "front_lower", "front_upper"]);
+    // The back the same; the sides have no gable and keep their order.
+    expect(drawOrder([{ key: "back_lower" }, { key: "back_lower_gable" }, { key: "back_upper" }, { key: "back_upper_gable" }]).map((line) => line.key)).toEqual([
+      "back_lower_gable",
+      "back_upper_gable",
+      "back_lower",
+      "back_upper",
+    ]);
+    expect(drawOrder([{ key: "sides_lower" }, { key: "sides_upper" }]).map((line) => line.key)).toEqual(["sides_lower", "sides_upper"]);
+    // The list given is left as it was.
+    expect(front.map((line) => line.key)).toEqual(["front_lower", "front_lower_gable", "front_upper", "front_upper_gable"]);
   });
 });

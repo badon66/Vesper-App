@@ -113,6 +113,26 @@ describe("the Black Friday button", () => {
   });
 });
 
+describe("an option already at the minimum (round 13)", () => {
+  it("has no Black Friday price, so Your price says Already at our lowest price under it", () => {
+    // A $2,500 minimum. Main floor: 90 ft at $23 + $500 = $2,570, over it.
+    // A one-run option: 60 ft at $23 + $500 = $1,880, lifted to $2,500.
+    const pricing = { ...pricingWith(AMOUNT), minJobTotal: 2500 };
+    const on = withBlackFriday(state(pricing), true, pricing);
+    const inputs = quoteInputs(on, pricing);
+    const small: QuoteOffer = { id: "small", name: "Front only", runs: [0], boxes: null };
+    const low = offerPrice(inputs, small, AMOUNT, true);
+    // The deal can't take it under the minimum: one price, nothing struck.
+    expect(low.regular?.subtotal).toBe(2500);
+    expect(low.regular?.minimumApplied).toBe(true);
+    expect(low.deal).toBeNull();
+    // An option over the minimum still shows both.
+    const main = offerPrice(inputs, MAIN, AMOUNT, true);
+    expect(main.regular?.minimumApplied).toBe(false);
+    expect(main.deal).not.toBeNull();
+  });
+});
+
 describe("saying yes with Black Friday on", () => {
   it("adds one Black Friday line worked out on the chosen option, and recomputes it for another", () => {
     const pricing = pricingWith(PERCENT);

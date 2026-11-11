@@ -414,6 +414,18 @@ export function automaticUpperAccess(
   return upperAccessAmount(selectRuns([...runs], offer.runs), fees);
 }
 
+// The order the drawn views draw their lines in (round 13, Keenan,
+// 2026-11-11). Each line has a wide invisible band to land a finger on;
+// where a gable's foot meets a roofline the two bands overlap, and the one
+// drawn last takes the tap. The gables are drawn first and the rooflines
+// after them, so a tap on a roofline lands on that roofline right to its
+// ends (it used to land in the gable's box near the gable's feet); the
+// gable keeps the rest of its two legs and its peak.
+export function drawOrder<T extends { key: string }>(lines: readonly T[]): T[] {
+  const gable = (line: T) => (line.key.endsWith("_gable") ? 0 : 1);
+  return [...lines].sort((a, b) => gable(a) - gable(b));
+}
+
 // ------------------------------------------------ a photo on every offer
 
 // The picture an offer shows (the deck and the link read the same rule,

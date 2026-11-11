@@ -3,7 +3,7 @@
 import type { KeyboardEvent } from "react";
 
 import { AREA_VIEWS, type AreaKey, type AreaKind } from "@/lib/quotes/areas";
-import { houseLineLabel, type HouseLine } from "@/lib/quotes/editor";
+import { drawOrder, houseLineLabel, type HouseLine } from "@/lib/quotes/editor";
 import { cn } from "@/lib/utils";
 
 // The measuring views, drawn (Keenan, 2026-11-11): two plain two-storey
@@ -16,7 +16,10 @@ import { cn } from "@/lib/utils";
 // is faint and dashed; a line the active offer covers is gold and a little
 // thicker, and a measured line the offer leaves out stays as it is. Tapping
 // a line (a finger lands on a wide invisible stroke) asks the editor to open
-// that area's feet box; nothing is written here. Strokes only, hairlines
+// that area's feet box; nothing is written here. Where a gable's foot meets
+// a roofline the roofline takes the tap (round 13: the gables are drawn
+// first, drawOrder), so a tap on a roofline lands on it right to its ends.
+// Strokes only, hairlines
 // that keep their width at any size, no fills, no gradients. Owner only,
 // never customer facing: customers see an offer's photo, never this.
 //
@@ -206,7 +209,7 @@ export function HouseView({
           {caption.text}
         </text>
       ))}
-      {shape.lines.map(({ key, shape: line }) => (
+      {drawOrder(shape.lines).map(({ key, shape: line }) => (
         <LineMark key={key} areaKey={key} line={lines[key]} shape={line} onTap={onTap} />
       ))}
     </svg>

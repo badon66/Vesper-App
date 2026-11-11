@@ -269,7 +269,7 @@ function QuoteSheet({
                   </>
               )}
             </div>
-            <EditorSave onClick={() => void onSave()} disabled={!canSave} busy={busy} testId="quote-sheet-save" />
+            <EditorSave onClick={() => void onSave()} disabled={!canSave} busy={busy} first={!saved.quoteId} testId="quote-sheet-save" />
           </div>
         </footer>
         )}
