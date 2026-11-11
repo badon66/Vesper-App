@@ -360,6 +360,8 @@ export default async function LeadPage({
             lead: { colourKind: trackColour.kind, colourText: trackColourText(trackColour) },
           }}
           draft={quoteEditor.draft}
+          mockups={mockupData?.mockups ?? []}
+          userId={me.id}
         />
       ) : null}
       {quoteCard ? <QuoteCard {...quoteCard} /> : null}

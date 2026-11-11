@@ -1,7 +1,7 @@
 "use client";
 
-import { Check, Minus, Plus } from "lucide-react";
-import type { ReactNode } from "react";
+import { Check, Minus, Plus, Square, SquareCheck } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +15,9 @@ import { cn } from "@/lib/utils";
 // with a tick, never gold; a warning that doesn't block has a neutral
 // border and a bold first line.
 
-// A one-tap answer: outline, or Night Text fill with a tick when on.
+// A one-tap answer: outline, or Night Text fill with a tick when on. tick
+// (round 11): a tick box that is always drawn, empty or ticked, so a gable
+// on an offer reads as something to leave out or put back.
 export function Choice({
   on,
   onToggle,
@@ -24,6 +26,8 @@ export function Choice({
   className,
   label,
   testId,
+  tick = false,
+  data,
 }: {
   on: boolean;
   onToggle: () => void;
@@ -32,7 +36,11 @@ export function Choice({
   className?: string;
   label?: string;
   testId?: string;
+  tick?: boolean;
+  // data-* attributes for the walk-throughs ({ gable: "true" } is data-gable).
+  data?: Record<string, string | undefined>;
 }) {
+  const attributes = Object.fromEntries(Object.entries(data ?? {}).map(([key, value]) => [`data-${key}`, value]));
   return (
     <button
       type="button"
@@ -41,15 +49,71 @@ export function Choice({
       disabled={disabled}
       onClick={onToggle}
       data-testid={testId}
+      {...attributes}
       className={cn(
         "inline-flex min-h-11 items-center gap-1.5 rounded-md border px-3 text-sm font-semibold whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
         on ? "border-foreground bg-foreground text-background" : "border-input bg-background text-foreground hover:bg-muted",
         className,
       )}
     >
-      {on ? <Check aria-hidden="true" className="size-4 shrink-0" /> : null}
+      {tick ? (
+        on ? (
+          <SquareCheck aria-hidden="true" className="size-4 shrink-0" />
+        ) : (
+          <Square aria-hidden="true" className="size-4 shrink-0 opacity-70" />
+        )
+      ) : on ? (
+        <Check aria-hidden="true" className="size-4 shrink-0" />
+      ) : null}
       {children}
     </button>
+  );
+}
+
+// One choice from a short row, joined into one control: Lower or Upper,
+// Quote price, $ a foot or Flat. The chosen one is the Night Text fill.
+export function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+  disabled,
+  testId,
+  size = "default",
+  className,
+}: {
+  value: T;
+  options: readonly { value: T; label: string }[];
+  onChange: (value: T) => void;
+  label: string;
+  disabled?: boolean;
+  testId?: string;
+  // small: for a control that sits under a line, lighter than a question.
+  size?: "default" | "small";
+  className?: string;
+}) {
+  return (
+    <div role="group" aria-label={label} data-testid={testId} data-mode={value} className={cn("flex", className)}>
+      {options.map((option, which) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={value === option.value}
+          disabled={disabled}
+          onClick={() => onChange(option.value)}
+          data-value={option.value}
+          className={cn(
+            "inline-flex min-h-11 items-center justify-center border font-semibold whitespace-nowrap outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
+            size === "small" ? "px-2.5 text-xs" : "px-3 text-sm",
+            which === 0 ? "rounded-l-md" : "-ml-px",
+            which === options.length - 1 ? "rounded-r-md" : "",
+            value === option.value ? "z-[1] border-foreground bg-foreground text-background" : "border-input bg-background hover:bg-muted",
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -134,6 +198,79 @@ export function MoneyField({
       {hint ? <p className="max-w-56 text-xs text-pretty text-muted-foreground">{hint}</p> : null}
     </div>
   );
+}
+
+// A money box on its own, with the dollar sign, for a line that already
+// says what it is (an area's price a foot, an offer's upper access).
+export function MoneyBox({
+  value,
+  onChange,
+  label,
+  placeholder,
+  disabled,
+  autoFocus,
+  onFocus,
+  onBlur,
+  testId,
+  className,
+  data,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+  placeholder?: string;
+  disabled?: boolean;
+  autoFocus?: boolean;
+  onFocus?: () => void;
+  onBlur?: () => void;
+  testId?: string;
+  className?: string;
+  data?: Record<string, string | undefined>;
+}) {
+  const attributes = Object.fromEntries(Object.entries(data ?? {}).map(([key, value]) => [`data-${key}`, value]));
+  return (
+    <div className={cn("relative", className)}>
+      <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground">
+        $
+      </span>
+      <Input
+        inputMode="decimal"
+        aria-label={label}
+        value={value}
+        placeholder={placeholder}
+        disabled={disabled}
+        autoFocus={autoFocus}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        onChange={(event) => onChange(cleanMoneyInput(event.target.value))}
+        data-testid={testId}
+        {...attributes}
+        className="w-28 pl-7 tabular-nums"
+      />
+    </div>
+  );
+}
+
+// A box Keenan is typing in keeps exactly what he typed while it has focus
+// ("28." on the way to "28.5", or nothing at all on the way to a new
+// number), and shows the value it was given the rest of the time. The
+// value given is the quote's own state, so what he typed is never lost and
+// never jumps under his thumb.
+export function useTyping(shown: string): {
+  value: string;
+  typing: boolean;
+  start: () => void;
+  type: (text: string) => void;
+  stop: () => void;
+} {
+  const [typed, setTyped] = useState<string | null>(null);
+  return {
+    value: typed ?? shown,
+    typing: typed !== null,
+    start: () => setTyped(shown),
+    type: (text: string) => setTyped(text),
+    stop: () => setTyped(null),
+  };
 }
 
 // A warning that never blocks: neutral border, bold first line.

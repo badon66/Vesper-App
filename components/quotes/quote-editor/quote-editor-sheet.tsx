@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { hasMeasuredRun, QuoteEditor } from "@/components/quotes/quote-editor/quote-editor";
@@ -8,6 +9,7 @@ import { useQuoteSave } from "@/components/quotes/quote-editor/use-quote-save";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { offerNameIssue, quoteSummary } from "@/lib/quotes/editor";
+import type { LeadMockupItem } from "@/lib/leads/mockup-roles";
 import { QUOTE_LOCKED_LEAD, savedLine } from "@/lib/quotes/draft";
 import {
   defaultQuoteState,
@@ -30,7 +32,8 @@ import { formatFullDate } from "@/lib/time";
 // draft row meeting mode opens (one draft per lead), so the quote built
 // here is the quote the meeting opens with. An accepted quote opens read
 // only, saying why. Opened from prep with #edit-quote in the address, the
-// sheet opens at once.
+// sheet opens at once. Round 11: the lead's mockups go in for the photo
+// spot on each offer, and a pick or an upload refreshes the page's read.
 
 export type QuoteEditorCardProps = {
   leadId: string;
@@ -38,11 +41,15 @@ export type QuoteEditorCardProps = {
   context: QuoteContext;
   // The lead's accepted quote, or its draft; null with neither.
   draft: QuoteDraft | null;
+  // The lead's mockups (lib/leads/mockups.ts), for the photo on each offer,
+  // and who is signed in, for an upload's folder.
+  mockups?: LeadMockupItem[];
+  userId?: string;
 };
 
 const OPEN_HASH = "#edit-quote";
 
-export function QuoteEditorCard({ leadId, leadName, context, draft }: QuoteEditorCardProps) {
+export function QuoteEditorCard({ leadId, leadName, context, draft, mockups, userId }: QuoteEditorCardProps) {
   const [open, setOpen] = useState(false);
   // The quote as last saved from this page, until the page's own read
   // catches up with it.
@@ -110,6 +117,8 @@ export function QuoteEditorCard({ leadId, leadName, context, draft }: QuoteEdito
           context={context}
           start={latest}
           accepted={accepted}
+          mockups={mockups}
+          userId={userId}
           onSaved={(state, savedAt) => setLocal({ state, savedAt })}
           onClose={close}
         />
@@ -124,6 +133,8 @@ function QuoteSheet({
   context,
   start,
   accepted,
+  mockups,
+  userId,
   onSaved,
   onClose,
 }: {
@@ -132,9 +143,12 @@ function QuoteSheet({
   context: QuoteContext;
   start: { state: QuoteUIState; savedAt: string; quoteId: string | null } | null;
   accepted: boolean;
+  mockups?: LeadMockupItem[];
+  userId?: string;
   onSaved: (state: QuoteUIState, savedAt: string) => void;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const dialog = useRef<HTMLDialogElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
   const [state, setState] = useState<QuoteUIState>(() => start?.state ?? defaultQuoteState(context));
@@ -234,6 +248,10 @@ function QuoteSheet({
               today={context.today}
               locked={accepted}
               lockedWords={QUOTE_LOCKED_LEAD}
+              mockups={mockups}
+              leadId={leadId}
+              userId={userId}
+              onMockupsRefresh={() => router.refresh()}
             />
           </div>
         </div>
@@ -250,7 +268,7 @@ function QuoteSheet({
                   <>
                     <p className="text-muted-foreground">Meeting mode opens with this quote.</p>
                     <p data-testid="quote-sheet-status">
-                      {[status, nameIssue ? "An offer's name needs fixing first." : !hasMeasuredRun(state) ? "Measure a run to save." : null, "Saving needs signal."]
+                      {[status, nameIssue ? "An offer's name needs fixing first." : !hasMeasuredRun(state) ? "Measure an area to save." : null, "Saving needs signal."]
                         .filter(Boolean)
                         .join(" ")}
                     </p>

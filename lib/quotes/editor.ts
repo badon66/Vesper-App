@@ -18,10 +18,40 @@
 //   quoteSummary(inputs, offers, validUntil, formatDate)
 //                                       "Full wrap $4,959, Main floor $3,380.
 //                                       Price held until March 4, 2027."
+//
+// Round 11 (quoting by area, Keenan, 2026-11-11), the views and the prices:
+//   areaLines(runs)                     the positions on each standard area
+//   areaShortLabel(key)                 "Lower gable", the line's label in its view
+//   setAreaFeet(state, key, feet)       feet typed on an area's line: a new run,
+//                                       the run's feet, or (0) the run taken off
+//   setRunFeet(state, at, feet)         feet typed on a run's own line
+//   appendRun, dropRun, addOtherRun     the runs and the offers kept in step
+//   runPricingMode(run)                 "quote", "rate" or "flat"
+//   setRunPricing(run, mode, value)     Keenan's own price a foot, or a flat price
+//   runByTheFoot(run, pricePerFt)       what the area comes to by the foot
+//   automaticUpperAccess(runs, offer, fees)
+//                                       the upper access an offer fills in itself
+//   offerPhoto(mockups, offerId)        the picture an offer shows: its own, else the Main
+//   pickMockupForOffer(mockups, mockupId, offerId)
+//                                       one picture per offer
 
 import { hasDash, hasExclamation } from "@/lib/deck";
-import { cleanFeet, formatMoney, percentWords, screenTotal, usablePercent, type QuoteInputs, type QuoteRun } from "@/lib/pricing";
+import type { LeadMockupItem } from "@/lib/leads/mockup-roles";
 import {
+  cleanFeet,
+  formatMoney,
+  percentWords,
+  runLightsCents,
+  screenTotal,
+  selectRuns,
+  upperAccessAmount,
+  usablePercent,
+  type QuoteInputs,
+  type QuoteRun,
+} from "@/lib/pricing";
+import { AREA_KEYS, AREA_LABELS, areaKeyOf, newAreaRun, newOtherRun, runFlat, runRate, runsOnArea, type AreaKey } from "@/lib/quotes/areas";
+import {
+  addRunToOffers,
   cleanOfferName,
   newOfferId,
   OFFERS_MAX,
@@ -29,6 +59,7 @@ import {
   pricedOffers,
   QUICK_STARTS,
   quickStartRuns,
+  removeRunFromOffers,
   uniqueOfferName,
   type QuickStart,
   type QuoteOffer,
@@ -201,4 +232,159 @@ export function percentDiscountWords(line: EditorDiscount, inputs: QuoteInputs, 
     return `${nameOf(priced.offer)} ${formatMoney(found ? -found.amount : 0)}`;
   });
   return each.length > 0 ? `${label}, ${detail}: ${each.join(", ")}.` : `${label}, ${detail} each option.`;
+}
+
+// ------------------------------------------------ the views (round 11)
+
+// The runs and the offers together, since a run added or taken off moves
+// every offer's positions (lib/quotes/offers.ts).
+export type RunsAndOffers = { runs: QuoteRun[]; offers: QuoteOffer[] };
+
+// The positions on each standard area, in the quote's order: one on a quote
+// made this round, several on an old quote with two runs on one area (Front
+// and Garage, say), which the view shows as more lines under it.
+export function areaLines(runs: readonly QuoteRun[]): Record<AreaKey, number[]> {
+  const lines = Object.fromEntries(AREA_KEYS.map((key) => [key, [] as number[]])) as Record<AreaKey, number[]>;
+  runs.forEach((run, at) => {
+    const key = areaKeyOf(run);
+    if (key) lines[key].push(at);
+  });
+  return lines;
+}
+
+// The line's label inside its view: "Lower gable" under Front, "Upper"
+// under Sides. The view's own title says the rest.
+export function areaShortLabel(key: AreaKey): string {
+  const label = AREA_LABELS[key].replace(/^(Front|Back|Sides) /, "");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+// A run added at the end: a full wrap stays a full wrap, and an offer that
+// covered every lower run takes a new lower run too; an empty offers list
+// (one full wrap) stays empty.
+export function appendRun(state: RunsAndOffers, run: QuoteRun): RunsAndOffers {
+  return { runs: [...state.runs, run], offers: state.offers.length > 0 ? addRunToOffers(state.offers, state.runs, run) : [] };
+}
+
+// A run taken off the quote: it comes off every offer, and the positions
+// after it move down.
+export function dropRun(state: RunsAndOffers, at: number): RunsAndOffers {
+  if (at < 0 || at >= state.runs.length) return state;
+  return { runs: state.runs.filter((_, which) => which !== at), offers: removeRunFromOffers(state.offers, at) };
+}
+
+// Feet typed on a standard area's line. An area with no feet isn't on the
+// house, so it is never kept as a run: the first feet typed into an empty
+// line add the run (newAreaRun), feet typed over it change it, and 0 takes
+// it off. A line already holding a run (the quote's first run on that area)
+// changes that run; an old quote's extra runs on the area have lines of
+// their own (setRunFeet).
+export function setAreaFeet(state: RunsAndOffers, key: AreaKey, feet: number): RunsAndOffers {
+  const positions = runsOnArea(state.runs, key);
+  if (positions.length > 0) return setRunFeet(state, positions[0], feet);
+  const clean = cleanFeet(feet);
+  return clean === 0 ? state : appendRun(state, newAreaRun(key, clean));
+}
+
+// Feet typed on a run's own line: an old quote's extra run on an area, or an
+// Other. 0 takes a standard area's run off the quote; an Other keeps its
+// name at 0 ft (it is on the house only once it has feet) until Keenan
+// removes it.
+export function setRunFeet(state: RunsAndOffers, at: number, feet: number): RunsAndOffers {
+  const run = state.runs[at];
+  if (!run) return state;
+  const clean = cleanFeet(feet);
+  if (clean === 0 && areaKeyOf(run) !== null) return dropRun(state, at);
+  return { ...state, runs: state.runs.map((item, which) => (which === at ? { ...item, feet: clean } : item)) };
+}
+
+// "+ Other": a shed, a detached garage, anything off the two views, named
+// and measured on its line.
+export function addOtherRun(state: RunsAndOffers): RunsAndOffers {
+  return appendRun(state, newOtherRun("", 0, "lower"));
+}
+
+// ------------------------------------------------ pricing an area Keenan's way
+
+// How an area is priced: at the quote's price a foot, at Keenan's own price
+// a foot for it, or at a flat price for it (lib/pricing.ts runLightsCents).
+export type PricingMode = "quote" | "rate" | "flat";
+
+export function runPricingMode(run: Pick<QuoteRun, "rate" | "flat">): PricingMode {
+  if (runFlat(run) !== null) return "flat";
+  if (runRate(run) !== null) return "rate";
+  return "quote";
+}
+
+const RATE_MAX = 10_000;
+const FLAT_MAX = 1_000_000;
+const cents = (value: number) => Math.round(value * 100) / 100;
+
+// Keenan's choice on an area. A price a foot takes a value more than 0, a
+// flat price 0 or more (the area on the house for free); null, or nothing
+// usable, is the box not typed yet, and the area prices at the quote's
+// price a foot until it is.
+export function setRunPricing(run: QuoteRun, mode: PricingMode, value: number | null = null): QuoteRun {
+  const usable = value !== null && Number.isFinite(value);
+  switch (mode) {
+    case "rate":
+      return { ...run, rate: usable && value > 0 ? cents(Math.min(RATE_MAX, value)) : null, flat: null };
+    case "flat":
+      return { ...run, rate: null, flat: usable && value >= 0 ? cents(Math.min(FLAT_MAX, value)) : null };
+    default:
+      return { ...run, rate: null, flat: null };
+  }
+}
+
+// What an area comes to by the foot, at its own rate or the quote's: the
+// flat box's placeholder, so a flat price starts from what it is worth.
+export function runByTheFoot(run: QuoteRun, pricePerFt: number): number {
+  return runLightsCents({ ...run, flat: null }, pricePerFt) / 100;
+}
+
+// "28" or "27.50": a money amount as a box shows it; "" for none.
+export function moneyText(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "";
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+// The upper access an offer fills in itself from its runs ($200, or $400
+// with an upper gable, the quote's own amounts): what its box shows until
+// Keenan types over it. Null when the offer has no upper run, or the quote
+// has no amounts.
+export function automaticUpperAccess(
+  runs: readonly QuoteRun[],
+  offer: Pick<QuoteOffer, "runs">,
+  fees: { upperAccessFee?: number | null; upperGableAccessFee?: number | null },
+): number | null {
+  return upperAccessAmount(selectRuns([...runs], offer.runs), fees);
+}
+
+// ------------------------------------------------ a photo on every offer
+
+// The picture an offer shows (the deck and the link read the same rule,
+// lib/meeting/deck-pages.ts offerMockup): the mockup marked for it, else the
+// Main; null with neither.
+export function offerPhoto(mockups: readonly LeadMockupItem[], offerId: string): { item: LeadMockupItem; own: boolean } | null {
+  const own = mockups.find((item) => item.offers.includes(offerId));
+  if (own) return { item: own, own: true };
+  const main = mockups.find((item) => item.main);
+  return main ? { item: main, own: false } : null;
+}
+
+// The list after Keenan picks a mockup for an offer: one picture per offer,
+// so the offer comes off the one that had it (named as previous, so the save
+// takes it off there too) and goes on the picked one.
+export function pickMockupForOffer(
+  mockups: readonly LeadMockupItem[],
+  mockupId: string,
+  offerId: string,
+): { list: LeadMockupItem[]; previous: string | null } {
+  const had = mockups.find((item) => item.id !== mockupId && item.offers.includes(offerId));
+  const list = mockups.map((item) => {
+    if (item.id === mockupId) return item.offers.includes(offerId) ? item : { ...item, offers: [...item.offers, offerId] };
+    if (item.offers.includes(offerId)) return { ...item, offers: item.offers.filter((id) => id !== offerId) };
+    return item;
+  });
+  return { list, previous: had?.id ?? null };
 }
