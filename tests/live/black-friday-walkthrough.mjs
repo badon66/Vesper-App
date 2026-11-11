@@ -36,7 +36,7 @@
 //                15% off: 623.40 off, 3532.60
 //                $300 off: 3856
 //   Front lower   92 ft  2208 + 500 = 2708, under the minimum either way,
-//                so one price, $2,500, with nothing struck
+//                lifted back to the $2,500 minimum, so $2,708 struck beside $2,500
 //   Commission on Full wrap at 15% off: 5% of (3456 + 500 - 623.40) =
 //                5% of 3332.60 = 166.63
 //
@@ -44,6 +44,7 @@
 // and OUT as in the other walk-throughs.
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { chromium } from "playwright";
 import sharp from "sharp";
@@ -81,6 +82,8 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, has
 
 // Keenan's numbers (the header).
 const FULL_REGULAR = 4156;
+// Front lower before any deal: 92 ft x $24 + the $500 box.
+const FRONT_REGULAR = 2708;
 const MINIMUM = 2500;
 const PERCENT = 15;
 const FULL_PERCENT_OFF = 623.4;
@@ -519,15 +522,17 @@ try {
         note(`the mockup uploaded through the lead page is stored at ${meta.width} x ${meta.height}, ${mb(bytes.length)} (${meta.format})`);
       }
     }
+    // The new tile arrives with the page's refresh, a moment after the row.
+    for (let i = 0; i < 60 && (await page.getByTestId("mockup-tile").count()) < 4; i += 1) await page.waitForTimeout(500);
     check("the Mockups section shows four tiles and no error after the JPEG", (await page.getByTestId("mockup-tile").count()) === 4 && (await page.getByTestId("mockups-error").count()) === 0, `${await page.getByTestId("mockup-tile").count()} tiles`);
     await shot(page, "lead-mockups-big-jpeg");
 
-    // A HEIC by name and type, holding a tiny PNG: the point is the message.
-    const tinyPng = await sharp({ create: { width: 8, height: 8, channels: 3, background: "#132E3F" } })
-      .png()
-      .toBuffer();
+    // A HEIC by name and type that this browser can't decode (Chromium reads
+    // a file by its bytes, so the bytes must be no picture at all): the
+    // point is the message, and that nothing is added.
+    const notAPicture = randomBytes(4096);
     const rowsBefore = (await mockupRows(A.leadId)).length;
-    await input.setInputFiles([{ name: "IMG_0001.HEIC", mimeType: "image/heic", buffer: tinyPng }]);
+    await input.setInputFiles([{ name: "IMG_0001.HEIC", mimeType: "image/heic", buffer: notAPicture }]);
     const errorLine = page.getByTestId("mockups-error");
     await errorLine.waitFor({ timeout: 30000 }).catch(() => {});
     await page.getByTestId("mockup-uploading").first().waitFor({ state: "detached", timeout: 30000 }).catch(() => {});
@@ -576,9 +581,11 @@ try {
         dollarsIn(full.total) === FULL_AT_PERCENT,
       JSON.stringify(rows),
     );
+    // Front lower is $2,708 before the deal; 15% off takes it under the
+    // $2,500 minimum, which lifts it back, so $2,708 is struck beside $2,500.
     check(
-      "Front lower is at the $2,500 minimum either way, so it keeps one price with nothing struck",
-      front !== undefined && front.regular === null && dollarsIn(front.total) === MINIMUM,
+      "Front lower: $2,708 struck beside $2,500, the minimum lifting it",
+      front !== undefined && front.regular !== null && dollarsIn(front.regular) === FRONT_REGULAR && dollarsIn(front.total) === MINIMUM,
       JSON.stringify(front ?? null),
     );
     await shot(page, "your-price-15-percent");
@@ -747,13 +754,14 @@ try {
     const full = rows.find((row) => row.id === "full");
     const front = rows.find((row) => row.id === "front_lower");
     check(
-      "$300 off: Full wrap $4,156 struck beside $3,856; Front lower one price, $2,500 (2708 - 300 = 2408, under the minimum)",
+      "$300 off: Full wrap $4,156 struck beside $3,856; Front lower $2,708 struck beside $2,500 (2708 - 300 = 2408, lifted to the minimum)",
       flat(await button.innerText()).includes(`$${DOLLARS} off`) &&
         full !== undefined &&
         dollarsIn(full.regular ?? "") === FULL_REGULAR &&
         dollarsIn(full.total) === FULL_AT_DOLLARS &&
         front !== undefined &&
-        front.regular === null &&
+        front.regular !== null &&
+        dollarsIn(front.regular) === FRONT_REGULAR &&
         dollarsIn(front.total) === MINIMUM,
       JSON.stringify(rows),
     );
