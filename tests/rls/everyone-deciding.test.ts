@@ -62,7 +62,7 @@ async function leadWith(answer: boolean | null): Promise<string> {
       first_name: TEST_LEAD,
       address_line: street(),
       created_by: users.a.id,
-      phone: "4035550100",
+      phone: "+14035550100",
       owns_home: true,
       wants_price: true,
       both_decision_makers: answer,
