@@ -380,7 +380,7 @@ describe("storage signs the link's pictures for a live token only", () => {
   it("follows the switch: shown, the offer's picture is listed and signed; hidden again, it is neither", async () => {
     const quoteOf = async () => (await admin.from("quotes").select("id").eq("lead_id", leadA).single()).data!.id;
     const id = await quoteOf();
-    const shownNow = OFFERS.map(({ hidden: _hidden, ...offer }) => offer);
+    const shownNow = OFFERS.map((offer) => ({ id: offer.id, name: offer.name, runs: offer.runs }));
     expect((await admin.from("quotes").update({ offers: shownNow as unknown as Json }).eq("id", id)).error).toBeNull();
     expect(((await linkMockups(anon, tokenA)) ?? []).map((item) => item.path)).toContain(paths.pocket);
     expect(await sign(withToken(tokenA), paths.pocket)).not.toBeNull();
