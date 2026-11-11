@@ -263,10 +263,12 @@ export function QuoteScreen({
           {say(deckLine(lines, "price_empty"))}
         </p>
       ) : (
-        <div className={cn("mt-5 grid min-h-0 flex-1", picture ? "grid-cols-[minmax(0,1fr)_540px]" : "grid-cols-1")}>
-          {/* Left: the option's own mockup, else the Main, big. */}
+        <div className={cn("mt-5 grid min-h-0 flex-1", picture ? "grid-cols-1 @3xl:grid-cols-[minmax(0,1fr)_540px]" : "grid-cols-1")}>
+          {/* Left: the option's own mockup, else the Main, big. On a deck
+              narrower than 768 px (a phone) the picture steps aside and
+              the options take the whole width, so no price is cut off. */}
           {picture ? (
-            <div className="relative min-h-0 min-w-0 overflow-hidden" data-testid="price-mockup" data-mockup={picture.id}>
+            <div className="relative hidden min-h-0 min-w-0 overflow-hidden @3xl:block" data-testid="price-mockup" data-mockup={picture.id}>
               <DeckImage photo={{ url: picture.url, focus: [0.5, 0.5] }} alt={`Your house: ${cleanOfferName(viewing.offer.name)}`} fit="contain" />
             </div>
           ) : null}
@@ -274,7 +276,7 @@ export function QuoteScreen({
           {/* Right (or the whole width, with no picture): the options, each
               with its total and what it covers, the colour line, then the
               breakdown one tap away and Choose. */}
-          <div className={cn("flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pr-12", picture ? "pl-8" : "pl-16")} data-testid="price-right">
+          <div className={cn("flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pr-12", picture ? "pl-16 @3xl:pl-8" : "pl-16")} data-testid="price-right">
             <div
               className={cn("grid shrink-0 gap-2.5", !picture && options.length > 1 && (options.length >= 4 ? "grid-cols-4" : options.length === 3 ? "grid-cols-3" : "grid-cols-2"))}
               role="group"
