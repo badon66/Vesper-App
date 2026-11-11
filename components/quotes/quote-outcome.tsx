@@ -14,10 +14,10 @@ import {
 import { ActionMessage } from "@/components/action-message";
 import { AnswerGroup } from "@/components/leads/answer-group";
 import { TrackColourForm } from "@/components/leads/track-colour-form";
+import { DateField } from "@/components/quotes/quote-editor/parts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DialogPanel } from "@/components/ui/dialog-panel";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { STATUS_LABELS, type LeadStatus } from "@/lib/leads/status";
@@ -472,15 +472,15 @@ export function QuoteOutcome({
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="outcome-planned-on">Install day, if you have one</Label>
-            <Input
+            {/* In words over the phone's own picker (round 12), like the editor's dates. */}
+            <DateField
               id="outcome-planned-on"
-              type="date"
               min={today}
               max={addDays(today, 365)}
               value={plannedOn}
-              onChange={(event) => setPlannedOn(event.target.value)}
-              className="sm:w-56"
-              data-testid="outcome-planned-on"
+              onChange={setPlannedOn}
+              empty="No day yet"
+              testId="outcome-planned-on"
             />
             <p className="text-muted-foreground">Leave it empty if there&apos;s no day yet. You can add it later.</p>
           </div>
@@ -634,15 +634,13 @@ export function QuoteOutcome({
         <div className="flex flex-col gap-5 text-sm">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="outcome-installed-on">Install day</Label>
-            <Input
+            <DateField
               id="outcome-installed-on"
-              type="date"
               max={today}
               required
               value={installedOn}
-              onChange={(event) => setInstalledOn(event.target.value)}
-              className="sm:w-56"
-              data-testid="outcome-installed-on"
+              onChange={setInstalledOn}
+              testId="outcome-installed-on"
             />
             <p className="text-muted-foreground">Today or earlier: the day the crew finished.</p>
           </div>
@@ -720,15 +718,7 @@ export function QuoteOutcome({
       >
         <div className="flex flex-col gap-1.5 text-sm">
           <Label htmlFor="outcome-install-on">Install day</Label>
-          <Input
-            id="outcome-install-on"
-            type="date"
-            min={today}
-            max={addDays(today, 365)}
-            value={plannedOn}
-            onChange={(event) => setPlannedOn(event.target.value)}
-            className="sm:w-56"
-          />
+          <DateField id="outcome-install-on" min={today} max={addDays(today, 365)} value={plannedOn} onChange={setPlannedOn} empty="No day yet" />
           <ActionMessage text={message} className="mt-3" />
         </div>
       </DialogPanel>

@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { namesById } from "@/lib/leads/queries";
 import { leadName } from "@/lib/leads/status";
 import { formatMoney, isOwed, payTotals, ratePercent, voidReason } from "@/lib/pay/earnings";
+import { formatMoney as priceMoney } from "@/lib/pricing";
 import { formatMeetingTime } from "@/lib/schedule/meetings";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, requestTime } from "@/lib/time";
@@ -47,7 +48,8 @@ export default async function PayPage() {
     line.type === "booking"
       ? `at ${formatMoney(Number(line.rate))}`
       : line.base_amount !== null
-        ? `${ratePercent(Number(line.rate))} of ${formatMoney(Number(line.base_amount))}`
+        ? // The base is a quote amount, written the way every price in the app is ("$5,636", round 12), not in Pay's cents style.
+          `${ratePercent(Number(line.rate))} of ${priceMoney(Number(line.base_amount))}`
         : `at ${ratePercent(Number(line.rate))}`;
   const describe = (line: Line) =>
     [

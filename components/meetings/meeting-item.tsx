@@ -23,6 +23,10 @@ export type MeetingItemData = {
   confirmed: boolean;
   // "6 of 8 collected" (round 2): information only.
   completeness: string;
+  // Round 12: "Someone who decides won't be there." or "Not asked yet
+  // whether everyone who decides will be there.", as the meeting carries
+  // it; null when everyone will be there, or once the meeting is marked.
+  everyone: string | null;
   // The setter's read and hot buttons (round 3), or null.
   read: string | null;
   next: boolean;
@@ -62,6 +66,11 @@ export function MeetingItem({
         <p className="text-sm text-muted-foreground" data-testid="completeness">
           {item.completeness}
         </p>
+        {item.everyone ? (
+          <p className="text-sm font-semibold text-pretty" data-testid="everyone-deciding">
+            {item.everyone}
+          </p>
+        ) : null}
         {item.read ? (
           <p className="text-sm font-semibold text-pretty" data-testid="setter-read-line">
             {item.read}

@@ -816,6 +816,7 @@ export type Database = {
           booked_by: string
           created_at: string
           ends_at: string
+          everyone_deciding: string
           everyone_deciding_present: boolean
           host_id: string
           id: string
@@ -837,6 +838,7 @@ export type Database = {
           booked_by: string
           created_at?: string
           ends_at: string
+          everyone_deciding?: string
           everyone_deciding_present: boolean
           host_id: string
           id?: string
@@ -858,6 +860,7 @@ export type Database = {
           booked_by?: string
           created_at?: string
           ends_at?: string
+          everyone_deciding?: string
           everyone_deciding_present?: boolean
           host_id?: string
           id?: string

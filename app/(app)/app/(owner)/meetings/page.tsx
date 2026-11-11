@@ -13,6 +13,7 @@ import { leadName } from "@/lib/leads/status";
 import { MEETING_STATUS_LABELS } from "@/lib/schedule/meetings";
 import { bookingSettings, meetingsBetween, meetingsOnDay, type MeetingWithLead } from "@/lib/schedule/queries";
 import { createClient } from "@/lib/supabase/server";
+import { everyoneDecidingLine, everyoneDecidingOf } from "@/lib/meetings/everyone-deciding";
 import { prepFor } from "@/lib/meetings/prep-queries";
 import { timePhrase } from "@/lib/schedule/meetings";
 import { addDays, calgaryDateOf, calgaryDayStart, calgaryToday, formatDate, formatLongDay, formatTime, requestTime } from "@/lib/time";
@@ -112,6 +113,8 @@ export default async function MeetingsPage() {
     prep: LIVE.has(meeting.status) ? glance(meeting.lead_id) : null,
     confirmed: LIVE.has(meeting.status) && Boolean(meeting.confirmed_at),
     completeness: completenessLabel(meeting.lead),
+    // Round 12: the meeting's own answer, while it is still to come.
+    everyone: LIVE.has(meeting.status) ? everyoneDecidingLine(everyoneDecidingOf(meeting.everyone_deciding)) : null,
     read: readLine(meeting.lead),
     next: meeting.id === nextTonight,
     changedAt: new Date(changedAt.get(meeting.lead_id) ?? settingsChanged).toISOString(),

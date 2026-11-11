@@ -6,9 +6,9 @@ import { createPortal } from "react-dom";
 
 import { InitialsConfirm, type Confirmation } from "@/components/meeting/colour-page";
 import { DeckButton, DeckImage, DECK_TYPE, MoreLayer, say, useDeck } from "@/components/meeting/deck-parts";
+import { EditorClose, EditorSave } from "@/components/quotes/quote-editor/parts";
 import { hasMeasuredRun, QuoteEditor } from "@/components/quotes/quote-editor/quote-editor";
 import { useQuoteSave } from "@/components/quotes/quote-editor/use-quote-save";
-import { Button } from "@/components/ui/button";
 import { DEFAULT_LINES, deckLine, priceSubLine, type DeckLines } from "@/lib/deck";
 import { breakdownRows, coverageLine, minimumSentence, NO_PAYMENT, screenOptions, type BreakdownRow } from "@/lib/meeting/price-screen";
 import { blackFridayOn, chooseWithBlackFriday, offerPrice, withBlackFriday } from "@/lib/meeting/black-friday-state";
@@ -263,10 +263,12 @@ export function QuoteScreen({
           {say(deckLine(lines, "price_empty"))}
         </p>
       ) : (
-        <div className={cn("mt-5 grid min-h-0 flex-1", picture ? "grid-cols-[minmax(0,1fr)_540px]" : "grid-cols-1")}>
-          {/* Left: the option's own mockup, else the Main, big. */}
+        <div className={cn("mt-5 grid min-h-0 flex-1", picture ? "grid-cols-1 @3xl:grid-cols-[minmax(0,1fr)_540px]" : "grid-cols-1")}>
+          {/* Left: the option's own mockup, else the Main, big. On a deck
+              narrower than 768 px (a phone) the picture steps aside and
+              the options take the whole width, so no price is cut off. */}
           {picture ? (
-            <div className="relative min-h-0 min-w-0 overflow-hidden" data-testid="price-mockup" data-mockup={picture.id}>
+            <div className="relative hidden min-h-0 min-w-0 overflow-hidden @3xl:block" data-testid="price-mockup" data-mockup={picture.id}>
               <DeckImage photo={{ url: picture.url, focus: [0.5, 0.5] }} alt={`Your house: ${cleanOfferName(viewing.offer.name)}`} fit="contain" />
             </div>
           ) : null}
@@ -274,7 +276,7 @@ export function QuoteScreen({
           {/* Right (or the whole width, with no picture): the options, each
               with its total and what it covers, the colour line, then the
               breakdown one tap away and Choose. */}
-          <div className={cn("flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pr-12", picture ? "pl-8" : "pl-16")} data-testid="price-right">
+          <div className={cn("flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pr-12", picture ? "pl-16 @3xl:pl-8" : "pl-16")} data-testid="price-right">
             <div
               className={cn("grid shrink-0 gap-2.5", !picture && options.length > 1 && (options.length >= 4 ? "grid-cols-4" : options.length === 3 ? "grid-cols-3" : "grid-cols-2"))}
               role="group"
@@ -372,8 +374,10 @@ export function QuoteScreen({
       )}
 
       {/* Keenan's own: small, outlined, bottom left, away from Choose and
-          the forward chevron, on the dots' centre line. */}
-      <div className="absolute left-12 z-10 flex h-14 items-center" style={{ bottom: "var(--deck-row-bottom, 20px)" }}>
+          the forward chevron, on the dots' centre line. On a deck narrower
+          than 768 px (a phone) the centred dots would cover it, so it sits
+          one row up. */}
+      <div className="absolute bottom-[var(--deck-row-bottom,20px)] left-12 z-10 flex h-14 items-center @max-3xl:bottom-[calc(var(--deck-row-bottom,20px)+64px)]">
         <button
           type="button"
           onClick={() => setEditOpen(true)}
@@ -621,9 +625,10 @@ function Breakdown({ totals }: { totals: QuoteTotals }) {
 }
 
 // Keenan's Edit layer: the shared quote editor, full screen inside the deck
-// (over the pages, under the way out), with Save in gold, the save's state
-// and the signal note. Done goes back to the price page; anything unsaved
-// stays on the iPad.
+// (over the pages, under the way out), with Save changes in gold, the
+// save's state and the signal note. Close goes back to the price page;
+// anything unsaved stays on the iPad. The pair is the editor's own
+// (parts.tsx), the same two the lead page's sheet shows (round 12).
 function EditLayer({
   leadId,
   pricing,
@@ -749,14 +754,8 @@ function EditLayer({
           )}
         </div>
         <div className="flex items-center gap-3">
-          <Button type="button" variant="outline" size="lg" onClick={onClose} data-testid="quote-edit-done">
-            Done
-          </Button>
-          {!locked ? (
-            <Button type="button" size="lg" onClick={() => void onSave()} disabled={busy || !measured || nameIssue} data-testid="quote-edit-save">
-              {busy ? "Saving" : quoteId ? "Save changes" : "Save quote"}
-            </Button>
-          ) : null}
+          <EditorClose onClick={onClose} testId="quote-edit-done" />
+          {!locked ? <EditorSave onClick={() => void onSave()} disabled={busy || !measured || nameIssue} busy={busy} testId="quote-edit-save" /> : null}
         </div>
       </footer>
     </div>,

@@ -363,7 +363,7 @@ function MockupTile({
             </div>
           ) : (
             <p className="text-sm text-pretty text-muted-foreground">
-              The offers show here once the quote is saved in meeting mode.
+              The offers show here once the quote is saved.
             </p>
           )}
         </div>

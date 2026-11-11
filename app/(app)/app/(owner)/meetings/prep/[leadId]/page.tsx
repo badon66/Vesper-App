@@ -7,6 +7,7 @@ import { SoffitCode } from "@/components/leads/soffit-code";
 import { TrackColourForm } from "@/components/leads/track-colour-form";
 import { MockupsCard } from "@/components/leads/mockups-card";
 import { loadLeadMockups } from "@/lib/leads/mockups";
+import { everyoneDecidingFromLead, everyoneDecidingLine, everyoneDecidingOf } from "@/lib/meetings/everyone-deciding";
 import { ConfirmMeeting, FillAnswers } from "@/components/meetings/prep-actions";
 import { NotForYourRole } from "@/components/not-for-your-role";
 import { Button } from "@/components/ui/button";
@@ -82,6 +83,10 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
     meetingRows
       .filter((item) => isLive(item.status) && Date.parse(item.ends_at) > now)
       .sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))[0] ?? null;
+
+  // Round 12: whether everyone who decides will be there, as the meeting
+  // carries it, or as the lead answered when there's no meeting yet.
+  const everyone = everyoneDecidingLine(meeting ? everyoneDecidingOf(meeting.everyone_deciding) : everyoneDecidingFromLead(lead.both_decision_makers));
 
   const mockupPath = photoRows?.[0]?.storage_path ?? null;
   const mockupData = await loadLeadMockups(supabase, leadId);
@@ -230,6 +235,11 @@ export default async function PrepPage({ params }: { params: Promise<{ leadId: s
             <p className="font-semibold" data-testid="prep-when">
               {meeting ? sentenceCase(timePhrase(meeting.starts_at, today)) : "No meeting booked"}
             </p>
+            {everyone ? (
+              <p className="font-semibold text-pretty" data-testid="everyone-deciding">
+                {everyone}
+              </p>
+            ) : null}
           </div>
           <Button asChild size="lg" variant={summary.ready ? "default" : "outline"} className="h-14 shrink-0 px-10 text-lg">
             <a href={`/meeting/${leadId}#start`} aria-label={`Start the meeting with ${name}`} data-testid="prep-start">

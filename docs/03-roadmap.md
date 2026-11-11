@@ -122,7 +122,7 @@ Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a previe
 - [x] Offers: the house's runs once, each offer picking its runs (and its own box count); the quote editor on the lead page with quick starts; the price page biggest first with Choose; the customer's link opens on the booked, chosen or biggest option and Book my install records the offer; Accepted asks which option and commission follows it
 - [x] Book now, finish later: a booking needs only a time plus a name or an address; the reminder bar, the address under the name, To be completed
 - [x] The polish pass was stopped to ship: in were the breakdown fitting, a fixed drawing slot and the 48 px Next button; left were the editor drawing's labels at 390, the editor's Close and Save changes pair, 48 px editor chips, en-CA dates in the editor, the Accepted sheet's footer padding and What happens next's worst case (the drawing ones are moot since round 10 removed the drawing)
-- [ ] `meetings.everyone_deciding_present` is always true (found in round 9, still open)
+- [x] `meetings.everyone_deciding_present` is always true (found in round 9): fixed in round 12 with `meetings.everyone_deciding`
 
 ### Round 10: their own house (Keenan, 2026-11-10 and 11; live at 4:41 pm, the rest at 6:15 pm, both on Keenan's call)
 - [x] Mockups per house on the lead page: as many as Keenan likes, each named and marked Main, Day, Night, a phone scene or an offer's picture; the old mockup carried over as the Main; Keenan's alone, in the database and in storage
@@ -144,6 +144,13 @@ Keenan's first meeting is the evening of 2026-11-03, so take 1 ships on a previe
 - [x] Old quotes keep their exact prices and open; old runs mapped onto areas where obvious, the rest Other
 - [x] Pricing unit tests, the quote-link, meeting and quote-outcomes walk-throughs one after another, with a custom per-foot area, a flat area, an edited upper access, a gable ticked off and an old quote; test records cleaned up
 - [x] The views drawn (2026-11-11): Front and Back house outlines with tappable lines, the Sides as two lines, an offer's lines lit from its card; the update notice, "Vesper updated. Reopen to get the latest.", never over a booking or in a meeting
+
+### Round 12: tidy up (Keenan, 2026-11-11; no new features; merge outside the knocking window, no preview)
+- [x] The full suite once at the start (the first round of the day), then only what changed
+- [x] Everyone who decides: the meeting carries the real answer (`meetings.everyone_deciding`: yes, no or not asked), filled from the lead at booking and when moved, following the lead until the meeting starts; the old always-true column retired, nothing removed; the prep page, the Meetings page and Home's meeting cards say plainly when someone who decides won't be there or it hasn't been asked; booking not blocked; booking pay and Qualified untouched (neither reads it)
+- [x] The polish that was cut: one pass at iPad and phone sizes over the quote editor (Close and Save changes, 48 px chips, Canadian dates), the Accepted sheet and What happens next at its fullest, the seven deck pages, Your price with one and four offers, a long offer name, an offer with no photo of its own, a house with no back, the drawn views measured and almost empty, the customer's link with four options; judgement calls listed for Keenan
+- [x] One full rehearsal, twice (no deal, then dollars off, then the deal back to None) on marked test records, every record removed afterwards; what felt slow, awkward or confusing reported in plain words
+- [x] The Black Friday walk-through removes its test records at the end (it runs in the daily suite); the rehearsal script stays out of the daily suite
 
 ### Take 2: after Keenan's first meetings
 - [ ] The leave-behind folder: a branded, always-white PDF through AirPrint and a share sheet: the personal quote (runs, feet, track colour, line-by-line prices, valid until), the mockup full page, a one-page overview, the warranty summary, the FAQ from Settings, and the company contact ((403) 895-9915, info@vesperlighting.ca, 448 Strathcona Drive SW, Calgary, AB T3H 1M3, never a unit number)
