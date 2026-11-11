@@ -143,7 +143,11 @@ try {
   const jpeg = await sharp({ create: { width: 1200, height: 800, channels: 3, background: "#1d3445" } }).jpeg().toBuffer();
   const uploaded = await admin.storage.from(BUCKET).upload(mockupPath, jpeg, { contentType: "image/jpeg" });
   if (uploaded.error) throw new Error(`mockup: ${uploaded.error.message}`);
-  await admin.from("lead_photos").insert({ lead_id: tonightLead, storage_path: mockupPath, slot: "mockup" });
+  // Round 10: the mockup is the house's Main in lead_mockups.
+  const mockupRow = await admin
+    .from("lead_mockups")
+    .insert({ lead_id: tonightLead, storage_path: mockupPath, name: "Main", is_main: true, position: 0 }, { defaultToNull: false });
+  if (mockupRow.error) throw new Error(`mockup row: ${mockupRow.error.message}`);
 
   const today = calgaryToday();
   const meeting = (leadId, day) => ({
@@ -462,15 +466,17 @@ try {
   );
   await ready.getByRole("link", { name: `Start the meeting with ${TEST_LEAD} Tonight` }).click().catch(() => {});
   await ready.locator('ol[aria-label="Where you are"]').waitFor({ timeout: 30000 }).catch(() => {});
-  // Round 9's deck: with no trace, the mockup is "Your house, lit" (its
-  // headline from Settings), standing in for Your house; a page's pictures
-  // load once it is near the screen, so go to it first.
-  const mockupLabel = await ready.locator('section[data-page="mockup"]').getAttribute("aria-label").catch(() => null);
+  // Round 10's deck: the Main mockup is Up once, there all year (its
+  // headline from Settings), full screen; a page's pictures load once it
+  // is near the screen, so go to it first.
+  const mockupLabel = await ready.locator('section[data-page="what_vesper_is"]').getAttribute("aria-label").catch(() => null);
   const { data: deckRow } = await admin.from("settings").select("deck").eq("id", 1).single();
-  const mockupHeadline = (deckRow?.deck?.pages?.mockup?.headline ?? "").trim() || "Your house, lit";
+  const mockupHeadline = (deckRow?.deck?.pages?.what_vesper_is?.headline ?? "").trim() || "Up once, there all year";
   check(
-    "the offline meeting names the mockup page Your house, lit (its headline from Settings), standing in for Your house",
-    mockupLabel === mockupHeadline && mockupHeadline === "Your house, lit" && (await ready.locator('section[data-page="your_house"]').count()) === 0,
+    "the offline meeting has the Main mockup's page, named by its headline from Settings, and no Your house page",
+    mockupLabel === mockupHeadline &&
+      (await ready.locator('section[data-page="your_house"]').count()) === 0 &&
+      (await ready.locator('section[data-page="mockup"]').count()) === 0,
     `${mockupLabel} (Settings: ${mockupHeadline})`,
   );
   if (mockupLabel) {
@@ -478,7 +484,7 @@ try {
   }
   const opened = await ready
     .waitForFunction(() => {
-      const img = document.querySelector('section[data-page="mockup"] img');
+      const img = document.querySelector('section[data-page="what_vesper_is"] img');
       return Boolean(img && img.complete && img.naturalWidth > 0);
     }, null, { timeout: 20000 })
     .then(() => true)
@@ -541,6 +547,8 @@ try {
       await admin.from("meetings").update({ rebooked_as: null }).in("lead_id", leadIds);
       await admin.from("meetings").delete().in("lead_id", leadIds);
       await admin.from("quotes").delete().in("lead_id", leadIds);
+      // lead_mockups has no cascade: its rows go before the leads.
+      await admin.from("lead_mockups").delete().in("lead_id", leadIds);
     }
     await admin.from("leads").delete().eq("created_by", setter.id);
     const { data: files } = await admin.storage.from(BUCKET).list(setter.id, { limit: 1000 });

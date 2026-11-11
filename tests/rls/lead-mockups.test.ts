@@ -56,14 +56,18 @@ let leadA = "";
 let leadB = "";
 let tokenA = "";
 let tokenB = "";
-const paths: Record<"main" | "front" | "scene" | "day" | "removed" | "other", string> = {
+const paths: Record<"main" | "front" | "scene" | "day" | "removed" | "other" | "legacy", string> = {
   main: "",
   front: "",
   scene: "",
   day: "",
   removed: "",
   other: "",
+  // A mockup made before round 10: a lead_photos row in the old mockup slot.
+  legacy: "",
 };
+// An ordinary photo the setter took on their own lead, in their own folder.
+let setterPhoto = "";
 
 const RUNS = [
   { name: "Front", feet: 60, level: "lower", part: "eave" },
@@ -181,6 +185,16 @@ beforeAll(async () => {
     { lead_id: leadB, storage_path: paths.other, name: "Main", is_main: true, created_by: ownerId },
   ], { defaultToNull: false });
   if (rowsError) throw new Error(`mockups: ${rowsError.message}`);
+
+  // The old mockup slot on lead A (the service role, like the carry-over),
+  // and a front photo the setter took on their own lead.
+  const legacy = await admin.from("lead_photos").insert({ lead_id: leadA, storage_path: paths.legacy, slot: "mockup", created_by: ownerId });
+  if (legacy.error) throw new Error(`legacy mockup: ${legacy.error.message}`);
+  setterPhoto = `${setter.id}/${crypto.randomUUID()}.jpg`;
+  const uploaded = await setter.client.storage.from(BUCKET).upload(setterPhoto, JPEG, { contentType: "image/jpeg" });
+  if (uploaded.error) throw new Error(`setter photo: ${uploaded.error.message}`);
+  const front = await setter.client.from("lead_photos").insert({ lead_id: leadA, storage_path: setterPhoto, slot: "front" });
+  if (front.error) throw new Error(`front photo: ${front.error.message}`);
 });
 
 afterAll(async () => {
@@ -192,7 +206,7 @@ afterAll(async () => {
   const all = [...leads];
   if (all.length > 0) {
     const { data: rows } = await admin.from("lead_mockups").select("storage_path").in("lead_id", all);
-    const stored = [...new Set([...(rows ?? []).map((row) => row.storage_path), ...Object.values(paths).filter(Boolean)])];
+    const stored = [...new Set([...(rows ?? []).map((row) => row.storage_path), ...Object.values(paths).filter(Boolean), ...(setterPhoto ? [setterPhoto] : [])])];
     if (stored.length > 0) await admin.storage.from(BUCKET).remove(stored);
     await admin.from("lead_mockups").delete().in("lead_id", all);
     await admin.from("quote_links").delete().in("lead_id", all);
@@ -250,6 +264,55 @@ describe("lead_mockups is Keenan's alone", () => {
       .insert({ lead_id: leadA, storage_path: extra, is_night: true, removed_at: new Date().toISOString() });
     expect(night.error).toBeNull();
     await admin.from("lead_mockups").delete().eq("storage_path", extra);
+  });
+});
+
+// Round 10 catch-up (Keenan, 2026-11-11): a setter can't reach a mockup
+// through storage either, nor an old mockup-slot row, while ordinary lead
+// photos still work for them.
+describe("a setter can't reach a mockup file or row", () => {
+  const basename = (path: string) => path.slice(path.indexOf("/") + 1);
+  const mockupPaths = () => [paths.main, paths.front, paths.scene, paths.day, paths.legacy];
+
+  it("can't sign or download any mockup, new or old", async () => {
+    for (const path of mockupPaths()) {
+      const signed = await setter.client.storage.from(BUCKET).createSignedUrl(path, 60);
+      expect(signed.data?.signedUrl ?? null).toBeNull();
+      const downloaded = await setter.client.storage.from(BUCKET).download(path);
+      expect(downloaded.data).toBeNull();
+    }
+  });
+
+  it("never sees a mockup when listing Keenan's folder, while Keenan does", async () => {
+    for (const path of mockupPaths()) {
+      const theirs = await setter.client.storage.from(BUCKET).list(ownerId, { search: basename(path) });
+      expect((theirs.data ?? []).map((file) => file.name)).toEqual([]);
+      const his = await admin.storage.from(BUCKET).list(ownerId, { search: basename(path) });
+      expect((his.data ?? []).map((file) => file.name)).toEqual([basename(path)]);
+    }
+  });
+
+  it("still signs an ordinary lead photo, their own and Keenan's", async () => {
+    const own = await setter.client.storage.from(BUCKET).createSignedUrl(setterPhoto, 60);
+    expect(own.data?.signedUrl ?? null).not.toBeNull();
+  });
+
+  it("reads the front photo's row but never a mockup-slot row", async () => {
+    const { data: rows } = await setter.client.from("lead_photos").select("slot, storage_path").eq("lead_id", leadA);
+    expect((rows ?? []).map((row) => row.slot)).toEqual(["front"]);
+    const { data: anyMockup } = await setter.client.from("lead_photos").select("id").eq("slot", "mockup");
+    expect(anyMockup).toEqual([]);
+    const { data: his } = await admin.from("lead_photos").select("slot").eq("lead_id", leadA);
+    expect((his ?? []).map((row) => row.slot).sort()).toEqual(["front", "mockup"]);
+  });
+
+  it("a customer's token lists nothing of another house, and only its own Main and offer pictures", async () => {
+    const other = await withToken(tokenA).storage.from(BUCKET).list(ownerId, { search: basename(paths.other) });
+    expect((other.data ?? []).map((file) => file.name)).toEqual([]);
+    const scene = await withToken(tokenA).storage.from(BUCKET).list(ownerId, { search: basename(paths.scene) });
+    expect((scene.data ?? []).map((file) => file.name)).toEqual([]);
+    const main = await withToken(tokenA).storage.from(BUCKET).list(ownerId, { search: basename(paths.main) });
+    expect((main.data ?? []).map((file) => file.name)).toEqual([basename(paths.main)]);
   });
 });
 

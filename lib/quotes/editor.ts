@@ -187,9 +187,9 @@ export function typeDiscountAmount<T extends EditorDiscount>(lines: readonly T[]
   });
 }
 
-// What a percent line comes to on each option, for the line under it in the
-// editor: "Black Friday, 15% off: Full wrap $553.50, Main floor $385.50."
-// Null for a fixed line, or with no option priced yet.
+// What a percent line comes to on each option, for the note under it in
+// the editor (its amount box reads "15% off"): "Black Friday, 15% off:
+// Full wrap $553.50, Main floor $385.50." Null for a fixed line.
 export function percentDiscountWords(line: EditorDiscount, inputs: QuoteInputs, offers: readonly QuoteOffer[]): string | null {
   const percent = usablePercent(line.percent);
   if (percent === null) return null;

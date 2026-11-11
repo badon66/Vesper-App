@@ -277,3 +277,14 @@ export function offersForSave(offers: readonly QuoteOffer[], runCount: number): 
   }
   return out;
 }
+
+// What the quote row stores as its subtotal, GST and total (round 10
+// catch-up, 2026-11-11): the option chosen at the table when there is one,
+// otherwise the whole quote. Nothing on screen reads the stored numbers
+// (every screen prices from the runs), but a report or a document that
+// does should see the chosen option's real numbers, not a percent line
+// worked out over every run.
+export function chosenOfferTotals(inputs: QuoteInputs, offers: readonly QuoteOffer[], meetingOffer: string | null): QuoteTotals {
+  const chosen = meetingOffer ? offers.find((offer) => offer.id === meetingOffer) : undefined;
+  return (chosen ? priceOffer(inputs, chosen) : null) ?? priceQuote(inputs);
+}

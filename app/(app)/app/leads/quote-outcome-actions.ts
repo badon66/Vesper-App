@@ -12,7 +12,8 @@ import {
   type AcceptResult,
 } from "@/lib/quotes/outcome";
 import { FULL_WRAP_ID } from "@/lib/quotes/offers";
-import { acceptedDiscounts } from "@/lib/quotes/outcome-card";
+import { acceptedDiscounts, acceptedTotals } from "@/lib/quotes/outcome-card";
+import type { Json } from "@/types/database";
 import { createClient } from "@/lib/supabase/server";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 
@@ -84,28 +85,32 @@ export async function acceptQuote(input: z.input<typeof acceptSchema>): Promise<
   const { data: row } = await supabase
     .from("quotes")
     .select(
-      "id, status, runs, offers, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, min_job_total, gst_enabled, gst_rate",
+      "id, status, runs, offers, box_count, price_per_ft, box_price, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, min_job_total, gst_enabled, gst_rate, subtotal, gst, total",
     )
     .eq("id", quoteId)
     .maybeSingle();
   if (!row) return notFound;
-  const rewritten =
-    row.status === "accepted"
-      ? null
-      : acceptedDiscounts(
-          {
-            ...row,
-            box_count: Number(row.box_count),
-            price_per_ft: Number(row.price_per_ft),
-            box_price: Number(row.box_price),
-            gst_rate: Number(row.gst_rate),
-          },
-          offerId,
-        );
-  if (rewritten) {
+  const numbers = {
+    ...row,
+    box_count: Number(row.box_count),
+    price_per_ft: Number(row.price_per_ft),
+    box_price: Number(row.box_price),
+    gst_rate: Number(row.gst_rate),
+  };
+  const rewritten = row.status === "accepted" ? null : acceptedDiscounts(numbers, offerId);
+  // The row's stored subtotal, GST and total become the accepted option's
+  // own (round 10 catch-up, 2026-11-11), so anything that reads them later
+  // sees what was agreed, never a number over every run.
+  const totals = row.status === "accepted" ? null : acceptedTotals(numbers, offerId);
+  const patch: { discounts?: Json[]; subtotal?: number; gst?: number; total?: number } = {};
+  if (rewritten) patch.discounts = rewritten;
+  if (totals && (Number(row.subtotal) !== totals.subtotal || Number(row.gst) !== totals.gst || Number(row.total) !== totals.total)) {
+    Object.assign(patch, totals);
+  }
+  if (Object.keys(patch).length > 0) {
     const { data: updated, error: updateError } = await supabase
       .from("quotes")
-      .update({ discounts: rewritten })
+      .update(patch)
       .eq("id", quoteId)
       .neq("status", "accepted")
       .select("id");
@@ -113,7 +118,7 @@ export async function acceptQuote(input: z.input<typeof acceptSchema>): Promise<
       return {
         ok: false,
         code: "deal_not_saved",
-        message: "The Black Friday price for this option could not be saved, so nothing was accepted. Check your signal and try again.",
+        message: "This option's price could not be saved, so nothing was accepted. Check your signal and try again.",
       };
     }
   }

@@ -279,3 +279,28 @@ describe("the lead page's editor", () => {
     expect(priceOffer(priced, MAIN)?.subtotal).toBe(3690 - 100 - 400);
   });
 });
+
+describe("what the quote row stores (round 10 catch-up)", () => {
+  it("saves the chosen option's own numbers, else the whole quote's", async () => {
+    const { chosenOfferTotals } = await import("@/lib/quotes/offers");
+    const percentInputs = inputs({ discounts: [NEIGHBOUR, PERCENT_LINE] });
+    const main = chosenOfferTotals(percentInputs, [FULL, MAIN], "main");
+    expect(main.subtotal).toBe(priceOffer(percentInputs, MAIN)!.subtotal);
+    const whole = chosenOfferTotals(percentInputs, [FULL, MAIN], null);
+    expect(whole.subtotal).toBe(priceQuote(percentInputs).subtotal);
+    // An offer id the quote doesn't have falls back to the whole quote.
+    expect(chosenOfferTotals(percentInputs, [FULL, MAIN], "gone").subtotal).toBe(whole.subtotal);
+  });
+
+  it("stores the accepted option's own numbers with the acceptance", async () => {
+    const { acceptedTotals } = await import("@/lib/quotes/outcome-card");
+    const main = acceptedTotals(ROW, "main")!;
+    expect(main.subtotal).toBe(priceOffer(quoteInputsFromRow(ROW), MAIN)!.subtotal);
+    expect(main.total).toBe(main.subtotal);
+    const full = acceptedTotals(ROW, "full")!;
+    expect(full.subtotal).toBe(priceQuote(quoteInputsFromRow(ROW)).subtotal);
+    expect(acceptedTotals(ROW, "gone")).toBeNull();
+    const withGst = acceptedTotals({ ...ROW, gst_enabled: true }, "main")!;
+    expect(withGst.gst).toBeCloseTo(withGst.subtotal * 0.05, 2);
+  });
+});
