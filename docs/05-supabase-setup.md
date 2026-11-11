@@ -63,7 +63,9 @@ The full list, with comments, is in `.env.example`. These three point the app an
 
 They are set in three places: Vercel (Production and Preview), the cloud environment the build sessions run in, and `.env.local` on any machine that runs the app. Pointing something at another project means changing these three values there and nothing else.
 
-The quote link and push variables (`QUOTE_BASE_URL`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, 2026-11-02) belong to the app, not to a Supabase project, so a second project needs nothing new for them. The quote link's database side (tables, token functions and the storage rule for the mockup) is all in migrations; there is no dashboard setting for it.
+The quote link and push variables (`QUOTE_BASE_URL`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, 2026-11-02) belong to the app, not to a Supabase project, so a second project needs nothing new for them. The quote link's database side (tables, token functions and the storage rules for the mockups) is all in migrations; there is no dashboard setting for it.
+
+Nothing in the dashboard changed in rounds 3 to 11 (2026-11-03 to 2026-11-11). Everything those rounds added lives in migrations: the mockups per house (`lead_mockups`, in the same `lead-photos` bucket under the owner's folder, with the storage rule that keeps a setter from reading a mockup file), the Black Friday columns on `settings`, the quoting-by-area shapes in `quotes.runs` and `quotes.offers`, and the commission functions. One more variable exists since 2026-11-11, `NEXT_PUBLIC_APP_BUILD`: it is not set by hand anywhere. `next.config.ts` sets it at build time from Vercel's `VERCEL_GIT_COMMIT_SHA` (a system variable Vercel exposes to builds by default), else from a build stamp, and the update notice compares it with what `/api/version` answers. A second Vercel project needs nothing for it.
 
 ## Setting up a second project
 

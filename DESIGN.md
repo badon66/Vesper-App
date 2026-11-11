@@ -190,6 +190,14 @@ Gently rounded rectangles: 6 px on buttons, fields and time tiles, 8 px on cards
 ### Navigation
 - Phone and iPad: a bottom tab bar with New lead as the prominent gold button. 1024 px and wider: a slim left rail with the same items. No top tabs. The owner's Admin (People, Settings, Pay) is a gear in the header, named Admin where there is room, because Meetings made six items too many for a phone's bar (Keenan, 2026-11-02).
 
+### Added by rounds 7 to 11 (refreshed 2026-11-11)
+
+- **The deck (customer facing, iPad).** Always night navy, whatever the device's theme. One idea per page: one full-bleed picture of their own house (never a generic photo in its place) and a few words at 20 px or more; more is one tap away behind a named button. Options on Your price are outlined buttons with the total on the right; the chosen one is a light fill with a tick, never gold. A struck regular price sits beside the deal price in muted text. Only light moves, and only on the picker; Reduce Motion is honoured.
+- **The customer's page (phone).** Always white with navy text and gold for Book my install only; option rows are radio rows with the price on the right; pictures sit in a 3:2 frame with full-screen zoom.
+- **Keenan's drawings (owner only).** Strokes only, no fills: a two-storey outline per view in the muted foreground; a measured line solid at 2.25 px with its feet on it; an unmeasured line dashed at 45%; a line an active offer covers in gold at 3.25 px. Hit targets are a 28 px invisible stroke, so a finger lands on the line.
+- **Quiet lines under the header.** The reminder bar (accent background) and the update notice (muted text on the page background, one line, tappable) sit under the header, 44 px tall, and never over a booking sheet or in meeting mode.
+- **Talking points.** A small muted mark in the top right of a deck page; the panel shows only while pressed, after 200 ms, and is never in the tab order.
+
 ## Do's and Don'ts
 
 ### Do:
