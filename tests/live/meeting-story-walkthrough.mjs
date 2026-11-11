@@ -397,8 +397,8 @@ try {
   await page.waitForTimeout(800);
   const labels = await dots(page).getByRole("button").evaluateAll((buttons) => buttons.map((b) => b.getAttribute("aria-label")));
   check(
-    "round 10's order: the cover, the Main, day and night, the phone, the warranty, Try it on your house, the price and What happens next",
-    JSON.stringify(labels) === JSON.stringify(expected) && expected.length === 8 && Boolean(PICKER),
+    "round 10's order: the cover, the Main, day and night, the phone, the warranty, the price and What happens next, with no light picker even though the roofline is traced",
+    JSON.stringify(labels) === JSON.stringify(expected) && expected.length === 7 && PICKER === null,
     `${labels.join(" | ")}${JSON.stringify(labels) === JSON.stringify(expected) ? "" : ` (expected ${expected.join(" | ")})`}`,
   );
   for (const [at, pageLabel] of labels.entries()) {
