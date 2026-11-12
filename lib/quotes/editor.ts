@@ -61,6 +61,7 @@ import {
   NO_OFFER_SHOWN,
   noOfferShown,
   OFFERS_MAX,
+  isCustomerOffer,
   parseOffers,
   pricedOffers,
   QUICK_STARTS,
@@ -80,7 +81,8 @@ export function editorOffers(runs: readonly QuoteRun[], offers: readonly QuoteOf
 }
 
 export function addQuickStart(offers: readonly QuoteOffer[], kind: QuickStart, runs: QuoteRun[], seed?: number): QuoteOffer[] {
-  if (offers.length >= OFFERS_MAX) return [...offers];
+  // Keenan's own four; the customer's own build (take 3) doesn't count.
+  if (offers.filter((offer) => !isCustomerOffer(offer)).length >= OFFERS_MAX) return [...offers];
   const start = QUICK_STARTS.find((item) => item.kind === kind) ?? QUICK_STARTS[0];
   const id = newOfferId(
     offers.map((offer) => offer.id),

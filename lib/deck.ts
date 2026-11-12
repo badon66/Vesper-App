@@ -266,6 +266,20 @@ export const DECK_LINE_DEFAULTS = {
   link_meeting_tag: "Your choice at the meeting",
   link_something_else: "Want something different? Call or text Keenan.",
   link_colour_done: "{colour}, confirmed with your initials at the meeting.",
+  // Quote link take 3 (2026-11-11): About your track, Build your own,
+  // Documents and the agreement. The three track lines say only what Keenan
+  // told us (Hat track is the standard; the others go where it doesn't
+  // suit, upper gables most often); he rewrites them in Settings.
+  link_track_title: "About your track",
+  link_track_hat: "Hat track is our standard track. It sits under the edge of your roof with the lights built in.",
+  link_track_double: "Double track is for parts of a roofline where our standard track is not the right fit.",
+  link_track_j: "J track is for parts of a roofline where our standard track is not the right fit, most often upper gables.",
+  link_build_title: "Build your own",
+  link_build_note: "Start from the option on screen and tick the parts you want. The price updates as you go.",
+  link_docs_title: "Documents",
+  link_agreement_title: "Your agreement",
+  link_agreement_note: "Read it, type your name, sign with your finger, then tap Sign.",
+  link_agreement_done: "Signed by {name} on {date}.",
 } as const;
 
 export type DeckLineKey = keyof typeof DECK_LINE_DEFAULTS;
@@ -344,6 +358,16 @@ export const LINE_SPECS: Record<DeckLineKey, LineSpec> = {
   link_meeting_tag: { group: "link", label: "The tag on the option chosen at the meeting", words: 6 },
   link_something_else: { group: "link", label: "Under the options", words: 12 },
   link_colour_done: { group: "link", label: "What happens next, step 1, once initialled", words: 12, fill: ["colour"] },
+  link_track_title: { group: "link", label: "About your track: the heading", words: LABEL },
+  link_track_hat: { group: "link", label: "About your track: Hat track (the standard)", words: SENTENCE },
+  link_track_double: { group: "link", label: "About your track: Double track", words: SENTENCE },
+  link_track_j: { group: "link", label: "About your track: J track", words: SENTENCE },
+  link_build_title: { group: "link", label: "Build your own: the option's name", words: LABEL },
+  link_build_note: { group: "link", label: "Build your own: how it works", words: SENTENCE },
+  link_docs_title: { group: "link", label: "Documents: the heading", words: LABEL },
+  link_agreement_title: { group: "link", label: "The agreement: the heading", words: LABEL },
+  link_agreement_note: { group: "link", label: "The agreement: how to sign", words: SENTENCE },
+  link_agreement_done: { group: "link", label: "The agreement, once signed", words: SHORT, fill: ["name", "date"] },
 };
 
 export function linesIn(group: LineGroup): DeckLineKey[] {

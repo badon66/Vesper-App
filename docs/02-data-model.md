@@ -473,6 +473,33 @@ Functions (all `security definer`, `search_path = ''`):
 - Round 9 (2026-11-10): `quote_link_select_offer(token, offer)` records the offer they're looking at (selection and `selection_offer`), nothing else; `quote_link_book_offer(token, offer)` is Book my install on an offer: it records `booked_offer`, the offer's name as `booked_option` and its runs as `booked_selection`, writes `install_requested` once per new offer (the name and run names, never a price), returns the maker's sealed push addresses, and never accepts the quote or creates an earning. `quote_for_customer` also returns `quote.offers` (id, name, runs, boxes, cleaned), `quote.meeting_offer`, `quote.financing_offered`, `quote.accepted` and `quote.accepted_offer`, `next_steps` (colour_confirmed, install_on: the lead's else the meeting's, what_we_need), `lines` (settings.deck.lines) and `selection_offer`, `booked_offer`; every field today's page reads is unchanged.
 - `quote_link_book(token, positions int[])`: anyone. Saves Book my install with the option in words, writes `install_requested` (the option and run names, no price), and returns the maker's sealed push addresses when this option hasn't been pushed yet. Never accepts the quote and never creates an earning.
 
+### Quote link take 3 (Keenan, 2026-11-11)
+Track types live on the runs: a run in `quotes.runs` may carry `track` ("double" or "j"; none is Hat track) and `trackRate`, that track's price a foot from `settings.double_track_per_ft` / `settings.j_track_per_ft` when Keenan picked it. Precedence: flat, then `rate`, then `trackRate`, then the quote's price a foot (`lib/pricing.ts` and `quote_lights_cents`).
+
+Build your own: one offer in `quotes.offers` may be the customer's: `{id: "customer", name: "Custom quote (from the customer)", runs, boxes, upper_access: null, from_customer: true}`, written only by `quote_link_book_custom(token, runs int[], from)` (anyone holding a live token; positions only; each must be measured and in a shown, non-customer offer, else `bad_runs`; never on an accepted quote), which replaces their last one and books it through `quote_link_book_offer`. It doesn't count toward Keenan's four.
+
+```
+link_documents                -- Keenan's standard documents (Settings, Documents); owner only
+  id uuid pk, name text (1-80), storage_path text unique ('library/<uuid>.<ext>'),
+  content_type text (pdf, jpeg, png, webp), size_bytes bigint, position int,
+  retired_at timestamptz (Remove), created_at, created_by
+lead_link_documents           -- what one lead's link shows; owner only
+  id uuid pk, lead_id uuid, document_id uuid (a ticked standard one) or
+  name + storage_path ('leads/<lead id>/<uuid>.<ext>') + content_type + size_bytes (their own),
+  removed_at timestamptz (untick / Remove), created_at, created_by
+  unique (lead_id, document_id) where document_id is not null
+lead_link_options             -- owner only
+  lead_id uuid pk, agreement_to_sign boolean, updated_at, updated_by
+agreement_signatures          -- signed on the link; owner reads, only quote_link_sign_agreement writes
+  id uuid pk, lead_id, link_id (one per link), quote_id, offer_id, offer_name,
+  signer_name (2-120), signature_png (data URL, at most 400,000 characters),
+  agreement_text, quote_snapshot jsonb (runs, shown offers, prices, lines' inputs, GST, company),
+  lead_snapshot jsonb (name, address), signed_at
+settings.agreement_text text  -- the agreement's words; empty keeps Agreement to sign off everywhere
+settings.double_track_per_ft, settings.j_track_per_ft numeric(10,2)  -- null until set
+```
+Token functions (anyone with a live token, `security definer`): `quote_link_documents(token)` (the files to sign), `quote_document_signable(name)` (storage's rule for `link-documents`, by the `x-quote-token` header), `quote_link_agreement(token)` (null unless ticked and Settings has text; the text and this link's signing), `quote_link_sign_agreement(token, name, offer, signature)` (saves the signing with the snapshots, writes `agreement_signed` (option and signer, no price), books the option, returns the sealed push targets), `quote_link_signed_copy(token)` (this link's signing, for their PDF). No table here is ever written by an anonymous caller directly, and nothing is taken out of one: unticking and Remove set a time.
+
 ### push_subscriptions
 Web push addresses for members' devices (2026-11-02). Built for Book my install first and for any later alert (the backlog's booking alerts) without changes.
 ```
@@ -556,6 +583,7 @@ Write the policies in SQL in the migration that creates each table. Add a test s
 - `lead-photos`: private, signed URLs valid one hour, max 10 MB per file, JPEG, PNG or WebP. Resized in the browser to 1600 px on the long edge and re-encoded as JPEG, which also drops location data, then uploaded straight from the phone to `<uploader id>/<random id>.jpg` while the form is still open. Active owner and sales profiles can read every file; people can upload only into their own folder; only the owner can delete. Files from abandoned forms stay unlinked; cleanup is in the backlog.
 - `lead-photos`, the quote link (2026-11-02): an anonymous request can sign (and so show for ten minutes) exactly one object, the mockup of the lead whose live token it carries in the `x-quote-token` header. Listing or signing anything else is refused.
 - `quotes`: private, PDFs, owner only.
+- `link-documents` (take 3): private, PDFs and photos up to 25 MB. Keenan reads and adds (`library/` for the standard set, `leads/<lead id>/` for one customer's files); a request carrying a live token in `x-quote-token` can sign only the files that link shows, for ten minutes.
 - `presentation`: private, owner writes, app reads through signed URLs. From round 7 it also holds Keenan's deck photos (`deck/<uuid>.jpg`, 3200 px, and `deck/<uuid>-640.jpg` thumbnails).
 
 ### deck_photos (round 7)

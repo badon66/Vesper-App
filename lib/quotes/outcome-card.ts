@@ -1,6 +1,6 @@
 import { AREA_KINDS } from "@/lib/quotes/areas";
 import { commissionFor, commissionQuoteFromRow, type CommissionQuoteRow } from "@/lib/pay/commission";
-import { RUN_PARTS, formatMoney, priceQuote, resolveDiscounts, screenTotal, selectRuns, totalFeet, usablePercent, type ColourTiming, type QuoteAdder, type QuoteInputs, type QuoteLineItem, type QuoteRun } from "@/lib/pricing";
+import { RUN_PARTS, formatMoney, priceQuote, resolveDiscounts, screenTotal, selectRuns, totalFeet, trackFields, usablePercent, type ColourTiming, type QuoteAdder, type QuoteInputs, type QuoteLineItem, type QuoteRun } from "@/lib/pricing";
 import {
   FULL_WRAP_ID,
   offerCoverage,
@@ -46,6 +46,7 @@ export function runsFromJson(value: Json | null | undefined): QuoteRun[] {
       ...(typeof run.gable === "boolean" ? { gable: run.gable } : {}),
       ...(rate !== null ? { rate } : {}),
       ...(flat !== null ? { flat } : {}),
+      ...trackFields(run),
     };
   });
 }

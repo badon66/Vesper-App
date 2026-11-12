@@ -14,7 +14,7 @@ import type { LeadMockupItem } from "@/lib/leads/mockup-roles";
 import { colourTimingFor, quoteInputs, quoteMinimum, quoteRushFee, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
 import { cleanFeet, defaultValidUntil, formatMoney, percentWords, totalFeet, usablePercent } from "@/lib/pricing";
 import { addQuickStart, editorOffers, editorOrder, offerLitPositions, offerWarnings, percentDiscountWords, typeDiscountAmount } from "@/lib/quotes/editor";
-import { canHideOffer, keepOneShown, OFFERS_MAX, pricedOffers, quickStartsFor, setOfferHidden, type QuickStart, type QuoteOffer } from "@/lib/quotes/offers";
+import { canHideOffer, isCustomerOffer, keepOneShown, OFFERS_MAX, pricedOffers, quickStartsFor, setOfferHidden, type QuickStart, type QuoteOffer } from "@/lib/quotes/offers";
 import { cn } from "@/lib/utils";
 
 // Keenan's quote editor (round 9, the spec 3.7; round 11, quoting by area):
@@ -123,7 +123,8 @@ export function QuoteEditor({
 
   const feet = totalFeet(state.runs);
   const quickStarts = quickStartsFor(state.runs);
-  const full = offers.length >= OFFERS_MAX;
+  // Keenan's own four; the customer's own build (take 3) doesn't count.
+  const full = offers.filter((offer) => !isCustomerOffer(offer)).length >= OFFERS_MAX;
   const fees = { upperAccessFee: inputs.upperAccessFee ?? null, upperGableAccessFee: inputs.upperGableAccessFee ?? null };
 
   return (
@@ -160,7 +161,15 @@ export function QuoteEditor({
             {feet} ft measured
           </p>
         </div>
-        <AreaViews runs={state.runs} offers={state.offers} pricePerFt={inputs.pricePerFt} locked={locked} lit={lit} onChange={(next) => set(next)} />
+        <AreaViews
+          runs={state.runs}
+          offers={state.offers}
+          pricePerFt={inputs.pricePerFt}
+          trackPrices={pricing.trackPrices}
+          locked={locked}
+          lit={lit}
+          onChange={(next) => set(next)}
+        />
       </section>
 
       {/* ------------------------------------------------ offers */}

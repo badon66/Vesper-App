@@ -6,7 +6,7 @@
 import type { SoffitColour } from "@/lib/leads/status";
 import type { TrackColour } from "@/lib/leads/track-colour";
 import { areaOf, isGable, runFlat, runRate, tagRun } from "@/lib/quotes/areas";
-import { defaultValidUntil, guessRunPart, RUN_PARTS, usablePercent, type ColourTiming, type QuoteInputs, type QuoteRun, type RunPart } from "@/lib/pricing";
+import { defaultValidUntil, guessRunPart, RUN_PARTS, trackFields, usablePercent, type ColourTiming, type QuoteInputs, type QuoteRun, type RunPart } from "@/lib/pricing";
 import { EFFECTS, type DeckPageKey, type DeckWords, type Effect, type Look, type Trace } from "@/lib/deck";
 import type { BlackFridayDeal } from "@/lib/quotes/black-friday";
 import { cleanPositions, offersForSave, parseOffers, type QuoteOffer } from "@/lib/quotes/offers";
@@ -116,6 +116,10 @@ export type MeetingPayload = {
     // Black Friday (Keenan, 2026-11-10): the deal set in Settings, a percent
     // or a dollar amount off; null shows no Black Friday button.
     blackFriday: BlackFridayDeal | null;
+    // Track types (2026-11-11): Double and J track's price a foot from
+    // Settings, copied onto an area when Keenan picks that track; null until
+    // set. Left out by an iPad holding a payload from before.
+    trackPrices?: { double: number | null; j: number | null };
   };
   draft: {
     quoteId: string;
@@ -295,6 +299,7 @@ export function quoteStateFromDraft(draft: QuoteDraft, payload: QuoteContext): Q
                 gable: typeof (run as QuoteRun).gable === "boolean" ? (run as QuoteRun).gable : null,
                 rate: (run as QuoteRun).rate ?? null,
                 flat: (run as QuoteRun).flat ?? null,
+                ...trackFields(run),
               }),
             ]
           : [],

@@ -61,6 +61,7 @@ import {
   type QuoteUIState,
 } from "@/lib/meeting/state";
 import { useReducedMotion } from "@/lib/motion";
+import { customerOfferName } from "@/lib/quotes/offers";
 import { smartApostrophes } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 
@@ -446,7 +447,7 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
     const price = offerPrice(quoteInputs(quote, meeting.pricing), offer, deal, !accepted && blackFridayOn(quote, deal));
     const totals = price.deal ?? price.regular;
     if (!totals || !price.regular || totals.totalFeet <= 0) return null;
-    return recapParts(deck.words.lines, offer.name, price.regular.subtotal, price.deal ? price.deal.subtotal : null, meeting.pricing.gstEnabled);
+    return recapParts(deck.words.lines, customerOfferName(offer.name), price.regular.subtotal, price.deal ? price.deal.subtotal : null, meeting.pricing.gstEnabled);
   }, [meeting, quote, deck.words.lines, accepted]);
   // Every change to the quote keeps its Black Friday line as the button
   // says (an edit to the runs recomputes it); the accepted quote stays as

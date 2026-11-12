@@ -14,6 +14,13 @@ const appBuild = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || String(Date.
 
 const nextConfig: NextConfig = {
   env: { NEXT_PUBLIC_APP_BUILD: appBuild },
+  // The signed agreement's PDF (quote link take 3) carries the real logo,
+  // read from public/brand on the server, so the file travels with the two
+  // routes that make it.
+  outputFileTracingIncludes: {
+    "/q/[token]/agreement": ["./public/brand/vesper-logo-navy.png"],
+    "/app/leads/[id]/agreements/[signature]": ["./public/brand/vesper-logo-navy.png"],
+  },
   // People and Settings moved into Admin, and the owner's Home became the
   // dashboard (2026-10-28). Old links and home screen shortcuts still land.
   async redirects() {

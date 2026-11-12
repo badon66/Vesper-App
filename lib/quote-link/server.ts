@@ -4,12 +4,17 @@ import { headers } from "next/headers";
 import { getExtrasEnv, getPublicEnv } from "@/lib/env";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import {
+  documentFileName,
   mainPicture,
   parseCustomerQuote,
+  parseLinkAgreement,
+  parseLinkDocuments,
   parseLinkMockups,
   TOKEN_PATTERN,
   type ClosedQuote,
   type CustomerQuote,
+  type LinkAgreement,
+  type LinkDocument,
   type LinkPicture,
 } from "@/lib/quote-link/view";
 import type { Database } from "@/types/database";
@@ -42,8 +47,20 @@ const PRESENTATION_BUCKET = "presentation";
 // offers, each signed for ten minutes; round 13 adds the phone scenes.
 export type { LinkPicture };
 
+// Documents (take 3): the files the link shows, in the private
+// link-documents bucket, signed by the token like the mockups.
+const DOCUMENTS_BUCKET = "link-documents";
+
 export type LoadedQuote =
-  | (CustomerQuote & { mockupUrl: string | null; pictures: LinkPicture[]; galleryUrls: string[] })
+  | (CustomerQuote & {
+      mockupUrl: string | null;
+      pictures: LinkPicture[];
+      galleryUrls: string[];
+      // Take 3: the documents the link shows (none: no Documents section),
+      // and the agreement to sign (null: none on this link).
+      documents: LinkDocument[];
+      agreement: LinkAgreement | null;
+    })
   | ClosedQuote;
 
 // What the page shows for a token. Throws only when the database can't be
@@ -58,7 +75,12 @@ export async function loadCustomerQuote(token: string): Promise<LoadedQuote> {
 
   // The house's mockups (round 10): the Main and the ones for offers. If
   // the list can't be read, the old mockup slot stands in as the Main.
-  const listed = await anonymousClient().rpc("quote_link_mockups", { p_token: token });
+  // Take 3: the documents and the agreement are read at the same time.
+  const [listed, documentList, agreementRead] = await Promise.all([
+    anonymousClient().rpc("quote_link_mockups", { p_token: token }),
+    anonymousClient().rpc("quote_link_documents", { p_token: token }),
+    anonymousClient().rpc("quote_link_agreement", { p_token: token }),
+  ]);
   const mockups = listed.error
     ? view.mockupPath
       ? [{ path: view.mockupPath, main: true, scene: false, name: "", offers: [] }]
@@ -66,9 +88,11 @@ export async function loadCustomerQuote(token: string): Promise<LoadedQuote> {
     : parseLinkMockups(listed.data);
 
   const storage = anonymousClient(token).storage;
-  const [signedMockups, gallery] = await Promise.all([
+  const files = documentList.error ? [] : parseLinkDocuments(documentList.data);
+  const [signedMockups, gallery, documents] = await Promise.all([
     mockups.length > 0 ? storage.from(PHOTO_BUCKET).createSignedUrls(mockups.map((m) => m.path), MOCKUP_SECONDS) : null,
     view.gallery.length > 0 ? storage.from(PRESENTATION_BUCKET).createSignedUrls(view.gallery, MOCKUP_SECONDS) : null,
+    signDocuments(storage, files),
   ]);
   // A photo that can't be signed is left out rather than shown broken.
   const urlByPath = new Map(
@@ -80,7 +104,36 @@ export async function loadCustomerQuote(token: string): Promise<LoadedQuote> {
   });
   const mockupUrl = mainPicture(pictures)?.url ?? null;
   const galleryUrls = (gallery?.data ?? []).flatMap((item) => (item.signedUrl ? [item.signedUrl] : []));
-  return { ...view, mockupUrl, pictures, galleryUrls };
+  const agreement = agreementRead.error ? null : parseLinkAgreement(agreementRead.data);
+  return { ...view, mockupUrl, pictures, galleryUrls, documents, agreement };
+}
+
+// Each document twice: a link that opens it on the phone and one that
+// saves it under its name. A file that can't be signed is left out.
+async function signDocuments(
+  storage: ReturnType<typeof anonymousClient>["storage"],
+  files: ReturnType<typeof parseLinkDocuments>,
+): Promise<LinkDocument[]> {
+  if (files.length === 0) return [];
+  const bucket = storage.from(DOCUMENTS_BUCKET);
+  const signed = await Promise.all(
+    files.map(async (file) => {
+      const [open, save] = await Promise.all([
+        bucket.createSignedUrl(file.path, MOCKUP_SECONDS),
+        bucket.createSignedUrl(file.path, MOCKUP_SECONDS, { download: documentFileName(file.name, file.contentType) }),
+      ]);
+      if (!open.data?.signedUrl || !save.data?.signedUrl) return null;
+      return {
+        id: file.id,
+        name: file.name,
+        contentType: file.contentType,
+        size: file.size,
+        url: open.data.signedUrl,
+        downloadUrl: save.data.signedUrl,
+      } satisfies LinkDocument;
+    }),
+  );
+  return signed.filter((item): item is LinkDocument => item !== null);
 }
 
 // The address links start with: QUOTE_BASE_URL when it is set (later

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { NotOwnerError, ReadOnlyError, requireOwnerForAction, type SessionProfile } from "@/lib/auth/profile";
 import { hasDash, hasExclamation } from "@/lib/deck";
-import { guessRunPart, RUN_PARTS, totalFeet, type QuoteInputs } from "@/lib/pricing";
+import { guessRunPart, RUN_PARTS, totalFeet, TRACK_TYPES, type QuoteInputs } from "@/lib/pricing";
 import { quoteLockedWords, type QuoteSaveInput } from "@/lib/quotes/draft";
 import { AREA_KINDS } from "@/lib/quotes/areas";
 import { chosenOfferTotals, NO_OFFER_SHOWN, noOfferShown, OFFERS_MAX, offersForSave } from "@/lib/quotes/offers";
@@ -49,6 +49,10 @@ const quoteDraftSchema = z.object({
         gable: z.boolean().nullable().optional(),
         rate: z.number().min(0).max(10_000).nullable().optional(),
         flat: z.number().min(0).max(1_000_000).nullable().optional(),
+        // Take 3: the area's track type, and its track's price a foot as
+        // copied from Settings when Keenan picked it.
+        track: z.enum(TRACK_TYPES).nullable().optional(),
+        trackRate: z.number().min(0).max(10_000).nullable().optional(),
       }),
     )
     .max(30),
@@ -96,9 +100,11 @@ const quoteDraftSchema = z.object({
         upperAccess: z.number().min(0).max(100_000).nullable().optional(),
         // Round 13: Show to customer, off. Left out, the offer is shown.
         hidden: z.boolean().optional(),
+        // Take 3: the customer's own (Build your own on the link).
+        fromCustomer: z.boolean().optional(),
       }),
     )
-    .max(OFFERS_MAX)
+    .max(OFFERS_MAX + 1)
     .optional(),
   meetingOffer: z.string().trim().min(1).max(40).nullable().optional(),
   meetingInstallOn: z.iso.date().nullable().optional(),
@@ -184,12 +190,15 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     price_per_ft: draft.pricePerFt,
     box_price: draft.boxPrice,
     box_count: draft.boxCount,
-    runs: draft.runs.map(({ area, gable, rate, flat, ...run }) => ({
+    runs: draft.runs.map(({ area, gable, rate, flat, track, trackRate, ...run }) => ({
       ...run,
       ...(area ? { area } : {}),
       ...(typeof gable === "boolean" ? { gable } : {}),
       ...(typeof rate === "number" && rate > 0 ? { rate } : {}),
       ...(typeof flat === "number" ? { flat } : {}),
+      // Hat track is the standard and isn't stored; Double or J keeps its
+      // price a foot from when Keenan picked it.
+      ...(track === "double" || track === "j" ? { track, ...(typeof trackRate === "number" && trackRate > 0 ? { trackRate } : {}) } : {}),
     })),
     total_feet: totalFeet(draft.runs),
     // Stored the way the data model names it: upper_only, only when set.
@@ -224,7 +233,12 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     // there (never written to the lead before Accepted). Stored the way the
     // database cleans them: upper_access for the typed amount (round 11),
     // hidden only when the switch is off (round 13).
-    offers: offers.map(({ upperAccess, hidden, ...offer }) => ({ ...offer, upper_access: upperAccess ?? null, ...(hidden === true ? { hidden: true } : {}) })),
+    offers: offers.map(({ upperAccess, hidden, fromCustomer, ...offer }) => ({
+      ...offer,
+      upper_access: upperAccess ?? null,
+      ...(hidden === true ? { hidden: true } : {}),
+      ...(fromCustomer === true ? { from_customer: true } : {}),
+    })),
     meeting_offer: meetingOffer,
     meeting_install_on: draft.meetingInstallOn ?? null,
   };

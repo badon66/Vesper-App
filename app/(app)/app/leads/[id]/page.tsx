@@ -17,6 +17,8 @@ import { TrackColourForm } from "@/components/leads/track-colour-form";
 import { BookLeadButton, OpenBookingSheet } from "@/components/booking/book-buttons";
 import { MockupsCard } from "@/components/leads/mockups-card";
 import { QuoteCard, type QuoteCardProps } from "@/components/quote-link/quote-card";
+import { LinkExtrasCard } from "@/components/leads/link-extras-card";
+import { loadLinkExtras } from "@/lib/quote-link/link-extras-data";
 import { QuoteOutcome } from "@/components/quotes/quote-outcome";
 import { QuoteEditorCard } from "@/components/quotes/quote-editor/quote-editor-sheet";
 import { ScrollToHash } from "@/components/scroll-to-hash";
@@ -114,6 +116,7 @@ export default async function LeadPage({
     mockupRows,
     ownerRal,
     cardRows,
+    linkExtras,
   ] = await Promise.all([
     supabase.from("leads").select(LEAD_FIELDS).eq("id", id).maybeSingle(),
     supabase.from("lead_photos").select("id, storage_path, slot").eq("lead_id", id).order("created_at"),
@@ -138,6 +141,9 @@ export default async function LeadPage({
     isOwner ? supabase.from("ral_classic_colours").select("code, name") : Promise.resolve(null),
     // The customer's link card reads the latest quote and the newest link.
     isOwner ? quoteCardRows(supabase, id) : Promise.resolve(null),
+    // Take 3: what their link shows besides the quote (documents, the
+    // agreement and its signings). The owner's only.
+    isOwner ? loadLinkExtras(supabase, id) : Promise.resolve(null),
   ]);
   if (!row) notFound();
   // Contact privacy (2026-11-04): the phone and email only on the viewer's
@@ -276,6 +282,7 @@ export default async function LeadPage({
         />
       ) : null}
       {quoteCard ? <QuoteCard {...quoteCard} /> : null}
+      {linkExtras ? <LinkExtrasCard data={linkExtras} /> : null}
       {quoteOutcome ? (
         <QuoteOutcome
           {...quoteOutcome}

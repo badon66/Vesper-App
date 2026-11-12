@@ -21,13 +21,15 @@ export const metadata: Metadata = {
 
 export default async function SettingsPage() {
   const supabase = await createClient();
-  const [{ data: settings, error }, { data: colours }, { data: ral }, { data: deckPhotos }, devices] = await Promise.all([
+  const [{ data: settings, error }, { data: colours }, { data: ral }, { data: deckPhotos }, devices, { count: documentCount }] = await Promise.all([
     supabase.from("settings").select("*").eq("id", 1).single(),
     supabase.from("track_colours").select("id, name, ral_code, sort_order, active"),
     supabase.from("ral_classic_colours").select("code, name"),
     supabase.from("deck_photos").select("slot"),
     // Keenan's own devices, with notifications on.
     devicesFor({ profile: await requireProfile(), viewingAs: false }),
+    // Take 3: the standard documents for quote links.
+    supabase.from("link_documents").select("id", { count: "exact", head: true }).is("retired_at", null),
   ]);
 
   if (error || !settings) {
@@ -48,10 +50,39 @@ export default async function SettingsPage() {
       </div>
       <SettingsForm defaults={settingsRowToFormDefaults(settings)} />
       <PresentationCard filled={filled} looksOn={looksOn} />
+      <DocumentsCard documents={documentCount ?? 0} agreement={Boolean(settings.agreement_text?.trim())} />
       <TrackColours colours={sortTrackColours(colours ?? [])} ralNames={ralNames} />
       <Notifications publicKey={pushKeys()?.publicKey ?? null} devices={devices} />
       <ChangePasswordForm />
     </div>
+  );
+}
+
+// Documents for quote links and the agreement to sign (take 3): on their
+// own page, a link here.
+function DocumentsCard({ documents, agreement }: { documents: number; agreement: boolean }) {
+  return (
+    <Card data-testid="documents-settings">
+      <CardHeader>
+        <CardTitle>Documents</CardTitle>
+        <CardDescription>What customers can open and save from their quote link, and the agreement they can sign there.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Link
+          href="/app/admin/settings/documents"
+          className="flex min-h-16 items-center justify-between gap-4 rounded-md border px-4 py-3 outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        >
+          <span className="flex flex-col gap-0.5">
+            <span className="font-semibold">Documents and the agreement</span>
+            <span className="text-sm text-pretty text-muted-foreground">
+              {documents === 0 ? "No standard documents yet." : `${documents} standard ${documents === 1 ? "document" : "documents"}.`}{" "}
+              {agreement ? "Agreement text is set." : "No agreement text yet."}
+            </span>
+          </span>
+          <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
+        </Link>
+      </CardContent>
+    </Card>
   );
 }
 

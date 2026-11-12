@@ -129,6 +129,14 @@ export function describeEvent(event: TimelineEvent): string {
       const option = typeof payload.option === "string" && payload.option ? payload.option : null;
       return option ? `Tapped Book my install: ${sentence(choiceLabel(option))}` : "Tapped Book my install.";
     }
+    // The agreement signed on their link (take 3): the option and the name
+    // they typed, never a price.
+    case "agreement_signed": {
+      const option = typeof payload.option === "string" && payload.option ? payload.option : null;
+      const signer = typeof payload.signer === "string" && payload.signer ? payload.signer : null;
+      const what = option ? `Signed the agreement for ${choiceLabel(option)}` : "Signed the agreement";
+      return signer ? `${what}, as ${signer}.` : `${what}.`;
+    }
     // A quote's outcome (round 8). Setters read these, so the payload holds
     // the quote id and fixed-list facts only: a reason from the list,
     // inside the 10-day window or not, the planned install day. Never an
@@ -195,5 +203,5 @@ export function describeEvent(event: TimelineEvent): string {
 // Events the customer makes on their quote link, with no member behind
 // them: the timeline names the customer instead of "Vesper".
 export function isCustomerEvent(type: TimelineEvent["type"]): boolean {
-  return type === "quote_link_opened" || type === "install_requested";
+  return type === "quote_link_opened" || type === "install_requested" || type === "agreement_signed";
 }

@@ -231,6 +231,12 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
           <Field name="upper_gable_access_fee" label="Upper access with an upper gable ($)" hint="Added instead of the amount above when an upper gable is in the quote. Blank: no line." errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.upper_gable_access_fee} />}
           </Field>
+          <Field name="double_track_per_ft" label="Double track price per foot ($)" hint="For an area set to Double track in the quote editor. Hat track, the standard, is the price per foot above. Blank: Double track can't be picked yet. Each quote keeps the price it used." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.double_track_per_ft} />}
+          </Field>
+          <Field name="j_track_per_ft" label="J track price per foot ($)" hint="For an area set to J track, often the upper gables. Blank: J track can't be picked yet. Each quote keeps the price it used." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.j_track_per_ft} />}
+          </Field>
           <Field name="service_call_fee" label="Service call fee ($)" hint="The flat fee for a service call in years 6 to 10 of the warranty. Blank means the warranty page names no amount." errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.service_call_fee} />}
           </Field>

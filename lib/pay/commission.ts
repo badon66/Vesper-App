@@ -1,4 +1,4 @@
-import { cleanFeet, runLightsCents, type QuoteLineItem, type QuoteRun } from "@/lib/pricing";
+import { cleanFeet, runLightsCents, trackFields, type QuoteLineItem, type QuoteRun } from "@/lib/pricing";
 import type { Json } from "@/types/database";
 
 // A setter's commission (Keenan, 2026-11-09, round 8): the commission rate
@@ -36,7 +36,7 @@ import type { Json } from "@/types/database";
 // Only the parts of a quote the commission reads. A run's feet and a
 // discount's amount count only when they are numbers, as in the database.
 export type CommissionQuote = {
-  runs: readonly Pick<QuoteRun, "feet" | "rate" | "flat">[];
+  runs: readonly Pick<QuoteRun, "feet" | "rate" | "flat" | "track" | "trackRate">[];
   boxCount: number;
   pricePerFt: number;
   boxPrice: number;
@@ -121,7 +121,16 @@ export function commissionLightsCents(quote: Pick<CommissionQuote, "runs" | "pos
     if (wanted !== null && !wanted.has(at)) return;
     if (!run) return;
     const feet = isNumber(run.feet) ? run.feet : 0;
-    total += runLightsCents({ feet, rate: isNumber(run.rate) ? run.rate : null, flat: isNumber(run.flat) ? run.flat : null }, quote.pricePerFt);
+    total += runLightsCents(
+      {
+        feet,
+        rate: isNumber(run.rate) ? run.rate : null,
+        flat: isNumber(run.flat) ? run.flat : null,
+        track: run.track === "double" || run.track === "j" ? run.track : null,
+        trackRate: isNumber(run.trackRate) ? run.trackRate : null,
+      },
+      quote.pricePerFt,
+    );
   });
   return total;
 }
@@ -171,7 +180,13 @@ export function commissionQuoteFromRow(row: CommissionQuoteRow, positions: reado
   return {
     runs: runs.map((run) => {
       const item = run && typeof run === "object" && !Array.isArray(run) ? run : {};
-      return { feet: isNumber(item.feet) ? item.feet : 0, rate: isNumber(item.rate) ? item.rate : null, flat: isNumber(item.flat) ? item.flat : null };
+      return {
+        feet: isNumber(item.feet) ? item.feet : 0,
+        rate: isNumber(item.rate) ? item.rate : null,
+        flat: isNumber(item.flat) ? item.flat : null,
+        // Take 3: an area on Double or J track counts at its track's price.
+        ...trackFields(item),
+      };
     }),
     boxCount: Number(row.box_count),
     pricePerFt: Number(row.price_per_ft),

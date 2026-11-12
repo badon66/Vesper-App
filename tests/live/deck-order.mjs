@@ -67,6 +67,16 @@ export const LINE_DEFAULTS = {
   link_something_else: "Want something different? Call or text Keenan.",
   link_mockup_caption: "Our mockup shows every run lit.",
   link_colour_done: "{colour}, confirmed with your initials at the meeting.",
+  link_track_title: "About your track",
+  link_track_hat: "Hat track is our standard track. It sits under the edge of your roof with the lights built in.",
+  link_track_double: "Double track is for parts of a roofline where our standard track is not the right fit.",
+  link_track_j: "J track is for parts of a roofline where our standard track is not the right fit, most often upper gables.",
+  link_build_title: "Build your own",
+  link_build_note: "Start from the option on screen and tick the parts you want. The price updates as you go.",
+  link_docs_title: "Documents",
+  link_agreement_title: "Your agreement",
+  link_agreement_note: "Read it, type your name, sign with your finger, then tap Sign.",
+  link_agreement_done: "Signed by {name} on {date}.",
   price_includes: "Every option includes the control box, install by our own crew and our 10-year warranty.",
 };
 
