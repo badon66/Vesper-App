@@ -284,7 +284,8 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
 
   return (
     <>
-      <main className={cn("mx-auto flex max-w-xl flex-col pb-36", laptopPicture ? LAPTOP_GRID : LAPTOP_SINGLE)} data-testid="quote-live">
+      <main className={cn("mx-auto flex max-w-xl flex-col pb-36", laptopPicture ? LAPTOP_PAGE : LAPTOP_SINGLE)} data-testid="quote-live">
+        <div className={laptopPicture ? LAPTOP_TOP : "contents"} data-testid="laptop-top">
         {/* 1. Their house and the price of the option on screen. On a
             laptop See it on your house takes the picture's place. */}
         {view.mockupUrl ? (
@@ -346,7 +347,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
         </section>
 
         {/* 3. What makes it worth it, in Keenan's words from Settings. */}
-        <ProductPoints points={view.productPoints} className={laptopPicture ? AREA.pts : undefined} />
+        <ProductPoints points={view.productPoints} className={laptopPicture ? "lg:hidden" : undefined} />
 
         {/* 4. See it on your house (round 13): one picture, the Looks and
             the Options under it. Tapping an option here picks it in the
@@ -474,8 +475,11 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
             </p>
           )}
         </section>
+        </div>
 
-        <div className={cn("flex flex-col", laptopPicture && AREA.info)}>
+        <div className={LAPTOP_BELOW} data-testid="laptop-below">
+        {laptopPicture ? <ProductPoints points={view.productPoints} className="hidden lg:block" laptop /> : null}
+        <div className="flex flex-col">
         {/* Take 3: each track type the options use, in plain words with a drawing. */}
         <AboutYourTrack tracks={tracks} words={words} />
 
@@ -504,7 +508,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
         {/* Take 3: what Keenan ticked or uploaded for them, then the
             agreement when he asked for it to be signed here. On a laptop
             they sit under the offers. */}
-        <div className={cn("flex flex-col", laptopPicture && AREA.side)}>
+        <div className="flex flex-col">
         <LinkDocuments documents={view.documents} title={words.link_docs_title} />
         {view.agreement && selected && totals ? (
           <AgreementSection
@@ -519,7 +523,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
         ) : null}
         </div>
 
-        <div className={cn("flex flex-col", laptopPicture && AREA.more)}>
+        <div className="flex flex-col">
         {/* 7. Tap to open, closed until tapped. See our work leads once
             there are photos; until then it is hidden. */}
         <section aria-label="More about your install" className="mt-12 border-t" data-testid="quote-more">
@@ -539,6 +543,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
         </section>
 
         <Footer company={view.company} />
+        </div>
         </div>
       </main>
 
@@ -629,7 +634,8 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
 
   return (
     <>
-      <main className={cn("mx-auto flex max-w-xl flex-col pb-36", view.mockupUrl ? LAPTOP_GRID : LAPTOP_SINGLE)} data-testid="quote-agreed">
+      <main className={cn("mx-auto flex max-w-xl flex-col pb-36", view.mockupUrl ? LAPTOP_PAGE : LAPTOP_SINGLE)} data-testid="quote-agreed">
+        <div className={view.mockupUrl ? LAPTOP_TOP : "contents"} data-testid="laptop-top">
         {view.mockupUrl ? (
           <div className={cn(AREA.pic, "lg:px-5")}>
             <Mockup
@@ -685,11 +691,13 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
             />
           </section>
         ) : null}
+        </div>
 
-        <div className={cn("flex flex-col", view.mockupUrl && cn(AREA.info, "lg:mt-4"))}>
+        <div className={LAPTOP_BELOW} data-testid="laptop-below">
+        <div className="flex flex-col">
           <AboutYourTrack tracks={agreedTracks} words={words} />
         </div>
-        <div className={cn("flex flex-col", view.mockupUrl && AREA.side)}>
+        <div className="flex flex-col">
         <LinkDocuments documents={view.documents} title={words.link_docs_title} />
         {view.agreement && agreed ? (
           <AgreementSection
@@ -709,13 +717,14 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
         ) : null}
         </div>
 
-        <div className={cn("flex flex-col", view.mockupUrl && AREA.more)}>
+        <div className="flex flex-col">
         <section aria-label="More about your install" className="mt-12 border-t" data-testid="quote-more">
           {view.nextSteps.whatWeNeed ? <WhatWeNeed text={view.nextSteps.whatWeNeed} variant="row" /> : null}
           <Warranty warranty={view.warranty} serviceCallFee={view.serviceCallFee} />
         </section>
 
         <Footer company={view.company} />
+        </div>
         </div>
       </main>
 
@@ -734,25 +743,25 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
   );
 }
 
-// The link on a laptop or desktop (Keenan, 2026-11-12). From 1024 px wide
-// the picture of their house, with its Looks and Options, sits beside the
-// price and the offers and stays in view while they compare; below, what
-// they're getting, the track and the next steps run in the picture's column
-// at a reading width, with the documents and the agreement beside them,
-// under the offers. Every class here is lg: or wider, so phones keep the
-// single column exactly as it was. With no picture, one reading column.
-const LAPTOP_GRID =
-  "lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:items-start lg:gap-x-12 lg:px-6 2xl:max-w-7xl xl:gap-x-20 lg:[grid-template-areas:'pic_head'_'pic_opts'_'pts_side'_'info_side'_'more_side']";
+// The link on a laptop or desktop (Keenan, 2026-11-12; fixed the same day).
+// From 1024 px wide the page is two parts. The top is its own grid: the
+// picture of their house, with its Looks and Options, beside the greeting,
+// the price and Your options. The picture stays in view only while the
+// offers scroll, because a sticky item sticks within its own grid, and
+// this grid ends with the offers. Below, everything else runs in one
+// centred column at a reading width, in the phone's order. Both wrappers
+// are display: contents on a phone, so phones keep the single column
+// exactly as it was. With no picture, one reading column.
+const LAPTOP_PAGE = "lg:max-w-6xl lg:px-6 2xl:max-w-7xl";
 const LAPTOP_SINGLE = "lg:max-w-2xl";
+const LAPTOP_TOP =
+  "contents lg:grid lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:items-start lg:gap-x-12 xl:gap-x-20 lg:[grid-template-areas:'pic_head'_'pic_opts']";
+const LAPTOP_BELOW = "contents lg:mx-auto lg:mt-6 lg:flex lg:w-full lg:max-w-2xl lg:flex-col";
 const AREA = {
   // Sticky only where the whole picture fits on the screen.
   pic: "lg:[grid-area:pic] lg:mt-10 [@media(min-width:1024px)_and_(min-height:760px)]:sticky [@media(min-width:1024px)_and_(min-height:760px)]:top-6",
   head: "lg:[grid-area:head] lg:pt-4",
   opts: "lg:[grid-area:opts]",
-  pts: "lg:[grid-area:pts] lg:mt-16",
-  info: "lg:[grid-area:info]",
-  side: "lg:[grid-area:side]",
-  more: "lg:[grid-area:more] lg:mt-4",
 };
 
 function Greeting({ firstName, headingRef }: { firstName: string; headingRef?: React.Ref<HTMLHeadingElement> }) {
@@ -895,14 +904,17 @@ function ChoiceCard({ option, total, testIds }: { option: string; total: string;
   );
 }
 
-function ProductPoints({ points, className }: { points: CustomerQuote["productPoints"]; className?: string }) {
+// laptop: the copy shown below the offers on a laptop (the phone's copy sits
+// above them, hidden there), with its own id and no test id.
+function ProductPoints({ points, className, laptop = false }: { points: CustomerQuote["productPoints"]; className?: string; laptop?: boolean }) {
   if (points.length === 0) return null;
+  const id = laptop ? "getting-laptop" : "getting";
   return (
-    <section aria-labelledby="getting" className={cn("mt-12 px-5", className)}>
-      <h2 id="getting" className="text-xl font-bold">
+    <section aria-labelledby={id} className={cn("mt-12 px-5", className)}>
+      <h2 id={id} className="text-xl font-bold">
         What you’re getting
       </h2>
-      <ul className="mt-5 flex flex-col gap-4" data-testid="quote-points">
+      <ul className="mt-5 flex flex-col gap-4" data-testid={laptop ? undefined : "quote-points"}>
         {points.map((point, at) => (
           <li key={at} className="flex gap-3.5">
             <PointIconMark icon={point.icon} className="mt-0.5 size-5 shrink-0 text-navy" />
