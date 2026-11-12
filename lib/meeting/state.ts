@@ -453,6 +453,9 @@ export function quoteFingerprint(state: QuoteUIState): string {
       offer.upperAccess ?? null,
       // Round 13: only when hidden, so a quote saved before reads the same.
       ...(offer.hidden === true ? ["hidden"] : []),
+      // Round 17: the star and the description, only when there.
+      ...(offer.lead === true ? ["lead"] : []),
+      ...(offer.description ? [`description:${offer.description}`] : []),
     ]),
     state.chosenOffer,
     state.installOn,

@@ -102,6 +102,10 @@ const quoteDraftSchema = z.object({
         hidden: z.boolean().optional(),
         // Take 3: the customer's own (Build your own on the link).
         fromCustomer: z.boolean().optional(),
+        // Round 17: Keenan's "Lead with this one" star, and the offer's
+        // description (cleaned again by offersForSave and the database).
+        lead: z.boolean().optional(),
+        description: z.string().max(2000).optional(),
       }),
     )
     .max(OFFERS_MAX + 1)
@@ -233,12 +237,15 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     // Round 9: the offers, the table's choice and the install day picked
     // there (never written to the lead before Accepted). Stored the way the
     // database cleans them: upper_access for the typed amount (round 11),
-    // hidden only when the switch is off (round 13).
-    offers: offers.map(({ upperAccess, hidden, fromCustomer, ...offer }) => ({
+    // hidden only when the switch is off (round 13); round 17's star only
+    // when on, and a description only when written.
+    offers: offers.map(({ upperAccess, hidden, fromCustomer, lead, description, ...offer }) => ({
       ...offer,
       upper_access: upperAccess ?? null,
       ...(hidden === true ? { hidden: true } : {}),
       ...(fromCustomer === true ? { from_customer: true } : {}),
+      ...(lead === true ? { lead: true } : {}),
+      ...(description ? { description } : {}),
     })),
     meeting_offer: meetingOffer,
     meeting_install_on: draft.meetingInstallOn ?? null,

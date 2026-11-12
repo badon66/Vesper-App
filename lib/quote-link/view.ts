@@ -506,13 +506,15 @@ export function offerChoice(
   return { id: offer.id, name: offer.name, total: screenTotal(totals.subtotal, quote.gstEnabled), totals, offer };
 }
 
-// Which option the page opens on: the one they booked, else the one chosen
-// at the meeting, else the biggest. Null when no option covers a run.
+// Which option the page opens on: the one they booked, else the one Keenan
+// leads with (round 17, his star), else the one chosen at the meeting, else
+// the biggest. Null when no option covers a run.
 export function openingOffer(
   shown: readonly PricedOffer[],
   { booked, meeting }: { booked: string | null; meeting: string | null },
 ): string | null {
-  for (const id of [booked, meeting]) {
+  const lead = shown.find((priced) => priced.offer.lead === true)?.offer.id ?? null;
+  for (const id of [booked, lead, meeting]) {
     if (id && shown.some((priced) => priced.offer.id === id)) return id;
   }
   return shown[0]?.offer.id ?? null;

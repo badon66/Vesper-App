@@ -25,7 +25,18 @@ import {
 } from "@/lib/meeting/state";
 import { cleanFeet, defaultValidUntil, formatMoney, percentWords, totalFeet, usablePercent } from "@/lib/pricing";
 import { addQuickStart, editorOffers, editorOrder, offerLitPositions, offerWarnings, percentDiscountWords, typeDiscountAmount } from "@/lib/quotes/editor";
-import { canHideOffer, isCustomerOffer, keepOneShown, OFFERS_MAX, pricedOffers, quickStartsFor, setOfferHidden, type QuickStart, type QuoteOffer } from "@/lib/quotes/offers";
+import {
+  canHideOffer,
+  isCustomerOffer,
+  keepOneShown,
+  OFFERS_MAX,
+  pricedOffers,
+  quickStartsFor,
+  setLeadOffer,
+  setOfferHidden,
+  type QuickStart,
+  type QuoteOffer,
+} from "@/lib/quotes/offers";
 import { cn } from "@/lib/utils";
 
 // Keenan's quote editor (round 9, the spec 3.7; round 11, quoting by area):
@@ -131,6 +142,9 @@ export function QuoteEditor({
   // drops that choice: the customer no longer sees it.
   const showOffer = (id: string, shown: boolean) =>
     setOffers(setOfferHidden(offers, id, !shown), !shown && state.chosenOffer === id ? { chosenOffer: null } : {});
+  // Round 17: "Lead with this one", one star per quote. The card moves to
+  // the top the next time the list re-sorts, as with any price change.
+  const leadOffer = (id: string, lead: boolean) => setOffers(setLeadOffer(offers, lead ? id : null));
 
   const feet = totalFeet(state.runs);
   const quickStarts = quickStartsFor(state.runs);
@@ -240,6 +254,7 @@ export function QuoteEditor({
                 onActivate={() => setActiveOffer(offer.id)}
                 onChange={changeOffer}
                 onShow={(shown) => showOffer(offer.id, shown)}
+                onLead={(lead) => leadOffer(offer.id, lead)}
                 onDelete={() => deleteOffer(offer.id)}
               />
             ))}
@@ -247,7 +262,11 @@ export function QuoteEditor({
         )}
         {cards.length > 0 ? (
           <p className="text-sm text-muted-foreground">
-            {cards.some((offer) => offer.hidden === true) ? "Customers see the shown ones biggest first. Hidden ones stay here." : "Customers see these biggest first."}
+            {cards.some((offer) => offer.lead === true)
+              ? "Customers see the one you lead with first, then the rest biggest first."
+              : cards.some((offer) => offer.hidden === true)
+                ? "Customers see the shown ones biggest first. Hidden ones stay here."
+                : "Customers see these biggest first. Star one to lead with it."}
           </p>
         ) : null}
         {warnings.length > 0 ? (

@@ -26,6 +26,13 @@ import { areaOf, hasArea } from "@/lib/quotes/areas";
 // built on their link with Build your own and booked. It is saved under one
 // id, so a newer one replaces their last one and never one of Keenan's; it
 // does not count toward his four.
+// lead (round 17, Keenan, 2026-11-12): his "Lead with this one" star. The
+// starred offer is listed first everywhere (the editor, Your price, the
+// link) and the link opens on it unless the customer booked one; one per
+// quote, never on a hidden offer or the customer's own build. Kept only
+// when true. description (round 17): a few sentences under the offer's
+// name on the link, and inside the breakdown at the table; one paragraph,
+// up to 400 characters, left out when empty.
 export type QuoteOffer = {
   id: string;
   name: string;
@@ -34,7 +41,37 @@ export type QuoteOffer = {
   upperAccess?: number | null;
   hidden?: boolean;
   fromCustomer?: boolean;
+  lead?: boolean;
+  description?: string;
 };
+
+export const OFFER_DESCRIPTION_MAX = 400;
+
+// A description as saved: one paragraph, spaces tidied, up to 400
+// characters; empty is none. The database cleans it the same way.
+export function cleanOfferDescription(value: unknown): string | null {
+  const text = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  return text ? text.slice(0, OFFER_DESCRIPTION_MAX).trim() : null;
+}
+
+// The star may sit on a shown offer of Keenan's own.
+export const canLead = (offer: Pick<QuoteOffer, "hidden" | "id" | "fromCustomer">): boolean =>
+  offer.hidden !== true && !isCustomerOffer(offer);
+
+// Star one offer ("Lead with this one"), or none with null; any other star
+// comes off, so there is never more than one.
+export function setLeadOffer(offers: readonly QuoteOffer[], id: string | null): QuoteOffer[] {
+  return offers.map((offer) => {
+    const { lead: _was, ...rest } = offer;
+    void _was;
+    return offer.id === id && canLead(offer) ? { ...rest, lead: true } : rest;
+  });
+}
+
+// The starred offer's id, or null.
+export function leadOfferId(offers: readonly QuoteOffer[]): string | null {
+  return offers.find((offer) => offer.lead === true && canLead(offer))?.id ?? null;
+}
 
 export const CUSTOMER_OFFER_ID = "customer";
 export const CUSTOMER_OFFER_NAME = "Custom quote (from the customer)";
@@ -139,20 +176,29 @@ export function parseOffers(value: unknown, runCount: number): QuoteOffer[] {
   const list = Array.isArray(value) ? value : [];
   const offers: QuoteOffer[] = [];
   const seen = new Set<string>();
+  let starred = false;
   for (const item of list) {
     if (!item || typeof item !== "object") continue;
     const record = item as Record<string, unknown>;
     const id = typeof record.id === "string" ? record.id.trim().slice(0, OFFER_ID_MAX) : "";
     if (id === "" || seen.has(id)) continue;
     seen.add(id);
+    const hidden = record.hidden === true;
+    const fromCustomer = record.from_customer === true || record.fromCustomer === true || id === CUSTOMER_OFFER_ID;
+    // Round 17: the first star on a shown offer of Keenan's counts.
+    const lead = record.lead === true && !starred && !hidden && !fromCustomer;
+    if (lead) starred = true;
+    const description = cleanOfferDescription(record.description);
     offers.push({
       id,
       name: cleanOfferName(record.name),
       runs: cleanPositions(runCount, record.runs),
       boxes: cleanBoxes(record.boxes),
       upperAccess: cleanUpperAccess(record.upper_access ?? record.upperAccess),
-      ...(record.hidden === true ? { hidden: true } : {}),
-      ...(record.from_customer === true || record.fromCustomer === true || id === CUSTOMER_OFFER_ID ? { fromCustomer: true } : {}),
+      ...(hidden ? { hidden: true } : {}),
+      ...(fromCustomer ? { fromCustomer: true } : {}),
+      ...(lead ? { lead: true } : {}),
+      ...(description ? { description } : {}),
     });
   }
   if (offers.length > 0) return offers;
@@ -314,8 +360,9 @@ export type PricedOffer = {
   everyRun: boolean;
 };
 
-// Every offer with its price, biggest first: by total, then by feet, then
-// in the order Keenan made them. Offers with no runs yet come last.
+// Every offer with its price: Keenan's starred offer first (round 17), then
+// biggest first: by total, then by feet, then in the order Keenan made
+// them. Offers with no runs yet come last.
 export function pricedOffers(inputs: QuoteInputs, offers: readonly QuoteOffer[]): PricedOffer[] {
   const priced = offers.map((offer, order) => {
     const totals = priceOffer(inputs, offer);
@@ -327,8 +374,10 @@ export function pricedOffers(inputs: QuoteInputs, offers: readonly QuoteOffer[])
       everyRun: inputs.runs.length > 0 && offer.runs.length === inputs.runs.length,
     };
   });
+  const lead = leadOfferId(offers);
   priced.sort((a, b) => {
     if ((a.totals === null) !== (b.totals === null)) return a.totals === null ? 1 : -1;
+    if (lead !== null && (a.offer.id === lead) !== (b.offer.id === lead)) return a.offer.id === lead ? -1 : 1;
     const byTotal = (b.totals?.subtotal ?? 0) - (a.totals?.subtotal ?? 0);
     if (byTotal !== 0) return byTotal;
     if (b.feet !== a.feet) return b.feet - a.feet;
@@ -362,9 +411,11 @@ export function setOfferHidden(offers: readonly QuoteOffer[], id: string, hidden
   if (hidden && !canHideOffer(offers, id)) return [...offers];
   return offers.map((offer) => {
     if (offer.id !== id) return offer;
-    const { hidden: _was, ...rest } = offer;
+    const { hidden: _was, lead: _star, ...rest } = offer;
     void _was;
-    return hidden ? { ...rest, hidden: true } : rest;
+    // A hidden offer can't be the one Keenan leads with (round 17).
+    if (hidden) return { ...rest, hidden: true };
+    return _star === true ? { ...rest, lead: true } : rest;
   });
 }
 
@@ -399,6 +450,7 @@ export function offersForSave(offers: readonly QuoteOffer[], runCount: number): 
   const seen = new Set<string>();
   const out: QuoteOffer[] = [];
   let own = 0;
+  let starred = false;
   for (const offer of offers) {
     const id = offer.id.trim().slice(0, OFFER_ID_MAX);
     if (id === "" || seen.has(id)) continue;
@@ -407,6 +459,9 @@ export function offersForSave(offers: readonly QuoteOffer[], runCount: number): 
     if (!customer && own === OFFERS_MAX) continue;
     seen.add(id);
     if (!customer) own += 1;
+    const lead = offer.lead === true && !starred && offer.hidden !== true && !customer;
+    if (lead) starred = true;
+    const description = cleanOfferDescription(offer.description);
     out.push({
       id,
       name: cleanOfferName(offer.name),
@@ -415,6 +470,8 @@ export function offersForSave(offers: readonly QuoteOffer[], runCount: number): 
       upperAccess: cleanUpperAccess(offer.upperAccess),
       ...(offer.hidden === true ? { hidden: true } : {}),
       ...(customer ? { fromCustomer: true } : {}),
+      ...(lead ? { lead: true } : {}),
+      ...(description ? { description } : {}),
     });
   }
   return out;

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Trash2 } from "lucide-react";
+import { ChevronDown, Star, Trash2 } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
 import { OfferPhoto, type OfferPhotos } from "@/components/quotes/quote-editor/offer-photo";
@@ -11,7 +11,7 @@ import { coverageLine } from "@/lib/meeting/price-screen";
 import { cleanFeet, formatMoney, hasUpperRun, screenTotal, selectRuns, type QuoteRun, type QuoteTotals } from "@/lib/pricing";
 import { areaDisplayName, isGable } from "@/lib/quotes/areas";
 import { automaticUpperAccess, moneyText, offerNameIssue, toggleOfferRun } from "@/lib/quotes/editor";
-import { cleanUpperAccess, isCustomerOffer, OFFER_NAME_EDITOR_MAX, ONE_OFFER_SHOWN, type QuoteOffer } from "@/lib/quotes/offers";
+import { canLead, cleanUpperAccess, isCustomerOffer, OFFER_NAME_EDITOR_MAX, ONE_OFFER_SHOWN, type QuoteOffer } from "@/lib/quotes/offers";
 import { cn } from "@/lib/utils";
 
 // One offer in Keenan's quote editor (round 9, the spec 3.7; round 11): its
@@ -25,7 +25,10 @@ import { cn } from "@/lib/utils";
 // nothing. Round 13 (Keenan, 2026-11-11): a "Show to customer" switch, on
 // to start. Off, the card is marked Hidden and the offer shows nowhere the
 // customer looks (Your price, their link); the last shown offer's switch
-// stays on (canHide), because at least one offer is always shown.
+// stays on (canHide), because at least one offer is always shown. Round 17
+// (Keenan, 2026-11-12): "Lead with this one", a star on each shown offer of
+// his, one per quote: the starred offer is listed first and the customer's
+// link opens on it unless they booked one.
 
 export function OfferCard({
   offer,
@@ -41,6 +44,7 @@ export function OfferCard({
   onActivate,
   onChange,
   onShow,
+  onLead,
   onDelete,
 }: {
   offer: QuoteOffer;
@@ -61,6 +65,8 @@ export function OfferCard({
   canHide?: boolean;
   // The Show to customer switch (round 13).
   onShow?: (shown: boolean) => void;
+  // Round 17: star this offer (true) or take the star off (false).
+  onLead?: (lead: boolean) => void;
   // Pointer down or focus within the card: it is the active offer.
   onActivate?: () => void;
   onChange: (offer: QuoteOffer) => void;
@@ -148,7 +154,7 @@ export function OfferCard({
 
       {onShow ? (
         <div className="flex flex-col">
-          <div className="flex flex-wrap items-center gap-x-3">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
             {/* The label is the tap target (48 px); the switch itself is small. */}
             <label htmlFor={showId} className="flex min-h-12 cursor-pointer items-center gap-3 text-sm font-semibold">
               <Switch
@@ -160,12 +166,33 @@ export function OfferCard({
               />
               Show to customer
             </label>
+            {onLead && canLead(offer) ? (
+              <button
+                type="button"
+                aria-pressed={offer.lead === true}
+                disabled={locked}
+                onClick={() => onLead(offer.lead !== true)}
+                className={cn(
+                  "inline-flex min-h-12 items-center gap-2 rounded-md px-1 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+                  offer.lead === true ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                )}
+                data-testid="offer-lead"
+              >
+                <Star aria-hidden="true" className={cn("size-5 shrink-0", offer.lead === true && "fill-current")} strokeWidth={1.75} />
+                {offer.lead === true ? "Leading with this one" : "Lead with this one"}
+              </button>
+            ) : null}
             {hidden ? (
               <span className="rounded-md border border-foreground px-2 py-0.5 text-xs font-bold tracking-wide uppercase" data-testid="offer-hidden">
                 Hidden
               </span>
             ) : null}
           </div>
+          {offer.lead === true && !hidden ? (
+            <p className="text-xs text-pretty text-muted-foreground" data-testid="offer-lead-note">
+              Listed first, and their link opens on it unless they booked another.
+            </p>
+          ) : null}
           {hidden ? (
             <p className="text-xs text-pretty text-muted-foreground">Not on Your price in the meeting, and not on their link.</p>
           ) : !canHide && !locked ? (

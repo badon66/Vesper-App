@@ -56,7 +56,17 @@ export type QuoteSaveInput = {
   gstEnabled: boolean;
   gstRate: number;
   gstNumber: string | null;
-  offers: { id: string; name: string; runs: number[]; boxes: number | null; upperAccess: number | null; hidden?: boolean; fromCustomer?: boolean }[];
+  offers: {
+    id: string;
+    name: string;
+    runs: number[];
+    boxes: number | null;
+    upperAccess: number | null;
+    hidden?: boolean;
+    fromCustomer?: boolean;
+    lead?: boolean;
+    description?: string;
+  }[];
   meetingOffer: string | null;
   meetingInstallOn: string | null;
 };
