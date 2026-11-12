@@ -44,7 +44,7 @@ View as: in Admin > People the owner can open the app exactly as an active non-o
 Design each screen for the device it will actually be used on, then make it tolerable elsewhere.
 
 - Phone first: lead capture, my leads, tonight's schedule and booking, the Session tab (knock session counters and tonight's times), my pay. Big tap targets, one-handed, works in bright daylight and at dusk. Fast.
-- Phone first for customers: the customer quote page, opened from a text message on their own phone. On a laptop or desktop (1024 px and wider) it is laid out for the screen, not stretched (Keenan, 2026-11-12): the picture with its Looks and Options beside the price and the offers, text at a reading width, full screen and signing with a mouse or trackpad; the phone layout stays as it is.
+- Phone first for customers: the customer quote page, opened from a text message on their own phone. On a laptop or desktop (1024 px and wider) it is laid out for the screen, not stretched (Keenan, 2026-11-12): the picture with its Looks and Options beside the price and the offers, staying in view only while the offers scroll, then everything else in one centred reading column in the phone's order, full screen and signing with a mouse or trackpad; the phone layout stays as it is.
 - iPad first (landscape): meeting mode (presentation plus quote builder), the Meetings page, pipeline board, lead detail with photos.
 - The booking sheet is designed and tested at 430 x 932 (Keenan's iPhone 15 Pro Max) and at 390 wide: the extra room goes to bigger type and tap targets, and related items share a screen so there are fewer steps (Keenan, 2026-11-03).
 - Desktop and iPad: dashboard, settings, people.

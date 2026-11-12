@@ -11,13 +11,18 @@
 //   with Esc or a click, double-click and the wheel zoom; Build your own,
 //   the documents, Book my install and the agreement work from the
 //   keyboard, and the signature is drawn with the mouse;
+// - scrolled top to bottom in steps at 1440 x 900 and 1280 x 800, the way
+//   a customer reads it, in Chromium and in WebKit (Safari's engine) when it
+//   can run here: at every step the picture covers no text, and it leaves
+//   with the offers (2026-11-12: it once stayed pinned over the sections
+//   below, which full-page screenshots never show because they don't scroll);
 // - on a phone: the single column as before, with the finger wording.
 // Everything staged is removed at the end; Settings' agreement text is set
 // only when empty and no other lead waits on it, and put back after.
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
-import { chromium } from "playwright";
+import { chromium, webkit } from "playwright";
 import sharp from "sharp";
 
 const base = process.env.BASE ?? "http://localhost:3400";
@@ -201,7 +206,13 @@ async function layoutAt(page, name, width) {
       page: document.documentElement.scrollWidth,
       viewport: window.innerWidth,
       main: measure('[data-testid="quote-live"]'),
-      points: measure('section[aria-labelledby="getting"]'),
+      points: measure('section[aria-labelledby="getting-laptop"]') ?? measure('section[aria-labelledby="getting"]'),
+      below: (() => {
+        const element = document.querySelector('[data-testid="laptop-below"]');
+        if (!element) return 9999;
+        const rect = element.getBoundingClientRect();
+        return Math.round(Math.abs(rect.left + rect.width / 2 - window.innerWidth / 2));
+      })(),
       next: measure('[data-testid="quote-next-steps"]'),
       track: measure('[data-testid="about-track"]'),
       options: measure('[data-testid="quote-options"]'),
@@ -212,11 +223,66 @@ async function layoutAt(page, name, width) {
   check(`${name}: no sideways scroll`, widths.page <= widths.viewport, `${widths.page} in ${widths.viewport}`);
   check(`${name}: the page stops short of the screen's edges`, widths.main <= 1280 && widths.left >= 40 && widths.right >= 40, `page ${widths.main} px of ${width}, text from ${widths.left} px, offers end ${widths.right} px from the edge`);
   const reading = [widths.points, widths.next, widths.track].filter((w) => w !== null);
-  check(`${name}: text runs at a reading width`, reading.length > 0 && reading.every((w) => w <= 760), `text ${reading.join(", ")} px; offers ${widths.options} px`);
+  check(`${name}: text runs at a reading width`, reading.length === 3 && reading.every((w) => w > 300 && w <= 760), `text ${reading.join(", ")} px; offers ${widths.options} px`);
+  check(`${name}: below the offers, one column in the middle of the screen`, widths.below <= 2, `${widths.below} px off centre`);
   const sharp = await page.getByTestId("option-mockup").evaluate((image) => ({ natural: image.naturalWidth, shown: Math.round(image.getBoundingClientRect().width), ratio: window.devicePixelRatio }));
   check(`${name}: the picture is never shown bigger than it is`, sharp.natural >= sharp.shown * sharp.ratio, `${sharp.natural} px wide, shown at ${sharp.shown} px x${sharp.ratio}`);
   await page.screenshot({ path: `${out}/${tag}-${width}-top.png` });
   return widths;
+}
+
+// Scrolled top to bottom in steps of 40% of the window, the way a customer
+// reads: at every step no text on the page sits under the picture (only the
+// picture's own Looks and Options, and the bar fixed at the bottom, may
+// share its space), and by the end the picture has left the screen.
+async function scrollCheck(engine, launcher, [width, height]) {
+  const name = `${engine} ${width} x ${height}`;
+  const context = await launcher.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  await page.goto(`${base}/q/${staged.token}`, { waitUntil: "networkidle" });
+  await page.getByTestId("quote-live").waitFor({ timeout: 30000 });
+  const total = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
+  const step = Math.round(height * 0.4);
+  const covered = [];
+  let steps = 0;
+  let last = null;
+  for (let y = 0; ; y += step) {
+    const at = Math.min(y, total);
+    await page.evaluate((to) => window.scrollTo(0, to), at);
+    await page.waitForTimeout(150);
+    steps += 1;
+    last = await page.evaluate(() => {
+      const top = document.querySelector('[data-testid="laptop-top"]') ?? document;
+      const picture = top?.querySelector('[data-testid="see-it"]') ?? top?.querySelector('[data-testid="quote-mockup"]')?.closest("figure")?.parentElement;
+      if (!picture) return { missing: true };
+      const box = picture.getBoundingClientRect();
+      const bar = document.querySelector('[data-testid="quote-bar"]');
+      const hits = [];
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        const text = node.textContent.trim();
+        const parent = node.parentElement;
+        if (!text || !parent || picture.contains(parent) || bar?.contains(parent) || parent.closest("dialog, script, style")) continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        for (const r of range.getClientRects()) {
+          if (r.width === 0 || r.height === 0 || r.bottom <= 0 || r.top >= window.innerHeight) continue;
+          if (r.left < box.right && r.right > box.left && r.top < box.bottom && r.bottom > box.top) {
+            hits.push(text.slice(0, 40));
+            break;
+          }
+        }
+      }
+      return { hits, top: Math.round(box.top), bottom: Math.round(box.bottom) };
+    });
+    if (last.missing) break;
+    if (last.hits.length > 0) covered.push(`at ${at} px: ${[...new Set(last.hits)].slice(0, 3).join(" / ")}`);
+    if (at >= total) break;
+  }
+  check(`${name}: scrolled top to bottom in ${steps} steps, the picture never covers any text`, !last?.missing && covered.length === 0, last?.missing ? "no picture found" : covered.slice(0, 3).join("; "));
+  check(`${name}: the picture leaves with the offers`, last && !last.missing && last.bottom <= 0, last ? `picture ends at ${last.bottom} px at the bottom of the page` : "");
+  await context.close();
 }
 
 await mkdir(out, { recursive: true });
@@ -232,13 +298,45 @@ try {
     const page = await context.newPage();
     await layoutAt(page, `${width} wide`, width);
     if (width === 1440) {
-      await page.screenshot({ path: `${out}/${tag}-1440-full.png`, fullPage: true });
       // The picture stays in view while they read the offers.
       await page.getByTestId("whats-in").scrollIntoViewIfNeeded();
       await page.waitForTimeout(300);
       const kept = await box(page, "option-mockup");
       check("1440 wide: the picture stays in view while they go down the offers", kept && kept.y >= 0 && kept.y + kept.height <= 900, kept ? `top ${Math.round(kept.y)}` : "missing");
     }
+    await context.close();
+  }
+
+  // The scroll check, in Chromium and in WebKit when it runs here.
+  for (const size of [[1440, 900], [1280, 800]]) await scrollCheck("Chromium", browser, size);
+  let safari = null;
+  try {
+    safari = await webkit.launch(process.env.WEBKIT_EXECUTABLE ? { executablePath: process.env.WEBKIT_EXECUTABLE } : {});
+  } catch (error) {
+    say(`NOTE WebKit (Safari's engine) can't run on this machine, so the scroll check ran in Chromium only: ${String(error?.message ?? error).split("\n")[0]}`);
+  }
+  if (safari) {
+    for (const size of [[1440, 900], [1280, 800]]) await scrollCheck("WebKit", safari, size);
+    await safari.close();
+  }
+
+  // 1440 x 900 as a customer sees it: the top, halfway down the offers, below the offers.
+  {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
+    const page = await context.newPage();
+    await page.goto(`${base}/q/${staged.token}`, { waitUntil: "networkidle" });
+    await page.getByTestId("quote-live").waitFor({ timeout: 30000 });
+    await page.screenshot({ path: `${out}/${tag}-1440x900-1-top.png` });
+    await page.evaluate(() => {
+      const rows = document.querySelector('[data-testid="option-rows"]').getBoundingClientRect();
+      const lines = document.querySelector('[data-testid="quote-lines"]').getBoundingClientRect();
+      window.scrollTo(0, window.scrollY + (rows.top + lines.bottom) / 2 - window.innerHeight / 2);
+    });
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${out}/${tag}-1440x900-2-offers.png` });
+    await page.evaluate(() => window.scrollTo(0, window.scrollY + document.querySelector('[data-testid="laptop-below"]').getBoundingClientRect().top - 120));
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${out}/${tag}-1440x900-3-below.png` });
     await context.close();
   }
 
