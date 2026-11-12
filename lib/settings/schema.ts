@@ -188,6 +188,11 @@ export const settingsFormSchema = z.object({
   rush_colour_fee: moneyOrUnset,
   upper_access_fee: moneyOrUnset,
   upper_gable_access_fee: moneyOrUnset,
+  // Track types (2026-11-11): Double and J track's price a foot. Blank: that
+  // track can't be picked in the quote editor yet. Hat track is the price
+  // per foot above.
+  double_track_per_ft: moneyOrUnset,
+  j_track_per_ft: moneyOrUnset,
   service_call_fee: moneyOrUnset,
   price_hold_days: wholeNumber(1, 365),
   // The quote link (2026-11-02): the least a job can cost before GST.
@@ -314,6 +319,8 @@ export function settingsFormDataToInput(
     rush_colour_fee: text("rush_colour_fee"),
     upper_access_fee: text("upper_access_fee"),
     upper_gable_access_fee: text("upper_gable_access_fee"),
+    double_track_per_ft: text("double_track_per_ft"),
+    j_track_per_ft: text("j_track_per_ft"),
     service_call_fee: text("service_call_fee"),
     price_hold_days: text("price_hold_days"),
     min_job_total: text("min_job_total"),
@@ -368,6 +375,8 @@ export function settingsUpdateFromValues(v: SettingsFormValues): SettingsUpdate 
     rush_colour_fee: v.rush_colour_fee,
     upper_access_fee: v.upper_access_fee,
     upper_gable_access_fee: v.upper_gable_access_fee,
+    double_track_per_ft: v.double_track_per_ft,
+    j_track_per_ft: v.j_track_per_ft,
     service_call_fee: v.service_call_fee,
     price_hold_days: v.price_hold_days,
     min_job_total: v.min_job_total,
@@ -425,6 +434,8 @@ export type SettingsFormDefaults = {
   rush_colour_fee: string;
   upper_access_fee: string;
   upper_gable_access_fee: string;
+  double_track_per_ft: string;
+  j_track_per_ft: string;
   service_call_fee: string;
   price_hold_days: string;
   min_job_total: string;
@@ -477,6 +488,8 @@ export function settingsRowToFormDefaults(row: SettingsRow): SettingsFormDefault
     rush_colour_fee: row.rush_colour_fee === null ? "" : row.rush_colour_fee.toFixed(2),
     upper_access_fee: row.upper_access_fee === null ? "" : row.upper_access_fee.toFixed(2),
     upper_gable_access_fee: row.upper_gable_access_fee === null ? "" : row.upper_gable_access_fee.toFixed(2),
+    double_track_per_ft: row.double_track_per_ft === null ? "" : row.double_track_per_ft.toFixed(2),
+    j_track_per_ft: row.j_track_per_ft === null ? "" : row.j_track_per_ft.toFixed(2),
     service_call_fee: row.service_call_fee === null ? "" : row.service_call_fee.toFixed(2),
     price_hold_days: String(row.price_hold_days),
     min_job_total: row.min_job_total === null ? "" : row.min_job_total.toFixed(2),

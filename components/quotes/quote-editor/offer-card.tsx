@@ -11,7 +11,7 @@ import { coverageLine } from "@/lib/meeting/price-screen";
 import { cleanFeet, formatMoney, hasUpperRun, screenTotal, selectRuns, type QuoteRun, type QuoteTotals } from "@/lib/pricing";
 import { areaDisplayName, isGable } from "@/lib/quotes/areas";
 import { automaticUpperAccess, moneyText, offerNameIssue, toggleOfferRun } from "@/lib/quotes/editor";
-import { cleanUpperAccess, OFFER_NAME_EDITOR_MAX, ONE_OFFER_SHOWN, type QuoteOffer } from "@/lib/quotes/offers";
+import { cleanUpperAccess, isCustomerOffer, OFFER_NAME_EDITOR_MAX, ONE_OFFER_SHOWN, type QuoteOffer } from "@/lib/quotes/offers";
 import { cn } from "@/lib/utils";
 
 // One offer in Keenan's quote editor (round 9, the spec 3.7; round 11): its
@@ -122,7 +122,12 @@ export function OfferCard({
             data-testid="offer-name"
           />
           <p id={`${nameId}-hint`} className={cn("text-xs", issue ? "font-semibold text-destructive" : "text-muted-foreground")}>
-            {issue ?? (hidden ? "Hidden. Customers don't see this offer." : "Customers see this name.")}
+            {issue ??
+              (isCustomerOffer(offer)
+                ? "Built by the customer on their link. Accept it like any other."
+                : hidden
+                  ? "Hidden. Customers don't see this offer."
+                  : "Customers see this name.")}
           </p>
         </div>
         {!locked ? (

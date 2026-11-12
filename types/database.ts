@@ -14,6 +14,87 @@ export type Database = {
   }
   public: {
     Tables: {
+      agreement_signatures: {
+        Row: {
+          agreement_text: string
+          id: string
+          lead_id: string
+          lead_snapshot: Json
+          link_id: string | null
+          offer_id: string
+          offer_name: string
+          quote_id: string | null
+          quote_snapshot: Json
+          signature_png: string
+          signed_at: string
+          signer_name: string
+        }
+        Insert: {
+          agreement_text: string
+          id?: string
+          lead_id: string
+          lead_snapshot: Json
+          link_id?: string | null
+          offer_id: string
+          offer_name: string
+          quote_id?: string | null
+          quote_snapshot: Json
+          signature_png: string
+          signed_at?: string
+          signer_name: string
+        }
+        Update: {
+          agreement_text?: string
+          id?: string
+          lead_id?: string
+          lead_snapshot?: Json
+          link_id?: string | null
+          offer_id?: string
+          offer_name?: string
+          quote_id?: string | null
+          quote_snapshot?: Json
+          signature_png?: string
+          signed_at?: string
+          signer_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agreement_signatures_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "agreement_signatures_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_notes"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "agreement_signatures_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agreement_signatures_link_id_fkey"
+            columns: ["link_id"]
+            isOneToOne: false
+            referencedRelation: "quote_links"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agreement_signatures_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       day_schedules: {
         Row: {
           created_at: string
@@ -111,6 +192,67 @@ export type Database = {
           {
             foreignKeyName: "day_schedules_removed_by_fkey"
             columns: ["removed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deck_photos: {
+        Row: {
+          caption: string | null
+          created_at: string
+          created_by: string | null
+          focus_x: number
+          focus_y: number
+          id: string
+          path: string
+          slot: string
+          sort: number
+          thumb_path: string | null
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          focus_x?: number
+          focus_y?: number
+          id?: string
+          path: string
+          slot: string
+          sort?: number
+          thumb_path?: string | null
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string
+          created_by?: string | null
+          focus_x?: number
+          focus_y?: number
+          id?: string
+          path?: string
+          slot?: string
+          sort?: number
+          thumb_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deck_photos_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deck_photos_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deck_photos_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles_public"
             referencedColumns: ["id"]
@@ -247,45 +389,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      deck_photos: {
-        Row: {
-          caption: string | null
-          created_at: string
-          created_by: string | null
-          focus_x: number
-          focus_y: number
-          id: string
-          path: string
-          slot: string
-          sort: number
-          thumb_path: string | null
-        }
-        Insert: {
-          caption?: string | null
-          created_at?: string
-          created_by?: string | null
-          focus_x?: number
-          focus_y?: number
-          id?: string
-          path: string
-          slot: string
-          sort?: number
-          thumb_path?: string | null
-        }
-        Update: {
-          caption?: string | null
-          created_at?: string
-          created_by?: string | null
-          focus_x?: number
-          focus_y?: number
-          id?: string
-          path?: string
-          slot?: string
-          sort?: number
-          thumb_path?: string | null
-        }
-        Relationships: []
       }
       knock_sessions: {
         Row: {
@@ -430,6 +533,159 @@ export type Database = {
           },
         ]
       }
+      lead_link_documents: {
+        Row: {
+          content_type: string | null
+          created_at: string
+          created_by: string | null
+          document_id: string | null
+          id: string
+          lead_id: string
+          name: string | null
+          removed_at: string | null
+          size_bytes: number | null
+          storage_path: string | null
+        }
+        Insert: {
+          content_type?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          id?: string
+          lead_id: string
+          name?: string | null
+          removed_at?: string | null
+          size_bytes?: number | null
+          storage_path?: string | null
+        }
+        Update: {
+          content_type?: string | null
+          created_at?: string
+          created_by?: string | null
+          document_id?: string | null
+          id?: string
+          lead_id?: string
+          name?: string | null
+          removed_at?: string | null
+          size_bytes?: number | null
+          storage_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_link_documents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_link_documents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_link_documents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_link_documents_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "link_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_link_documents_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_link_documents_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_notes"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_link_documents_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_link_options: {
+        Row: {
+          agreement_to_sign: boolean
+          lead_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          agreement_to_sign?: boolean
+          lead_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          agreement_to_sign?: boolean
+          lead_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_link_options_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_link_options_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "lead_notes"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_link_options_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_link_options_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_link_options_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_link_options_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_mockups: {
         Row: {
           created_at: string
@@ -476,7 +732,29 @@ export type Database = {
           removed_at?: string | null
           storage_path?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "lead_mockups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_mockups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_notes"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_mockups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       lead_photos: {
         Row: {
@@ -795,6 +1073,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "leads_soffit_ral_code_2_fkey"
+            columns: ["soffit_ral_code_2"]
+            isOneToOne: false
+            referencedRelation: "ral_classic_colours"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "leads_soffit_ral_code_fkey"
+            columns: ["soffit_ral_code"]
+            isOneToOne: false
+            referencedRelation: "ral_classic_colours"
+            referencedColumns: ["code"]
+          },
+          {
             foreignKeyName: "leads_track_colour_id_fkey"
             columns: ["track_colour_id"]
             isOneToOne: false
@@ -810,13 +1102,71 @@ export type Database = {
           },
         ]
       }
+      link_documents: {
+        Row: {
+          content_type: string
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          position: number
+          retired_at: string | null
+          size_bytes: number
+          storage_path: string
+        }
+        Insert: {
+          content_type: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          position?: number
+          retired_at?: string | null
+          size_bytes?: number
+          storage_path: string
+        }
+        Update: {
+          content_type?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          position?: number
+          retired_at?: string | null
+          size_bytes?: number
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "link_documents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "link_documents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "link_documents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meetings: {
         Row: {
-          confirmed_at: string | null
           booked_by: string
+          confirmed_at: string | null
           created_at: string
           ends_at: string
-          everyone_deciding: string
+          everyone_deciding: string | null
           everyone_deciding_present: boolean
           host_id: string
           id: string
@@ -834,11 +1184,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          confirmed_at?: string | null
           booked_by: string
+          confirmed_at?: string | null
           created_at?: string
           ends_at: string
-          everyone_deciding?: string
+          everyone_deciding?: string | null
           everyone_deciding_present: boolean
           host_id: string
           id?: string
@@ -856,11 +1206,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          confirmed_at?: string | null
           booked_by?: string
+          confirmed_at?: string | null
           created_at?: string
           ends_at?: string
-          everyone_deciding?: string
+          everyone_deciding?: string | null
           everyone_deciding_present?: boolean
           host_id?: string
           id?: string
@@ -1258,8 +1608,8 @@ export type Database = {
       quotes: {
         Row: {
           accepted_at: string | null
-          accepted_by: string | null
           accepted_boxes: number | null
+          accepted_by: string | null
           accepted_offer: string | null
           accepted_runs: number[] | null
           adders: Json
@@ -1307,8 +1657,8 @@ export type Database = {
         }
         Insert: {
           accepted_at?: string | null
-          accepted_by?: string | null
           accepted_boxes?: number | null
+          accepted_by?: string | null
           accepted_offer?: string | null
           accepted_runs?: number[] | null
           adders?: Json
@@ -1356,8 +1706,8 @@ export type Database = {
         }
         Update: {
           accepted_at?: string | null
-          accepted_by?: string | null
           accepted_boxes?: number | null
+          accepted_by?: string | null
           accepted_offer?: string | null
           accepted_runs?: number[] | null
           adders?: Json
@@ -1457,6 +1807,13 @@ export type Database = {
             foreignKeyName: "quotes_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_notes"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "quotes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -1517,15 +1874,56 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "roofline_traces_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "roofline_traces_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "lead_notes"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "roofline_traces_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roofline_traces_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roofline_traces_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roofline_traces_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       settings: {
         Row: {
+          agreement_text: string | null
           black_friday_kind: string | null
           black_friday_value: number | null
-          deck: Json
-          light_looks: Json
-          confirm_text: string
           booking_cutoff_minutes: number
           booking_pay: number
           booking_window_days: number
@@ -1535,8 +1933,11 @@ export type Database = {
           christmas_banner_title: string
           commission_rate: number
           company: Json
+          confirm_text: string
+          deck: Json
           distance_warning_km: number
           door_guide: string
+          double_track_per_ft: number | null
           faq_text: string
           gst_enabled: boolean
           gst_number: string | null
@@ -1544,6 +1945,8 @@ export type Database = {
           hold_grace_minutes: number
           hold_minutes: number
           id: number
+          j_track_per_ft: number | null
+          light_looks: Json
           lost_reasons: string[]
           meeting_days: number[]
           meeting_host_id: string | null
@@ -1571,11 +1974,9 @@ export type Database = {
           warranty_text: string
         }
         Insert: {
+          agreement_text?: string | null
           black_friday_kind?: string | null
           black_friday_value?: number | null
-          deck?: Json
-          light_looks?: Json
-          confirm_text?: string
           booking_cutoff_minutes?: number
           booking_pay?: number
           booking_window_days?: number
@@ -1585,8 +1986,11 @@ export type Database = {
           christmas_banner_title?: string
           commission_rate?: number
           company: Json
+          confirm_text?: string
+          deck?: Json
           distance_warning_km?: number
           door_guide?: string
+          double_track_per_ft?: number | null
           faq_text?: string
           gst_enabled?: boolean
           gst_number?: string | null
@@ -1594,6 +1998,8 @@ export type Database = {
           hold_grace_minutes?: number
           hold_minutes?: number
           id: number
+          j_track_per_ft?: number | null
+          light_looks?: Json
           lost_reasons?: string[]
           meeting_days?: number[]
           meeting_host_id?: string | null
@@ -1621,11 +2027,9 @@ export type Database = {
           warranty_text: string
         }
         Update: {
+          agreement_text?: string | null
           black_friday_kind?: string | null
           black_friday_value?: number | null
-          deck?: Json
-          light_looks?: Json
-          confirm_text?: string
           booking_cutoff_minutes?: number
           booking_pay?: number
           booking_window_days?: number
@@ -1635,8 +2039,11 @@ export type Database = {
           christmas_banner_title?: string
           commission_rate?: number
           company?: Json
+          confirm_text?: string
+          deck?: Json
           distance_warning_km?: number
           door_guide?: string
+          double_track_per_ft?: number | null
           faq_text?: string
           gst_enabled?: boolean
           gst_number?: string | null
@@ -1644,6 +2051,8 @@ export type Database = {
           hold_grace_minutes?: number
           hold_minutes?: number
           id?: number
+          j_track_per_ft?: number | null
+          light_looks?: Json
           lost_reasons?: string[]
           meeting_days?: number[]
           meeting_host_id?: string | null
@@ -2164,10 +2573,6 @@ export type Database = {
       }
     }
     Functions: {
-      confirm_meeting: {
-        Args: { p_confirmed?: boolean; p_meeting: string }
-        Returns: string
-      }
       acts_as_owner: { Args: never; Returns: boolean }
       add_time_block: {
         Args: {
@@ -2236,6 +2641,10 @@ export type Database = {
         Returns: undefined
       }
       close_my_stale_knock_sessions: { Args: never; Returns: number }
+      confirm_meeting: {
+        Args: { p_confirmed?: boolean; p_meeting: string }
+        Returns: string
+      }
       current_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
@@ -2254,6 +2663,7 @@ export type Database = {
       default_meeting_host: { Args: never; Returns: string }
       end_open_knock_sessions: { Args: never; Returns: number }
       end_user_sessions: { Args: { target_user: string }; Returns: number }
+      everyone_deciding_of: { Args: { p_lead: string }; Returns: string }
       extend_hold: { Args: never; Returns: Json }
       finish_welcome: { Args: never; Returns: string }
       hold_grace: { Args: never; Returns: string }
@@ -2291,6 +2701,7 @@ export type Database = {
         Args: { p_meeting_id: string; p_new_starts_at: string }
         Returns: string
       }
+      photo_file_is_mockup: { Args: { p_name: string }; Returns: boolean }
       push_devices_for_member: {
         Args: { p_profile_id: string }
         Returns: {
@@ -2307,12 +2718,12 @@ export type Database = {
           sealed: string
         }[]
       }
-      quote_accept_offer: {
-        Args: { p_install_on?: string; p_offer: string; p_quote: string }
-        Returns: Json
-      }
       quote_accept: {
         Args: { p_install_on?: string; p_quote: string; p_runs?: number[] }
+        Returns: Json
+      }
+      quote_accept_offer: {
+        Args: { p_install_on?: string; p_offer: string; p_quote: string }
         Returns: Json
       }
       quote_cancel: {
@@ -2323,21 +2734,41 @@ export type Database = {
         Args: { p_quote: string; p_runs: number[] }
         Returns: number
       }
+      quote_commission_base_boxes: {
+        Args: { p_boxes: number; p_quote: string; p_runs: number[] }
+        Returns: number
+      }
       quote_decline: {
         Args: { p_note?: string; p_quote: string; p_reason: string }
         Returns: undefined
       }
+      quote_document_signable: { Args: { p_name: string }; Returns: boolean }
       quote_for_customer: { Args: { p_token: string }; Returns: Json }
       quote_gallery_signable: { Args: { p_name: string }; Returns: boolean }
+      quote_lights_cents: {
+        Args: { p_quote: string; p_runs: number[] }
+        Returns: number
+      }
+      quote_link_agreement: { Args: { p_token: string }; Returns: Json }
       quote_link_book: {
         Args: { p_positions: number[]; p_token: string }
+        Returns: Json
+      }
+      quote_link_book_custom: {
+        Args: { p_from?: string; p_runs: number[]; p_token: string }
+        Returns: Json
+      }
+      quote_link_book_offer: {
+        Args: { p_offer: string; p_token: string }
         Returns: Json
       }
       quote_link_current_quote: {
         Args: { p_lead_id: string }
         Returns: {
           accepted_at: string | null
+          accepted_boxes: number | null
           accepted_by: string | null
+          accepted_offer: string | null
           accepted_runs: number[] | null
           adders: Json
           box_count: number
@@ -2358,8 +2789,11 @@ export type Database = {
           id: string
           lead_id: string
           lead_status_before: Database["public"]["Enums"]["lead_status"] | null
+          meeting_install_on: string | null
+          meeting_offer: string | null
           min_job_total: number | null
           notes: string | null
+          offers: Json
           outcome_note: string | null
           pdf_path: string | null
           presented_at: string | null
@@ -2386,10 +2820,12 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      quote_link_documents: { Args: { p_token: string }; Returns: Json }
       quote_link_live: {
         Args: { p_token: string }
         Returns: {
           booked_at: string | null
+          booked_offer: string | null
           booked_option: string | null
           booked_selection: number[] | null
           created_at: string
@@ -2403,6 +2839,7 @@ export type Database = {
           revoked_by: string | null
           selection: number[] | null
           selection_at: string | null
+          selection_offer: string | null
           selection_runs: string | null
           token: string
           updated_at: string
@@ -2415,6 +2852,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      quote_link_mockups: { Args: { p_token: string }; Returns: Json }
       quote_link_positions: {
         Args: { p_positions: number[]; p_runs: Json }
         Returns: number[]
@@ -2423,21 +2861,36 @@ export type Database = {
         Args: { p_position: number; p_run: Json }
         Returns: string
       }
-      quote_link_book_offer: { Args: { p_offer: string; p_token: string }; Returns: Json }
       quote_link_select: {
         Args: { p_positions: number[]; p_token: string }
         Returns: boolean
       }
-      quote_link_select_offer: { Args: { p_offer: string; p_token: string }; Returns: boolean }
-      quote_link_visit: { Args: { p_token: string }; Returns: boolean }
-      photo_file_is_mockup: { Args: { p_name: string }; Returns: boolean }
-      quote_link_mockups: { Args: { p_token: string }; Returns: Json }
-      quote_lights_cents: { Args: { p_quote: string; p_runs: number[] }; Returns: number }
-      quote_mockup_signable: { Args: { p_name: string }; Returns: boolean }
-      quote_undo_acceptance: {
-        Args: { p_quote: string }
-        Returns: undefined
+      quote_link_select_offer: {
+        Args: { p_offer: string; p_token: string }
+        Returns: boolean
       }
+      quote_link_sign_agreement: {
+        Args: {
+          p_name: string
+          p_offer: string
+          p_signature: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      quote_link_signed_copy: { Args: { p_token: string }; Returns: Json }
+      quote_link_visit: { Args: { p_token: string }; Returns: boolean }
+      quote_mockup_signable: { Args: { p_name: string }; Returns: boolean }
+      quote_offers_clean: {
+        Args: { p_quote: Database["public"]["Tables"]["quotes"]["Row"] }
+        Returns: Json
+      }
+      quote_offers_one_shown: { Args: { p_offers: Json }; Returns: boolean }
+      quote_offers_shown: {
+        Args: { p_quote: Database["public"]["Tables"]["quotes"]["Row"] }
+        Returns: Json
+      }
+      quote_undo_acceptance: { Args: { p_quote: string }; Returns: undefined }
       release_hold: { Args: never; Returns: undefined }
       release_lapsed_holds: {
         Args: { p_host: string; p_starts_at: string }
@@ -2544,6 +2997,7 @@ export type Database = {
         | "install_requested"
         | "quote_cancelled"
         | "quote_acceptance_undone"
+        | "agreement_signed"
       hot_button:
         | "no_ladders"
         | "up_for_christmas"
@@ -2761,6 +3215,7 @@ export const Constants = {
         "install_requested",
         "quote_cancelled",
         "quote_acceptance_undone",
+        "agreement_signed",
       ],
       hot_button: [
         "no_ladders",

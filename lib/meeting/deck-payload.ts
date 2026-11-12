@@ -199,7 +199,7 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
 // The prices Settings gives a new quote (shared with the lead page's quote
 // editor, lib/quotes/editor-data.ts).
 export const PRICING_SETTINGS =
-  "price_per_ft, box_price, neighbour_discount, gst_enabled, gst_rate, gst_number, rush_colour_fee, upper_access_fee, upper_gable_access_fee, price_hold_days, min_job_total, black_friday_kind, black_friday_value";
+  "price_per_ft, box_price, neighbour_discount, gst_enabled, gst_rate, gst_number, rush_colour_fee, upper_access_fee, upper_gable_access_fee, price_hold_days, min_job_total, black_friday_kind, black_friday_value, double_track_per_ft, j_track_per_ft";
 
 type PricingRow = {
   price_per_ft: number;
@@ -215,6 +215,8 @@ type PricingRow = {
   min_job_total: number | null;
   black_friday_kind?: string | null;
   black_friday_value?: number | null;
+  double_track_per_ft?: number | null;
+  j_track_per_ft?: number | null;
 };
 
 export function pricingFrom(settings: PricingRow): MeetingPayload["pricing"] {
@@ -231,6 +233,7 @@ export function pricingFrom(settings: PricingRow): MeetingPayload["pricing"] {
     priceHoldDays: settings.price_hold_days,
     minJobTotal: settings.min_job_total,
     blackFriday: blackFridayFrom(settings),
+    trackPrices: { double: settings.double_track_per_ft ?? null, j: settings.j_track_per_ft ?? null },
   };
 }
 

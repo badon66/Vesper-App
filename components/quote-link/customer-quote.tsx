@@ -2,18 +2,26 @@
 
 import { Check, Loader2, Maximize2, MessageSquare, Phone, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { bookInstall, recordVisit, saveSelection } from "@/app/q/[token]/actions";
+import { bookCustom, bookInstall, recordVisit, saveSelection, signAgreement } from "@/app/q/[token]/actions";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
 import { Disclosure } from "@/components/quote-link/disclosure";
+import { AboutYourTrack, AgreementSection, BuildYourOwn, BuildYourOwnRow, LinkDocuments, type SignOutcome } from "@/components/quote-link/link-extras";
 import { PointIconMark } from "@/components/quote-link/point-icon";
 import { ClosedQuote, ContactButtons } from "@/components/quote-link/quote-shell";
 import { DialogPanel } from "@/components/ui/dialog-panel";
 import { formatMoney, screenTotal, type QuoteLine, type QuoteRun, type QuoteTotals } from "@/lib/pricing";
-import { feetWords, offerFeet, type PricedOffer } from "@/lib/quotes/offers";
+import { CUSTOMER_OFFER_ID, feetWords, isCustomerOffer, offerFeet, type PricedOffer } from "@/lib/quotes/offers";
 import { fillLine } from "@/lib/deck";
 import {
+  buildableRuns,
   christmasSeason,
   customerChoice,
+  customerOffer,
+  customOption,
+  offersBuildYourOwn,
+  tracksUsed,
+  type LinkAgreement,
+  type LinkDocument,
   customerChoiceInSentence,
   inTouchAbout,
   leavesRunsOut,
@@ -50,7 +58,17 @@ import { cn } from "@/lib/utils";
 // quote's own stored prices; the page sends an option's id, never a price.
 // Once Keenan marks the quote accepted, the page shows only what was agreed.
 
-type View = CustomerQuote & { mockupUrl: string | null; pictures: LinkPicture[]; galleryUrls: string[] };
+type View = CustomerQuote & {
+  mockupUrl: string | null;
+  pictures: LinkPicture[];
+  galleryUrls: string[];
+  // Take 3: the documents Keenan ticked or uploaded, and the agreement.
+  documents: LinkDocument[];
+  agreement: LinkAgreement | null;
+};
+
+const sameRuns = (a: readonly number[] | null, b: readonly number[]) =>
+  a !== null && a.length === b.length && a.every((value, at) => value === b[at]);
 // offer: the option's id; null on a link booked before options.
 type Booked = { at: string; option: string; offer: string | null };
 
@@ -67,14 +85,20 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
     void recordVisit(token).catch(() => undefined);
   }, [token]);
 
-  return view.quote.accepted ? <AgreedQuote view={view} /> : <LiveQuote token={token} view={view} />;
+  return view.quote.accepted ? <AgreedQuote token={token} view={view} /> : <LiveQuote token={token} view={view} />;
 }
 
 function LiveQuote({ token, view }: { token: string; view: View }) {
   const { quote, words } = view;
-  // The options worth showing, biggest first, each with its price.
-  const shown = useMemo(() => linkOffers(quote), [quote]);
-  const many = shown.length > 1;
+  // The options worth showing, biggest first, each with its price. The
+  // customer's own last build (take 3) isn't one of Keenan's options: it is
+  // Build your own, after them.
+  const shown = useMemo(() => linkOffers(quote).filter((priced) => !isCustomerOffer(priced.offer)), [quote]);
+  const theirs = useMemo(() => customerOffer(quote), [quote]);
+  const buildable = useMemo(() => buildableRuns(quote), [quote]);
+  const canBuild = offersBuildYourOwn(quote);
+  const many = shown.length > 1 || canBuild;
+  const tracks = useMemo(() => tracksUsed(quote), [quote]);
 
   const serverBooked: Booked | null =
     view.bookedAt && view.bookedOption ? { at: view.bookedAt, option: view.bookedOption, offer: view.bookedOffer } : null;
@@ -85,14 +109,26 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   const [chosenId, setChosenId] = useState<string | null>(() =>
     openingOffer(shown, { booked: view.bookedOffer, meeting: quote.meetingOffer }),
   );
-  const selected: PricedOffer | null = shown.find((priced) => priced.offer.id === chosenId) ?? shown[0] ?? null;
+  // Build your own (take 3): on, the areas they ticked, starting from the
+  // option they were looking at (whose box count it keeps). The page opens
+  // on their own build when that is what they booked.
+  const [building, setBuilding] = useState(() => canBuild && theirs !== null && view.bookedOffer === CUSTOMER_OFFER_ID);
+  const [buildRuns, setBuildRuns] = useState<number[]>(() => (theirs ? theirs.runs.filter((at) => buildable.includes(at)) : []));
+  const [savedBuild, setSavedBuild] = useState<number[] | null>(() => (theirs ? [...theirs.runs] : null));
+  const startFrom: PricedOffer | null = shown.find((priced) => priced.offer.id === chosenId) ?? shown[0] ?? null;
+  const built = building ? customOption(quote, buildRuns, startFrom?.offer.id ?? null) : null;
+  const selected: PricedOffer | null = building
+    ? built
+      ? { offer: built.offer, totals: built.totals, feet: offerFeet(quote.runs, built.offer), everyRun: false }
+      : null
+    : startFrom;
   // See it on your house (round 13): the look on screen, by name, or none
   // (the option's own picture, else the Main). Picking an option, here or
   // in the price below, goes back to that option's picture.
   const [look, setLook] = useState<string | null>(null);
   const seeIt = showsSeeIt(view.pictures, shown.length);
   const totals: QuoteTotals | null = selected?.totals ?? null;
-  const name = selected?.offer.name ?? "";
+  const name = selected ? customerChoice(selected.offer.name) : "";
   const total = totals ? screenTotal(totals.subtotal, quote.gstEnabled) : "";
   const minimum = quote.minJobTotal && quote.minJobTotal > 0 ? quote.minJobTotal : null;
   const atMinimum = Boolean(totals?.minimumApplied) && minimum !== null;
@@ -123,12 +159,12 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
       firstChoice.current = false;
       return;
     }
-    if (!selectedId) return;
+    if (!selectedId || building) return;
     const timer = window.setTimeout(() => {
       void saveSelection(token, selectedId).catch(() => undefined);
     }, 1200);
     return () => window.clearTimeout(timer);
-  }, [token, selectedId]);
+  }, [token, selectedId, building]);
 
   // A screen reader hears the option and its total once, when they settle.
   const [announced, setAnnounced] = useState("");
@@ -153,13 +189,18 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   async function book() {
     if (!selected) return;
     const offer = selected.offer.id;
+    const ownRuns = [...buildRuns];
     setPhase("sending");
     setError(null);
     setSlow(false);
     try {
-      const result = await bookInstall(token, offer);
+      // Their own build goes as the areas they ticked; the server prices it.
+      const result = building ? await bookCustom(token, ownRuns, startFrom?.offer.id ?? null) : await bookInstall(token, offer);
       if (result.ok) {
-        if (!result.preview) setBooked({ at: new Date().toISOString(), option: result.option, offer });
+        if (!result.preview) {
+          setBooked({ at: new Date().toISOString(), option: result.option, offer });
+          if (building) setSavedBuild(ownRuns);
+        }
         setThanks({ option: result.option, total: result.total, preview: Boolean(result.preview) });
         setPhase("thanks");
         window.scrollTo({ top: 0 });
@@ -197,12 +238,42 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
     );
   }
 
-  const matchesBooked = booked !== null && selected !== null && booked.offer === selected.offer.id;
+  const matchesBooked =
+    booked !== null && selected !== null && booked.offer === selected.offer.id && (!building || sameRuns(savedBuild, buildRuns));
   const textHref = smsWithBody(view.company.phone, `Hi Keenan, a question about the quote for ${view.address}: `);
   const choose = (id: string) => {
     if (sending) return;
+    setBuilding(false);
     setChosenId(id);
     setLook(null);
+  };
+  // Build your own starts from the option on screen.
+  const startBuilding = () => {
+    if (sending || building) return;
+    const from = (startFrom?.offer.runs ?? []).filter((at) => buildable.includes(at));
+    setBuildRuns(from.length > 0 ? from : buildable);
+    setBuilding(true);
+    setLook(null);
+  };
+
+  // Sign (take 3): their own build is booked first, so the agreement names
+  // what the quote now holds; then the signing, which books that option.
+  const sign = async (signer: string, signaturePng: string): Promise<SignOutcome> => {
+    if (!selected) return { ok: false, message: "Pick an option first." };
+    const offer = selected.offer.id;
+    if (building && !(booked?.offer === CUSTOMER_OFFER_ID && sameRuns(savedBuild, buildRuns))) {
+      const ownRuns = [...buildRuns];
+      const saved = await bookCustom(token, ownRuns, startFrom?.offer.id ?? null);
+      if (!saved.ok) return { ok: false, message: saved.message };
+      if (!saved.preview) {
+        setBooked({ at: new Date().toISOString(), option: saved.option, offer });
+        setSavedBuild(ownRuns);
+      }
+    }
+    const result = await signAgreement(token, { name: signer, signature: signaturePng, offer });
+    if (!result.ok) return { ok: false, message: result.message };
+    if (!result.preview) setBooked({ at: result.signedAt, option: result.option, offer });
+    return { ok: true, signerName: result.signerName, signedAt: result.signedAt, preview: result.preview };
   };
 
   return (
@@ -318,7 +389,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
                         key={priced.offer.id}
                         priced={priced}
                         runs={quote.runs}
-                        selected={priced.offer.id === selected.offer.id}
+                        selected={!building && priced.offer.id === selected.offer.id}
                         meeting={priced.offer.id === quote.meetingOffer}
                         meetingTag={words.link_meeting_tag}
                         feetLine={words.price_feet}
@@ -327,7 +398,27 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
                         onChoose={choose}
                       />
                     ))}
+                    {canBuild ? (
+                      <BuildYourOwnRow
+                        title={words.link_build_title}
+                        selected={building}
+                        totals={building ? totals : null}
+                        gstEnabled={quote.gstEnabled}
+                        disabled={sending}
+                        onChoose={startBuilding}
+                      />
+                    ) : null}
                   </div>
+                  {building ? (
+                    <BuildYourOwn
+                      note={words.link_build_note}
+                      runs={quote.runs}
+                      buildable={buildable}
+                      picked={buildRuns}
+                      disabled={sending}
+                      onChange={setBuildRuns}
+                    />
+                  ) : null}
                 </fieldset>
               ) : null}
 
@@ -373,6 +464,9 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
           )}
         </section>
 
+        {/* Take 3: each track type the options use, in plain words with a drawing. */}
+        <AboutYourTrack tracks={tracks} words={words} />
+
         {/* 5. Track colour: one colour rule, the same as the iPad. */}
         <section aria-labelledby="track-colour" className="mt-12 px-5">
           <h2 id="track-colour" className="text-xl font-bold">
@@ -393,6 +487,21 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
 
         {/* 6. What happens next: the meeting's four steps, in its words. */}
         <NextSteps steps={steps} whatWeNeed={view.nextSteps.whatWeNeed} />
+
+        {/* Take 3: what Keenan ticked or uploaded for them, then the
+            agreement when he asked for it to be signed here. */}
+        <LinkDocuments documents={view.documents} title={words.link_docs_title} />
+        {view.agreement && selected && totals ? (
+          <AgreementSection
+            agreement={view.agreement}
+            words={words}
+            optionLabel={name}
+            optionTotal={total}
+            copyHref={`/q/${token}/agreement`}
+            disabled={sending}
+            onSign={sign}
+          />
+        ) : null}
 
         {/* 7. Tap to open, closed until tapped. See our work leads once
             there are photos; until then it is hidden. */}
@@ -473,10 +582,14 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
               Prices may have changed since {formatFullDate(view.validUntil)}. We’ll confirm before booking.
             </p>
           ) : null}
-          <p className="text-pretty">
-            There’s nothing to sign or pay today. Keenan will be in touch {inTouchAbout(view.nextSteps.installOn)} and go
-            through the agreement.
-          </p>
+          {view.agreement ? (
+            <p className="text-pretty">There’s nothing to pay today. Keenan will be in touch {inTouchAbout(view.nextSteps.installOn)}.</p>
+          ) : (
+            <p className="text-pretty">
+              There’s nothing to sign or pay today. Keenan will be in touch {inTouchAbout(view.nextSteps.installOn)} and go
+              through the agreement.
+            </p>
+          )}
         </div>
       </DialogPanel>
     </>
@@ -488,10 +601,12 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
 // and the payment line; what's in it, line by line; and Call and Text. The
 // other options' prices, Your options and Book my install are gone, and no
 // status word is shown.
-function AgreedQuote({ view }: { view: View }) {
+function AgreedQuote({ token, view }: { token: string; view: View }) {
   const { quote, words } = view;
   // A quote accepted before options has no option to name; the rest stands.
   const agreed = offerChoice(quote, quote.acceptedOffer);
+  // Only the tracks in what was agreed.
+  const agreedTracks = agreed ? tracksUsed({ runs: quote.runs, offers: [agreed.offer] }) : [];
   const textHref = smsWithBody(view.company.phone, `Hi Keenan, a question about the install at ${view.address}: `);
 
   return (
@@ -509,7 +624,7 @@ function AgreedQuote({ view }: { view: View }) {
             {agreed ? (
               <>
                 <p className="mt-4 text-base font-semibold text-pretty text-muted-foreground" data-testid="agreed-choice">
-                  Your choice: {agreed.name}
+                  Your choice: {customerChoice(agreed.name)}
                 </p>
                 <p className="mt-1 text-[2.75rem] leading-none font-bold tracking-tight" data-testid="agreed-total">
                   <Money subtotal={agreed.totals.subtotal} gstEnabled={quote.gstEnabled} />
@@ -548,6 +663,25 @@ function AgreedQuote({ view }: { view: View }) {
               gstEnabled={quote.gstEnabled}
             />
           </section>
+        ) : null}
+
+        <AboutYourTrack tracks={agreedTracks} words={words} />
+        <LinkDocuments documents={view.documents} title={words.link_docs_title} />
+        {view.agreement && agreed ? (
+          <AgreementSection
+            agreement={view.agreement}
+            words={words}
+            optionLabel={customerChoice(agreed.name)}
+            optionTotal={agreed.total}
+            copyHref={`/q/${token}/agreement`}
+            disabled={false}
+            onSign={async (signer, signaturePng) => {
+              const result = await signAgreement(token, { name: signer, signature: signaturePng, offer: agreed.id });
+              return result.ok
+                ? { ok: true, signerName: result.signerName, signedAt: result.signedAt, preview: result.preview }
+                : { ok: false, message: result.message };
+            }}
+          />
         ) : null}
 
         <section aria-label="More about your install" className="mt-12 border-t" data-testid="quote-more">

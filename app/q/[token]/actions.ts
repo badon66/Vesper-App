@@ -3,7 +3,9 @@
 import { z } from "zod";
 import { sendPush } from "@/lib/push/send";
 import { anonymousClient } from "@/lib/quote-link/server";
-import { offerChoice, parseCustomerQuote, TOKEN_PATTERN } from "@/lib/quote-link/view";
+import { customOption, offerChoice, parseCustomerQuote, TOKEN_PATTERN } from "@/lib/quote-link/view";
+import { screenTotal } from "@/lib/pricing";
+import { CUSTOMER_OFFER_ID } from "@/lib/quotes/offers";
 import { createClient as createSessionClient } from "@/lib/supabase/server";
 
 // The customer's page writes (2026-11-02; round 9, options). Anyone holding
@@ -114,4 +116,104 @@ export async function bookInstall(value: string, offer: string): Promise<BookRes
   const read = await choiceFromStoredQuote(t.data, o.data).catch(() => null);
   const total = read?.state === "live" ? read.choice.total : "";
   return { ok: true, option: booked.option, total };
+}
+
+// ---------------------------------------------------------------- Build your own (take 3)
+
+const positions = z.array(z.number().int().min(0).max(29)).min(1).max(30);
+
+// Book my install on their own build: the areas they ticked (positions,
+// never a price) and the option they started from. The database checks
+// every area is one Keenan measured and shows, saves it as their one
+// custom option (replacing their last) and books it; the total comes from
+// the stored quote, here, never from the browser.
+export async function bookCustom(value: string, runs: number[], from: string | null): Promise<BookResult> {
+  const t = token.safeParse(value);
+  const r = positions.safeParse(runs);
+  const f = from === null ? { success: true as const, data: null } : offerId.safeParse(from);
+  if (!t.success || !r.success || !f.success) return { ok: false, code: "failed", message: FAILED };
+
+  // Keenan previewing: the thank-you with the price worked out here, and
+  // nothing saved or sent.
+  if (await signedInMember()) {
+    const view = parseCustomerQuote((await anonymousClient().rpc("quote_for_customer", { p_token: t.data })).data);
+    if (view.state !== "live") return { ok: false, code: "closed", message: CLOSED };
+    const built = customOption(view.quote, r.data, f.data);
+    if (!built) return { ok: false, code: "changed", message: CHANGED };
+    return { ok: true, option: built.offer.name, total: screenTotal(built.totals.subtotal, view.quote.gstEnabled), preview: true };
+  }
+
+  const { data, error } = await anonymousClient().rpc("quote_link_book_custom", { p_token: t.data, p_runs: r.data, p_from: f.data ?? undefined });
+  if (error || !data || typeof data !== "object") return { ok: false, code: "failed", message: FAILED };
+  const booked = data as { ok: boolean; state?: string; option?: string; name?: string; lead_id?: string; notify?: boolean; targets?: { id: string; sealed: string }[] };
+  if (!booked.ok || !booked.option) {
+    if (booked.state === "bad_runs" || booked.state === "no_runs" || booked.state === "no_offer") return { ok: false, code: "changed", message: CHANGED };
+    return { ok: false, code: "closed", message: CLOSED };
+  }
+  if (booked.notify && booked.targets && booked.targets.length > 0 && booked.lead_id) {
+    await sendPush(booked.targets, {
+      title: `${booked.name ?? "A customer"} tapped Book my install`,
+      body: booked.option,
+      url: `/app/leads/${booked.lead_id}#quote`,
+      tag: `book-${booked.lead_id}`,
+    }).catch(() => undefined);
+  }
+  const read = await choiceFromStoredQuote(t.data, CUSTOMER_OFFER_ID).catch(() => null);
+  const total = read?.state === "live" ? read.choice.total : "";
+  return { ok: true, option: booked.option, total };
+}
+
+// ---------------------------------------------------------------- the agreement (take 3)
+
+export type SignResult =
+  | { ok: true; signerName: string; signedAt: string; option: string; preview?: boolean }
+  | { ok: false; code: "closed" | "changed" | "failed" | "invalid" | "signed"; message: string };
+
+const signerName = z.string().trim().min(2).max(120);
+// A PNG from the signature pad, as a data URL; the database checks it too.
+const signature = z.string().startsWith("data:image/png;base64,").min(200).max(400_000);
+
+// Sign: their typed name, their finger signature and the option on screen
+// (their own build is booked first, then signed). The database saves the
+// signing with a copy of the quote as it stands, books the option and says
+// who to tell; Keenan gets the same alert as Book my install.
+export async function signAgreement(value: string, input: { name: string; signature: string; offer: string }): Promise<SignResult> {
+  const t = token.safeParse(value);
+  const n = signerName.safeParse(input.name);
+  const p = signature.safeParse(input.signature);
+  const o = offerId.safeParse(input.offer);
+  if (!t.success || !o.success) return { ok: false, code: "failed", message: FAILED };
+  if (!n.success) return { ok: false, code: "invalid", message: "Type your full name to sign." };
+  if (!p.success) return { ok: false, code: "invalid", message: "Sign in the box with your finger first." };
+
+  // Keenan previewing: nothing is saved, signed or sent.
+  if (await signedInMember()) {
+    return { ok: true, signerName: n.data, signedAt: new Date().toISOString(), option: o.data, preview: true };
+  }
+
+  const { data, error } = await anonymousClient().rpc("quote_link_sign_agreement", {
+    p_token: t.data,
+    p_name: n.data,
+    p_offer: o.data,
+    p_signature: p.data,
+  });
+  if (error || !data || typeof data !== "object") return { ok: false, code: "failed", message: FAILED };
+  const signed = data as { ok: boolean; state?: string; option?: string; name?: string; lead_id?: string; targets?: { id: string; sealed: string }[] };
+  if (!signed.ok || !signed.option) {
+    if (signed.state === "already_signed") return { ok: false, code: "signed", message: "This agreement is already signed." };
+    if (signed.state === "no_offer") return { ok: false, code: "changed", message: CHANGED };
+    if (signed.state === "bad_name") return { ok: false, code: "invalid", message: "Type your full name to sign." };
+    if (signed.state === "bad_signature") return { ok: false, code: "invalid", message: "Sign in the box with your finger first." };
+    return { ok: false, code: "closed", message: CLOSED };
+  }
+  if (signed.targets && signed.targets.length > 0 && signed.lead_id) {
+    // Their name and the option's name, never a price.
+    await sendPush(signed.targets, {
+      title: `${signed.name ?? "A customer"} signed the agreement`,
+      body: signed.option,
+      url: `/app/leads/${signed.lead_id}#quote`,
+      tag: `book-${signed.lead_id}`,
+    }).catch(() => undefined);
+  }
+  return { ok: true, signerName: n.data, signedAt: new Date().toISOString(), option: signed.option };
 }

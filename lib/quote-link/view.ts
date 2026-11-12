@@ -8,13 +8,18 @@
 import { AREA_KINDS } from "@/lib/quotes/areas";
 import { z } from "zod";
 import {
+  cleanFeet,
   formatMoney,
   priceQuote,
   RUN_PARTS,
   runPart,
+  runTrack,
   screenTotal,
   selectRuns,
+  trackFields,
+  TRACK_TYPES,
   usablePercent,
+  type TrackType,
   type ColourTiming,
   type QuoteInputs,
   type QuoteLineItem,
@@ -23,6 +28,9 @@ import {
 } from "@/lib/pricing";
 import { fillLine, NO_PAYMENT_LINE, parseDeckLines, type DeckLines } from "@/lib/deck";
 import {
+  CUSTOMER_OFFER_ID,
+  CUSTOMER_OFFER_NAME,
+  isCustomerOffer,
   parseOffers,
   priceOffer,
   shownOffers,
@@ -169,6 +177,9 @@ const runSchema = z.object({
   gable: z.boolean().nullable().optional().catch(null),
   rate: z.coerce.number().nullable().optional().catch(null),
   flat: z.coerce.number().nullable().optional().catch(null),
+  // Take 3: Double or J track, and that track's price a foot on the quote.
+  track: z.enum(TRACK_TYPES).nullable().optional().catch(null),
+  trackRate: z.coerce.number().nullable().optional().catch(null),
 });
 
 const quoteSchema = z.object({
@@ -221,6 +232,7 @@ function toQuote(q: z.infer<typeof quoteSchema>): CustomerQuote["quote"] {
       ...(typeof run.gable === "boolean" ? { gable: run.gable } : {}),
       ...(typeof run.rate === "number" && run.rate > 0 ? { rate: run.rate } : {}),
       ...(typeof run.flat === "number" && run.flat >= 0 ? { flat: run.flat } : {}),
+      ...trackFields(run),
     })),
     runsFingerprint: q.runs_fingerprint,
     pricePerFt: q.price_per_ft,
@@ -463,6 +475,138 @@ export function openingOffer(
   return shown[0]?.offer.id ?? null;
 }
 
+// ---------------------------------------------------------------- Build your own (take 3)
+
+// The areas a customer can tick in Build your own (Keenan, 2026-11-11):
+// measured (feet over 0) and in one of the options Keenan shows them, never
+// one only in an option he hid, in the quote's order. The database allows
+// exactly these (quote_link_book_custom).
+export function buildableRuns(quote: Pick<CustomerQuote["quote"], "runs" | "offers">): number[] {
+  const wanted = new Set<number>();
+  for (const offer of quote.offers) {
+    if (offer.hidden === true || isCustomerOffer(offer)) continue;
+    for (const at of offer.runs) {
+      if (at >= 0 && at < quote.runs.length && cleanFeet(quote.runs[at].feet) > 0) wanted.add(at);
+    }
+  }
+  return [...wanted].sort((a, b) => a - b);
+}
+
+// Whether Build your own is worth offering: two areas or more to choose
+// from, on a quote not yet accepted.
+export function offersBuildYourOwn(quote: Pick<CustomerQuote["quote"], "runs" | "offers" | "accepted">): boolean {
+  return !quote.accepted && buildableRuns(quote).length > 1;
+}
+
+// Their own option, priced like any other with the quote's own prices: the
+// areas they ticked (buildable ones only), the box count of the option they
+// started from, upper access at the automatic amount, and the quote's
+// discounts, minimum and GST. Null with nothing ticked. The server books it
+// from the same positions and prices it again from the stored quote.
+export function customOption(
+  quote: CustomerQuote["quote"],
+  runs: readonly number[],
+  fromOfferId: string | null,
+): { offer: QuoteOffer; totals: QuoteTotals } | null {
+  const allowed = new Set(buildableRuns(quote));
+  const picked = [...new Set(runs)].filter((at) => allowed.has(at)).sort((a, b) => a - b);
+  if (picked.length === 0) return null;
+  const from = quote.offers.find((offer) => offer.id === fromOfferId && offer.hidden !== true && !isCustomerOffer(offer));
+  const offer: QuoteOffer = {
+    id: CUSTOMER_OFFER_ID,
+    name: CUSTOMER_OFFER_NAME,
+    runs: picked,
+    boxes: from?.boxes ?? null,
+    upperAccess: null,
+    fromCustomer: true,
+  };
+  const totals = priceOffer(customerInputs(quote, null), offer);
+  return totals ? { offer, totals } : null;
+}
+
+// The customer's own last build, if the quote still has it.
+export function customerOffer(quote: Pick<CustomerQuote["quote"], "offers">): QuoteOffer | null {
+  return quote.offers.find((offer) => isCustomerOffer(offer) && offer.hidden !== true) ?? null;
+}
+
+// ---------------------------------------------------------------- About your track (take 3)
+
+// The track types the options on the link use (Hat, then Double, then J):
+// About your track explains these and no others.
+export function tracksUsed(quote: Pick<CustomerQuote["quote"], "runs" | "offers">): TrackType[] {
+  const used = new Set<TrackType>();
+  for (const offer of quote.offers) {
+    if (offer.hidden === true) continue;
+    for (const at of offer.runs) {
+      const run = quote.runs[at];
+      if (run && cleanFeet(run.feet) > 0) used.add(runTrack(run));
+    }
+  }
+  return TRACK_TYPES.filter((track) => used.has(track));
+}
+
+// ---------------------------------------------------------------- documents and the agreement (take 3)
+
+// A document the link shows, with a ten-minute link to open it on the
+// phone and one that downloads it.
+export type LinkDocument = { id: string; name: string; contentType: string; size: number; url: string; downloadUrl: string };
+
+// What quote_link_documents hands the server: the files to sign.
+export type LinkDocumentFile = { id: string; name: string; path: string; contentType: string; size: number };
+
+const documentSchema = z.object({
+  id: z.string(),
+  name: z.string().catch(""),
+  path: z.string(),
+  content_type: z.string().catch("application/pdf"),
+  size: z.coerce.number().catch(0),
+});
+
+export function parseLinkDocuments(data: unknown): LinkDocumentFile[] {
+  if (!Array.isArray(data)) return [];
+  return data.flatMap((item) => {
+    const parsed = documentSchema.safeParse(item);
+    if (!parsed.success || parsed.data.path.trim() === "") return [];
+    const d = parsed.data;
+    return [{ id: d.id, name: d.name.trim() || "Document", path: d.path, contentType: d.content_type, size: d.size }];
+  });
+}
+
+// The file name a download is saved under: the document's name and its
+// type's ending, with nothing a phone would refuse in a file name.
+export function documentFileName(name: string, contentType: string): string {
+  const base = name.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "Document";
+  const ending = contentType === "application/pdf" ? ".pdf" : contentType === "image/png" ? ".png" : contentType === "image/webp" ? ".webp" : ".jpg";
+  return base.toLowerCase().endsWith(ending) ? base : `${base}${ending}`;
+}
+
+// The agreement on the link: its text from Settings, and the signing on
+// this link once there is one. Null: the lead doesn't have Agreement to
+// sign on, or Settings has no text.
+export type LinkAgreement = {
+  text: string;
+  signed: { signerName: string; signedAt: string; offerId: string; offerName: string } | null;
+};
+
+const agreementSchema = z.object({
+  text: z.string(),
+  signed: z
+    .object({ signer_name: z.string(), signed_at: z.string(), offer_id: z.string().catch(""), offer_name: z.string().catch("") })
+    .nullable()
+    .optional()
+    .catch(null),
+});
+
+export function parseLinkAgreement(data: unknown): LinkAgreement | null {
+  const parsed = agreementSchema.safeParse(data);
+  if (!parsed.success || parsed.data.text.trim() === "") return null;
+  const s = parsed.data.signed;
+  return {
+    text: parsed.data.text.trim(),
+    signed: s ? { signerName: s.signer_name, signedAt: s.signed_at, offerId: s.offer_id, offerName: s.offer_name } : null,
+  };
+}
+
 // ---------------------------------------------------------------- what happens next
 
 export type NextStep = { key: "colour" | "day" | "on_day" | "pay"; label: string; text: string; done: boolean };
@@ -539,11 +683,17 @@ export function choiceInSentence(option: string): string {
 // The customer's own words for it (2026-11-04): the page calls everything
 // they were quoted "the full quote"; "Recommended package" stays the name
 // the database and Keenan's card use.
+// The customer's own build (take 3) is saved under Keenan's name for it,
+// "Custom quote (from the customer)"; to the customer it is their own option.
+export const OWN_OPTION = "Your own option";
+
 export function customerChoice(option: string): string {
+  if (option === CUSTOMER_OFFER_NAME) return OWN_OPTION;
   return option === "Recommended package" ? "The full quote" : choiceLabel(option);
 }
 
 export function customerChoiceInSentence(option: string): string {
+  if (option === CUSTOMER_OFFER_NAME) return "your own option";
   return option === "Recommended package" ? "the full quote" : choiceLabel(option);
 }
 

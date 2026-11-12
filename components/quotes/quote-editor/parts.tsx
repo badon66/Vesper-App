@@ -88,7 +88,8 @@ export function Segmented<T extends string>({
   className,
 }: {
   value: T;
-  options: readonly { value: T; label: string }[];
+  // disabled: this option alone can't be picked (a track with no price yet).
+  options: readonly { value: T; label: string; disabled?: boolean }[];
   onChange: (value: T) => void;
   label: string;
   disabled?: boolean;
@@ -104,7 +105,7 @@ export function Segmented<T extends string>({
           key={option.value}
           type="button"
           aria-pressed={value === option.value}
-          disabled={disabled}
+          disabled={disabled || (option.disabled === true && value !== option.value)}
           onClick={() => onChange(option.value)}
           data-value={option.value}
           className={cn(

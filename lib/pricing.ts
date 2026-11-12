@@ -27,6 +27,16 @@ export type RunPart = (typeof RUN_PARTS)[number];
 // house. area says which view it is on, gable whether it is a gable, rate
 // Keenan's own price a foot for it, flat a flat price for it instead; a run
 // from before this round has none of them and prices as it always did.
+// Track types (Keenan, 2026-11-11): Hat track is the standard (the quote's
+// price a foot); an area on Double or J track is priced at that track's
+// price a foot, which the quote copies from Settings onto the run
+// (trackRate) when Keenan picks it, so a later change in Settings never
+// alters the quote. Keenan's own rate or a flat price on the area still
+// wins. A run from before this has no track and is Hat track.
+export const TRACK_TYPES = ["hat", "double", "j"] as const;
+export type TrackType = (typeof TRACK_TYPES)[number];
+export const TRACK_NAMES: Record<TrackType, string> = { hat: "Hat track", double: "Double track", j: "J track" };
+
 export type QuoteRun = {
   name: string;
   feet: number;
@@ -36,7 +46,25 @@ export type QuoteRun = {
   gable?: boolean | null;
   rate?: number | null;
   flat?: number | null;
+  track?: TrackType | null;
+  trackRate?: number | null;
 };
+
+// A run's track: Double or J when set, otherwise Hat track.
+export function runTrack(run: Pick<QuoteRun, "track">): TrackType {
+  return run.track === "double" || run.track === "j" ? run.track : "hat";
+}
+
+// A stored run's track fields, read gently: nothing for Hat track, else
+// the track and its price a foot when it has a usable one.
+export function trackFields(run: unknown): Pick<QuoteRun, "track" | "trackRate"> {
+  if (!run || typeof run !== "object") return {};
+  const record = run as Record<string, unknown>;
+  const track = record.track === "double" || record.track === "j" ? record.track : null;
+  if (track === null) return {};
+  const rate = Number(record.trackRate);
+  return Number.isFinite(rate) && rate > 0 ? { track, trackRate: Math.round(rate * 100) / 100 } : { track };
+}
 // percent (Black Friday follows each option, Keenan, 2026-11-11): a
 // discount line with a usable percent (more than 0, at most 90) is worked
 // out on the selection being priced, so every option gets its own percent
@@ -216,9 +244,15 @@ export function resolveDiscounts(inputs: QuoteInputs): QuoteLineItem[] {
   );
 }
 
-// A run's own price a foot when set (more than 0), else the quote's.
-export function runRateOf(run: Pick<QuoteRun, "rate">, pricePerFt: number): number {
-  return typeof run.rate === "number" && Number.isFinite(run.rate) && run.rate > 0 ? run.rate : pricePerFt;
+const positive = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value > 0;
+
+// A run's price a foot: Keenan's own rate for it when set (more than 0),
+// else its track's price a foot when it is on Double or J track and the
+// quote has that price, else the quote's (Hat track).
+export function runRateOf(run: Pick<QuoteRun, "rate" | "track" | "trackRate">, pricePerFt: number): number {
+  if (positive(run.rate)) return run.rate;
+  if (runTrack(run) !== "hat" && positive(run.trackRate)) return run.trackRate;
+  return pricePerFt;
 }
 
 // A run's flat price when set (0 or more), else null.
@@ -229,23 +263,38 @@ export function runFlatOf(run: Pick<QuoteRun, "flat">): number | null {
 // What a run's lights cost, in cents: its flat price, or its feet at its
 // rate (its own, or the quote's). The commission counts the same (lib/pay/
 // commission.ts and the database's quote_commission_base_boxes).
-export function runLightsCents(run: Pick<QuoteRun, "feet" | "rate" | "flat">, pricePerFt: number): number {
+export function runLightsCents(run: Pick<QuoteRun, "feet" | "rate" | "flat" | "track" | "trackRate">, pricePerFt: number): number {
   const flat = runFlatOf(run);
   if (flat !== null) return toCents(flat);
   return cleanFeet(run.feet) * toCents(runRateOf(run, pricePerFt));
 }
 
-// The lights lines: one "Track and lights" line for every run priced a
-// foot, its detail naming the feet at each rate ("64 ft at $24, 38 ft at
-// $28", or "102 ft at $24 a foot" at one rate), then a line per flat-priced
-// run under its own name. The feet shown are the runs' measured feet.
+// The lights lines: one "Track and lights" line for every Hat track run
+// priced a foot, its detail naming the feet at each rate ("64 ft at $24,
+// 38 ft at $28", or "102 ft at $24 a foot" at one rate), then a line per
+// run on Double or J track, named for its track ("Upper gables": "22 ft of
+// J track at $30 a foot"), then a line per flat-priced Hat track run under
+// its own name. The feet shown are the runs' measured feet.
 function lightsLines(runs: QuoteRun[], pricePerFt: number): { lines: QuoteLine[]; cents: number } {
   const groups: { rate: number; feet: number }[] = [];
+  const tracks: QuoteLine[] = [];
   const flats: QuoteLine[] = [];
   let cents = 0;
   for (const run of runs) {
     const feet = cleanFeet(run.feet);
     const flat = runFlatOf(run);
+    const track = runTrack(run);
+    if (track !== "hat") {
+      const runCents = runLightsCents(run, pricePerFt);
+      cents += runCents;
+      const name = TRACK_NAMES[track];
+      tracks.push({
+        label: run.name.trim() || "Area",
+        detail: flat !== null ? (feet > 0 ? `${feet} ft of ${name}, flat price` : `${name}, flat price`) : `${feet} ft of ${name} at ${formatMoney(runRateOf(run, pricePerFt))} a foot`,
+        amount: toDollars(runCents),
+      });
+      continue;
+    }
     if (flat !== null) {
       const flatCents = toCents(flat);
       cents += flatCents;
@@ -260,14 +309,14 @@ function lightsLines(runs: QuoteRun[], pricePerFt: number): { lines: QuoteLine[]
   }
   const perFoot = groups.reduce((sum, group) => sum + group.feet * toCents(group.rate), 0);
   const lines: QuoteLine[] = [];
-  if (groups.length > 0 || flats.length === 0) {
+  if (groups.length > 0 || (flats.length === 0 && tracks.length === 0)) {
     const detail =
       groups.length <= 1
         ? `${groups[0]?.feet ?? 0} ft at ${formatMoney(groups[0]?.rate ?? pricePerFt)} a foot`
         : groups.map((group) => `${group.feet} ft at ${formatMoney(group.rate)}`).join(", ");
     lines.push({ label: "Track and lights", detail, amount: toDollars(perFoot) });
   }
-  return { lines: [...lines, ...flats], cents };
+  return { lines: [...lines, ...tracks, ...flats], cents };
 }
 
 export function priceQuote(inputs: QuoteInputs): QuoteTotals {

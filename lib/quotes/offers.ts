@@ -22,7 +22,24 @@ import { areaOf, hasArea } from "@/lib/quotes/areas";
 // customer looks: not on Your price, not on their link (the database leaves
 // it out of what the link reads), not on the Accepted sheet. Kept only
 // when true.
-export type QuoteOffer = { id: string; name: string; runs: number[]; boxes?: number | null; upperAccess?: number | null; hidden?: boolean };
+// fromCustomer (quote link take 3, 2026-11-11): the offer the customer
+// built on their link with Build your own and booked. It is saved under one
+// id, so a newer one replaces their last one and never one of Keenan's; it
+// does not count toward his four.
+export type QuoteOffer = {
+  id: string;
+  name: string;
+  runs: number[];
+  boxes?: number | null;
+  upperAccess?: number | null;
+  hidden?: boolean;
+  fromCustomer?: boolean;
+};
+
+export const CUSTOMER_OFFER_ID = "customer";
+export const CUSTOMER_OFFER_NAME = "Custom quote (from the customer)";
+export const isCustomerOffer = (offer: Pick<QuoteOffer, "id" | "fromCustomer">): boolean =>
+  offer.fromCustomer === true || offer.id === CUSTOMER_OFFER_ID;
 
 export const OFFER_NAME_MAX = 60;
 // What the editor lets Keenan type, so an iPad button never wraps at three
@@ -131,6 +148,7 @@ export function parseOffers(value: unknown, runCount: number): QuoteOffer[] {
       boxes: cleanBoxes(record.boxes),
       upperAccess: cleanUpperAccess(record.upper_access ?? record.upperAccess),
       ...(record.hidden === true ? { hidden: true } : {}),
+      ...(record.from_customer === true || record.fromCustomer === true || id === CUSTOMER_OFFER_ID ? { fromCustomer: true } : {}),
     });
   }
   if (offers.length > 0) return offers;
@@ -376,10 +394,15 @@ export function offerForRuns(offers: readonly QuoteOffer[], runCount: number, po
 export function offersForSave(offers: readonly QuoteOffer[], runCount: number): QuoteOffer[] {
   const seen = new Set<string>();
   const out: QuoteOffer[] = [];
+  let own = 0;
   for (const offer of offers) {
     const id = offer.id.trim().slice(0, OFFER_ID_MAX);
     if (id === "" || seen.has(id)) continue;
+    const customer = isCustomerOffer(offer);
+    // Keenan's own up to four; the customer's one never counts toward them.
+    if (!customer && own === OFFERS_MAX) continue;
     seen.add(id);
+    if (!customer) own += 1;
     out.push({
       id,
       name: cleanOfferName(offer.name),
@@ -387,8 +410,8 @@ export function offersForSave(offers: readonly QuoteOffer[], runCount: number): 
       boxes: cleanBoxes(offer.boxes),
       upperAccess: cleanUpperAccess(offer.upperAccess),
       ...(offer.hidden === true ? { hidden: true } : {}),
+      ...(customer ? { fromCustomer: true } : {}),
     });
-    if (out.length === OFFERS_MAX) break;
   }
   return out;
 }

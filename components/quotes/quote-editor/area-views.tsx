@@ -1,13 +1,13 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
-import { useRef, useState, type ReactNode, type Ref } from "react";
+import { createContext, useContext, useRef, useState, type ReactNode, type Ref } from "react";
 
 import { HouseView } from "@/components/quotes/quote-editor/house-views";
 import { MoneyBox, Segmented, useTyping } from "@/components/quotes/quote-editor/parts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cleanFeet, formatMoney, type QuoteRun } from "@/lib/pricing";
+import { cleanFeet, formatMoney, runTrack, TRACK_NAMES, type QuoteRun, type TrackType } from "@/lib/pricing";
 import { AREA_LABELS, AREA_VIEWS, areaDisplayName, otherRuns, type AreaKey } from "@/lib/quotes/areas";
 import {
   addOtherRun,
@@ -50,10 +50,16 @@ const LEVELS = [
   { value: "upper", label: "Upper" },
 ] as const;
 
+// Track types (Keenan, 2026-11-11): Double and J track's price a foot from
+// Settings, for the Track control on each measured area.
+export type TrackPrices = { double: number | null; j: number | null };
+const TrackPricesContext = createContext<TrackPrices>({ double: null, j: null });
+
 export function AreaViews({
   runs,
   offers,
   pricePerFt,
+  trackPrices = { double: null, j: null },
   locked,
   lit,
   onChange,
@@ -62,6 +68,7 @@ export function AreaViews({
   // The quote's own offers list, as held (empty stands for one full wrap).
   offers: QuoteOffer[];
   pricePerFt: number;
+  trackPrices?: TrackPrices;
   locked: boolean;
   // The positions the active offer covers (quote-editor.tsx): their lines
   // light up on the drawings. Lighting writes nothing.
@@ -90,54 +97,56 @@ export function AreaViews({
   };
 
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {AREA_VIEWS.map((view) => (
-        <Panel key={view.kind} title={view.title}>
-          <HouseView view={view.kind} lines={house} onTap={locked ? undefined : tapLine} />
-          <ul className="flex flex-col divide-y">
-            {view.keys.map((key) => (
-              <AreaLine
-                key={key}
-                areaKey={key}
-                positions={lines[key]}
-                runs={runs}
-                pricePerFt={pricePerFt}
-                locked={locked}
-                feetRef={keep(key)}
-                onFeet={(feet) => onChange(setAreaFeet(state, key, feet))}
-                onRunFeet={(at, feet) => onChange(setRunFeet(state, at, feet))}
-                onRun={setRun}
-              />
-            ))}
-          </ul>
+    <TrackPricesContext.Provider value={trackPrices}>
+      <div className="grid gap-4 md:grid-cols-2">
+        {AREA_VIEWS.map((view) => (
+          <Panel key={view.kind} title={view.title}>
+            <HouseView view={view.kind} lines={house} onTap={locked ? undefined : tapLine} />
+            <ul className="flex flex-col divide-y">
+              {view.keys.map((key) => (
+                <AreaLine
+                  key={key}
+                  areaKey={key}
+                  positions={lines[key]}
+                  runs={runs}
+                  pricePerFt={pricePerFt}
+                  locked={locked}
+                  feetRef={keep(key)}
+                  onFeet={(feet) => onChange(setAreaFeet(state, key, feet))}
+                  onRunFeet={(at, feet) => onChange(setRunFeet(state, at, feet))}
+                  onRun={setRun}
+                />
+              ))}
+            </ul>
+          </Panel>
+        ))}
+        <Panel title="Other" hint="Anything off the views: a shed, a detached garage.">
+          {others.length > 0 ? (
+            <ul className="flex flex-col divide-y">
+              {others.map((at, which) => (
+                <OtherLine
+                  key={at}
+                  at={at}
+                  number={which + 1}
+                  run={runs[at]}
+                  pricePerFt={pricePerFt}
+                  locked={locked}
+                  onFeet={(feet) => onChange(setRunFeet(state, at, feet))}
+                  onRun={(next) => setRun(at, next)}
+                  onRemove={() => onChange(dropRun(state, at))}
+                />
+              ))}
+            </ul>
+          ) : null}
+          {!locked ? (
+            <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => onChange(addOtherRun(state))} data-testid="area-other-add">
+              <Plus aria-hidden="true" className="size-4" />
+              Other
+            </Button>
+          ) : null}
         </Panel>
-      ))}
-      <Panel title="Other" hint="Anything off the views: a shed, a detached garage.">
-        {others.length > 0 ? (
-          <ul className="flex flex-col divide-y">
-            {others.map((at, which) => (
-              <OtherLine
-                key={at}
-                at={at}
-                number={which + 1}
-                run={runs[at]}
-                pricePerFt={pricePerFt}
-                locked={locked}
-                onFeet={(feet) => onChange(setRunFeet(state, at, feet))}
-                onRun={(next) => setRun(at, next)}
-                onRemove={() => onChange(dropRun(state, at))}
-              />
-            ))}
-          </ul>
-        ) : null}
-        {!locked ? (
-          <Button type="button" variant="outline" size="sm" className="self-start" onClick={() => onChange(addOtherRun(state))} data-testid="area-other-add">
-            <Plus aria-hidden="true" className="size-4" />
-            Other
-          </Button>
-        ) : null}
-      </Panel>
-    </div>
+      </div>
+    </TrackPricesContext.Provider>
   );
 }
 
@@ -391,6 +400,7 @@ function PriceControl({
 
   return (
     <div className="flex flex-wrap items-center gap-2 pt-1 pb-1">
+      <TrackControl run={run} area={area} disabled={disabled} onRun={onRun} />
       <Segmented value={mode} options={MODES} label={`${areaDisplayName(run)} price`} disabled={disabled} onChange={choose} size="small" testId="area-price-mode" />
       {mode !== "quote" ? (
         <>
@@ -427,5 +437,46 @@ function PriceControl({
         </>
       ) : null}
     </div>
+  );
+}
+
+const TRACK_CHOICES: readonly TrackType[] = ["hat", "double", "j"];
+const TRACK_SHORT: Record<TrackType, string> = { hat: "Hat", double: "Double", j: "J track" };
+
+// The area's track: Hat track (the standard, the quote's price a foot),
+// Double or J track at that track's price a foot from Settings, copied onto
+// the area when picked so the quote keeps the price it used. A track with
+// no price in Settings yet can't be picked. Keenan's own $ a foot or Flat on
+// the area still wins over the track's price.
+function TrackControl({ run, area, disabled, onRun }: { run: QuoteRun; area: string; disabled: boolean; onRun: (next: QuoteRun) => void }) {
+  const prices = useContext(TrackPricesContext);
+  const track = runTrack(run);
+  const priced = (choice: TrackType) => choice === "hat" || (prices[choice] ?? 0) > 0;
+  const options = TRACK_CHOICES.map((choice) => ({ value: choice, label: TRACK_SHORT[choice], disabled: !priced(choice) }));
+  const choose = (next: TrackType) => {
+    if (next === track) return;
+    if (next === "hat") {
+      onRun({ ...run, track: null, trackRate: null });
+      return;
+    }
+    const price = prices[next];
+    if (!price || price <= 0) return;
+    onRun({ ...run, track: next, trackRate: price });
+  };
+  const missing = TRACK_CHOICES.filter((choice) => !priced(choice));
+  return (
+    <span className="flex flex-wrap items-center gap-2" data-testid="area-track" data-area={area} data-track={track}>
+      <Segmented value={track} options={options} label={`${areaDisplayName(run)} track`} disabled={disabled} onChange={choose} size="small" testId="area-track-choice" />
+      {track !== "hat" && typeof run.trackRate === "number" && !run.rate && run.flat == null ? (
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {TRACK_NAMES[track]} {formatMoney(run.trackRate)} a foot
+        </span>
+      ) : null}
+      {missing.length > 0 && track === "hat" ? (
+        <span className="text-xs text-muted-foreground" data-testid="area-track-unpriced">
+          Set {missing.map((choice) => TRACK_NAMES[choice]).join(" and ")} in Settings, Pricing
+        </span>
+      ) : null}
+    </span>
   );
 }
