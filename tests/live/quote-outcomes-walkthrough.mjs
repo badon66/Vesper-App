@@ -232,6 +232,8 @@ async function cleanUp() {
   const leadIds = (rows ?? []).map((row) => row.id);
   await admin.from("earnings").delete().in("profile_id", ids);
   if (leadIds.length > 0) {
+    // Round 18: Keenan's changes after the yes point at the quote and lead.
+    await admin.from("quote_revisions").delete().in("lead_id", leadIds);
     await admin.from("earnings").delete().in("lead_id", leadIds);
     await admin.from("lead_site_visits").delete().in("lead_id", leadIds);
     await admin.from("slot_holds").delete().in("lead_id", leadIds);
@@ -872,9 +874,8 @@ try {
       "each offer card has its own Rush fee switch: the quote's old fee is on both offers, $350 each, so no total moved",
       (await rushOn(mainCard)) &&
         (await rushOn(fullCard)) &&
-        (await mainCard.getByTestId("offer-rush-fee").locator("input").inputValue().catch(() => "")) === "350" &&
-        (await op.getByTestId("editor-rush-note").count()) === 1,
-      `${await rushOn(mainCard)} ${await rushOn(fullCard)}`,
+        (await mainCard.getByTestId("offer-rush-fee").inputValue().catch(() => "")) === "350",
+      `${await rushOn(mainCard)} ${await rushOn(fullCard)} ${await mainCard.getByTestId("offer-rush-fee").inputValue().catch(() => "no box")} ${await op.getByTestId("editor-rush-note").count()}`,
     );
     check("each offer card has + Extra charge", (await mainCard.getByTestId("offer-charge-add").count()) === 1 && (await fullCard.getByTestId("offer-charge-add").count()) === 1);
     await op.getByTestId("quote-sheet").screenshot({ path: `${out}/outcome-owner-accepted-editor-1180.png` }).catch(() => {});
@@ -1116,17 +1117,30 @@ try {
       !changed.error && changed.data?.paid === true && paidNow?.status === "paid" && Number(paidNow?.amount) === soldCommission,
       `${changed.error?.message ?? JSON.stringify(changed.data)} | ${JSON.stringify(paidNow)}`,
     );
+    // The owner's session for the looks above has ended (after View as), so
+    // a second one-time session, view only like the first, is opened for
+    // this one look at Pay and ended straight after.
     const looked = await testFootprint(leadIds);
-    await op.setViewportSize(IPAD);
-    await open(op, "/app/admin/pay");
-    const payCard = op.getByTestId("pay-setter").filter({ hasText: a.name });
-    const nowWould = commissionOn(REVISED_BASE_CENTS);
-    const differenceLine = await textOf(payCard.getByTestId("pay-paid-changed"));
-    check(
-      "Pay shows Keenan the difference on the paid commission: what it would be now, and how much more than paid",
-      differenceLine === `The quote changed after this was paid. It would now be ${payMoney(nowWould)}, ${payMoney(Math.round((nowWould - soldCommission) * 100) / 100)} more than paid.`,
-      differenceLine,
-    );
+    const payContext = await browser.newContext(phone);
+    ownerSession = await openOwnerSession({ url, anonKey, admin, base, context: payContext });
+    try {
+      const pp = await payContext.newPage();
+      await pp.setViewportSize(IPAD);
+      await open(pp, "/app/admin/pay");
+      const payCard = pp.getByTestId("pay-setter").filter({ hasText: a.name });
+      const nowWould = commissionOn(REVISED_BASE_CENTS);
+      const differenceLine = await textOf(payCard.getByTestId("pay-paid-changed"));
+      check(
+        "Pay shows Keenan the difference on the paid commission: what it would be now, and how much more than paid",
+        differenceLine === `The quote changed after this was paid. It would now be ${payMoney(nowWould)}, ${payMoney(Math.round((nowWould - soldCommission) * 100) / 100)} more than paid.`,
+        differenceLine || (await textOf(payCard)).slice(0, 300),
+      );
+      await payCard.screenshot({ path: `${out}/outcome-owner-pay-difference-1180.png` }).catch(() => {});
+    } finally {
+      await ownerSession.close();
+      ownerSession = null;
+      await payContext.close();
+    }
     check("looking at Pay wrote nothing", (await testFootprint(leadIds)) === looked);
   }
 

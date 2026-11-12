@@ -813,13 +813,13 @@ try {
           (line.values.includes(String(feet)) || line.text.includes(`${feet} ft`)),
       );
     check(
-      "Edit the quote places the six old runs by area: Front lower 64 ft, Front lower: Garage 28 ft and Front upper 52 ft on the Front view, Sides lower: Left side and Right side on the Sides view, Upper gable under Other",
+      "Edit the quote places the six old runs by area: Front lower 64 ft, Garage 28 ft and Front upper 52 ft on the Front view, the old Left side and Right side runs on their own Left side and Right side views (round 18), Upper gable under Other",
       areaLines.length === 6 &&
         lineWith("front", ["Front lower", "Lower"], 64) &&
         lineWith("front", ["Front lower: Garage", "Garage"], 28) &&
         lineWith("front", ["Front upper", "Upper"], 52) &&
-        lineWith("sides", ["Sides lower: Left side", "Left side", "Sides", "Lower"], 30) &&
-        lineWith("sides", ["Sides lower: Right side", "Right side"], 30) &&
+        lineWith("left", ["Left side", "Lower"], 30) &&
+        lineWith("right", ["Right side", "Lower"], 30) &&
         lineWith("other", ["Upper gable"], 22),
       JSON.stringify(areaLines.map((line) => [line.area, line.text.slice(0, 40), line.values.join("/")])),
     );
