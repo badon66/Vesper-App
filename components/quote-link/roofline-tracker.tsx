@@ -175,7 +175,9 @@ export function RooflineTracker({
       </div>
       {pay ? (
         <p
-          className={cn("mt-3 font-semibold text-pretty", deck ? "text-[length:var(--deck-small)] leading-[1.3]" : "text-base lg:max-w-sm")}
+          // Beside an open step on a laptop at a reading width; on its own
+          // line while none is open.
+          className={cn("mt-3 font-semibold text-pretty", deck ? "text-[length:var(--deck-small)] leading-[1.3]" : cn("text-base", shown && "lg:max-w-sm"))}
           data-testid="tracker-pay"
         >
           {say(pay)}
