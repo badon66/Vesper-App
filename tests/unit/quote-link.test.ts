@@ -225,7 +225,12 @@ const rework = {
     track_custom: false,
   },
   service_call_fee: 200,
-  christmas: { title: "Want them up for Christmas?", text: "We install every day the weather allows." },
+  christmas: {
+    book_by_white: "2026-12-15",
+    book_by_colour: "2026-12-08",
+    season_end: "2026-12-24",
+    words: { book_by: "Book by {date} to be lit up for Christmas.", white: "White line.", colour: "Colour line.", no_colour: "No colour.", after: "After." },
+  },
   product_points: [
     { icon: "lightbulb", text: "RGBW lights with a dedicated white." },
     { icon: "rocket", text: "An icon Settings doesn't offer." },
@@ -242,7 +247,7 @@ describe("the reworked page's answer", () => {
     expect(view.state).toBe("live");
     if (view.state !== "live") return;
     expect([view.validUntil, view.today]).toEqual(["2027-03-02", "2026-11-04"]);
-    expect(view.christmas).toEqual({ title: "Want them up for Christmas?", text: "We install every day the weather allows." });
+    expect(view.christmas).toMatchObject({ bookByWhite: "2026-12-15", bookByColour: "2026-12-08", seasonEnd: "2026-12-24" });
     // An unknown icon is a tick; a blank line is left out.
     expect(view.productPoints).toEqual([
       { icon: "lightbulb", text: "RGBW lights with a dedicated white." },

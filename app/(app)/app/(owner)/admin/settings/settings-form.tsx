@@ -117,6 +117,36 @@ function BlackFridayFields({ defaults, errors }: { defaults: SettingsFormDefault
   );
 }
 
+// Christmas (round 17, Keenan, 2026-11-12): the dates the banner on every
+// customer's link runs by. Each customer sees the book-by date for their own
+// track colour; after it, until the season ends, a line that promises
+// nothing; from the day after, no banner. The words are under Customer
+// quote page.
+function ChristmasDates({ defaults, errors }: { defaults: SettingsFormDefaults; errors?: SettingsState["errors"] }) {
+  const hintId = "settings-christmas_dates-hint";
+  return (
+    <fieldset className="flex flex-col gap-3 sm:col-span-2" aria-describedby={hintId}>
+      <legend className="mb-2 text-sm leading-none font-medium">Christmas</legend>
+      <div className="grid gap-5 sm:grid-cols-3">
+        <Field name="christmas_book_by_white" label="Book by, white track" errors={errors}>
+          {(p) => <Input {...p} type="date" defaultValue={defaults.christmas_book_by_white} />}
+        </Field>
+        <Field name="christmas_book_by_colour" label="Book by, colour-matched track" errors={errors}>
+          {(p) => <Input {...p} type="date" defaultValue={defaults.christmas_book_by_colour} />}
+        </Field>
+        <Field name="christmas_season_end" label="Season ends" errors={errors}>
+          {(p) => <Input {...p} type="date" defaultValue={defaults.christmas_season_end} />}
+        </Field>
+      </div>
+      <p id={hintId} className="text-sm text-muted-foreground">
+        The Christmas banner on each customer&apos;s link shows the date for their own track colour, with the days left.
+        No colour set yet reads the white date. After their date it says Christmas can&apos;t be promised, and from the day
+        after the season ends there is no banner. Meeting mode&apos;s price page shows the same date as one quiet line.
+      </p>
+    </fieldset>
+  );
+}
+
 function formatSavedAt(iso: string) {
   return formatTime(iso);
 }
@@ -151,6 +181,7 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.referral_credit} />}
           </Field>
           <BlackFridayFields defaults={defaults} errors={errors} />
+          <ChristmasDates defaults={defaults} errors={errors} />
         </CardContent>
       </Card>
 
@@ -265,13 +296,32 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
               <Label htmlFor="settings-christmas_banner_on">Show the Christmas banner</Label>
             </div>
             <p className="-mt-2 text-sm text-muted-foreground">
-              It shows from September 1 to November 30 while this is on, and hides itself after that.
+              It runs by the Christmas dates under Pricing, and hides itself after the season ends.
             </p>
-            <Field name="christmas_banner_title" label="Banner heading" errors={errors}>
-              {(p) => <Input {...p} maxLength={80} defaultValue={defaults.christmas_banner_title} />}
+            <Field
+              name="christmas_banner_book_by"
+              label="Before their date"
+              hint="{date} is where their book-by date goes, like Tuesday, December 15."
+              errors={errors}
+            >
+              {(p) => <Input {...p} maxLength={120} defaultValue={defaults.christmas_banner_book_by} />}
             </Field>
-            <Field name="christmas_banner_text" label="Banner words" hint="No dates or promises: it reads like an invitation, not a deadline." errors={errors}>
-              {(p) => <Textarea {...p} rows={2} maxLength={300} defaultValue={defaults.christmas_banner_text} />}
+            <Field name="christmas_banner_white" label="Under it, for white track" errors={errors}>
+              {(p) => <Textarea {...p} rows={2} maxLength={300} defaultValue={defaults.christmas_banner_white} />}
+            </Field>
+            <Field name="christmas_banner_colour" label="Under it, for a colour-matched track" errors={errors}>
+              {(p) => <Textarea {...p} rows={2} maxLength={300} defaultValue={defaults.christmas_banner_colour} />}
+            </Field>
+            <Field name="christmas_banner_no_colour" label="Added when no colour is set yet" errors={errors}>
+              {(p) => <Input {...p} maxLength={300} defaultValue={defaults.christmas_banner_no_colour} />}
+            </Field>
+            <Field
+              name="christmas_banner_after"
+              label="After their date, until the season ends"
+              hint="Promise nothing here: Christmas can no longer be counted on."
+              errors={errors}
+            >
+              {(p) => <Textarea {...p} rows={3} maxLength={300} defaultValue={defaults.christmas_banner_after} />}
             </Field>
           </div>
           <fieldset className="flex flex-col gap-3" aria-describedby="settings-product_points-hint">

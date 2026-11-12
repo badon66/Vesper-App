@@ -6,6 +6,7 @@ import { bookCustom, bookInstall, recordVisit, saveSelection, signAgreement } fr
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
 import { Disclosure } from "@/components/quote-link/disclosure";
 import { AboutYourTrack, AgreementSection, BuildYourOwn, BuildYourOwnRow, LinkDocuments, type SignOutcome } from "@/components/quote-link/link-extras";
+import { ChristmasBanner } from "@/components/quote-link/christmas-banner";
 import { PointIconMark } from "@/components/quote-link/point-icon";
 import { ClosedQuote, ContactButtons } from "@/components/quote-link/quote-shell";
 import { DialogPanel } from "@/components/ui/dialog-panel";
@@ -41,6 +42,7 @@ import {
   type CustomerQuote,
   type LinkPicture,
 } from "@/lib/quote-link/view";
+import { christmasBanner, trackColourKind } from "@/lib/quote-link/christmas";
 import { calgaryDateOf, formatFullDate, formatLongDay } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -129,6 +131,12 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   // in the price below, goes back to that option's picture.
   const [look, setLook] = useState<string | null>(null);
   const seeIt = showsSeeIt(view.pictures, shown.length);
+  // Round 17: the Christmas banner, by the date for their own track colour.
+  const banner = christmasBanner({
+    today: view.today,
+    christmas: view.christmas,
+    track: trackColourKind({ name: quote.trackColourName, custom: quote.trackCustom }),
+  });
   // On a laptop the picture gets its own column (2026-11-12).
   const laptopPicture = Boolean(view.mockupUrl) || (seeIt && selected !== null);
   const totals: QuoteTotals | null = selected?.totals ?? null;
@@ -284,6 +292,8 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
 
   return (
     <>
+      {/* Round 17: the Christmas banner, at the very top, full width. */}
+      {banner ? <ChristmasBanner banner={banner} /> : null}
       <main className={cn("mx-auto flex max-w-xl flex-col pb-36", laptopPicture ? LAPTOP_PAGE : LAPTOP_SINGLE)} data-testid="quote-live">
         <div className={laptopPicture ? LAPTOP_TOP : "contents"} data-testid="laptop-top">
         {/* 1. Their house and the price of the option on screen. On a
@@ -335,14 +345,6 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
               On {formatLongDay(calgaryDateOf(booked.at))} you asked us to book your install:{" "}
               {customerChoiceInSentence(booked.option)}. Keenan will be in touch {inTouchAbout(view.nextSteps.installOn)}.
             </p>
-          ) : null}
-
-          {/* 2. A reason to act now, while Keenan has it on (September 1 to November 30). */}
-          {view.christmas ? (
-            <section aria-label="Christmas" className="mt-6 bg-accent px-5 py-5 lg:mx-5 lg:rounded-md" data-testid="quote-christmas">
-              <p className="text-base font-semibold text-pretty">{view.christmas.title}</p>
-              {view.christmas.text ? <p className="mt-1 text-base text-pretty">{view.christmas.text}</p> : null}
-            </section>
           ) : null}
         </section>
 

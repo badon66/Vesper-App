@@ -21,6 +21,7 @@ import { QUOTE_LOCKED_MEETING, savedLine } from "@/lib/quotes/draft";
 import { offersBlock } from "@/lib/quotes/editor";
 import { BLACK_FRIDAY_LABEL, blackFridayWords } from "@/lib/quotes/black-friday";
 import { cleanOfferName, customerOfferName, feetWords, offerFeet, type PricedOffer } from "@/lib/quotes/offers";
+import { christmasPriceLine, trackColourKindOf } from "@/lib/quote-link/christmas";
 import { formatFullDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -192,6 +193,9 @@ export function QuoteScreen({
   const colour = colourKind === "none" ? null : colourText.trim() || null;
   // The sub-line counts the options: none until something is measured.
   const sub = options.length > 0 ? priceSubLine(lines, options.length, colour) : "";
+  // Round 17: the Christmas book-by date for their track, one quiet line,
+  // the same date as their link; nothing once it has passed.
+  const christmasLine = locked ? null : christmasPriceLine({ today, christmas: pricing.christmas, track: trackColourKindOf(colourKind, colourText) });
   const { save } = useQuoteSave({ leadId, pricing, from: "meeting", readOnly });
   // The picture for the option on screen: its own, else the Main, else none.
   const picture = offerMockup(mockups, viewing?.offer.id ?? null);
@@ -281,6 +285,11 @@ export function QuoteScreen({
           </button>
         ) : null}
       </header>
+      {christmasLine ? (
+        <p className={cn(DECK_TYPE.small, "mt-1 pr-12 pl-16 text-muted-foreground")} data-testid="price-christmas">
+          {say(christmasLine)}
+        </p>
+      ) : null}
 
       {viewing === null ? (
         <p className={cn(DECK_TYPE.body, "mt-8 pr-12 pl-16 text-muted-foreground")} data-testid="price-empty">

@@ -203,3 +203,42 @@ html:has(.quote-light) {
     transition: none;
   }
 }
+
+/* Round 17 (Keenan, 2026-11-12). The Christmas banner's string of lights:
+   small bulbs along its top edge that twinkle slowly, each on its own beat,
+   and hold still with reduce motion on. The tracker's current step glows
+   gently the same way. */
+@keyframes xmas-twinkle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.38;
+  }
+}
+.xmas-bulb {
+  animation: xmas-twinkle 3.8s ease-in-out infinite;
+}
+@keyframes tracker-glow {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.15);
+  }
+}
+.tracker-glow {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: tracker-glow 2.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .xmas-bulb,
+  .tracker-glow {
+    animation: none;
+  }
+}

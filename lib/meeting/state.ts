@@ -3,6 +3,7 @@
 // the iPad already holds a copy. No React and no network, so it is unit
 // tested like the pricing it feeds.
 
+import type { ChristmasSettings } from "@/lib/quote-link/christmas";
 import type { SoffitColour } from "@/lib/leads/status";
 import type { TrackColour } from "@/lib/leads/track-colour";
 import { areaOf, isGable, runFlat, runRate, tagRun } from "@/lib/quotes/areas";
@@ -120,6 +121,10 @@ export type MeetingPayload = {
     // Settings, copied onto an area when Keenan picks that track; null until
     // set. Left out by an iPad holding a payload from before.
     trackPrices?: { double: number | null; j: number | null };
+    // Round 17: the Christmas dates and words while the banner is on; Your
+    // price shows the book-by date for the lead's track as one quiet line.
+    // Left out by an iPad holding a payload from before.
+    christmas?: ChristmasSettings | null;
   };
   draft: {
     quoteId: string;

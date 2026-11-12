@@ -1928,9 +1928,17 @@ export type Database = {
           booking_pay: number
           booking_window_days: number
           box_price: number
+          christmas_banner_after: string
+          christmas_banner_book_by: string
+          christmas_banner_colour: string
+          christmas_banner_no_colour: string
           christmas_banner_on: boolean
           christmas_banner_text: string
           christmas_banner_title: string
+          christmas_banner_white: string
+          christmas_book_by_colour: string | null
+          christmas_book_by_white: string | null
+          christmas_season_end: string | null
           commission_rate: number
           company: Json
           confirm_text: string
@@ -1981,9 +1989,17 @@ export type Database = {
           booking_pay?: number
           booking_window_days?: number
           box_price?: number
+          christmas_banner_after?: string
+          christmas_banner_book_by?: string
+          christmas_banner_colour?: string
+          christmas_banner_no_colour?: string
           christmas_banner_on?: boolean
           christmas_banner_text?: string
           christmas_banner_title?: string
+          christmas_banner_white?: string
+          christmas_book_by_colour?: string | null
+          christmas_book_by_white?: string | null
+          christmas_season_end?: string | null
           commission_rate?: number
           company: Json
           confirm_text?: string
@@ -2034,9 +2050,17 @@ export type Database = {
           booking_pay?: number
           booking_window_days?: number
           box_price?: number
+          christmas_banner_after?: string
+          christmas_banner_book_by?: string
+          christmas_banner_colour?: string
+          christmas_banner_no_colour?: string
           christmas_banner_on?: boolean
           christmas_banner_text?: string
           christmas_banner_title?: string
+          christmas_banner_white?: string
+          christmas_book_by_colour?: string | null
+          christmas_book_by_white?: string | null
+          christmas_season_end?: string | null
           commission_rate?: number
           company?: Json
           confirm_text?: string

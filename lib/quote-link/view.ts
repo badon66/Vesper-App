@@ -39,6 +39,7 @@ import {
   type QuoteOffer,
 } from "@/lib/quotes/offers";
 import { formatLongDay } from "@/lib/time";
+import { CHRISTMAS_WORD_DEFAULTS, type ChristmasSettings } from "@/lib/quote-link/christmas";
 
 // The token's shape, as the database makes it: 24 base64url characters.
 export const TOKEN_PATTERN = /^[A-Za-z0-9_-]{24}$/;
@@ -112,9 +113,10 @@ export type CustomerQuote = {
   warranty: string;
   // Warranty years 6 to 10 (Settings); null hides its line.
   serviceCallFee: number | null;
-  // Shown only while Keenan has it on, September 1 to November 30 (the
-  // database decides, by Calgary's date).
-  christmas: { title: string; text: string } | null;
+  // Round 17: the Christmas banner's dates and words while Keenan has it on
+  // and the season hasn't ended (the database decides, by Calgary's date);
+  // lib/quote-link/christmas.ts picks the date for their track colour.
+  christmas: ChristmasSettings | null;
   productPoints: ProductPoint[];
   // What happens next: whether the colour was initialled at the meeting,
   // the planned install day (the lead's, else the one picked at the table),
@@ -280,7 +282,26 @@ const liveSchema = z.object({
   warranty: z.string().catch(""),
   service_call_fee: z.coerce.number().nullable().optional().catch(null),
   christmas: z
-    .object({ title: z.string().catch(""), text: z.string().catch("") })
+    .object({
+      book_by_white: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      book_by_colour: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().catch(null),
+      season_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      words: z
+        .object({
+          book_by: z.string().catch(CHRISTMAS_WORD_DEFAULTS.bookBy),
+          white: z.string().catch(CHRISTMAS_WORD_DEFAULTS.white),
+          colour: z.string().catch(CHRISTMAS_WORD_DEFAULTS.colour),
+          no_colour: z.string().catch(CHRISTMAS_WORD_DEFAULTS.noColour),
+          after: z.string().catch(CHRISTMAS_WORD_DEFAULTS.after),
+        })
+        .catch({
+          book_by: CHRISTMAS_WORD_DEFAULTS.bookBy,
+          white: CHRISTMAS_WORD_DEFAULTS.white,
+          colour: CHRISTMAS_WORD_DEFAULTS.colour,
+          no_colour: CHRISTMAS_WORD_DEFAULTS.noColour,
+          after: CHRISTMAS_WORD_DEFAULTS.after,
+        }),
+    })
     .nullable()
     .optional()
     .catch(null),
@@ -319,7 +340,20 @@ export function parseCustomerQuote(data: unknown): CustomerQuote | ClosedQuote {
   }
   const v = live.data;
   const fee = v.service_call_fee ?? null;
-  const christmas = v.christmas && v.christmas.title.trim() ? { title: v.christmas.title.trim(), text: v.christmas.text.trim() } : null;
+  const christmas: ChristmasSettings | null = v.christmas
+    ? {
+        bookByWhite: v.christmas.book_by_white,
+        bookByColour: v.christmas.book_by_colour ?? v.christmas.book_by_white,
+        seasonEnd: v.christmas.season_end,
+        words: {
+          bookBy: v.christmas.words.book_by,
+          white: v.christmas.words.white,
+          colour: v.christmas.words.colour,
+          noColour: v.christmas.words.no_colour,
+          after: v.christmas.words.after,
+        },
+      }
+    : null;
   return {
     state: "live",
     firstName: v.first_name,
