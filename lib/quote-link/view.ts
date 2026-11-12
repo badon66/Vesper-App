@@ -439,7 +439,8 @@ export function colourSectionLines({
   const name = (colourName ?? "").trim();
   const madeToOrder = custom || (name !== "" && !isWhiteTrack(name));
   if (!madeToOrder) {
-    return { stock: deckLine(words, "colour_stock"), other: "Any other colour is made to order at no extra cost.", made: null, timing: null };
+    // No cost claim: a colour this season may carry Keenan's rush fee.
+    return { stock: deckLine(words, "colour_stock"), other: "Any other colour is made to order.", made: null, timing: null };
   }
   const fee = timing === "rush" && rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
   const lowerFirst = (text: string) => (text ? text.charAt(0).toLowerCase() + text.slice(1) : text);

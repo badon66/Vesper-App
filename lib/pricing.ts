@@ -108,7 +108,7 @@ export type QuoteInputs = {
   // it this way; the totals are the same cents either way.
   perArea?: boolean;
   // Each area's name on its line; left out, the run's own name. The link
-  // passes lib/quotes/areas.ts areaDisplayName, so a quote by area reads
+  // passes lib/quotes/areas.ts customerAreaName, so a quote by area reads
   // "Front lower" and "Front upper", never two lines both called "Front".
   areaName?: (run: QuoteRun) => string;
 };

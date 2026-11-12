@@ -79,6 +79,34 @@ describe("the suggestion Keenan sees", () => {
     expect(checkSuggestion("The whole front, with the same 10-year warranty as every job, and up before Christmas.", own, facts).ok).toBe(true);
   });
 
+  it("compares numbers whole and catches spelled-out numbers, timelines, lifespans, holidays and price claims (round 17 review)", () => {
+    const front = { name: "Front lower", areas: [{ name: "Front lower", feet: 110, track: null }], totalFeet: 110 };
+    const rough = "does the whole front, best value";
+    for (const invented of [
+      "Covered for ten years, parts and labour.",
+      "We install it within a week.",
+      "Lights that last 10 years.",
+      "All 10 ft of trim included.",
+      "The whole front, guaranteeing a clean look.",
+      "Best price in Calgary, no extra cost.",
+      "Ready before the holidays.",
+      "Up by May 1, all along the front.",
+    ]) {
+      expect(checkSuggestion(invented, rough, front), invented).toEqual({ ok: false, reason: "invented" });
+    }
+    // Its own feet, whole, still pass.
+    expect(checkSuggestion("All 110 ft along the front, the best value.", rough, front).ok).toBe(true);
+  });
+
+  it("reads the word may as a word, not a month, and keeps decimals whole", () => {
+    expect(checkSuggestion("You may want the garage too, since it faces the street.", "whole front and the garage", facts).ok).toBe(true);
+    const half = { name: "Front", areas: [{ name: "Front", feet: 104.5, track: null }], totalFeet: 104.5 };
+    expect(checkSuggestion("All 104.5 ft of your front. Every corner lit.", "the whole front", half)).toEqual({
+      ok: true,
+      text: "All 104.5 ft of your front. Every corner lit.",
+    });
+  });
+
   it("refuses an empty answer", () => {
     expect(checkSuggestion('  ""  ', notes, facts)).toEqual({ ok: false, reason: "empty" });
   });

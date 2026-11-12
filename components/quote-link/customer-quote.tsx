@@ -1696,9 +1696,14 @@ function Mockup({
     const image = picture.current;
     if (image && image.complete && image.naturalWidth === 0) setBrokenUrl(image.getAttribute("src"));
   }, []);
-  if (broken) return <PictureNeedsRefresh />;
+  // A picture that fails swaps the opener for the refresh note, but full
+  // screen stays mounted: open, it shows its own note (and a look that
+  // still loads can be picked); closed, nothing reopens it by itself.
   return (
     <figure className="relative">
+      {broken ? (
+        <PictureNeedsRefresh />
+      ) : (
       <button
         ref={opener}
         type="button"
@@ -1731,7 +1736,8 @@ function Mockup({
           <Maximize2 className="size-5" strokeWidth={1.5} />
         </span>
       </button>
-      {caption ? (
+      )}
+      {caption && !broken ? (
         <figcaption className={cn("pt-2 text-sm text-pretty text-muted-foreground", !inset && "px-5", laptopFrame && "lg:px-0")} data-testid={ids.caption}>
           {caption}
         </figcaption>

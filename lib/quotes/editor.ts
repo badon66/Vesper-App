@@ -106,10 +106,17 @@ export function offerNameIssue(name: string): string | null {
   return null;
 }
 
-// What stops a save, in words, or null: an offer's name that needs fixing,
-// or (round 13) every offer that covers an area being hidden.
+// Round 17: an offer's description is read by the customer too, so the
+// same word checks as its name.
+export function offerDescriptionIssue(description: string | undefined): string | null {
+  return offerNameIssue(description ?? "");
+}
+
+// What stops a save, in words, or null: an offer's name or description that
+// needs fixing, or (round 13) every offer that covers an area being hidden.
 export function offersBlock(offers: readonly QuoteOffer[]): string | null {
   if (offers.some((offer) => offerNameIssue(offer.name) !== null)) return "An offer's name needs fixing first.";
+  if (offers.some((offer) => offerDescriptionIssue(offer.description) !== null)) return "An offer's description needs fixing first.";
   if (noOfferShown(offers)) return NO_OFFER_SHOWN;
   return null;
 }

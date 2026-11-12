@@ -261,6 +261,17 @@ export function colourTimingFor(
 export const THIS_SEASON: ColourTiming = "rush";
 export const SPRING: ColourTiming = "factory_order";
 
+// The one colour rule on a quote as it opens (round 9; round 17): only White
+// is stock. Meeting mode and the lead page's editor both apply it to any
+// quote that isn't accepted, so the two never price the same quote apart.
+// A quote the rule moves to another timing starts with no rush fee: the fee
+// is Keenan's to switch on, never carried over (a White track can't keep
+// one, and a quote moved into this season starts included).
+export function withColourRule(state: QuoteUIState, kind: "list" | "custom" | "none", colourText: string): QuoteUIState {
+  const timing = colourTimingFor(kind, colourText, state.colourTiming);
+  return timing === state.colourTiming ? state : { ...state, colourTiming: timing, rushFee: "" };
+}
+
 const moneyString = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(2));
 const parseMoney = (value: string) => {
   const parsed = Number(value);
@@ -283,9 +294,12 @@ export function rushFeeOn(state: QuoteUIState): boolean {
   return fee !== null && fee > 0;
 }
 
-// The colour timing as Keenan picks it (round 17): spring drops any rush fee.
+// The colour timing as Keenan picks it (round 17). Spring never charges the
+// rush fee (quoteRushFee, and the save stores none), but the amount Keenan
+// switched on stays in hand, so a customer who looks at Spring and comes
+// back to This season sees his price again, not a fee quietly dropped.
 export function withColourTiming(timing: ColourTiming): Partial<QuoteUIState> {
-  return timing === THIS_SEASON ? { colourTiming: timing } : { colourTiming: timing, rushFee: "" };
+  return { colourTiming: timing };
 }
 
 // "Charge a rush fee" switched on fills in Settings' amount (he can type

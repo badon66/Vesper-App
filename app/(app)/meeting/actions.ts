@@ -146,6 +146,10 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
   if ((draft.offers ?? []).some((offer) => hasDash(offer.name) || hasExclamation(offer.name))) {
     return { ok: false, code: "bad_input", message: "An option's name has a dash or an exclamation mark. Take it out and save again." };
   }
+  // Round 17: its description too, which customers read under the name.
+  if ((draft.offers ?? []).some((offer) => hasDash(offer.description ?? "") || hasExclamation(offer.description ?? ""))) {
+    return { ok: false, code: "bad_input", message: "An option's description has a dash or an exclamation mark. Take it out and save again." };
+  }
   // The offers as the database keeps them, and the table's choice only
   // while it names one of them (an empty list is one full wrap, "full").
   const offers = offersForSave(

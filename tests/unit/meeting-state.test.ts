@@ -15,6 +15,7 @@ import {
   quoteStateFromDraft,
   rushFeeOn,
   withColourTiming,
+  withColourRule,
   withRushFee,
   startingPoint,
   type MeetingPayload,
@@ -396,12 +397,30 @@ describe("the rush fee is Keenan's choice, off by default", () => {
     expect([off.rushFee, rushFeeOn(off)]).toEqual(["", false]);
   });
 
-  it("drops the fee when Keenan picks Spring, which is included", () => {
-    const on = { ...withFeet(defaultQuoteState(brown()), 100), ...withRushFee(true, brown().pricing) };
+  it("charges no fee for Spring, and brings Keenan's own amount back with This season", () => {
+    const on = { ...withFeet(defaultQuoteState(brown()), 100), ...withRushFee(true, brown().pricing), rushFee: "275" };
     const spring = { ...on, ...withColourTiming("factory_order") };
-    expect([spring.colourTiming, spring.rushFee, quoteRushFee(spring)]).toEqual(["factory_order", "", null]);
+    expect([spring.colourTiming, quoteRushFee(spring), rushFeeOn(spring)]).toEqual(["factory_order", null, false]);
+    expect(priceQuote(quoteInputs(spring, brown().pricing)).lines.map((line) => line.label)).not.toContain(RUSH_LINE);
+    // A customer who looks at Spring and comes back sees his price again.
     const back = { ...spring, ...withColourTiming("rush") };
-    expect([back.colourTiming, rushFeeOn(back)]).toEqual(["rush", false]);
+    expect([back.colourTiming, quoteRushFee(back), rushFeeOn(back)]).toEqual(["rush", 275, true]);
+  });
+
+  it("applies the one colour rule as a quote opens: a White track never keeps a rush fee", () => {
+    const rushDraft = { ...serverDraft("2026-11-10T00:00:00Z"), colourTiming: "rush", rushFee: 350 };
+    const saved = quoteStateFromDraft(rushDraft, brown(rushDraft));
+    expect(rushFeeOn(saved)).toBe(true);
+    // The lead is White now: stock, the fee gone, no rush line.
+    const white = withColourRule(saved, "list", "White");
+    expect([white.colourTiming, white.rushFee, rushFeeOn(white)]).toEqual(["stock", "", false]);
+    expect(priceQuote(quoteInputs(white, payload().pricing)).lines.map((line) => line.label)).not.toContain(RUSH_LINE);
+    // Still Brown: nothing changes, the same state comes back.
+    expect(withColourRule(saved, "list", "Brown")).toBe(saved);
+    // A spring quote stays spring for a colour; no colour at all has no timing.
+    const springState = { ...saved, colourTiming: "factory_order" as const };
+    expect(withColourRule(springState, "custom", "RAL 7016").colourTiming).toBe("factory_order");
+    expect(withColourRule(saved, "none", "").colourTiming).toBeNull();
   });
 
   it("keeps a saved quote exactly as it was: a this-season fee stays, a spring quote's unused fee is never named", () => {

@@ -311,14 +311,13 @@ describe("the reworked page's answer", () => {
     const words = DEFAULT_LINES;
     expect(colourSectionLines({ words, colourName: "White", custom: false, timing: "stock", rushFee: null })).toEqual({
       stock: "White is in stock and included.",
-      other: "Any other colour is made to order at no extra cost.",
+      // No cost claim: a colour this season may carry Keenan's rush fee.
+      other: "Any other colour is made to order.",
       made: null,
       timing: null,
     });
     // No colour yet reads like white.
-    expect(colourSectionLines({ words, colourName: null, custom: false, timing: null, rushFee: 350 }).other).toBe(
-      "Any other colour is made to order at no extra cost.",
-    );
+    expect(colourSectionLines({ words, colourName: null, custom: false, timing: null, rushFee: 350 }).other).toBe("Any other colour is made to order.");
     // This season is the default and included; a fee stored on a spring quote is never named.
     expect(colourSectionLines({ words, colourName: "Brown", custom: false, timing: "rush", rushFee: null })).toEqual({
       stock: null,

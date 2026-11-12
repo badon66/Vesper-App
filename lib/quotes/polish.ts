@@ -80,10 +80,20 @@ const CANADIAN: [RegExp, string][] = [
 
 const keepCase = (from: string, to: string) => (from[0] === from[0].toUpperCase() ? to[0].toUpperCase() + to.slice(1) : to);
 
-// Words that make a promise or a price; allowed only when Keenan wrote them.
-const PROMISE_WORDS = /\b(warrant(?:y|ies|ied)|guarantee[ds]?|promis(?:e|es|ed)|lifetime|free|discounts?|deals?|savings?|sale|cheapest|lowest|financing)\b/gi;
+// Words that make a promise, a price or a claim about cost; allowed only
+// when Keenan wrote them (any form of the word: "guaranteeing" as well as
+// "guarantee").
+const PROMISE_WORDS =
+  /\b(warrant\w*|guarante\w*|promis\w*|lifetime|free|discount\w*|deals?|sav(?:e|es|ed|ing|ings)|sale|cheapest|lowest|financ\w*|cost\w*|charg\w*|pric\w*|afford\w*|bargain\w*)\b/gi;
+// Dates, seasons and holidays. "May" counts only as a month ("in May",
+// "by May 1"), never the word "may".
 const DATE_WORDS =
-  /\b(january|february|march|april|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|tonight|weekend|christmas|spring|summer|fall|autumn|winter)\b/gi;
+  /\b(january|february|march|april|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|tonight|weekends?|christmas|xmas|holidays?|halloween|thanksgiving|easter|spring|summer|fall|autumn|winter)\b/gi;
+const MAY_THE_MONTH = /\b(?:in|by|until|before|after|from|since|this|next|early|late|mid)\s+May\b|\bMay\s+\d/;
+// How long something takes or lasts, spelled out or not: a timeline or a
+// lifespan Keenan didn't write.
+const TIME_WORDS = /\b(minutes?|hours?|days?|weeks?|months?|years?|decades?|overnight)\b/gi;
+const NUMBER_WORDS = /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|hundred|thousand|dozen|half|double|triple)\b/gi;
 
 export type PolishCheck = { ok: true; text: string } | { ok: false; reason: "empty" | "invented" };
 
@@ -100,21 +110,34 @@ export function checkSuggestion(raw: string, notes: string, facts: PolishFacts):
     .trim();
   text = text.replace(/\s*[—–]\s*/g, ", ").replace(/!/g, ".").replace(/\.{2,}/g, ".").replace(/,\s*,/g, ",");
   for (const [pattern, word] of CANADIAN) text = text.replace(pattern, (found) => keepCase(found, word));
-  const sentences = text.match(/[^.?]+[.?]+|[^.?]+$/g)?.map((part) => part.trim()).filter(Boolean) ?? [];
-  text = sentences.slice(0, 3).join(" ").slice(0, 400).trim();
+  // Sentences end at a full stop or question mark followed by a space, so
+  // "$24.50" or "104.5 ft" stays whole; at most three, and whole sentences
+  // only within 400 characters.
+  const sentences = text.split(/(?<=[.?])\s+/).map((part) => part.trim()).filter(Boolean).slice(0, 3);
+  while (sentences.length > 1 && sentences.join(" ").length > 400) sentences.pop();
+  text = sentences.join(" ").slice(0, 400).trim();
   if (!text) return { ok: false, reason: "empty" };
 
   const allowed = `${notes} ${facts.name} ${facts.areas.map((area) => `${area.name} ${area.feet} ${area.track ?? ""}`).join(" ")} ${facts.totalFeet}`.toLowerCase();
   if (text.includes("$") && !allowed.includes("$")) return { ok: false, reason: "invented" };
   if (text.includes("%") && !allowed.includes("%")) return { ok: false, reason: "invented" };
-  for (const number of text.match(/\d[\d,.]*/g) ?? []) {
-    const bare = number.replace(/[,.]+$/, "").replace(/,/g, "");
-    if (!allowed.replace(/,/g, "").includes(bare)) return { ok: false, reason: "invented" };
+  // Every number as a whole: "10" is not in "110 ft".
+  const numbersIn = (value: string) => new Set((value.match(/\d[\d,.]*/g) ?? []).map((n) => n.replace(/[,.]+$/, "").replace(/,/g, "")));
+  const allowedNumbers = numbersIn(allowed);
+  for (const number of numbersIn(text)) {
+    if (!allowedNumbers.has(number)) return { ok: false, reason: "invented" };
   }
-  for (const pattern of [PROMISE_WORDS, DATE_WORDS]) {
+  // A word of these kinds must be one he wrote, word for word.
+  const allowedWords = new Set(allowed.match(/[a-z]+/g) ?? []);
+  for (const pattern of [PROMISE_WORDS, DATE_WORDS, TIME_WORDS, NUMBER_WORDS]) {
     for (const word of text.match(pattern) ?? []) {
-      if (!new RegExp(`\\b${word.toLowerCase()}`, "i").test(allowed)) return { ok: false, reason: "invented" };
+      if (!allowedWords.has(word.toLowerCase())) return { ok: false, reason: "invented" };
     }
+  }
+  if (MAY_THE_MONTH.test(text) && !/\bmay\b/.test(allowed)) return { ok: false, reason: "invented" };
+  // Claims that name no number but still promise: "best price", "no extra cost".
+  for (const claim of ["best price", "best value in", "no extra", "no charge", "money back", "in no time", "right away", "same day", "next day"]) {
+    if (text.toLowerCase().includes(claim) && !allowed.includes(claim)) return { ok: false, reason: "invented" };
   }
   return { ok: true, text };
 }

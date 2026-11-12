@@ -583,10 +583,10 @@ try {
   // 6. Track colour: one colour rule, the same as the iPad. Round 17: White is
   // in stock, and the rush fee is never named for a stock colour.
   check(
-    "track colour: their colour, White in stock and included, every other colour made to order at no extra cost, and no rush fee anywhere",
+    "track colour: their colour, White in stock and included, every other colour made to order (no cost claim), and no rush fee anywhere",
     (await totalOf(page, "quote-colour")) === "Your colour: White." &&
       (await totalOf(page, "quote-colour-stock")) === words("colour_stock") &&
-      (await totalOf(page, "quote-colour-other")) === "Any other colour is made to order at no extra cost." &&
+      (await totalOf(page, "quote-colour-other")) === "Any other colour is made to order." &&
       !/powder|colour matching|rush/i.test(flat(await page.locator("body").innerText())),
     `${await totalOf(page, "quote-colour-stock")} | ${await totalOf(page, "quote-colour-other")}`,
   );

@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { coverageLine } from "@/lib/meeting/price-screen";
 import { cleanFeet, formatMoney, hasUpperRun, screenTotal, selectRuns, type QuoteRun, type QuoteTotals } from "@/lib/pricing";
 import { areaDisplayName, isGable } from "@/lib/quotes/areas";
-import { automaticUpperAccess, moneyText, offerNameIssue, toggleOfferRun } from "@/lib/quotes/editor";
+import { automaticUpperAccess, moneyText, offerDescriptionIssue, offerNameIssue, toggleOfferRun } from "@/lib/quotes/editor";
 import { canLead, cleanUpperAccess, isCustomerOffer, OFFER_DESCRIPTION_MAX, OFFER_NAME_EDITOR_MAX, ONE_OFFER_SHOWN, type QuoteOffer } from "@/lib/quotes/offers";
 import { POLISH_WORDS, polishFacts } from "@/lib/quotes/polish";
 import { cn } from "@/lib/utils";
@@ -120,6 +120,7 @@ export function OfferCard({
   const [open, setOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const issue = offerNameIssue(offer.name);
+  const descriptionIssue = offerDescriptionIssue(offer.description);
   const coverage = coverageLine(runs, offer);
   const hasFeet = totals !== null && totals.totalFeet > 0;
   const boxes = offer.boxes ?? Math.min(9, Math.max(1, quoteBoxes));
@@ -263,10 +264,16 @@ export function OfferCard({
             placeholder="Rough notes are fine: does the whole front, both gables, best value"
             disabled={locked}
             onChange={(event) => onChange({ ...offer, description: event.target.value })}
-            aria-describedby={`${descriptionId}-hint`}
+            aria-invalid={descriptionIssue ? true : undefined}
+            aria-describedby={descriptionIssue ? `${descriptionId}-issue ${descriptionId}-hint` : `${descriptionId}-hint`}
             className="min-h-20 text-base"
             data-testid="offer-description"
           />
+          {descriptionIssue ? (
+            <p id={`${descriptionId}-issue`} className="text-xs font-semibold text-destructive" data-testid="offer-description-issue">
+              {descriptionIssue}
+            </p>
+          ) : null}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <Button
               type="button"

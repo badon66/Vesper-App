@@ -62,6 +62,9 @@ export async function polishOfferDescription(input: { notes: string; facts: Poli
       messages: [{ role: "user", content: polishMessage(notes, facts) }],
     });
     if (response.stop_reason === "refusal") return { ok: false, message: POLISH_WORDS.refused };
+    // Anything but a finished reply (cut off at max_tokens, say) is no
+    // suggestion: a fragment is never shown.
+    if (response.stop_reason !== "end_turn") return { ok: false, message: POLISH_WORDS.failed };
     const text = response.content
       .flatMap((block) => (block.type === "text" ? [block.text] : []))
       .join(" ")
