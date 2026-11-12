@@ -469,6 +469,8 @@ export function customerInputs(quote: CustomerQuote["quote"], positions: readonl
     gstEnabled: quote.gstEnabled,
     gstRate: quote.gstRate,
     colourName: quote.trackColourName,
+    // Round 17: every area on its own line on the link and its signed copy.
+    perArea: true,
   };
 }
 

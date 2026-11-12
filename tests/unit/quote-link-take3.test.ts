@@ -82,7 +82,8 @@ describe("Build your own", () => {
     expect(built?.offer).toMatchObject({ id: CUSTOMER_OFFER_ID, name: CUSTOMER_OFFER_NAME, runs: [0, 2], boxes: 2, fromCustomer: true });
     // 64 ft at $23, 22 ft of J track at $30, two boxes, upper access with an upper gable.
     expect(built?.totals.subtotal).toBe(64 * 23 + 22 * 30 + 2 * 500 + 400);
-    expect(built?.totals.lines.map((line) => line.label)).toEqual(["Track and lights", "Upper gables", "Control boxes (2)", "Upper roof access"]);
+    // Round 17: on the link every area has its own line.
+    expect(built?.totals.lines.map((line) => line.label)).toEqual(["Front lower", "Upper gables", "Control boxes (2)", "Upper roof access"]);
   });
 
   it("drops areas they can't pick, and nothing ticked is no option", () => {

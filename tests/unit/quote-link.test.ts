@@ -273,14 +273,20 @@ describe("the reworked page's answer", () => {
   it("prices the full quote with the upper gable amount and the rush colour fee", () => {
     if (!quote) throw new Error("not live");
     const priced = priceSelection(quote, null);
+    // Round 17: every area on its own line, the same $3,960 of lights.
     expect(priced.lines.map((line) => [line.label, line.amount])).toEqual([
-      ["Track and lights", 3960],
+      ["Garage Gable", 816],
+      ["Garage Eave", 720],
+      ["Lower Porch Eave", 312],
+      ["Upper Front Eave", 768],
+      ["Two Upper Gables", 720],
+      ["Upper & Lower Sides", 624],
       ["Control box", 500],
       [UPPER_ACCESS_LABEL, 400],
       ["Rush colour fee", 350],
       ["Family & Friends Discount", -300],
     ]);
-    expect(priced.lines[3].detail).toBe("Brown track, made to order this season");
+    expect(priced.lines.find((line) => line.label === "Rush colour fee")?.detail).toBe("Brown track, made to order this season");
     expect(customerTotal(quote, null)).toBe("$4,910");
   });
 
@@ -429,7 +435,8 @@ describe("the options", () => {
     const garage = offerChoice(quote, "garage");
     expect([garage?.name, garage?.total]).toEqual(["Garage", "$2,586"]);
     expect(garage?.totals.lines.map((line) => [line.label, line.detail, line.amount])).toEqual([
-      ["Track and lights", "64 ft at $24 a foot", 1536],
+      ["Garage Gable", "34 ft", 816],
+      ["Garage Eave", "30 ft", 720],
       ["Control boxes (2)", "2 at $500", 1000],
       ["Rush colour fee", "Brown track, made to order this season", 350],
       ["Family & Friends Discount", null, -300],

@@ -122,3 +122,23 @@ describe("the commission counts a track area as lights", () => {
     expect(commissionLightsCents(quote)).toBe((92 * 23 + 22 * 30) * 100);
   });
 });
+
+describe("every area on its own line (round 17, the customer's link)", () => {
+  it("names each area with its feet and its track where it isn't Hat track, for the same total", () => {
+    const runs = [
+      { name: "Front", feet: 64, level: "lower" as const },
+      { name: "Upper gables", feet: 22, level: "upper" as const, track: "j" as const, trackRate: 30 },
+      { name: "Shed", feet: 0, level: "lower" as const, flat: 250 },
+      { name: "Back", feet: 0, level: "lower" as const },
+    ];
+    const base = { runs, boxCount: 1, pricePerFt: 23, boxPrice: 500, adders: [], discounts: [], colourTiming: "stock" as const, rushFee: null, gstEnabled: false, gstRate: 0.05 };
+    const grouped = priceQuote(base);
+    const areas = priceQuote({ ...base, perArea: true });
+    expect(areas.lines.slice(0, 3).map((line) => [line.label, line.detail, line.amount])).toEqual([
+      ["Front", "64 ft", 1472],
+      ["Upper gables", "22 ft, J track", 660],
+      ["Shed", "Flat price", 250],
+    ]);
+    expect([areas.subtotal, areas.total]).toEqual([grouped.subtotal, grouped.total]);
+  });
+});

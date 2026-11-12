@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Loader2, Maximize2, MessageSquare, Phone, X } from "lucide-react";
+import { Check, ChevronDown, Loader2, Maximize2, MessageSquare, Phone, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { bookCustom, bookInstall, recordVisit, saveSelection, signAgreement } from "@/app/q/[token]/actions";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
@@ -130,6 +130,18 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   // in the price below, goes back to that option's picture.
   const [look, setLook] = useState<string | null>(null);
   const seeIt = showsSeeIt(view.pictures, shown.length);
+  // Round 17: See the breakdown, inside the picked offer's card (or under
+  // Build your own); opening another card's picks that offer.
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const openBreakdown = (id: string) => {
+    if (sending) return;
+    if (building || selected?.offer.id !== id) {
+      choose(id);
+      setBreakdownOpen(true);
+      return;
+    }
+    setBreakdownOpen((open) => !open);
+  };
   // Round 17: their track colour's lines; a rush fee only when charged.
   const colourLines = colourSectionLines({
     words,
@@ -258,6 +270,32 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
       />
     );
   }
+
+  // The picked offer's breakdown (round 17), inside its card once opened:
+  // every area, then the box, upper access, any discount and the total.
+  const breakdown =
+    selected && totals ? (
+      <>
+        <h3 className="sr-only" data-testid="whats-in">
+          {fillLine(words.whats_in, { name: nameInSentence })}
+        </h3>
+        <Breakdown
+          every={everyLines}
+          current={totals.lines}
+          beforeMinimum={totals.beforeMinimum}
+          subtotal={totals.subtotal}
+          gstEnabled={quote.gstEnabled}
+        />
+        <div className="quote-row" data-shown={atMinimum} aria-hidden={!atMinimum}>
+          <div>
+            {/* Keenan's words, at the total; the box keeps it calm, never red. */}
+            <div className="mt-3 rounded-md border px-4 py-3" data-testid="minimum-note">
+              {minimum ? <MinimumWords minimum={minimum} /> : null}
+            </div>
+          </div>
+        </div>
+      </>
+    ) : null;
 
   const matchesBooked =
     booked !== null && selected !== null && booked.offer === selected.offer.id && (!building || sameRuns(savedBuild, buildRuns));
@@ -399,38 +437,49 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
                 </Disclosure>
               </div>
 
-              {many ? (
-                <fieldset className="mt-4" data-testid="option-rows">
-                  <legend className="sr-only">Your options</legend>
-                  {/* 12 px between rows: room for the meeting's tag, which
-                      sits on its row's top edge. */}
-                  <div className="flex flex-col gap-3">
-                    {shown.map((priced) => (
+              {/* Round 17: each offer a card (name, description, feet, price)
+                  with See the breakdown inside it; the breakdown is the
+                  picked offer's, so opening another card's picks it. */}
+              <fieldset className="mt-4" data-testid="option-rows">
+                <legend className="sr-only">{many ? "Your options" : "Your price"}</legend>
+                {/* 12 px between rows: room for the meeting's tag, which
+                    sits on its row's top edge. */}
+                <div className="flex flex-col gap-3">
+                  {shown.map((priced) => {
+                    const picked = !building && priced.offer.id === selected.offer.id;
+                    return (
                       <OptionRow
                         key={priced.offer.id}
                         priced={priced}
                         runs={quote.runs}
-                        selected={!building && priced.offer.id === selected.offer.id}
+                        selected={many && picked}
+                        radio={many}
                         meeting={priced.offer.id === quote.meetingOffer}
                         meetingTag={words.link_meeting_tag}
                         feetLine={words.price_feet}
                         gstEnabled={quote.gstEnabled}
                         disabled={sending}
                         onChoose={choose}
-                      />
-                    ))}
-                    {canBuild ? (
-                      <BuildYourOwnRow
-                        title={words.link_build_title}
-                        selected={building}
-                        totals={building ? totals : null}
-                        gstEnabled={quote.gstEnabled}
-                        disabled={sending}
-                        onChoose={startBuilding}
-                      />
-                    ) : null}
-                  </div>
-                  {building ? (
+                        breakdownOpen={breakdownOpen && picked}
+                        onBreakdown={() => openBreakdown(priced.offer.id)}
+                      >
+                        {picked ? breakdown : null}
+                      </OptionRow>
+                    );
+                  })}
+                  {canBuild ? (
+                    <BuildYourOwnRow
+                      title={words.link_build_title}
+                      selected={building}
+                      totals={building ? totals : null}
+                      gstEnabled={quote.gstEnabled}
+                      disabled={sending}
+                      onChoose={startBuilding}
+                    />
+                  ) : null}
+                </div>
+                {building ? (
+                  <>
                     <BuildYourOwn
                       note={words.link_build_note}
                       runs={quote.runs}
@@ -439,34 +488,26 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
                       disabled={sending}
                       onChange={setBuildRuns}
                     />
-                  ) : null}
-                </fieldset>
-              ) : null}
-
-              <h3 className="mt-8 text-lg font-bold text-pretty" data-testid="whats-in">
-                {fillLine(words.whats_in, { name: nameInSentence })}
-              </h3>
-              {/* With a list, each row already gives its option's feet. */}
-              {many ? null : (
-                <p className="mt-1 text-sm text-pretty text-muted-foreground tabular-nums" data-testid="whats-in-feet">
-                  {feetWords(words.price_feet, offerFeet(quote.runs, selected.offer))}
-                </p>
-              )}
-              <Breakdown
-                every={everyLines}
-                current={totals.lines}
-                beforeMinimum={totals.beforeMinimum}
-                subtotal={totals.subtotal}
-                gstEnabled={quote.gstEnabled}
-              />
-              <div className="quote-row" data-shown={atMinimum} aria-hidden={!atMinimum}>
-                <div>
-                  {/* Keenan's words, at the total; the box keeps it calm, never red. */}
-                  <div className="mt-3 rounded-md border px-4 py-3" data-testid="minimum-note">
-                    {minimum ? <MinimumWords minimum={minimum} /> : null}
-                  </div>
-                </div>
-              </div>
+                    <button
+                      type="button"
+                      aria-expanded={breakdownOpen}
+                      aria-controls="offer-breakdown-own"
+                      disabled={sending}
+                      onClick={() => setBreakdownOpen((open) => !open)}
+                      className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-md text-sm font-semibold outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                      data-testid="option-breakdown-toggle"
+                    >
+                      <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform duration-200 motion-reduce:transition-none", breakdownOpen && "rotate-180")} />
+                      {breakdownOpen ? "Hide the breakdown" : "See the breakdown"}
+                    </button>
+                    {breakdownOpen ? (
+                      <div id="offer-breakdown-own" className="pb-2" data-testid="option-breakdown">
+                        {breakdown}
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+              </fieldset>
               <p className="mt-5 text-base text-pretty" data-testid="quote-includes">
                 {words.price_includes}
               </p>
@@ -817,80 +858,135 @@ function Money({ subtotal, gstEnabled }: { subtotal: number; gstEnabled: boolean
 // alone. The meeting's choice carries a small navy tag on the row's top
 // edge, like the iPad's "Your choice", so it adds no height. A native radio
 // underneath, so arrow keys and screen readers work as they expect.
+// One offer on the link (round 17, Keenan, 2026-11-12): its name and price,
+// Keenan's description, the feet ("165 ft of lights"), then See the
+// breakdown, which opens inside the card to every area (its feet, its track
+// where it isn't Hat track, its price) with the box, upper access, any
+// discount and the total below. The card is a radio row to pick from when
+// there is more than one; the breakdown shown is the picked offer's, so
+// opening another card's picks it.
 function OptionRow({
   priced,
   runs,
   selected,
+  radio,
   meeting,
   meetingTag,
   feetLine,
   gstEnabled,
   disabled,
   onChoose,
+  breakdownOpen,
+  onBreakdown,
+  children,
 }: {
   priced: PricedOffer;
   runs: QuoteRun[];
   selected: boolean;
+  // False for a quote with one offer: nothing to pick, the card just reads.
+  radio: boolean;
   meeting: boolean;
   meetingTag: string;
   feetLine: string;
   gstEnabled: boolean;
   disabled: boolean;
   onChoose: (id: string) => void;
+  breakdownOpen: boolean;
+  onBreakdown: () => void;
+  // The breakdown itself, for the picked card while it is open.
+  children?: React.ReactNode;
 }) {
   const { offer, totals } = priced;
   if (!totals) return null;
-  return (
-    <label
-      className={cn(
-        "relative flex min-h-11 cursor-pointer flex-col gap-0.5 rounded-md transition-colors duration-150",
-        "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
-        // 14 px of border and padding on top (clear of the meeting's tag)
-        // and 10 below, selected or not, so a row whose coverage takes two
-        // lines stays within 88 px and choosing one never moves the others.
-        selected
-          ? "border-2 border-navy px-[0.8125rem] pt-3 pb-2"
-          : "border border-border px-[0.875rem] pt-[0.8125rem] pb-[0.5625rem] hover:bg-muted",
-      )}
-      data-testid="option-row"
-      data-offer={offer.id}
-      data-selected={selected}
-    >
-      <input
-        type="radio"
-        name="quote-option"
-        value={offer.id}
-        checked={selected}
-        disabled={disabled}
-        onChange={() => onChoose(offer.id)}
-        className="sr-only"
-      />
-      <span className="flex items-center gap-3">
+  const regionId = `offer-breakdown-${offer.id}`;
+  const body = (
+    <span className="flex items-start gap-3">
+      {radio ? (
         <span
           aria-hidden="true"
           className={cn(
-            "flex size-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-150",
+            "mt-px flex size-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-150",
             selected ? "border-navy bg-navy" : "border-input bg-background",
           )}
         >
           {selected ? <span className="size-2.5 rounded-full bg-white" /> : null}
         </span>
-        <span className="line-clamp-2 min-w-0 flex-1 text-base leading-snug font-semibold">{offer.name}</span>
-        <span className="shrink-0 text-lg leading-tight font-bold whitespace-nowrap tabular-nums" data-testid="option-total">
-          {formatMoney(totals.subtotal)}
-          {gstEnabled ? (
-            <>
-              {" "}
-              <span className="text-xs font-semibold text-muted-foreground">+ GST</span>
-            </>
-          ) : null}
+      ) : null}
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="flex items-baseline justify-between gap-3">
+          <span className="line-clamp-2 min-w-0 text-base leading-snug font-semibold">{offer.name}</span>
+          <span className="shrink-0 text-lg leading-tight font-bold whitespace-nowrap tabular-nums" data-testid="option-total">
+            {formatMoney(totals.subtotal)}
+            {gstEnabled ? (
+              <>
+                {" "}
+                <span className="text-xs font-semibold text-muted-foreground">+ GST</span>
+              </>
+            ) : null}
+          </span>
+        </span>
+        {offer.description ? (
+          <span className="text-[0.9375rem] leading-snug text-pretty" data-testid="option-description">
+            {offer.description}
+          </span>
+        ) : null}
+        {/* The feet: what they compare the options by (round 16). */}
+        <span className="text-sm leading-[1.3] text-muted-foreground tabular-nums" data-testid="option-feet">
+          {feetWords(feetLine, offerFeet(runs, offer))}
         </span>
       </span>
-      {/* The feet: what they compare the options by (round 16: no list of
-          areas, the same as Your price in the meeting). */}
-      <span className="text-sm leading-[1.3] text-muted-foreground tabular-nums" data-testid="option-feet">
-        {feetWords(feetLine, offerFeet(runs, offer))}
-      </span>
+    </span>
+  );
+  return (
+    <div
+      className={cn("relative rounded-md transition-colors duration-150", selected ? "border-2 border-navy" : "border border-border")}
+      data-testid="option-row"
+      data-offer={offer.id}
+      data-selected={selected}
+    >
+      {radio ? (
+        <label
+          className={cn(
+            "flex min-h-11 cursor-pointer flex-col rounded-md",
+            "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
+            // 14 px on top, clear of the meeting's tag, selected or not.
+            selected ? "px-[0.8125rem] pt-3" : "px-[0.875rem] pt-[0.8125rem] hover:bg-muted",
+          )}
+        >
+          <input
+            type="radio"
+            name="quote-option"
+            value={offer.id}
+            checked={selected}
+            disabled={disabled}
+            onChange={() => onChoose(offer.id)}
+            className="sr-only"
+          />
+          {body}
+        </label>
+      ) : (
+        <div className={selected ? "px-[0.8125rem] pt-3" : "px-[0.875rem] pt-[0.8125rem]"}>{body}</div>
+      )}
+      <button
+        type="button"
+        aria-expanded={breakdownOpen}
+        aria-controls={regionId}
+        disabled={disabled}
+        onClick={onBreakdown}
+        className={cn(
+          "inline-flex min-h-11 items-center gap-1.5 rounded-md text-sm font-semibold outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",
+          radio ? "ml-[3.125rem]" : "ml-[0.875rem]",
+        )}
+        data-testid="option-breakdown-toggle"
+      >
+        <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform duration-200 motion-reduce:transition-none", breakdownOpen && "rotate-180")} />
+        {breakdownOpen ? "Hide the breakdown" : "See the breakdown"}
+      </button>
+      {breakdownOpen && children ? (
+        <div id={regionId} className={cn("pr-[0.875rem] pb-4", radio ? "pl-[3.125rem]" : "pl-[0.875rem]")} data-testid="option-breakdown">
+          {children}
+        </div>
+      ) : null}
       {/* 18 px tall, centred on the top border. */}
       {meeting ? (
         <span
@@ -900,7 +996,7 @@ function OptionRow({
           {meetingTag}
         </span>
       ) : null}
-    </label>
+    </div>
   );
 }
 
