@@ -38,7 +38,7 @@ import { mkdir } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
 import { chromium } from "playwright";
 import sharp from "sharp";
-import { deckLine, fillLine } from "./deck-order.mjs";
+import { deckLine, expectedBanner, fillLine } from "./deck-order.mjs";
 import { openOwnerSession } from "./owner-session.mjs";
 
 const base = process.env.BASE ?? "http://localhost:3300";
@@ -98,9 +98,31 @@ const optionRows = (page) =>
     })),
   );
 const pickOption = async (page, offer) => {
-  await page.locator(`[data-testid="option-row"][data-offer="${offer}"]`).click();
+  // The card's name and price (round 17: See the breakdown sits under them).
+  await page.locator(`[data-testid="option-row"][data-offer="${offer}"] label`).click();
   await page.waitForTimeout(500);
 };
+// Round 17: the breakdown sits behind See the breakdown on the picked card;
+// once open it follows the card they pick.
+const openLines = async (page) => {
+  if ((await page.getByTestId("quote-lines").count()) > 0) return;
+  const picked = page.locator('[data-testid="option-row"][data-selected="true"] [data-testid="option-breakdown-toggle"]');
+  await ((await picked.count()) > 0 ? picked : page.getByTestId("option-breakdown-toggle").first()).click();
+  await page.getByTestId("quote-lines").waitFor({ timeout: 5000 });
+  await page.waitForTimeout(300);
+};
+// Where you're at (round 17): each step's key and state, the open step's
+// words and the line under them.
+const trackerOf = (page) =>
+  page.evaluate(() => ({
+    steps: [...document.querySelectorAll('[data-testid="tracker-step"]')].map((e) => `${e.getAttribute("data-step")}:${e.getAttribute("data-state")}`).join(" "),
+    lights: [...document.querySelectorAll('[data-testid="tracker-light"]')].map((e) => e.getAttribute("data-state")).join(" "),
+    labels: [...document.querySelectorAll('[data-testid="tracker-step"]')].map((e) => e.innerText.replace(/\s+/g, " ").trim()),
+    detail: (document.querySelector('[data-testid="tracker-detail"]')?.innerText ?? "").replace(/\s+/g, " ").trim(),
+    open: document.querySelector('[data-testid="tracker-detail"]')?.getAttribute("data-step") ?? null,
+    pay: (document.querySelector('[data-testid="tracker-pay"]')?.innerText ?? "").trim(),
+    dates: [...document.querySelectorAll('[data-testid="tracker-date"]')].map((e) => e.innerText.trim()),
+  }));
 
 async function settle(page) {
   await page.waitForLoadState("networkidle").catch(() => {});
@@ -180,7 +202,9 @@ try {
   const ownerId = ownerRow.id;
   const { data: settingsRow } = await admin
     .from("settings")
-    .select("warranty_text, company, service_call_fee, christmas_banner_on, christmas_banner_title, christmas_banner_text, product_points, presentation, deck")
+    .select(
+      "warranty_text, company, service_call_fee, christmas_banner_on, christmas_book_by_white, christmas_book_by_colour, christmas_season_end, christmas_banner_book_by, christmas_banner_white, christmas_banner_colour, christmas_banner_no_colour, christmas_banner_after, product_points, presentation, deck",
+    )
     .eq("id", 1)
     .single();
 
@@ -390,9 +414,21 @@ try {
       (await page.getByTestId("quote-price-hold").innerText()).trim() === `Price held until ${fullDate(validUntil)}.`,
     `${await totalOf(page, "hero-option")} ${await totalOf(page, "hero-total")} | ${(await page.getByTestId("quote-price-hold").innerText().catch(() => "")).trim()}`,
   );
-  const mockup = await page.getByTestId("quote-mockup").evaluate((img) => img.complete && img.naturalWidth > 0).catch(() => false);
-  check("their mockup, full width, loaded through a short-lived signed link", mockup);
-  check("the full wrap covers every run, so the mockup needs no caption", (await page.getByTestId("mockup-caption").count()) === 0);
+  // Round 17: with See it on your house, the house shows once, there, right
+  // under the price, not again across the top.
+  const mockup = await page.getByTestId("option-mockup").evaluate((img) => img.complete && img.naturalWidth > 0).catch(() => false);
+  const houseOnce = await page.evaluate(() => {
+    const price = document.querySelector('[data-testid="quote-promises"]').getBoundingClientRect().bottom + window.scrollY;
+    const seeIt = document.querySelector('[data-testid="see-it"]').getBoundingClientRect().top + window.scrollY;
+    const points = document.querySelector('[data-testid="quote-points"]').getBoundingClientRect().top + window.scrollY;
+    return { hero: document.querySelectorAll('[data-testid="quote-mockup"]').length, price: Math.round(price), seeIt: Math.round(seeIt), points: Math.round(points) };
+  });
+  check(
+    "round 17: their house shows once, in See it on your house right under the price (before What you're getting), loaded through a short-lived signed link",
+    mockup && houseOnce.hero === 0 && houseOnce.seeIt > houseOnce.price && houseOnce.seeIt < houseOnce.points,
+    JSON.stringify(houseOnce),
+  );
+  check("the full wrap covers every run, so the picture needs no caption", (await page.getByTestId("option-mockup-caption").count()) === 0);
   const promises = flat(await page.getByTestId("quote-promises").innerText());
   const justAsk = await page.getByRole("link", { name: "Just ask." }).getAttribute("href").catch(() => "");
   check(
@@ -400,16 +436,55 @@ try {
     promises.includes("No payment until your install is complete.") && promises.includes("Financing is available. Just ask.") && (justAsk ?? "").startsWith("sms:+14038959915?&body=Hi%20Keenan"),
     `${promises} ${justAsk}`,
   );
-  // 2. Christmas, while Keenan has it on, September 1 to November 30.
-  const [, month] = calgaryToday().split("-").map(Number);
-  const season = month >= 9 && month <= 11;
-  const bannerDue = settingsRow?.christmas_banner_on && season;
-  const banner = await page.getByTestId("quote-christmas").innerText().catch(() => "");
+  // 2. Christmas (round 17): by Keenan's dates in Settings, the date for this
+  // customer's own track (White), at the very top.
+  const bannerDue = expectedBanner(settingsRow, calgaryToday(), "white");
+  const banner = flat(await page.getByTestId("quote-christmas").innerText().catch(() => ""));
+  const bannerTop = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="quote-christmas"]');
+    const main = document.querySelector('[data-testid="quote-live"]');
+    return el && main ? Math.round(el.getBoundingClientRect().bottom) <= Math.round(main.getBoundingClientRect().top) + 1 : null;
+  });
   check(
-    bannerDue ? "the Christmas banner, in Keenan's words from Settings" : "no Christmas banner out of season or while it's off",
-    bannerDue ? banner.includes(settingsRow.christmas_banner_title) && banner.replace(/\s+/g, " ").includes(settingsRow.christmas_banner_text) : banner === "",
-    banner.replace(/\s+/g, " "),
+    bannerDue
+      ? bannerDue.state === "before"
+        ? "the Christmas banner at the very top: the book-by date for White track, its line and the days left, in Keenan's words"
+        : "after the White book-by date: Keenan's line that promises nothing"
+      : "no Christmas banner while it's off or after the season",
+    bannerDue
+      ? bannerTop === true &&
+          (bannerDue.state === "before"
+            ? banner.includes(flat(bannerDue.headline)) && banner.includes(flat(bannerDue.line ?? "")) && banner.includes(bannerDue.countdown) && !banner.includes("about a week more")
+            : banner === flat(bannerDue.text))
+      : banner === "",
+    banner,
   );
+  // Where you're at (round 17): under the banner, above their price.
+  const tracker = await trackerOf(page);
+  const trackerAbove = await page.evaluate(
+    () => document.querySelector('[data-testid="tracker"]').getBoundingClientRect().top < document.getElementById("quote-for").getBoundingClientRect().top,
+  );
+  check(
+    "Where you're at, above their price: Meeting lit, Choose your option glowing and open, Site visit and Install day still to come, in Keenan's words, with his line under them",
+    trackerAbove &&
+      tracker.steps === "meeting:done choose:current visit:later install:later" &&
+      tracker.lights === "done current later later" &&
+      flat(tracker.labels.join(" | ")) === [words("tracker_meeting_label"), words("tracker_choose_label"), words("tracker_visit_label"), words("tracker_install_label")].join(" | ") &&
+      tracker.open === "choose" &&
+      flat(tracker.detail).includes(words("tracker_choose")) &&
+      flat(tracker.pay) === words("tracker_pay") &&
+      flat(await page.getByTestId("tracker").locator("h2").innerText()) === words("tracker_title"),
+    JSON.stringify(tracker),
+  );
+  await page.locator('[data-testid="tracker-step"][data-step="visit"]').click();
+  await page.waitForTimeout(200);
+  const visitRead = await trackerOf(page);
+  check(
+    "a tap on a step reads it: Site visit in Keenan's words",
+    visitRead.open === "visit" && flat(visitRead.detail).includes(words("tracker_visit")),
+    visitRead.detail,
+  );
+  await page.locator('[data-testid="tracker-step"][data-step="choose"]').click();
   // 3. What you're getting.
   const pointTexts = (Array.isArray(settingsRow?.product_points) ? settingsRow.product_points : []).map((p) => (p?.text ?? "").trim()).filter(Boolean);
   const pointItems = await page.getByTestId("quote-points").locator("li").allInnerTexts().catch(() => []);
@@ -458,8 +533,8 @@ try {
     return { span: Math.round(section.bottom - figure.top), room: Math.round(window.innerHeight - bar.height), heights: rows.map((r) => Math.round(r.height)), chips };
   });
   check(
-    "the picture, its Looks and its Options fit on one screen at 390, above the bar, so a tap and the house changing are in view together; buttons 48 px; price rows 44 to 88 px",
-    fit.span <= fit.room && fit.heights.every((h) => h >= 44 && h <= 88) && fit.chips.length === 4 && fit.chips.every((h) => h >= 48),
+    "the picture, its Looks and its Options fit on one screen at 390, above the bar, so a tap and the house changing are in view together; buttons 48 px; offer cards 44 to 160 px (round 17: name, price, feet and See the breakdown)",
+    fit.span <= fit.room && fit.heights.every((h) => h >= 44 && h <= 160) && fit.chips.length === 4 && fit.chips.every((h) => h >= 48),
     JSON.stringify(fit),
   );
   const explainer = page.getByTestId("quote-explainer");
@@ -476,14 +551,20 @@ try {
   );
   await explainer.locator("summary").click();
   await page.waitForTimeout(300);
-  // 5. What's in the option on screen, line by line, ending on one Total.
+  // 5. What's in the option on screen (round 17: behind See the breakdown on
+  // its card), every area on its own line, ending on one Total.
+  const cardsClosed = (await page.getByTestId("quote-lines").count()) === 0;
+  await openLines(page);
   const lines = flat(await page.getByTestId("quote-lines").innerText());
   check(
-    "What's in Full wrap, line by line: the lights at \"$X a foot\", the box, upper access with its reason, extra work and the discount",
-    flat(await page.getByTestId("whats-in").innerText()) === fillLine(words("whats_in"), { name: "Full wrap" }) &&
-      lines.includes("Track and lights") &&
-      lines.includes("166 ft at $24 a foot") &&
-      lines.includes("$3,984") &&
+    "See the breakdown on the Full wrap card opens what's in it, every area on its own line with its feet and price, the box, upper access with its reason, extra work and the discount",
+    cardsClosed &&
+      flat(await page.getByTestId("whats-in").innerText()) === fillLine(words("whats_in"), { name: "Full wrap" }) &&
+      lines.includes("Front 64 ft $1,536") &&
+      lines.includes("Front upper 52 ft $1,248") &&
+      lines.includes("Garage 28 ft $672") &&
+      lines.includes("Left gable 22 ft $528") &&
+      !lines.includes("Track and lights") &&
       lines.includes("Control box Always included $500") &&
       lines.includes("Upper roof access For work up high: $200, or $400 with an upper gable $400") &&
       lines.includes("Extra height") &&
@@ -499,30 +580,24 @@ try {
     flat(await page.getByTestId("quote-includes").innerText()) === words("price_includes") &&
       flat(await page.getByTestId("quote-something-else").innerText()) === words("link_something_else"),
   );
-  // 6. Track colour: one colour rule, the same as the iPad.
-  const otherColours = season
-    ? "Any other colour is made to order: nothing extra if it can wait for spring, or the $350 rush colour fee to have it this season."
-    : "Any other colour is made to order for a spring install, at no extra cost.";
+  // 6. Track colour: one colour rule, the same as the iPad. Round 17: White is
+  // in stock, and the rush fee is never named for a stock colour.
   check(
-    "track colour: their colour, White in stock and included, every other colour made to order",
+    "track colour: their colour, White in stock and included, every other colour made to order at no extra cost, and no rush fee anywhere",
     (await totalOf(page, "quote-colour")) === "Your colour: White." &&
       (await totalOf(page, "quote-colour-stock")) === words("colour_stock") &&
-      (await totalOf(page, "quote-colour-rush")) === otherColours &&
-      !/powder|colour matching/i.test(text),
-    `${await totalOf(page, "quote-colour-stock")} | ${await totalOf(page, "quote-colour-rush")}`,
+      (await totalOf(page, "quote-colour-other")) === "Any other colour is made to order at no extra cost." &&
+      !/powder|colour matching|rush/i.test(flat(await page.locator("body").innerText())),
+    `${await totalOf(page, "quote-colour-stock")} | ${await totalOf(page, "quote-colour-other")}`,
   );
-  // 7. What happens next: the meeting's four steps, in its words.
-  const steps = [];
-  for (const key of ["colour", "day", "on_day", "pay"]) steps.push(flat(await page.getByTestId(`next-step-${key}`).innerText().catch(() => "")));
+  // 7. Round 17: Where you're at replaces the old four steps lower down, and
+  // What we'll need moves into More about your install.
   check(
-    "What happens next replaces How install day works: the colour to confirm, the day to pick together, the day itself and no payment until the install",
-    (await page.getByTestId("quote-install-day").count()) === 0 &&
-      steps[0].includes(words("step_colour_label")) && steps[0].includes(words("step_colour_todo")) &&
-      steps[1].includes(words("step_day_label")) && steps[1].includes(words("step_day_none")) &&
-      steps[2].includes(words("step_on_day_label")) &&
-      steps[3].includes(words("step_pay_label")) && steps[3].includes("No payment until your install is complete.") &&
-      (await page.getByTestId("quote-what-we-need").count()) === 1,
-    steps.join(" | "),
+    "the old four steps are gone from lower on the link, and What we'll need sits in More about your install",
+    (await page.getByTestId("quote-next-steps").count()) === 0 &&
+      (await page.locator('[data-testid^="next-step-"]').count()) === 0 &&
+      (await page.getByTestId("quote-install-day").count()) === 0 &&
+      (await page.getByTestId("quote-more").getByTestId("quote-what-we-need").count()) === 1,
   );
   // 8. Tap to open, closed until tapped.
   const warrantyFirst = (settingsRow?.warranty_text ?? "").split(/\n+/)[0]?.trim() ?? "";
@@ -545,7 +620,7 @@ try {
     `${galleryCount} gallery photos`,
   );
   const order = await page.evaluate(() =>
-    ["hero-total", "quote-christmas", "quote-points", "see-it", "option-picture", "see-it-looks", "see-it-options", "quote-options", "option-rows", "whats-in", "quote-lines", "quote-includes", "quote-colour", "quote-next-steps", "quote-more", "quote-footer"]
+    ["quote-christmas", "tracker", "hero-total", "see-it", "option-picture", "see-it-looks", "see-it-options", "quote-points", "quote-options", "option-rows", "quote-lines", "quote-includes", "quote-colour", "quote-more", "quote-footer"]
       .map((id) => [id, document.querySelector(`[data-testid="${id}"]`)])
       .filter(([, el]) => el)
       .map(([id, el]) => [id, Math.round(el.getBoundingClientRect().top + window.scrollY)]),
@@ -613,14 +688,16 @@ try {
     !(await lineShown(page, "Upper roof access")) &&
       !(await lineShown(page, "Extra height")) &&
       (await lineShown(page, "Garage corner")) &&
-      flat(await page.getByTestId("quote-lines").innerText()).includes("92 ft at $24 a foot") &&
+      (await lineShown(page, "Front")) &&
+      (await lineShown(page, "Garage")) &&
+      !(await lineShown(page, "Front upper")) &&
+      !(await lineShown(page, "Left gable")) &&
       (await totalOf(page, "line-total")) === "Total $2,633" &&
       flat(await page.getByTestId("whats-in").innerText()) === fillLine(words("whats_in"), { name: "Main floor" }),
   );
   check(
-    "an option that leaves runs out puts a caption under the mockup, and under the Main beside the options",
-    flat(await page.getByTestId("mockup-caption").innerText().catch(() => "")) === words("link_mockup_caption") &&
-      flat(await page.getByTestId("option-mockup-caption").innerText().catch(() => "")) === words("link_mockup_caption"),
+    "an option that leaves runs out puts a caption under the Main in See it on your house",
+    flat(await page.getByTestId("option-mockup-caption").innerText().catch(() => "")) === words("link_mockup_caption"),
   );
   await page.screenshot({ path: `${out}/ql-phone-main-floor.png`, fullPage: true });
   await pickOption(page, "front");
@@ -721,20 +798,30 @@ try {
     return { tagTop: Math.round(tag.top - row.top), tagBottom: Math.round(tag.bottom - row.top), heights };
   });
   check(
-    "the meeting's tag sits on its row's top edge, so it adds no height: every row still 88 px or less",
-    tagFit.tagTop < 0 && tagFit.tagBottom > 0 && tagFit.heights.every((h) => h <= 88),
+    "the meeting's tag sits on its card's top edge, so it adds no height: every card closed is still 160 px or less",
+    tagFit.tagTop < 0 && tagFit.tagBottom > 0 && tagFit.heights.filter((h, at, all) => at !== all.indexOf(Math.max(...all))).every((h) => h <= 160),
     JSON.stringify(tagFit),
   );
   await page.screenshot({ path: `${out}/ql-phone-meeting-choice.png` });
 
-  // The mockup, full screen.
-  await page.getByRole("button", { name: /Open the picture of your house/ }).click();
-  const viewer = page.getByTestId("mockup-viewer");
+  // The picture, full screen (round 17: with the looks along the bottom).
+  await page.getByTestId("option-mockup").scrollIntoViewIfNeeded();
+  await page.getByTestId("option-mockup").tap();
+  const viewer = page.getByTestId("option-mockup-viewer");
   await viewer.waitFor({ timeout: 5000 }).catch(() => {});
   const viewerOpen = await viewer.isVisible().catch(() => false);
+  const viewerLooks = await viewer.getByTestId("viewer-look").evaluateAll((els) => els.map((el) => `${el.textContent}${el.getAttribute("aria-pressed") === "true" ? "*" : ""}`)).catch(() => []);
+  await viewer.locator('[data-testid="viewer-look"][data-look="Christmas"]').tap().catch(() => {});
+  await page.waitForTimeout(500);
+  const stillOpen = await viewer.isVisible().catch(() => false);
+  const pageLook = await page.getByTestId("option-picture").getAttribute("data-look").catch(() => null);
   await page.screenshot({ path: `${out}/ql-phone-mockup.png` });
   await viewer.getByRole("button", { name: "Close" }).click().catch(() => {});
-  check("a tap opens the mockup full screen to zoom, and Close brings them back", viewerOpen && !(await viewer.isVisible().catch(() => false)));
+  check(
+    "a tap opens the picture full screen to zoom, with the option's picture and each look along the bottom; a look tapped there swaps the picture without closing, the page follows, and Close brings them back",
+    viewerOpen && viewerLooks.join() === "Main floor*,Christmas" && stillOpen && pageLook === "Christmas" && !(await viewer.isVisible().catch(() => false)),
+    JSON.stringify({ viewerLooks, stillOpen, pageLook }),
+  );
 
   // Book my install on Front only: it asks once, restating the choice,
   // before it books. A quick second tap lands where Yes appears; it must not book.
@@ -816,6 +903,39 @@ try {
     JSON.stringify(rows),
   );
   await page.screenshot({ path: `${out}/ql-phone-return.png` });
+  // Where you're at after booking (round 17): Choose your option is lit and
+  // the site visit glows next. The service role stands in for Keenan's taps
+  // on the lead's Outcome card (owner only): first a day, then Done.
+  const afterBooking = await trackerOf(page);
+  check(
+    "after Book my install, Choose your option is lit and Site visit glows next",
+    afterBooking.steps === "meeting:done choose:done visit:current install:later" && afterBooking.open === "visit",
+    afterBooking.steps,
+  );
+  const visitDay = addDays(calgaryToday(), 4);
+  const visitSet = await admin.from("lead_site_visits").upsert({ lead_id: leadId, visit_on: visitDay }, { onConflict: "lead_id" });
+  if (visitSet.error) throw new Error(`site visit: ${visitSet.error.message}`);
+  await page.reload();
+  await settle(page);
+  const visitPlanned = await trackerOf(page);
+  const shortVisit = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" }).format(new Date(`${visitDay}T12:00:00Z`));
+  check(
+    "with a site visit day set on the lead, the link shows it under Site visit and in its words",
+    visitPlanned.steps === "meeting:done choose:done visit:current install:later" &&
+      visitPlanned.dates.includes(shortVisit) &&
+      flat(visitPlanned.detail).includes(longDay(visitDay)),
+    JSON.stringify({ dates: visitPlanned.dates, detail: visitPlanned.detail.slice(0, 80) }),
+  );
+  await admin.from("lead_site_visits").update({ done_at: new Date().toISOString() }).eq("lead_id", leadId);
+  await page.reload();
+  await settle(page);
+  const visitDone = await trackerOf(page);
+  check(
+    "once Keenan marks the site visit Done, it is lit (its date no longer shown) and Install day glows next",
+    visitDone.steps === "meeting:done choose:done visit:done install:current" && !visitDone.dates.includes(shortVisit) && visitDone.open === "install",
+    visitDone.steps,
+  );
+  await page.screenshot({ path: `${out}/ql-phone-tracker-visit-done.png` });
   await customer.close();
 
   // ---------------------------------------------------------------- the customer at 430 (Keenan's own iPhone width)
@@ -829,8 +949,8 @@ try {
       rows: [...document.querySelectorAll('[data-testid="option-row"]')].map((row) => Math.round(row.getBoundingClientRect().height)),
     }));
     check(
-      "at 430 wide: no sideways scroll, the same three rows, each 88 px or less",
-      wideFit.width <= 430 && wideFit.rows.length === 3 && wideFit.rows.every((h) => h <= 88),
+      "at 430 wide: no sideways scroll, the same three cards, each 160 px or less",
+      wideFit.width <= 430 && wideFit.rows.length === 3 && wideFit.rows.every((h) => h <= 160),
       JSON.stringify(wideFit),
     );
     await widePage.screenshot({ path: `${out}/ql-phone-430.png`, fullPage: true });
@@ -852,6 +972,7 @@ try {
       return (await el.count()) === 1 && (await el.getAttribute("data-shown")) === "true" ? flat(await el.innerText()).trim() : null;
     };
     const areaRows = await optionRows(ap);
+    await openLines(ap);
     check(
       "round 11: the areas quote opens on Full wrap, with the options biggest first and their totals: $4,188, $3,850 and $2,500 at the minimum",
       (await totalOf(ap, "hero-option")) === "Full wrap" &&
@@ -866,37 +987,43 @@ try {
       JSON.stringify(areaRows),
     );
     check(
-      "What's in Full wrap: Track and lights at two rates (\"76 ft at $24, 38 ft at $28\"), the Shed on its own line as a flat price, the box, and the automatic $200 upper roof access (an upper run, no upper gable)",
-      (await row("Track and lights")) === "Track and lights 76 ft at $24, 38 ft at $28 $2,888" &&
-        (await row("Shed")) === "Shed 20 ft, flat price $600" &&
+      "What's in Full wrap, one line per area named as the editor names it (Front lower, Front lower gable, Front upper at Keenan's $28), the Shed at its flat price, the box, and the automatic $200 upper roof access",
+      (await row("Front lower")) === "Front lower 64 ft $1,536" &&
+        (await row("Front lower gable")) === "Front lower gable 12 ft $288" &&
+        (await row("Front upper")) === "Front upper 38 ft $1,064" &&
+        (await row("Shed")) === "Shed 20 ft $600" &&
         (await row("Control box")) === "Control box Always included $500" &&
         (await row("Upper roof access")) === "Upper roof access For work up high: $200, or $400 with an upper gable $200" &&
         !(await lineShown(ap, "To reach our $2,500 minimum")) &&
         (await totalOf(ap, "line-total")) === "Total $4,188",
-      `${await row("Track and lights")} | ${await row("Shed")} | ${await row("Upper roof access")} | ${await totalOf(ap, "line-total")}`,
+      `${await row("Front lower")} | ${await row("Front upper")} | ${await row("Shed")} | ${await row("Upper roof access")} | ${await totalOf(ap, "line-total")}`,
     );
     await ap.screenshot({ path: `${out}/ql-phone-areas-full-wrap.png`, fullPage: true });
     await pickOption(ap, "front_lower");
     check(
-      "Front lower only: one rate (\"76 ft at $24 a foot\"), no Shed, upper access typed 0 so no line at all, and $2,324 lifted to the $2,500 minimum",
-      (await row("Track and lights")) === "Track and lights 76 ft at $24 a foot $1,824" &&
+      "Front lower only: its two areas, no Shed, upper access typed 0 so no line at all, and $2,324 lifted to the $2,500 minimum",
+      (await row("Front lower")) === "Front lower 64 ft $1,536" &&
+        (await row("Front lower gable")) === "Front lower gable 12 ft $288" &&
+        !(await lineShown(ap, "Front upper")) &&
         !(await lineShown(ap, "Shed")) &&
         !(await lineShown(ap, "Upper roof access")) &&
         flat(await ap.getByTestId("quote-lines").innerText()).includes("Before the minimum $2,324 To reach our $2,500 minimum $176") &&
         (await totalOf(ap, "line-total")) === "Total $2,500" &&
         (await totalOf(ap, "hero-total")) === "$2,500",
-      `${await row("Track and lights")} | ${await totalOf(ap, "line-total")}`,
+      `${await row("Front lower")} | ${await totalOf(ap, "line-total")}`,
     );
     await ap.screenshot({ path: `${out}/ql-phone-areas-front-lower.png`, fullPage: true });
     await pickOption(ap, "nogable");
     check(
-      "Front, no gable: \"64 ft at $24, 38 ft at $28\", the Shed back, and Upper roof access at the typed $150 with no detail; $3,850",
-      (await row("Track and lights")) === "Track and lights 64 ft at $24, 38 ft at $28 $2,600" &&
-        (await row("Shed")) === "Shed 20 ft, flat price $600" &&
+      "Front, no gable: Front lower and Front upper, the Shed back, and Upper roof access at the typed $150 with no detail; $3,850",
+      (await row("Front lower")) === "Front lower 64 ft $1,536" &&
+        (await row("Front upper")) === "Front upper 38 ft $1,064" &&
+        !(await lineShown(ap, "Front lower gable")) &&
+        (await row("Shed")) === "Shed 20 ft $600" &&
         (await row("Upper roof access")) === "Upper roof access $150" &&
         (await totalOf(ap, "line-total")) === "Total $3,850" &&
         (await totalOf(ap, "hero-total")) === "$3,850",
-      `${await row("Track and lights")} | ${await row("Upper roof access")} | ${await totalOf(ap, "line-total")}`,
+      `${await row("Front lower")} | ${await row("Upper roof access")} | ${await totalOf(ap, "line-total")}`,
     );
     await ap.screenshot({ path: `${out}/ql-phone-areas-no-gable.png`, fullPage: true });
     check("nothing internal on the areas page either", !flat(await ap.locator("body").innerText()).includes("INTERNAL"));
@@ -997,6 +1124,7 @@ try {
   await calmPage.goto(quoteUrl);
   await settle(calmPage);
   await pickOption(calmPage, "full");
+  await openLines(calmPage);
   const calmMotion = await calmPage.evaluate(() => ({
     row: getComputedStyle(document.querySelector('[data-testid="quote-lines"] .quote-row')).transitionProperty,
   }));
@@ -1075,6 +1203,17 @@ try {
       (await agreedPage.getByTestId("bar-call").count()) === 1 &&
       (await agreedPage.getByTestId("bar-text").count()) === 1,
   );
+  const agreedTracker = await trackerOf(agreedPage);
+  const shortAgreed = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" }).format(new Date(`${agreedDay}T12:00:00Z`));
+  check(
+    "round 17: the accepted page keeps Where you're at (the site visit done, Install day next with its date, no banner) and the house's Looks",
+    agreedTracker.steps === "meeting:done choose:done visit:done install:current" &&
+      agreedTracker.dates.includes(shortAgreed) &&
+      (await agreedPage.getByTestId("quote-christmas").count()) === 0 &&
+      (await agreedPage.getByTestId("see-it-look").allInnerTexts()).join() === "Christmas" &&
+      (await agreedPage.getByTestId("see-it-options").count()) === 0,
+    JSON.stringify(agreedTracker),
+  );
   await agreedPage.screenshot({ path: `${out}/ql-phone-agreed.png`, fullPage: true });
   await agreedContext.close();
 
@@ -1124,6 +1263,7 @@ try {
     const ids = (owned ?? []).map((row) => row.id);
     if (ids.length > 0) {
       await admin.from("earnings").delete().in("lead_id", ids);
+      await admin.from("lead_site_visits").delete().in("lead_id", ids);
       await admin.from("lead_mockups").delete().in("lead_id", ids);
       await admin.from("quote_links").delete().in("lead_id", ids);
       await admin.from("quotes").delete().in("lead_id", ids);

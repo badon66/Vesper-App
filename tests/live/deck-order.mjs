@@ -79,7 +79,56 @@ export const LINE_DEFAULTS = {
   link_agreement_note_mouse: "Read it, type your name, sign with your mouse or trackpad, then click Sign.",
   link_agreement_done: "Signed by {name} on {date}.",
   price_includes: "Every option includes the control box, install by our own crew and our 10-year warranty.",
+  // Round 17: the colour timing and Where you're at.
+  colour_spring_label: "Install in spring",
+  colour_spring_value: "Included",
+  colour_season_label: "Install this season",
+  colour_season_value: "{fee} rush colour fee",
+  colour_season_included: "Included",
+  tracker_title: "Where you're at",
+  tracker_meeting_label: "Meeting",
+  tracker_meeting: "We met and walked through your house.",
+  tracker_choose_label: "Choose your option",
+  tracker_choose_sign_label: "Choose and sign",
+  tracker_choose: "Pick the option you want and book your install.",
+  tracker_visit_label: "Site visit",
+  tracker_visit: "Keenan comes by to measure up close, take photos for your install and check your track colour against your soffit. Then you pick your install day.",
+  tracker_install_label: "Install day",
+  tracker_install: "We fit your custom track, wire and test every light, clean up, set up the app on your phone with you, and leave your warranty and documents.",
+  tracker_pay: "You pay nothing until it's installed and you're happy with it.",
 };
+
+// Round 17: the Christmas banner as lib/quote-link/christmas.ts works it
+// out, from Settings' dates and words, for a track that is white, another
+// colour, or none yet. Null when there is no banner.
+const BANNER_DEFAULTS = {
+  book_by: "Book by {date} to be lit up for Christmas.",
+  white: "White track is in stock and we install on any good-weather day.",
+  colour: "Your colour-matched track takes about a week to prepare, and we install on any good-weather day.",
+  no_colour: "A custom track colour needs about a week more.",
+  after: "We can't promise Christmas now, but we install on every good-weather day all winter. Book now and we'll get you lit up as soon as we can.",
+};
+const longDayOf = (day) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric" }).format(new Date(`${day}T12:00:00Z`));
+export function expectedBanner(settings, today, track) {
+  const white = settings?.christmas_book_by_white ?? null;
+  const end = settings?.christmas_season_end ?? null;
+  if (!settings?.christmas_banner_on || !white || !end || today > end) return null;
+  // As the app reads them: Settings' words, an emptied one left out (the
+  // book-by line can't be emptied; ours stands in should it ever be).
+  const word = (key) => str(settings[`christmas_banner_${key}`]).trim();
+  const date = track === "colour" ? (settings.christmas_book_by_colour ?? white) : white;
+  if (today > date) return word("after") ? { state: "after", text: word("after") } : null;
+  const days = Math.round((Date.UTC(...date.split("-").map((n, at) => (at === 1 ? Number(n) - 1 : Number(n)))) - Date.UTC(...today.split("-").map((n, at) => (at === 1 ? Number(n) - 1 : Number(n))))) / 86_400_000);
+  const template = word("book_by") || BANNER_DEFAULTS.book_by;
+  return {
+    state: "before",
+    headline: template.includes("{date}") ? template.replaceAll("{date}", longDayOf(date)) : template,
+    line: (track === "colour" ? word("colour") : word("white")) || null,
+    note: track === "none" ? word("no_colour") || null : null,
+    countdown: days <= 0 ? "Last day to book" : days === 1 ? "1 day left" : `${days} days left`,
+  };
+}
 
 const str = (value) => (typeof value === "string" ? value : "");
 
