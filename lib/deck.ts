@@ -279,6 +279,8 @@ export const DECK_LINE_DEFAULTS = {
   link_docs_title: "Documents",
   link_agreement_title: "Your agreement",
   link_agreement_note: "Read it, type your name, sign with your finger, then tap Sign.",
+  // On a laptop or desktop (2026-11-12), where there is no finger to sign with.
+  link_agreement_note_mouse: "Read it, type your name, sign with your mouse or trackpad, then click Sign.",
   link_agreement_done: "Signed by {name} on {date}.",
 } as const;
 
@@ -367,6 +369,7 @@ export const LINE_SPECS: Record<DeckLineKey, LineSpec> = {
   link_docs_title: { group: "link", label: "Documents: the heading", words: LABEL },
   link_agreement_title: { group: "link", label: "The agreement: the heading", words: LABEL },
   link_agreement_note: { group: "link", label: "The agreement: how to sign", words: SENTENCE },
+  link_agreement_note_mouse: { group: "link", label: "The agreement: how to sign, on a computer", words: SENTENCE },
   link_agreement_done: { group: "link", label: "The agreement, once signed", words: SHORT, fill: ["name", "date"] },
 };
 

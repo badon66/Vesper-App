@@ -1,0 +1,382 @@
+// The customer's quote link on a laptop (Keenan, 2026-11-12). Stages one
+// marked test lead (TEST LEAD (laptop)) with a quote of three options (one
+// area on J track), a Main mockup, a Christmas look and an option's own
+// picture, a document for this customer and, when it can be offered safely,
+// the agreement to sign. Then, as the customer:
+// - at 1280, 1440 and 1920 wide and on an iPad in landscape: the picture
+//   with its Looks and Options beside the offers and the price, a reading
+//   width for the text, nothing edge to edge, no sideways scroll, pictures
+//   shown no bigger than they are;
+// - with a mouse and keyboard: full screen opens with a click and closes
+//   with Esc or a click, double-click and the wheel zoom; Build your own,
+//   the documents, Book my install and the agreement work from the
+//   keyboard, and the signature is drawn with the mouse;
+// - on a phone: the single column as before, with the finger wording.
+// Everything staged is removed at the end; Settings' agreement text is set
+// only when empty and no other lead waits on it, and put back after.
+import { randomUUID } from "node:crypto";
+import { mkdir } from "node:fs/promises";
+import { createClient } from "@supabase/supabase-js";
+import { chromium } from "playwright";
+import sharp from "sharp";
+
+const base = process.env.BASE ?? "http://localhost:3400";
+const out = process.env.OUT ?? "test-results/live";
+const tag = process.env.TAG ?? "link-laptop";
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const noSession = { auth: { persistSession: false, autoRefreshToken: false } };
+const admin = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY, noSession);
+const stamp = Date.now().toString(36);
+const FIRST = "TEST LEAD (laptop)";
+const results = [];
+const say = (text) => { results.push(text); console.log(text); };
+let failures = 0;
+const check = (name, ok, detail = "") => {
+  if (!ok) failures += 1;
+  say(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` [${detail}]` : ""}`);
+};
+const flat = (t) => (t ?? "").replace(/\s+/g, " ").trim();
+
+const setter = { email: `laptop-${stamp}@example.com`, password: `laptop-cedar-${stamp}-4821`, name: "TEST Laptop Setter", id: null };
+const DOCS = "link-documents";
+const PHOTOS = "lead-photos";
+const TEST_AGREEMENT = "TEST agreement text (automated check, removed right after).\n\nBy signing you agree to the install described in your quote.";
+const staged = { leadId: null, token: null, ownerId: null, agreementSet: false };
+
+// A detailed 2400 x 1600 picture, so sharpness can be judged at laptop size.
+async function picture(sky, lights) {
+  const bulbs = Array.from({ length: 60 }, (_, at) => `<circle cx="${420 + at * 26}" cy="${780 - Math.abs(30 - at) * 13}" r="5" fill="${lights}"/>`).join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="2400" height="1600"><rect width="2400" height="1600" fill="${sky}"/><polygon points="380,800 1200,400 2020,800" fill="#0b1720"/><rect x="480" y="800" width="1440" height="640" fill="#0f1e29"/><rect x="1080" y="1080" width="240" height="360" fill="#1d2f3b"/>${bulbs}<text x="120" y="1540" font-family="Arial" font-size="40" fill="#ffffff">TEST mockup, fine print to judge sharpness</text></svg>`;
+  return sharp(Buffer.from(svg)).jpeg({ quality: 88 }).toBuffer();
+}
+
+function tinyPdf(text) {
+  const body = `BT /F1 18 Tf 72 720 Td (${text}) Tj ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${body.length} >>\nstream\n${body}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [];
+  objects.forEach((object, at) => {
+    offsets.push(pdf.length);
+    pdf += `${at + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xref = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(pdf);
+}
+
+async function stage() {
+  const { data: owner } = await admin.from("profiles").select("id").eq("role", "owner").single();
+  staged.ownerId = owner.id;
+  const made = await admin.auth.admin.createUser({ email: setter.email, password: setter.password, email_confirm: true, user_metadata: { full_name: setter.name }, app_metadata: { role: "sales" } });
+  if (made.error) throw new Error(`createUser: ${made.error.message}`);
+  setter.id = made.data.user.id;
+  const lead = await admin.from("leads").insert({
+    first_name: FIRST, last_name: stamp, address_line: `1 Laptop Lane SW (TEST) ${stamp}`, neighbourhood: "TEST (automated)", created_by: setter.id,
+    phone: "+14035550100", owns_home: true, wants_price: true, both_decision_makers: true, christmas_lights_now: "hires", looked_into_before: "new_to_them",
+    soffit_colour: "white", lat: 51.0447, lng: -114.0719, position_source: "picked",
+  }).select("id").single();
+  if (lead.error) throw new Error(`lead: ${lead.error.message}`);
+  staged.leadId = lead.data.id;
+  const { data: white } = await admin.from("track_colours").select("id, name").eq("active", true).order("sort_order").limit(1).single();
+  await admin.from("leads").update({ track_colour_id: white.id }).eq("id", staged.leadId);
+  const runs = [
+    { name: "Front", feet: 64, level: "lower", part: "eave", area: "front" },
+    { name: "Front gable", feet: 18, level: "upper", part: "gable", area: "front", gable: true, track: "j", trackRate: 30 },
+    { name: "Front upper", feet: 40, level: "upper", part: "eave", area: "front" },
+    { name: "Back", feet: 50, level: "lower", part: "eave", area: "back" },
+  ];
+  const day = new Date(Date.now() - 6 * 3600_000 + 14 * 86_400_000).toISOString().slice(0, 10);
+  const quote = await admin.from("quotes").insert({
+    lead_id: staged.leadId, created_by: owner.id, price_per_ft: 24, box_price: 500, box_count: 1, runs, total_feet: 172, adders: [], discounts: [], gst_rate: 0.05, gst_enabled: false,
+    min_job_total: null, subtotal: 0, total: 0, colour_timing: "stock", upper_access_fee: 200, upper_gable_access_fee: 400, track_colour_name: white.name, valid_until: day,
+    offers: [
+      { id: "full", name: "Full wrap", runs: [0, 1, 2, 3] },
+      { id: "front", name: "Full front", runs: [0, 1, 2] },
+      { id: "lower", name: "Front lower only", runs: [0] },
+    ],
+  }).select("id").single();
+  if (quote.error) throw new Error(`quote: ${quote.error.message}`);
+  const rows = [];
+  for (const [name, sky, lights, extra] of [
+    ["Warm white", "#132e3f", "#f4e3b5", { is_main: true, position: 0 }],
+    ["Christmas", "#10283a", "#d83a3a", { is_scene: true, position: 1 }],
+    ["Full front", "#16344a", "#f4e3b5", { offer_ids: ["front"], position: 2 }],
+  ]) {
+    const path = `${owner.id}/${randomUUID()}.jpg`;
+    const up = await admin.storage.from(PHOTOS).upload(path, await picture(sky, lights), { contentType: "image/jpeg" });
+    if (up.error) throw new Error(`mockup: ${up.error.message}`);
+    rows.push({ lead_id: staged.leadId, storage_path: path, name, created_by: owner.id, is_main: false, is_scene: false, offer_ids: [], ...extra });
+  }
+  const mockups = await admin.from("lead_mockups").insert(rows);
+  if (mockups.error) throw new Error(`mockups: ${mockups.error.message}`);
+  const uploadPath = `leads/${staged.leadId}/${randomUUID()}.pdf`;
+  await admin.storage.from(DOCS).upload(uploadPath, tinyPdf("TEST site plan"), { contentType: "application/pdf" });
+  const own = await admin.from("lead_link_documents").insert({ lead_id: staged.leadId, name: "TEST Your site plan", storage_path: uploadPath, content_type: "application/pdf", size_bytes: 600, created_by: owner.id });
+  if (own.error) throw new Error(`document: ${own.error.message}`);
+  const issued = await admin.rpc("issue_quote_link", { p_lead_id: staged.leadId });
+  if (issued.error) throw new Error(`link: ${issued.error.message}`);
+  staged.token = issued.data;
+  // Book my install and signing notices go to the test setter (no devices), never Keenan.
+  await admin.from("quote_links").update({ created_by: setter.id }).eq("lead_id", staged.leadId);
+}
+
+// The agreement: Keenan's own text if written; otherwise a marked test text
+// only while no other lead has Agreement to sign on.
+async function offerAgreement() {
+  const { data: settings } = await admin.from("settings").select("agreement_text").eq("id", 1).single();
+  if (!settings?.agreement_text?.trim()) {
+    const { count } = await admin.from("lead_link_options").select("lead_id", { count: "exact", head: true }).eq("agreement_to_sign", true);
+    if ((count ?? 0) > 0) return false;
+    const set = await admin.from("settings").update({ agreement_text: TEST_AGREEMENT }).eq("id", 1);
+    if (set.error) throw new Error(`agreement text: ${set.error.message}`);
+    staged.agreementSet = true;
+  }
+  const tick = await admin.from("lead_link_options").insert({ lead_id: staged.leadId, agreement_to_sign: true, updated_by: staged.ownerId });
+  if (tick.error) throw new Error(`agreement tick: ${tick.error.message}`);
+  return true;
+}
+
+async function clean() {
+  const { data: leads } = await admin.from("leads").select("id").eq("last_name", stamp).eq("first_name", FIRST);
+  const ids = (leads ?? []).map((l) => l.id);
+  if (ids.length > 0) {
+    const { data: docs } = await admin.from("lead_link_documents").select("storage_path").in("lead_id", ids);
+    const files = (docs ?? []).flatMap((d) => (d.storage_path ? [d.storage_path] : []));
+    const { data: mockups } = await admin.from("lead_mockups").select("storage_path").in("lead_id", ids);
+    await admin.from("agreement_signatures").delete().in("lead_id", ids);
+    await admin.from("lead_link_documents").delete().in("lead_id", ids);
+    await admin.from("lead_link_options").delete().in("lead_id", ids);
+    if (files.length > 0) await admin.storage.from(DOCS).remove(files);
+    const photos = (mockups ?? []).map((m) => m.storage_path);
+    if (photos.length > 0) await admin.storage.from(PHOTOS).remove(photos);
+    for (const table of ["earnings", "slot_holds", "meetings", "quote_links", "quotes", "lead_mockups", "lead_photos", "lead_events"]) await admin.from(table).delete().in("lead_id", ids);
+    await admin.from("leads").delete().in("id", ids);
+  }
+  if (staged.agreementSet) await admin.from("settings").update({ agreement_text: null }).eq("id", 1).eq("agreement_text", TEST_AGREEMENT);
+  const { data: people } = await admin.auth.admin.listUsers({ perPage: 1000 });
+  for (const u of (people?.users ?? []).filter((x) => (x.email ?? "").startsWith(`laptop-${stamp}`))) {
+    await admin.from("leads").delete().eq("created_by", u.id);
+    await admin.auth.admin.deleteUser(u.id);
+  }
+  const { data: after } = await admin.from("settings").select("agreement_text").eq("id", 1).single();
+  const { count: left } = await admin.from("leads").select("id", { count: "exact", head: true }).eq("last_name", stamp);
+  const textLeft = after?.agreement_text === TEST_AGREEMENT;
+  if (textLeft) failures += 1;
+  say(`CLEAN ${ids.length} lead(s); left: ${left ?? 0}; Settings agreement text ${!staged.agreementSet ? "untouched" : textLeft ? "NOT PUT BACK" : "put back (empty again)"}`);
+}
+
+const box = (page, id) => page.getByTestId(id).first().boundingBox();
+
+// The layout at one laptop size: picture beside the offers, reading widths,
+// no sideways scroll, pictures never blown up.
+async function layoutAt(page, name, width) {
+  await page.goto(`${base}/q/${staged.token}`, { waitUntil: "networkidle" });
+  await page.getByTestId("quote-live").waitFor({ timeout: 30000 });
+  await page.evaluate(() => document.fonts.ready);
+  const picture = await box(page, "see-it");
+  const options = await box(page, "quote-options");
+  const head = await page.locator("#quote-for").boundingBox();
+  check(
+    `${name}: the picture with its Looks and Options sits beside the price and the offers`,
+    picture && options && head && picture.x + picture.width <= options.x + 1 && Math.abs(picture.y - head.y) < 140 && options.y < picture.y + picture.height,
+    picture && options ? `picture ${Math.round(picture.x)}..${Math.round(picture.x + picture.width)} from y ${Math.round(picture.y)}, offers from x ${Math.round(options.x)} y ${Math.round(options.y)}` : "missing",
+  );
+  const hero = await page.getByTestId("quote-mockup").isVisible().catch(() => false);
+  check(`${name}: the house is shown once, not again above the page`, !hero);
+  const widths = await page.evaluate(() => {
+    const measure = (selector) => {
+      const element = document.querySelector(selector);
+      if (!element) return null;
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return Math.round(rect.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight));
+    };
+    return {
+      page: document.documentElement.scrollWidth,
+      viewport: window.innerWidth,
+      main: measure('[data-testid="quote-live"]'),
+      points: measure('section[aria-labelledby="getting"]'),
+      next: measure('[data-testid="quote-next-steps"]'),
+      track: measure('[data-testid="about-track"]'),
+      options: measure('[data-testid="quote-options"]'),
+      left: Math.round(document.getElementById("quote-for").getBoundingClientRect().left),
+      right: Math.round(window.innerWidth - document.querySelector('[data-testid="option-rows"]').getBoundingClientRect().right),
+    };
+  });
+  check(`${name}: no sideways scroll`, widths.page <= widths.viewport, `${widths.page} in ${widths.viewport}`);
+  check(`${name}: the page stops short of the screen's edges`, widths.main <= 1280 && widths.left >= 40 && widths.right >= 40, `page ${widths.main} px of ${width}, text from ${widths.left} px, offers end ${widths.right} px from the edge`);
+  const reading = [widths.points, widths.next, widths.track].filter((w) => w !== null);
+  check(`${name}: text runs at a reading width`, reading.length > 0 && reading.every((w) => w <= 760), `text ${reading.join(", ")} px; offers ${widths.options} px`);
+  const sharp = await page.getByTestId("option-mockup").evaluate((image) => ({ natural: image.naturalWidth, shown: Math.round(image.getBoundingClientRect().width), ratio: window.devicePixelRatio }));
+  check(`${name}: the picture is never shown bigger than it is`, sharp.natural >= sharp.shown * sharp.ratio, `${sharp.natural} px wide, shown at ${sharp.shown} px x${sharp.ratio}`);
+  await page.screenshot({ path: `${out}/${tag}-${width}-top.png` });
+  return widths;
+}
+
+await mkdir(out, { recursive: true });
+let browser = null;
+try {
+  await stage();
+  const agreementOffered = await offerAgreement();
+  say(`STAGED lead ${staged.leadId}${agreementOffered ? " with the agreement" : " (agreement left off: another lead waits on Settings' text)"}`);
+  browser = await chromium.launch();
+
+  for (const [width, height] of [[1280, 800], [1440, 900], [1920, 1080]]) {
+    const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
+    const page = await context.newPage();
+    await layoutAt(page, `${width} wide`, width);
+    if (width === 1440) {
+      await page.screenshot({ path: `${out}/${tag}-1440-full.png`, fullPage: true });
+      // The picture stays in view while they read the offers.
+      await page.getByTestId("whats-in").scrollIntoViewIfNeeded();
+      await page.waitForTimeout(300);
+      const kept = await box(page, "option-mockup");
+      check("1440 wide: the picture stays in view while they go down the offers", kept && kept.y >= 0 && kept.y + kept.height <= 900, kept ? `top ${Math.round(kept.y)}` : "missing");
+    }
+    await context.close();
+  }
+
+  // iPad, landscape: the laptop layout; portrait: one column.
+  {
+    const context = await browser.newContext({ viewport: { width: 1180, height: 820 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+    const page = await context.newPage();
+    await layoutAt(page, "iPad landscape", 1180);
+    const note = await page.getByTestId("agreement").innerText().catch(() => "");
+    if (agreementOffered) check("iPad: signing still says finger", /with your finger/.test(note));
+    await page.setViewportSize({ width: 820, height: 1180 });
+    await page.waitForTimeout(300);
+    const options = await box(page, "quote-options");
+    const picture = await box(page, "see-it");
+    check("iPad portrait: one column, the picture above the offers", picture && options && options.y > picture.y + picture.height - 1);
+    await page.screenshot({ path: `${out}/${tag}-ipad-portrait.png` });
+    await context.close();
+  }
+
+  // Mouse and keyboard, at 1440.
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  await page.goto(`${base}/q/${staged.token}`, { waitUntil: "networkidle" });
+  await page.getByTestId("quote-live").waitFor({ timeout: 30000 });
+
+  // A look, then full screen with the mouse.
+  await page.getByTestId("see-it-look").first().click();
+  check("a look clicked shows on the picture", (await page.getByTestId("option-picture").first().getAttribute("data-kind")) === "look");
+  await page.getByTestId("option-mockup").click();
+  const viewer = page.getByTestId("option-mockup-viewer");
+  await viewer.waitFor({ state: "visible", timeout: 5000 });
+  check("full screen opens with a click", await viewer.isVisible());
+  check("full screen says how to zoom and close with a mouse", /double-click to zoom\. Click or press Esc to close/.test(flat(await viewer.innerText())));
+  const viewerImage = viewer.locator("img");
+  const scaleOf = async () => (await viewerImage.evaluate((image) => image.style.transform)).match(/scale\(([\d.]+)\)/)?.[1] ?? "1";
+  await page.mouse.move(720, 450);
+  await page.mouse.wheel(0, -400);
+  await page.waitForTimeout(250);
+  const wheeled = Number(await scaleOf());
+  check("the wheel zooms in", wheeled > 1.2, `scale ${wheeled.toFixed(2)}`);
+  await page.mouse.dblclick(720, 450);
+  await page.waitForTimeout(250);
+  check("a double-click steps back to the whole picture", Number(await scaleOf()) === 1, `scale ${await scaleOf()}`);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(250);
+  check("Esc closes it", !(await viewer.isVisible()));
+  check("and the picture's button has the focus again", await page.getByTestId("option-mockup").evaluate((image) => document.activeElement === image.closest("button")));
+  await page.getByTestId("option-mockup").click();
+  await viewer.waitFor({ state: "visible", timeout: 5000 });
+  await page.mouse.click(300, 300);
+  await page.waitForTimeout(600);
+  check("a click on the picture closes it", !(await viewer.isVisible()));
+
+  // An option picked by mouse in the picture's Options swaps the price.
+  await page.locator('[data-testid="see-it-option"][data-offer="front"]').click();
+  await page.waitForTimeout(300);
+  check("an option picked beside the picture changes the price", flat(await page.getByTestId("hero-option").innerText()) === "Full front" && flat(await page.getByTestId("hero-total").innerText()).includes("$3,936"), flat(await page.getByTestId("hero-total").innerText()));
+
+  // Build your own from the keyboard.
+  await page.getByTestId("build-row").focus();
+  await page.keyboard.press("Space");
+  await page.getByTestId("build-areas").waitFor({ timeout: 5000 });
+  const before = flat(await page.getByTestId("hero-total").innerText());
+  await page.locator('[data-testid="build-area"][data-position="0"]').focus();
+  await page.keyboard.press("Space");
+  await page.waitForTimeout(300);
+  const after = flat(await page.getByTestId("hero-total").innerText());
+  check("Build your own opens and ticks from the keyboard, and the price follows", before !== after && /\$[\d,]+/.test(after), `${before} -> ${after}`);
+  await page.keyboard.press("Space");
+  await page.waitForTimeout(200);
+
+  // Documents: real links, reached with Tab.
+  const docLinks = await page.locator('[data-testid="link-documents"] a').evaluateAll((links) => links.map((link) => ({ href: link.getAttribute("href") ?? "", tab: link.tabIndex })));
+  check("the documents open and download from ordinary links a keyboard reaches", docLinks.length >= 2 && docLinks.every((link) => link.href.length > 0 && link.tab >= 0), `${docLinks.length} links`);
+
+  // Book my install from the keyboard.
+  await page.getByTestId("bar-book").focus();
+  await page.keyboard.press("Enter");
+  await page.getByTestId("book-confirm").waitFor({ timeout: 5000 });
+  await page.waitForTimeout(700);
+  await page.getByRole("button", { name: /Yes, book my install/ }).focus();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(3000);
+  const { data: link } = await admin.from("quote_links").select("booked_offer").eq("token", staged.token).single();
+  check("Book my install works from the keyboard", link?.booked_offer === "customer", JSON.stringify(link));
+  if (await page.getByTestId("quote-thanks").isVisible().catch(() => false)) {
+    await page.getByRole("button", { name: "See your quote again" }).click();
+    await page.getByTestId("quote-live").waitFor({ timeout: 10000 });
+  }
+
+  // The agreement with a mouse and keyboard.
+  if (agreementOffered) {
+    const agreement = page.getByTestId("agreement");
+    await agreement.scrollIntoViewIfNeeded();
+    const words = flat(await agreement.innerText());
+    check("on a computer the agreement says mouse or trackpad, not finger", /mouse or trackpad/.test(words) && !/finger/.test(words), words.slice(0, 120));
+    await page.getByTestId("agreement-name").focus();
+    await page.keyboard.type("Test Customer");
+    const pad = await page.getByTestId("agreement-pad").boundingBox();
+    await page.mouse.move(pad.x + 40, pad.y + pad.height / 2);
+    await page.mouse.down();
+    for (const [dx, dy] of [[90, -40], [150, 30], [220, -30], [300, 25], [380, -15]]) await page.mouse.move(pad.x + dx, pad.y + pad.height / 2 + dy, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    await agreement.screenshot({ path: `${out}/${tag}-agreement.png` });
+    await page.getByTestId("agreement-sign").focus();
+    await page.keyboard.press("Enter");
+    await page.getByTestId("agreement-signed").waitFor({ timeout: 15000 }).catch(() => {});
+    check("signed with a mouse and the keyboard", /Signed by Test Customer on/.test(flat(await page.getByTestId("agreement-signed").innerText().catch(() => ""))));
+    const { data: signature } = await admin.from("agreement_signatures").select("signature_png").eq("lead_id", staged.leadId).maybeSingle();
+    check("the signature drawn with the mouse is saved", (signature?.signature_png ?? "").startsWith("data:image/png;base64,") && signature.signature_png.length > 1500, `${signature?.signature_png?.length ?? 0} characters`);
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${out}/${tag}-1440-after.png`, fullPage: true });
+  await context.close();
+
+  // The phone: one column as before, the picture full width at the top, finger wording.
+  {
+    const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+    const page2 = await phone.newPage();
+    await page2.goto(`${base}/q/${staged.token}`, { waitUntil: "networkidle" });
+    await page2.getByTestId("quote-live").waitFor({ timeout: 30000 });
+    const hero = await box(page2, "quote-mockup");
+    const seeIt = await box(page2, "see-it");
+    const options = await box(page2, "quote-options");
+    check("phone: the house across the top, edge to edge, as before", hero && hero.x === 0 && Math.round(hero.width) === 390 && hero.y < 80, hero ? `${Math.round(hero.width)} wide at y ${Math.round(hero.y)}` : "missing");
+    check("phone: one column, See it on your house above the offers", seeIt && options && options.y > seeIt.y + seeIt.height - 1 && Math.round(options.width) === 390);
+    check("phone: no sideways scroll", await page2.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    await page2.screenshot({ path: `${out}/${tag}-phone.png`, fullPage: true });
+    await phone.close();
+  }
+} catch (error) {
+  failures += 1;
+  say(`SCRIPT ERROR ${error?.message ?? error}`);
+} finally {
+  if (browser) await browser.close();
+  await clean();
+  say(`DONE ${failures === 0 ? "all checks passed" : `${failures} failed`}`);
+  process.exitCode = failures === 0 ? 0 : 1;
+}
