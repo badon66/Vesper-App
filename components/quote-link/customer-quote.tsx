@@ -423,6 +423,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
             offers={shown}
             selectedId={selected.offer.id}
             selectedName={name}
+            wholeHouse={!leavesRunsOut(quote.runs.length, selected.offer.runs)}
             look={look}
             caption={leavesRunsOut(quote.runs.length, selected.offer.runs) ? words.link_mockup_caption : null}
             disabled={sending}
@@ -784,6 +785,7 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
             offers={[]}
             selectedId={agreed.offer.id}
             selectedName={customerChoice(agreed.name)}
+            wholeHouse={!leavesRunsOut(quote.runs.length, agreed.offer.runs)}
             look={look}
             caption={leavesRunsOut(quote.runs.length, agreed.offer.runs) ? words.link_mockup_caption : null}
             disabled={false}
@@ -1499,6 +1501,7 @@ function SeeItOnYourHouse({
   offers,
   selectedId,
   selectedName,
+  wholeHouse,
   look,
   caption,
   disabled,
@@ -1511,6 +1514,8 @@ function SeeItOnYourHouse({
   offers: PricedOffer[];
   selectedId: string;
   selectedName: string;
+  // The option covers every run, so the Main shows exactly it.
+  wholeHouse: boolean;
   look: string | null;
   caption: string | null;
   disabled: boolean;
@@ -1529,11 +1534,19 @@ function SeeItOnYourHouse({
     looks.length > 0
       ? {
           items: [
-            // Named for the option only when it is the option's own
-            // picture; the Main standing in shows every run lit, whatever
-            // the option covers (round 17 critique).
+            // Named for the option when the picture shows exactly it (its
+            // own, or the Main for an option with every run); the Main
+            // standing in for an option that leaves runs out shows every
+            // run lit, so it reads "Your house" (round 17 critique).
             ...(optionPictureNow
-              ? [{ key: OPTION_PICTURE, label: optionPictureNow.own ? selectedName : "Your house", on: lookOn === null, url: optionPictureNow.picture.url }]
+              ? [
+                  {
+                    key: OPTION_PICTURE,
+                    label: optionPictureNow.own || wholeHouse ? selectedName : "Your house",
+                    on: lookOn === null,
+                    url: optionPictureNow.picture.url,
+                  },
+                ]
               : []),
             ...looks.map((picture) => ({
               key: picture.name.trim(),

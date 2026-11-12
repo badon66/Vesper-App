@@ -815,6 +815,7 @@ try {
   await viewer.waitFor({ timeout: 5000 }).catch(() => {});
   const viewerOpen = await viewer.isVisible().catch(() => false);
   const viewerLooks = await viewer.getByTestId("viewer-look").evaluateAll((els) => els.map((el) => `${el.textContent}${el.getAttribute("aria-pressed") === "true" ? "*" : ""}`)).catch(() => []);
+  const viewerCaption = flat(await viewer.getByTestId("viewer-caption").innerText().catch(() => ""));
   await viewer.locator('[data-testid="viewer-look"][data-look="Christmas"]').tap().catch(() => {});
   await page.waitForTimeout(500);
   const stillOpen = await viewer.isVisible().catch(() => false);
@@ -822,9 +823,14 @@ try {
   await page.screenshot({ path: `${out}/ql-phone-mockup.png` });
   await viewer.getByRole("button", { name: "Close" }).click().catch(() => {});
   check(
-    "a tap opens the picture full screen to zoom, with the option's picture and each look along the bottom; a look tapped there swaps the picture without closing, the page follows, and Close brings them back",
-    viewerOpen && viewerLooks.join() === "Main floor*,Christmas" && stillOpen && pageLook === "Christmas" && !(await viewer.isVisible().catch(() => false)),
-    JSON.stringify({ viewerLooks, stillOpen, pageLook }),
+    "a tap opens the picture full screen to zoom, with the picture on screen and each look along the bottom (Main floor leaves runs out, so the Main reads Your house, with the page's caption); a look tapped there swaps the picture without closing, the page follows, and Close brings them back",
+    viewerOpen &&
+      viewerLooks.join() === "Your house*,Christmas" &&
+      viewerCaption === words("link_mockup_caption") &&
+      stillOpen &&
+      pageLook === "Christmas" &&
+      !(await viewer.isVisible().catch(() => false)),
+    JSON.stringify({ viewerLooks, viewerCaption, stillOpen, pageLook }),
   );
 
   // Book my install on Front only: it asks once, restating the choice,
