@@ -329,7 +329,7 @@ export function QuoteOutcome({
                     <button
                       type="button"
                       onClick={() => open("site_visit")}
-                      className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="inline-flex min-h-11 min-w-11 items-center justify-center font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       data-testid="outcome-site-visit-day"
                     >
                       {siteVisit.on ? "Change" : "Add a day"}
@@ -340,7 +340,7 @@ export function QuoteOutcome({
                       type="button"
                       disabled={pending}
                       onClick={() => run(() => setSiteVisitDone({ leadId, done: !visitDone }))}
-                      className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                      className="inline-flex min-h-11 min-w-11 items-center justify-center font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                       data-testid="outcome-site-visit-done"
                     >
                       {visitDone ? "Not done yet" : "Done"}
