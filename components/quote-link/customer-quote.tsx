@@ -638,6 +638,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
         sending={sending}
         slow={slow}
         error={error}
+        summary={selected && totals ? `${name}, ${total}` : null}
         onBook={() => {
           setError(null);
           confirmOpenedAt.current = performance.now();
@@ -1319,7 +1320,10 @@ function PartsExplained() {
 // The bar fixed to the bottom: Call, Text, and the one gold button on the
 // page. Once they've asked to book the option on screen, it says so
 // instead; after the quote is accepted, or with no option to book, it
-// holds Call and Text alone.
+// holds Call and Text alone. On a laptop (round 17) its middle names the
+// option on screen and its price, "Full wrap, $5,136", following what they
+// pick (Build your own and a Black Friday price included); a phone's bar
+// stays as it is.
 function BookBar({
   callHref,
   textHref,
@@ -1330,6 +1334,7 @@ function BookBar({
   slow,
   error,
   onBook,
+  summary = null,
 }: {
   callHref: string;
   textHref: string;
@@ -1340,6 +1345,7 @@ function BookBar({
   slow: boolean;
   error: string | null;
   onBook: () => void;
+  summary?: string | null;
 }) {
   const contact = cn(
     "inline-flex h-12 shrink-0 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-base font-semibold outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring lg:px-5",
@@ -1365,8 +1371,19 @@ function BookBar({
           <MessageSquare aria-hidden="true" className="size-[1.125rem]" />
           Text
         </a>
+        {summary ? (
+          // The price is already read out where it changes, so this repeat
+          // of it stays quiet for screen readers.
+          <p
+            aria-hidden="true"
+            className="hidden min-w-0 flex-1 truncate px-4 text-center text-lg font-semibold tabular-nums lg:block"
+            data-testid="bar-summary"
+          >
+            {summary}
+          </p>
+        ) : null}
         {!canBook ? null : booked ? (
-          <p className="min-w-0 flex-1 text-right text-sm text-pretty lg:text-base" data-testid="bar-requested">
+          <p className="min-w-0 flex-1 text-right text-sm text-pretty lg:w-80 lg:flex-none lg:text-base" data-testid="bar-requested">
             <span className="block font-semibold">Install requested</span>
             <span className="block text-muted-foreground">Keenan will be in touch.</span>
           </p>
