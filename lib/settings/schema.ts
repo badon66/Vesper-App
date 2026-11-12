@@ -55,6 +55,19 @@ const moneyOrUnset = z.preprocess(
   ]),
 );
 
+// A date field that may be left empty: empty means not set (null).
+const dayOrUnset = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? null : value),
+  z.union([z.null(), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, { error: "must be a date" })]),
+);
+
+// One line of the Christmas banner's words: spaces tidied, up to 300
+// characters; left empty, that line is left off the banner.
+const bannerLine = z
+  .string()
+  .transform((text) => text.replace(/\s+/g, " ").trim())
+  .pipe(z.string().max(300, { error: "keep it under 300 characters" }));
+
 const wholeNumber = (min: number, max: number) =>
   z.preprocess(
     blankToUndefined,
@@ -221,17 +234,28 @@ export const settingsFormSchema = z.object({
   ]),
   company_address: z.string().trim().max(200, { error: "is too long" }),
   // The customer quote page (2026-11-04): the Christmas banner and the six
-  // product points under "What you're getting".
+  // product points under "What you're getting". Round 17 (2026-11-12): the
+  // banner runs by three dates (Settings, Pricing) and its words are the
+  // book-by line, a line for white track, one for a colour-matched track,
+  // the note for no colour yet, and the line after the date.
   christmas_banner_on: z.boolean(),
-  christmas_banner_title: z
-    .string()
-    .trim()
-    .min(1, { error: "cannot be empty" })
-    .max(80, { error: "keep it under 80 characters" }),
-  christmas_banner_text: z
+  christmas_book_by_white: dayOrUnset,
+  christmas_book_by_colour: dayOrUnset,
+  christmas_season_end: dayOrUnset,
+  christmas_banner_book_by: z
     .string()
     .transform((text) => text.replace(/\s+/g, " ").trim())
-    .pipe(z.string().max(300, { error: "keep it under 300 characters" })),
+    .pipe(
+      z
+        .string()
+        .min(1, { error: "cannot be empty" })
+        .max(120, { error: "keep it under 120 characters" })
+        .refine((text) => text.includes("{date}"), { error: "needs {date} where the date goes" }),
+    ),
+  christmas_banner_white: bannerLine,
+  christmas_banner_colour: bannerLine,
+  christmas_banner_no_colour: bannerLine,
+  christmas_banner_after: bannerLine,
   product_points: z
     .array(
       z.object({
@@ -250,6 +274,22 @@ export const settingsFormSchema = z.object({
 }).superRefine((values, context) => {
   const deal = blackFridayFromForm(values.black_friday_kind, values.black_friday_value);
   if (!deal.ok) context.addIssue({ code: "custom", path: ["black_friday_value"], message: deal.error });
+  // The banner needs the white date and the season's end to show; the
+  // colour date falls back to the white one.
+  if (values.christmas_banner_on) {
+    if (values.christmas_book_by_white === null)
+      context.addIssue({ code: "custom", path: ["christmas_book_by_white"], message: "needs a date while the Christmas banner is on" });
+    if (values.christmas_season_end === null)
+      context.addIssue({ code: "custom", path: ["christmas_season_end"], message: "needs a date while the Christmas banner is on" });
+  }
+  const end = values.christmas_season_end;
+  for (const [field, day] of [
+    ["christmas_book_by_white", values.christmas_book_by_white],
+    ["christmas_book_by_colour", values.christmas_book_by_colour],
+  ] as const) {
+    if (end !== null && day !== null && day > end)
+      context.addIssue({ code: "custom", path: [field], message: "must be on or before the end of the season" });
+  }
 });
 
 // The number of product point rows the form offers.
@@ -310,8 +350,14 @@ export function settingsFormDataToInput(
     company_email: text("company_email"),
     company_address: text("company_address"),
     christmas_banner_on: formData.get("christmas_banner_on") === "on",
-    christmas_banner_title: text("christmas_banner_title"),
-    christmas_banner_text: text("christmas_banner_text"),
+    christmas_book_by_white: text("christmas_book_by_white"),
+    christmas_book_by_colour: text("christmas_book_by_colour"),
+    christmas_season_end: text("christmas_season_end"),
+    christmas_banner_book_by: text("christmas_banner_book_by"),
+    christmas_banner_white: text("christmas_banner_white"),
+    christmas_banner_colour: text("christmas_banner_colour"),
+    christmas_banner_no_colour: text("christmas_banner_no_colour"),
+    christmas_banner_after: text("christmas_banner_after"),
     product_points: Array.from({ length: POINT_ROWS }, (_, at) => ({
       icon: text(`point_icon_${at}`),
       text: text(`point_text_${at}`),
@@ -369,8 +415,14 @@ export function settingsUpdateFromValues(v: SettingsFormValues): SettingsUpdate 
       address: v.company_address,
     },
     christmas_banner_on: v.christmas_banner_on,
-    christmas_banner_title: v.christmas_banner_title,
-    christmas_banner_text: v.christmas_banner_text,
+    christmas_book_by_white: v.christmas_book_by_white,
+    christmas_book_by_colour: v.christmas_book_by_colour,
+    christmas_season_end: v.christmas_season_end,
+    christmas_banner_book_by: v.christmas_banner_book_by,
+    christmas_banner_white: v.christmas_banner_white,
+    christmas_banner_colour: v.christmas_banner_colour,
+    christmas_banner_no_colour: v.christmas_banner_no_colour,
+    christmas_banner_after: v.christmas_banner_after,
     product_points: v.product_points,
     rush_colour_fee: v.rush_colour_fee,
     upper_access_fee: v.upper_access_fee,
@@ -427,8 +479,14 @@ export type SettingsFormDefaults = {
   company_email: string;
   company_address: string;
   christmas_banner_on: boolean;
-  christmas_banner_title: string;
-  christmas_banner_text: string;
+  christmas_book_by_white: string;
+  christmas_book_by_colour: string;
+  christmas_season_end: string;
+  christmas_banner_book_by: string;
+  christmas_banner_white: string;
+  christmas_banner_colour: string;
+  christmas_banner_no_colour: string;
+  christmas_banner_after: string;
   // Always POINT_ROWS rows, blank ones included, for the form.
   product_points: { icon: PointIcon; text: string }[];
   rush_colour_fee: string;
@@ -482,8 +540,14 @@ export function settingsRowToFormDefaults(row: SettingsRow): SettingsFormDefault
     company_email: companyField("email"),
     company_address: companyField("address"),
     christmas_banner_on: row.christmas_banner_on,
-    christmas_banner_title: row.christmas_banner_title,
-    christmas_banner_text: row.christmas_banner_text,
+    christmas_book_by_white: row.christmas_book_by_white ?? "",
+    christmas_book_by_colour: row.christmas_book_by_colour ?? "",
+    christmas_season_end: row.christmas_season_end ?? "",
+    christmas_banner_book_by: row.christmas_banner_book_by,
+    christmas_banner_white: row.christmas_banner_white,
+    christmas_banner_colour: row.christmas_banner_colour,
+    christmas_banner_no_colour: row.christmas_banner_no_colour,
+    christmas_banner_after: row.christmas_banner_after,
     product_points: pointRows(row.product_points),
     rush_colour_fee: row.rush_colour_fee === null ? "" : row.rush_colour_fee.toFixed(2),
     upper_access_fee: row.upper_access_fee === null ? "" : row.upper_access_fee.toFixed(2),

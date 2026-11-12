@@ -160,7 +160,9 @@ describe("the quote's own prices", () => {
       },
     ] as OfferQuoteRow[]) {
       const link = quoteFromRow(row)!;
-      expect(priceQuote(quoteInputsFromRow(row))).toEqual(priceSelection(link, null));
+      // Round 17: the link lists every area on its own line; the same cents.
+      expect(priceQuote({ ...quoteInputsFromRow(row), perArea: true })).toEqual(priceSelection(link, null));
+      expect(priceQuote(quoteInputsFromRow(row)).total).toBe(priceSelection(link, null).total);
     }
   });
 

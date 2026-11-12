@@ -14,13 +14,14 @@ import { DEFAULT_LINES, deckLine, priceSubLine, type DeckLines } from "@/lib/dec
 import { breakdownRows, minimumSentence, NO_PAYMENT, screenOptions, type BreakdownRow } from "@/lib/meeting/price-screen";
 import { blackFridayOn, chooseWithBlackFriday, offerPrice, withBlackFriday } from "@/lib/meeting/black-friday-state";
 import { colourTimingView, mockupJobs, offerMockup } from "@/lib/meeting/deck-pages";
-import { quoteInputs, quoteOffers, quoteRushFee, type MeetingMockup, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
+import { quoteInputs, quoteOffers, rushFeeInHand, withColourTiming, type MeetingMockup, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
 import { MOTION, transition } from "@/lib/motion";
 import { formatMoney, type QuoteTotals } from "@/lib/pricing";
 import { QUOTE_LOCKED_MEETING, savedLine } from "@/lib/quotes/draft";
 import { offersBlock } from "@/lib/quotes/editor";
 import { BLACK_FRIDAY_LABEL, blackFridayWords } from "@/lib/quotes/black-friday";
 import { cleanOfferName, customerOfferName, feetWords, offerFeet, type PricedOffer } from "@/lib/quotes/offers";
+import { christmasPriceLine, trackColourKindOf } from "@/lib/quote-link/christmas";
 import { formatFullDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -192,6 +193,9 @@ export function QuoteScreen({
   const colour = colourKind === "none" ? null : colourText.trim() || null;
   // The sub-line counts the options: none until something is measured.
   const sub = options.length > 0 ? priceSubLine(lines, options.length, colour) : "";
+  // Round 17: the Christmas book-by date for their track, one quiet line,
+  // the same date as their link; nothing once it has passed.
+  const christmasLine = locked ? null : christmasPriceLine({ today, christmas: pricing.christmas, track: trackColourKindOf(colourKind, colourText) });
   const { save } = useQuoteSave({ leadId, pricing, from: "meeting", readOnly });
   // The picture for the option on screen: its own, else the Main, else none.
   const picture = offerMockup(mockups, viewing?.offer.id ?? null);
@@ -202,7 +206,7 @@ export function QuoteScreen({
     [picture, viewing, mockups],
   );
   // The one colour line: stock, or made to order with spring or this season.
-  const timing = colourTimingView({ lines, kind: colourKind, text: colourText, timing: state.colourTiming, rushFee: quoteRushFee(state) });
+  const timing = colourTimingView({ lines, kind: colourKind, text: colourText, timing: state.colourTiming, rushFee: rushFeeInHand(state) });
 
   // The pick, the install day and the colour's timing save with the quote,
   // quietly, when there's signal: a moment after they change, and again when the signal comes
@@ -251,7 +255,7 @@ export function QuoteScreen({
   const viewingRegular = viewing ? struckTotal(viewing) : null;
   const setTiming = (next: "factory_order" | "rush") => {
     if (locked || state.colourTiming === next) return;
-    onChange({ ...state, colourTiming: next });
+    onChange({ ...state, ...withColourTiming(next) });
   };
 
   return (
@@ -281,6 +285,11 @@ export function QuoteScreen({
           </button>
         ) : null}
       </header>
+      {christmasLine ? (
+        <p className={cn(DECK_TYPE.small, "mt-1 pr-12 pl-16 text-muted-foreground")} data-testid="price-christmas">
+          {say(christmasLine)}
+        </p>
+      ) : null}
 
       {viewing === null ? (
         <p className={cn(DECK_TYPE.body, "mt-8 pr-12 pl-16 text-muted-foreground")} data-testid="price-empty">
@@ -342,6 +351,15 @@ export function QuoteScreen({
                 </p>
                 {timing.kind === "made" ? (
                   <div className="grid grid-cols-2 gap-2.5">
+                    {/* Round 17: this season first, included unless Keenan charges a rush fee. */}
+                    <TimingChoice
+                      label={timing.season.label}
+                      value={timing.season.value}
+                      chosen={timing.chosen === "season"}
+                      disabled={locked}
+                      onChoose={() => setTiming("rush")}
+                      testId="price-timing-season"
+                    />
                     <TimingChoice
                       label={timing.spring.label}
                       value={timing.spring.value}
@@ -350,16 +368,6 @@ export function QuoteScreen({
                       onChoose={() => setTiming("factory_order")}
                       testId="price-timing-spring"
                     />
-                    {timing.season ? (
-                      <TimingChoice
-                        label={timing.season.label}
-                        value={timing.season.value}
-                        chosen={timing.chosen === "season"}
-                        disabled={locked}
-                        onChoose={() => setTiming("rush")}
-                        testId="price-timing-season"
-                      />
-                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -434,6 +442,13 @@ export function QuoteScreen({
             <p className={cn(DECK_TYPE.small, "mt-2 text-muted-foreground")} data-testid="price-feet">
               {say(feetWords(lines.price_feet, offerFeet(state.runs, viewing.offer)))}
             </p>
+            {/* Round 17: Keenan's description, here inside the breakdown so
+                Your price itself stays name, feet and price. */}
+            {viewing.offer.description ? (
+              <p className={cn(DECK_TYPE.body, "mt-3 max-w-[760px]")} data-testid="price-description">
+                {say(viewing.offer.description)}
+              </p>
+            ) : null}
             <div className="mt-4 flex min-h-0 max-w-[760px] flex-col">
               <Breakdown totals={viewingTotals} />
               <p className="mt-2 flex items-baseline justify-between gap-4 border-t border-foreground/60 pt-3" data-testid="price-total">

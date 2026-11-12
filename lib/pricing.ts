@@ -102,6 +102,15 @@ export type QuoteInputs = {
   // track, made to order this season", the colour page's own words, round
   // 9); left out, the detail says less.
   colourName?: string | null;
+  // Round 17 (Keenan, 2026-11-12): one lights line per area (its feet, its
+  // track where it isn't Hat track, its price) in place of the grouped
+  // "Track and lights" line. The customer's link and its signed copy read
+  // it this way; the totals are the same cents either way.
+  perArea?: boolean;
+  // Each area's name on its line; left out, the run's own name. The link
+  // passes lib/quotes/areas.ts customerAreaName, so a quote by area reads
+  // "Front lower" and "Front upper", never two lines both called "Front".
+  areaName?: (run: QuoteRun) => string;
 };
 
 export type QuoteLine = {
@@ -319,11 +328,35 @@ function lightsLines(runs: QuoteRun[], pricePerFt: number): { lines: QuoteLine[]
   return { lines: [...lines, ...tracks, ...flats], cents };
 }
 
+// The lights lines one area at a time (round 17): every run with feet or a
+// flat price, under its own name, its feet and its track when it isn't Hat
+// track ("18 ft, J track"), at what it costs. The same cents per run as
+// lightsLines, so the total never moves.
+export function areaLines(
+  runs: QuoteRun[],
+  pricePerFt: number,
+  nameOf: (run: QuoteRun) => string = (run) => run.name.trim(),
+): { lines: QuoteLine[]; cents: number } {
+  const lines: QuoteLine[] = [];
+  let cents = 0;
+  for (const run of runs) {
+    const feet = cleanFeet(run.feet);
+    const flat = runFlatOf(run);
+    if (feet <= 0 && flat === null) continue;
+    const runCents = runLightsCents(run, pricePerFt);
+    cents += runCents;
+    const track = runTrack(run);
+    const parts = [feet > 0 ? `${feet} ft` : null, track !== "hat" ? TRACK_NAMES[track] : null, feet <= 0 && flat !== null ? "Flat price" : null].filter(Boolean);
+    lines.push({ label: nameOf(run).trim() || "Area", detail: parts.join(", ") || null, amount: toDollars(runCents) });
+  }
+  return { lines, cents };
+}
+
 export function priceQuote(inputs: QuoteInputs): QuoteTotals {
   const feet = totalFeet(inputs.runs);
   const lines: QuoteLine[] = [];
 
-  const lights = lightsLines(inputs.runs, inputs.pricePerFt);
+  const lights = inputs.perArea ? areaLines(inputs.runs, inputs.pricePerFt, inputs.areaName) : lightsLines(inputs.runs, inputs.pricePerFt);
   const trackCents = lights.cents;
   lines.push(...lights.lines);
 

@@ -275,6 +275,8 @@ export function deckWordIssues(words: DeckWords, warrantyText?: string): DeckWor
   const lines = linesUpFrontIssue(words.warrantyLinesUpFront, warrantyText);
   if (lines) errors[LINES_UP_FRONT_KEY] = lines;
   for (const key of DECK_LINE_KEYS) {
+    // A retired line isn't on any screen or in Settings, so it never blocks a save.
+    if (LINE_SPECS[key].retired) continue;
     const issue = lineIssue(key, words.lines[key]);
     if (issue) errors[lineKey(key)] = issue;
   }
@@ -1116,7 +1118,7 @@ export const PAGE_HELP: Record<WordsPageKey, string> = {
   whites_first:
     "Stands in for the light picker when there is neither a roofline trace nor a mockup, so “most nights, warm white” still lands. Once you’ve confirmed how warm the lights’ own white is, you can add “so warm white looks warm”. Each light has one white of its own, so don’t claim both whites are true whites.",
   next_steps:
-    "The last page, at every meeting. Its four steps, the recap of their choice and the closing line are the lines under What happens next below; “No payment until your install is complete.” is always step 4, word for word. What we’ll need is behind its button. No durations or “before Christmas”.",
+    "The last page, at every meeting. The recap of their choice, Where you’re at (the same four steps and words as their link, with step 2 lit once they say yes, and your line under them), the install day with Pick a day, and the closing line are the lines under What happens next below. What we’ll need is behind its button. No durations or “before Christmas”.",
 };
 
 // What Keenan reads beside the built pages' lines.

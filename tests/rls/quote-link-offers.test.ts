@@ -88,7 +88,8 @@ const FULL_WRAP = { id: "full", name: "Full wrap", runs: [0, 1, 2] };
 // What an offer may carry to the page: its id, name and runs, and (with
 // the meeting's box counts, round 9 part 2) its own box count. Never a
 // price, a cost or a note.
-const OFFER_KEYS = ["boxes", "id", "name", "runs", "upper_access"];
+// Round 17: the "Lead with this one" star and Keenan's description.
+const OFFER_KEYS = ["boxes", "id", "name", "runs", "upper_access", "lead", "description"];
 
 // An offer as compared here: id, name and runs, with a box count only when
 // it has one, so the checks hold before and after the box counts arrive.
@@ -145,7 +146,8 @@ const PAGE_KEYS = [
   "valid_until",
   "warranty",
 ];
-const PAGE_KEYS_PART_TWO = ["next_steps"];
+// Round 17: where they're at (the site visit and Installed).
+const PAGE_KEYS_PART_TWO = ["next_steps", "progress"];
 
 // Calgary's date the way the app works it out: UTC-6 for good since
 // Alberta stopped changing clocks on 2026-11-01 (see lib/time.ts).

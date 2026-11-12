@@ -1,11 +1,14 @@
 "use client";
 
-import { Check, Loader2, Maximize2, MessageSquare, Phone, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Check, ChevronDown, Loader2, Maximize2, MessageSquare, Phone, X } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { bookCustom, bookInstall, recordVisit, saveSelection, signAgreement } from "@/app/q/[token]/actions";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
 import { Disclosure } from "@/components/quote-link/disclosure";
 import { AboutYourTrack, AgreementSection, BuildYourOwn, BuildYourOwnRow, LinkDocuments, type SignOutcome } from "@/components/quote-link/link-extras";
+import { ChristmasBanner } from "@/components/quote-link/christmas-banner";
+import { RooflineTracker } from "@/components/quote-link/roofline-tracker";
+import { trackerSteps } from "@/lib/quote-link/tracker";
 import { PointIconMark } from "@/components/quote-link/point-icon";
 import { ClosedQuote, ContactButtons } from "@/components/quote-link/quote-shell";
 import { DialogPanel } from "@/components/ui/dialog-panel";
@@ -14,7 +17,6 @@ import { CUSTOMER_OFFER_ID, feetWords, isCustomerOffer, offerFeet, type PricedOf
 import { fillLine } from "@/lib/deck";
 import {
   buildableRuns,
-  christmasSeason,
   customerChoice,
   customerOffer,
   customOption,
@@ -28,11 +30,10 @@ import {
   lineAmount,
   linkLooks,
   linkOffers,
-  nextStepsFor,
   offerChoice,
   offerPicture,
   openingOffer,
-  otherColoursLine,
+  colourSectionLines,
   phoneHref,
   priceHoldPassed,
   seeItPicture,
@@ -41,6 +42,7 @@ import {
   type CustomerQuote,
   type LinkPicture,
 } from "@/lib/quote-link/view";
+import { christmasBanner, trackColourKind } from "@/lib/quote-link/christmas";
 import { calgaryDateOf, formatFullDate, formatLongDay } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -129,6 +131,35 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   // in the price below, goes back to that option's picture.
   const [look, setLook] = useState<string | null>(null);
   const seeIt = showsSeeIt(view.pictures, shown.length);
+  // Round 17: See the breakdown, inside the picked offer's card (or under
+  // Build your own); opening another card's picks that offer.
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+  // The card they tapped stays put on screen when a breakdown above it
+  // closes (round 17 critique).
+  const holdInPlace = useHoldInPlace();
+  const openBreakdown = (id: string) => {
+    if (sending) return;
+    if (building || selected?.offer.id !== id) {
+      choose(id);
+      setBreakdownOpen(true);
+      return;
+    }
+    setBreakdownOpen((open) => !open);
+  };
+  // Round 17: their track colour's lines; a rush fee only when charged.
+  const colourLines = colourSectionLines({
+    words,
+    colourName: quote.trackColourName,
+    custom: quote.trackCustom,
+    timing: quote.colourTiming,
+    rushFee: quote.rushFee,
+  });
+  // Round 17: the Christmas banner, by the date for their own track colour.
+  const banner = christmasBanner({
+    today: view.today,
+    christmas: view.christmas,
+    track: trackColourKind({ name: quote.trackColourName, custom: quote.trackCustom }),
+  });
   // On a laptop the picture gets its own column (2026-11-12).
   const laptopPicture = Boolean(view.mockupUrl) || (seeIt && selected !== null);
   const totals: QuoteTotals | null = selected?.totals ?? null;
@@ -140,7 +171,17 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   const atMinimum = Boolean(totals?.minimumApplied) && minimum !== null;
   const holdPassed = priceHoldPassed(view.validUntil, view.today);
   const everyLines = useMemo(() => shown.flatMap((priced) => (priced.totals ? [priced.totals.lines] : [])), [shown]);
-  const steps = nextStepsFor(view);
+  // Round 17: where they're at. Step 2 is done once they book, sign, or
+  // Keenan marks the quote accepted.
+  const tracker = trackerSteps({
+    words,
+    chosen: booked !== null || Boolean(view.agreement?.signed) || quote.accepted,
+    sign: view.agreement !== null,
+    siteVisitOn: view.progress.siteVisitOn,
+    siteVisitDone: view.progress.siteVisitDone,
+    installOn: view.nextSteps.installOn,
+    installed: view.progress.installed,
+  });
 
   const [phase, setPhase] = useState<"quote" | "confirm" | "sending" | "thanks" | "closed">("quote");
   const [thanks, setThanks] = useState<{ option: string; total: string; preview: boolean } | null>(null);
@@ -244,6 +285,32 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
     );
   }
 
+  // The picked offer's breakdown (round 17), inside its card once opened:
+  // every area, then the box, upper access, any discount and the total.
+  const breakdown =
+    selected && totals ? (
+      <>
+        <h3 className="sr-only" data-testid="whats-in">
+          {fillLine(words.whats_in, { name: nameInSentence })}
+        </h3>
+        <Breakdown
+          every={everyLines}
+          current={totals.lines}
+          beforeMinimum={totals.beforeMinimum}
+          subtotal={totals.subtotal}
+          gstEnabled={quote.gstEnabled}
+        />
+        <div className="quote-row" data-shown={atMinimum} aria-hidden={!atMinimum}>
+          <div>
+            {/* Keenan's words, at the total; the box keeps it calm, never red. */}
+            <div className="mt-3 rounded-md border px-4 py-3" data-testid="minimum-note">
+              {minimum ? <MinimumWords minimum={minimum} /> : null}
+            </div>
+          </div>
+        </div>
+      </>
+    ) : null;
+
   const matchesBooked =
     booked !== null && selected !== null && booked.offer === selected.offer.id && (!building || sameRuns(savedBuild, buildRuns));
   const textHref = smsWithBody(view.company.phone, `Hi Keenan, a question about the quote for ${view.address}: `);
@@ -284,12 +351,19 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
 
   return (
     <>
+      {/* Round 17: the Christmas banner, at the very top, full width. */}
+      {banner ? <ChristmasBanner banner={banner} /> : null}
       <main className={cn("mx-auto flex max-w-xl flex-col pb-36", laptopPicture ? LAPTOP_PAGE : LAPTOP_SINGLE)} data-testid="quote-live">
+        {/* Round 17: where they're at, near the top (on a laptop, the full
+            width above the top section). */}
+        <RooflineTracker steps={tracker} title={words.tracker_title} pay={words.tracker_pay} closedUntilChosen className="px-5 pt-6 pb-3 lg:pt-8 lg:pb-2" />
         <div className={laptopPicture ? LAPTOP_TOP : "contents"} data-testid="laptop-top">
-        {/* 1. Their house and the price of the option on screen. On a
-            laptop See it on your house takes the picture's place. */}
-        {view.mockupUrl ? (
-          <div className={seeIt ? "lg:hidden" : cn(AREA.pic, "lg:px-5")}>
+        {/* 1. Their house and the price of the option on screen. With See
+            it on your house, it takes the picture's place (round 17: on a
+            phone too, so the house shows once, with its Looks, right under
+            the price). */}
+        {view.mockupUrl && !seeIt ? (
+          <div className={cn(AREA.pic, "lg:px-5")}>
             <Mockup
               url={view.mockupUrl}
               caption={selected && leavesRunsOut(quote.runs.length, selected.offer.runs) ? words.link_mockup_caption : null}
@@ -336,28 +410,20 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
               {customerChoiceInSentence(booked.option)}. Keenan will be in touch {inTouchAbout(view.nextSteps.installOn)}.
             </p>
           ) : null}
-
-          {/* 2. A reason to act now, while Keenan has it on (September 1 to November 30). */}
-          {view.christmas ? (
-            <section aria-label="Christmas" className="mt-6 bg-accent px-5 py-5 lg:mx-5 lg:rounded-md" data-testid="quote-christmas">
-              <p className="text-base font-semibold text-pretty">{view.christmas.title}</p>
-              {view.christmas.text ? <p className="mt-1 text-base text-pretty">{view.christmas.text}</p> : null}
-            </section>
-          ) : null}
         </section>
 
-        {/* 3. What makes it worth it, in Keenan's words from Settings. */}
-        <ProductPoints points={view.productPoints} className={laptopPicture ? "lg:hidden" : undefined} />
-
-        {/* 4. See it on your house (round 13): one picture, the Looks and
+        {/* 3. See it on your house (round 13): one picture, the Looks and
             the Options under it. Tapping an option here picks it in the
-            price below; picking one there swaps the picture. */}
+            price below; picking one there swaps the picture. Round 17:
+            right under the price on a phone, so it's easy to spot; beside
+            the offers on a laptop. */}
         {seeIt && selected ? (
           <SeeItOnYourHouse
             pictures={view.pictures}
             offers={shown}
             selectedId={selected.offer.id}
             selectedName={name}
+            wholeHouse={!leavesRunsOut(quote.runs.length, selected.offer.runs)}
             look={look}
             caption={leavesRunsOut(quote.runs.length, selected.offer.runs) ? words.link_mockup_caption : null}
             disabled={sending}
@@ -366,6 +432,9 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
             className={AREA.pic}
           />
         ) : null}
+
+        {/* 4. What makes it worth it, in Keenan's words from Settings. */}
+        <ProductPoints points={view.productPoints} className={laptopPicture ? "lg:hidden" : undefined} />
 
         {/* 5. Your options: a row per option to pick from, then what's in
             it, line by line. With one option and no scene, its picture
@@ -390,38 +459,58 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
                 </Disclosure>
               </div>
 
-              {many ? (
-                <fieldset className="mt-4" data-testid="option-rows">
-                  <legend className="sr-only">Your options</legend>
-                  {/* 12 px between rows: room for the meeting's tag, which
-                      sits on its row's top edge. */}
-                  <div className="flex flex-col gap-3">
-                    {shown.map((priced) => (
+              {/* Round 17: each offer a card (name, description, feet, price)
+                  with See the breakdown inside it; the breakdown is the
+                  picked offer's, so opening another card's picks it. */}
+              <fieldset className="mt-4" data-testid="option-rows">
+                <legend className="sr-only">{many ? "Your options" : "Your price"}</legend>
+                {/* 12 px between rows: room for the meeting's tag, which
+                    sits on its row's top edge. */}
+                <div className="flex flex-col gap-3">
+                  {shown.map((priced) => {
+                    const picked = !building && priced.offer.id === selected.offer.id;
+                    return (
                       <OptionRow
                         key={priced.offer.id}
                         priced={priced}
                         runs={quote.runs}
-                        selected={!building && priced.offer.id === selected.offer.id}
+                        selected={many && picked}
+                        radio={many}
                         meeting={priced.offer.id === quote.meetingOffer}
                         meetingTag={words.link_meeting_tag}
                         feetLine={words.price_feet}
                         gstEnabled={quote.gstEnabled}
                         disabled={sending}
-                        onChoose={choose}
-                      />
-                    ))}
-                    {canBuild ? (
-                      <BuildYourOwnRow
-                        title={words.link_build_title}
-                        selected={building}
-                        totals={building ? totals : null}
-                        gstEnabled={quote.gstEnabled}
-                        disabled={sending}
-                        onChoose={startBuilding}
-                      />
-                    ) : null}
-                  </div>
-                  {building ? (
+                        onChoose={(id, row) => {
+                          holdInPlace(row);
+                          choose(id);
+                        }}
+                        breakdownOpen={breakdownOpen && picked}
+                        onBreakdown={(row) => {
+                          holdInPlace(row);
+                          openBreakdown(priced.offer.id);
+                        }}
+                      >
+                        {picked ? breakdown : null}
+                      </OptionRow>
+                    );
+                  })}
+                  {canBuild ? (
+                    <BuildYourOwnRow
+                      title={words.link_build_title}
+                      selected={building}
+                      totals={building ? totals : null}
+                      gstEnabled={quote.gstEnabled}
+                      disabled={sending}
+                      onChoose={(row) => {
+                        holdInPlace(row);
+                        startBuilding();
+                      }}
+                    />
+                  ) : null}
+                </div>
+                {building ? (
+                  <>
                     <BuildYourOwn
                       note={words.link_build_note}
                       runs={quote.runs}
@@ -430,34 +519,26 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
                       disabled={sending}
                       onChange={setBuildRuns}
                     />
-                  ) : null}
-                </fieldset>
-              ) : null}
-
-              <h3 className="mt-8 text-lg font-bold text-pretty" data-testid="whats-in">
-                {fillLine(words.whats_in, { name: nameInSentence })}
-              </h3>
-              {/* With a list, each row already gives its option's feet. */}
-              {many ? null : (
-                <p className="mt-1 text-sm text-pretty text-muted-foreground tabular-nums" data-testid="whats-in-feet">
-                  {feetWords(words.price_feet, offerFeet(quote.runs, selected.offer))}
-                </p>
-              )}
-              <Breakdown
-                every={everyLines}
-                current={totals.lines}
-                beforeMinimum={totals.beforeMinimum}
-                subtotal={totals.subtotal}
-                gstEnabled={quote.gstEnabled}
-              />
-              <div className="quote-row" data-shown={atMinimum} aria-hidden={!atMinimum}>
-                <div>
-                  {/* Keenan's words, at the total; the box keeps it calm, never red. */}
-                  <div className="mt-3 rounded-md border px-4 py-3" data-testid="minimum-note">
-                    {minimum ? <MinimumWords minimum={minimum} /> : null}
-                  </div>
-                </div>
-              </div>
+                    <button
+                      type="button"
+                      aria-expanded={breakdownOpen}
+                      aria-controls="offer-breakdown-own"
+                      disabled={sending}
+                      onClick={() => setBreakdownOpen((open) => !open)}
+                      className="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-md text-sm font-semibold outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                      data-testid="option-breakdown-toggle"
+                    >
+                      <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform duration-200 motion-reduce:transition-none", breakdownOpen && "rotate-180")} />
+                      {breakdownOpen ? "Hide the breakdown" : "See the breakdown"}
+                    </button>
+                    {breakdownOpen ? (
+                      <div id="offer-breakdown-own" className="pb-2" data-testid="option-breakdown">
+                        {breakdown}
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
+              </fieldset>
               <p className="mt-5 text-base text-pretty" data-testid="quote-includes">
                 {words.price_includes}
               </p>
@@ -493,16 +574,27 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
               Your colour: {quote.trackColourName}.
             </p>
           ) : null}
-          <p className="mt-2 text-pretty" data-testid="quote-colour-stock">
-            {words.colour_stock}
-          </p>
-          <p className="mt-2 text-pretty" data-testid="quote-colour-rush">
-            {otherColoursLine({ season: christmasSeason(view.today), rushFee: quote.rushFee, rush: quote.colourTiming === "rush" })}
-          </p>
+          {colourLines.made ? (
+            <>
+              <p className="mt-2 text-pretty" data-testid="quote-colour-made">
+                {colourLines.made}
+              </p>
+              <p className="mt-2 text-pretty" data-testid="quote-colour-timing">
+                {colourLines.timing}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="mt-2 text-pretty" data-testid="quote-colour-stock">
+                {colourLines.stock}
+              </p>
+              <p className="mt-2 text-pretty" data-testid="quote-colour-other">
+                {colourLines.other}
+              </p>
+            </>
+          )}
         </section>
 
-        {/* 6. What happens next: the meeting's four steps, in its words. */}
-        <NextSteps steps={steps} whatWeNeed={view.nextSteps.whatWeNeed} />
         </div>
 
         {/* Take 3: what Keenan ticked or uploaded for them, then the
@@ -527,6 +619,8 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
         {/* 7. Tap to open, closed until tapped. See our work leads once
             there are photos; until then it is hidden. */}
         <section aria-label="More about your install" className="mt-12 border-t" data-testid="quote-more">
+          {/* Round 17: What we'll need moved here from the old four steps. */}
+          {view.nextSteps.whatWeNeed ? <WhatWeNeed text={view.nextSteps.whatWeNeed} variant="row" /> : null}
           {view.galleryUrls.length > 0 ? (
             <Disclosure title="See our work" meta={`${view.galleryUrls.length} ${view.galleryUrls.length === 1 ? "photo" : "photos"}`} testId="quote-gallery">
               <ul className="flex flex-col gap-3">
@@ -557,6 +651,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
         sending={sending}
         slow={slow}
         error={error}
+        summary={selected && totals ? `${name}, ${total}` : null}
         onBook={() => {
           setError(null);
           confirmOpenedAt.current = performance.now();
@@ -630,13 +725,29 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
   const agreed = offerChoice(quote, quote.acceptedOffer);
   // Only the tracks in what was agreed.
   const agreedTracks = agreed ? tracksUsed({ runs: quote.runs, offers: [agreed.offer] }) : [];
+  // Round 17: a house with scenes shows its Looks here too, with the agreed
+  // option's picture first (no Options row: the choice is made).
+  const [look, setLook] = useState<string | null>(null);
+  const seeIt = agreed !== null && linkLooks(view.pictures).length > 0;
+  const laptopPicture = Boolean(view.mockupUrl) || seeIt;
   const textHref = smsWithBody(view.company.phone, `Hi Keenan, a question about the install at ${view.address}: `);
+  // Round 17: where they're at; step 2 is done once Keenan marks it accepted.
+  const tracker = trackerSteps({
+    words,
+    chosen: true,
+    sign: view.agreement !== null,
+    siteVisitOn: view.progress.siteVisitOn,
+    siteVisitDone: view.progress.siteVisitDone,
+    installOn: view.nextSteps.installOn,
+    installed: view.progress.installed,
+  });
 
   return (
     <>
-      <main className={cn("mx-auto flex max-w-xl flex-col pb-36", view.mockupUrl ? LAPTOP_PAGE : LAPTOP_SINGLE)} data-testid="quote-agreed">
-        <div className={view.mockupUrl ? LAPTOP_TOP : "contents"} data-testid="laptop-top">
-        {view.mockupUrl ? (
+      <main className={cn("mx-auto flex max-w-xl flex-col pb-36", laptopPicture ? LAPTOP_PAGE : LAPTOP_SINGLE)} data-testid="quote-agreed">
+        <RooflineTracker steps={tracker} title={words.tracker_title} pay={words.tracker_pay} closedUntilChosen className="px-5 pt-6 pb-3 lg:pt-8 lg:pb-2" />
+        <div className={laptopPicture ? LAPTOP_TOP : "contents"} data-testid="laptop-top">
+        {view.mockupUrl && !seeIt ? (
           <div className={cn(AREA.pic, "lg:px-5")}>
             <Mockup
               url={view.mockupUrl}
@@ -645,7 +756,7 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
             />
           </div>
         ) : null}
-        <section aria-labelledby="quote-for" className={cn("flex flex-col", view.mockupUrl && AREA.head)}>
+        <section aria-labelledby="quote-for" className={cn("flex flex-col", laptopPicture && AREA.head)}>
           <div className="flex flex-col px-5 pt-6 lg:pt-10">
             <Greeting firstName={view.firstName} />
             {agreed ? (
@@ -668,17 +779,35 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
           </div>
         </section>
 
+        {seeIt && agreed ? (
+          <SeeItOnYourHouse
+            pictures={view.pictures}
+            offers={[]}
+            selectedId={agreed.offer.id}
+            selectedName={customerChoice(agreed.name)}
+            wholeHouse={!leavesRunsOut(quote.runs.length, agreed.offer.runs)}
+            look={look}
+            caption={leavesRunsOut(quote.runs.length, agreed.offer.runs) ? words.link_mockup_caption : null}
+            disabled={false}
+            onLook={setLook}
+            onOption={() => {}}
+            className={AREA.pic}
+          />
+        ) : null}
+
         {agreed ? (
-          <section aria-labelledby="whats-in" className={cn("mt-12 px-5", view.mockupUrl && cn(AREA.opts, "lg:mt-10"))}>
+          <section aria-labelledby="whats-in" className={cn("mt-12 px-5", laptopPicture && cn(AREA.opts, "lg:mt-10"))}>
             <h2 id="whats-in" className="text-xl font-bold text-pretty" data-testid="whats-in">
               {fillLine(words.whats_in, { name: isCustomerOffer(agreed.offer) ? customerChoiceInSentence(agreed.name) : agreed.name })}
             </h2>
-            <OptionPicture
-              pictures={view.pictures}
-              offerId={agreed.offer.id}
-              name={customerChoice(agreed.name)}
-              caption={leavesRunsOut(quote.runs.length, agreed.offer.runs) ? words.link_mockup_caption : null}
-            />
+            {seeIt ? null : (
+              <OptionPicture
+                pictures={view.pictures}
+                offerId={agreed.offer.id}
+                name={customerChoice(agreed.name)}
+                caption={leavesRunsOut(quote.runs.length, agreed.offer.runs) ? words.link_mockup_caption : null}
+              />
+            )}
             <p className="mt-4 text-sm text-pretty text-muted-foreground tabular-nums" data-testid="whats-in-feet">
               {feetWords(words.price_feet, offerFeet(quote.runs, agreed.offer))}
             </p>
@@ -795,80 +924,138 @@ function Money({ subtotal, gstEnabled }: { subtotal: number; gstEnabled: boolean
 // alone. The meeting's choice carries a small navy tag on the row's top
 // edge, like the iPad's "Your choice", so it adds no height. A native radio
 // underneath, so arrow keys and screen readers work as they expect.
+// One offer on the link (round 17, Keenan, 2026-11-12): its name and price,
+// Keenan's description, the feet ("165 ft of lights"), then See the
+// breakdown, which opens inside the card to every area (its feet, its track
+// where it isn't Hat track, its price) with the box, upper access, any
+// discount and the total below. The card is a radio row to pick from when
+// there is more than one; the breakdown shown is the picked offer's, so
+// opening another card's picks it.
 function OptionRow({
   priced,
   runs,
   selected,
+  radio,
   meeting,
   meetingTag,
   feetLine,
   gstEnabled,
   disabled,
   onChoose,
+  breakdownOpen,
+  onBreakdown,
+  children,
 }: {
   priced: PricedOffer;
   runs: QuoteRun[];
   selected: boolean;
+  // False for a quote with one offer: nothing to pick, the card just reads.
+  radio: boolean;
   meeting: boolean;
   meetingTag: string;
   feetLine: string;
   gstEnabled: boolean;
   disabled: boolean;
-  onChoose: (id: string) => void;
+  // Each with the card's own element, so the page can keep it in place.
+  onChoose: (id: string, row: HTMLElement | null) => void;
+  breakdownOpen: boolean;
+  onBreakdown: (row: HTMLElement | null) => void;
+  // The breakdown itself, for the picked card while it is open.
+  children?: React.ReactNode;
 }) {
+  const row = useRef<HTMLDivElement>(null);
   const { offer, totals } = priced;
   if (!totals) return null;
-  return (
-    <label
-      className={cn(
-        "relative flex min-h-11 cursor-pointer flex-col gap-0.5 rounded-md transition-colors duration-150",
-        "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
-        // 14 px of border and padding on top (clear of the meeting's tag)
-        // and 10 below, selected or not, so a row whose coverage takes two
-        // lines stays within 88 px and choosing one never moves the others.
-        selected
-          ? "border-2 border-navy px-[0.8125rem] pt-3 pb-2"
-          : "border border-border px-[0.875rem] pt-[0.8125rem] pb-[0.5625rem] hover:bg-muted",
-      )}
-      data-testid="option-row"
-      data-offer={offer.id}
-      data-selected={selected}
-    >
-      <input
-        type="radio"
-        name="quote-option"
-        value={offer.id}
-        checked={selected}
-        disabled={disabled}
-        onChange={() => onChoose(offer.id)}
-        className="sr-only"
-      />
-      <span className="flex items-center gap-3">
+  const regionId = `offer-breakdown-${offer.id}`;
+  const body = (
+    <span className="flex items-start gap-3">
+      {radio ? (
         <span
           aria-hidden="true"
           className={cn(
-            "flex size-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-150",
+            "mt-px flex size-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-150",
             selected ? "border-navy bg-navy" : "border-input bg-background",
           )}
         >
           {selected ? <span className="size-2.5 rounded-full bg-white" /> : null}
         </span>
-        <span className="line-clamp-2 min-w-0 flex-1 text-base leading-snug font-semibold">{offer.name}</span>
-        <span className="shrink-0 text-lg leading-tight font-bold whitespace-nowrap tabular-nums" data-testid="option-total">
-          {formatMoney(totals.subtotal)}
-          {gstEnabled ? (
-            <>
-              {" "}
-              <span className="text-xs font-semibold text-muted-foreground">+ GST</span>
-            </>
-          ) : null}
+      ) : null}
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="flex items-baseline justify-between gap-3">
+          <span className="line-clamp-2 min-w-0 text-base leading-snug font-semibold">{offer.name}</span>
+          <span className="shrink-0 text-lg leading-tight font-bold whitespace-nowrap tabular-nums" data-testid="option-total">
+            {formatMoney(totals.subtotal)}
+            {gstEnabled ? (
+              <>
+                {" "}
+                <span className="text-xs font-semibold text-muted-foreground">+ GST</span>
+              </>
+            ) : null}
+          </span>
+        </span>
+        {offer.description ? (
+          <span className="text-[0.9375rem] leading-snug text-pretty" data-testid="option-description">
+            {offer.description}
+          </span>
+        ) : null}
+        {/* The feet: what they compare the options by (round 16). */}
+        <span className="text-sm leading-[1.3] text-muted-foreground tabular-nums" data-testid="option-feet">
+          {feetWords(feetLine, offerFeet(runs, offer))}
         </span>
       </span>
-      {/* The feet: what they compare the options by (round 16: no list of
-          areas, the same as Your price in the meeting). */}
-      <span className="text-sm leading-[1.3] text-muted-foreground tabular-nums" data-testid="option-feet">
-        {feetWords(feetLine, offerFeet(runs, offer))}
-      </span>
+    </span>
+  );
+  return (
+    <div
+      ref={row}
+      className={cn("relative rounded-md transition-colors duration-150", selected ? "border-2 border-navy" : "border border-border")}
+      data-testid="option-row"
+      data-offer={offer.id}
+      data-selected={selected}
+    >
+      {radio ? (
+        <label
+          className={cn(
+            "flex min-h-11 cursor-pointer flex-col rounded-md",
+            "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
+            // 14 px on top, clear of the meeting's tag, selected or not.
+            selected ? "px-[0.8125rem] pt-3" : "px-[0.875rem] pt-[0.8125rem] hover:bg-muted",
+          )}
+        >
+          <input
+            type="radio"
+            name="quote-option"
+            value={offer.id}
+            checked={selected}
+            disabled={disabled}
+            onChange={() => onChoose(offer.id, row.current)}
+            className="sr-only"
+          />
+          {body}
+        </label>
+      ) : (
+        <div className={selected ? "px-[0.8125rem] pt-3" : "px-[0.875rem] pt-[0.8125rem]"}>{body}</div>
+      )}
+      <button
+        type="button"
+        aria-expanded={breakdownOpen}
+        aria-controls={regionId}
+        disabled={disabled}
+        onClick={() => onBreakdown(row.current)}
+        className={cn(
+          "inline-flex min-h-11 items-center gap-1.5 rounded-md text-sm font-semibold outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",
+          radio ? "ml-[3.125rem]" : "ml-[0.875rem]",
+        )}
+        data-testid="option-breakdown-toggle"
+      >
+        <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform duration-200 motion-reduce:transition-none", breakdownOpen && "rotate-180")} />
+        {breakdownOpen ? "Hide the breakdown" : "See the breakdown"}
+      </button>
+      {breakdownOpen && children ? (
+        <div id={regionId} className={cn("pr-[0.875rem] pb-4", radio ? "pl-[3.125rem]" : "pl-[0.875rem]")} data-testid="option-breakdown">
+          {children}
+        </div>
+      ) : null}
       {/* 18 px tall, centred on the top border. */}
       {meeting ? (
         <span
@@ -878,7 +1065,7 @@ function OptionRow({
           {meetingTag}
         </span>
       ) : null}
-    </label>
+    </div>
   );
 }
 
@@ -922,44 +1109,6 @@ function ProductPoints({ points, className, laptop = false }: { points: Customer
           </li>
         ))}
       </ul>
-    </section>
-  );
-}
-
-// What happens next: four numbered steps, the same as the meeting's last
-// page, with What we'll need behind a tap.
-function NextSteps({ steps, whatWeNeed }: { steps: ReturnType<typeof nextStepsFor>; whatWeNeed: string | null }) {
-  return (
-    <section aria-labelledby="next-steps" className="mt-12 px-5" data-testid="quote-next-steps">
-      <h2 id="next-steps" className="text-xl font-bold">
-        What happens next
-      </h2>
-      <ol className="mt-5 flex flex-col gap-5">
-        {steps.map((step, at) => (
-          <li key={step.key} className="flex gap-4" data-testid={`next-step-${step.key}`}>
-            <span
-              aria-hidden="true"
-              className="flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-navy text-sm font-bold tabular-nums"
-            >
-              {at + 1}
-            </span>
-            <div className="min-w-0 pt-1">
-              <p className="font-semibold">{step.label}</p>
-              <p className={cn("mt-0.5 text-base text-pretty", step.key === "pay" && "font-semibold")}>
-                {step.key === "colour" && step.done ? (
-                  <Check aria-hidden="true" className="mr-1.5 -mt-0.5 inline size-4 text-navy" strokeWidth={2.5} />
-                ) : null}
-                {step.text}
-              </p>
-            </div>
-          </li>
-        ))}
-      </ol>
-      {whatWeNeed ? (
-        <div className="mt-6">
-          <WhatWeNeed text={whatWeNeed} variant="inline" />
-        </div>
-      ) : null}
     </section>
   );
 }
@@ -1188,7 +1337,10 @@ function PartsExplained() {
 // The bar fixed to the bottom: Call, Text, and the one gold button on the
 // page. Once they've asked to book the option on screen, it says so
 // instead; after the quote is accepted, or with no option to book, it
-// holds Call and Text alone.
+// holds Call and Text alone. On a laptop (round 17) its middle names the
+// option on screen and its price, "Full wrap, $5,136", following what they
+// pick (Build your own and a Black Friday price included); a phone's bar
+// stays as it is.
 function BookBar({
   callHref,
   textHref,
@@ -1199,6 +1351,7 @@ function BookBar({
   slow,
   error,
   onBook,
+  summary = null,
 }: {
   callHref: string;
   textHref: string;
@@ -1209,6 +1362,7 @@ function BookBar({
   slow: boolean;
   error: string | null;
   onBook: () => void;
+  summary?: string | null;
 }) {
   const contact = cn(
     "inline-flex h-12 shrink-0 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-base font-semibold outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring lg:px-5",
@@ -1234,8 +1388,19 @@ function BookBar({
           <MessageSquare aria-hidden="true" className="size-[1.125rem]" />
           Text
         </a>
+        {summary ? (
+          // The price is already read out where it changes, so this repeat
+          // of it stays quiet for screen readers.
+          <p
+            aria-hidden="true"
+            className="hidden min-w-0 flex-1 truncate px-4 text-center text-lg font-semibold tabular-nums lg:block"
+            data-testid="bar-summary"
+          >
+            {summary}
+          </p>
+        ) : null}
         {!canBook ? null : booked ? (
-          <p className="min-w-0 flex-1 text-right text-sm text-pretty lg:text-base" data-testid="bar-requested">
+          <p className="min-w-0 flex-1 text-right text-sm text-pretty lg:w-80 lg:flex-none lg:text-base" data-testid="bar-requested">
             <span className="block font-semibold">Install requested</span>
             <span className="block text-muted-foreground">Keenan will be in touch.</span>
           </p>
@@ -1336,6 +1501,7 @@ function SeeItOnYourHouse({
   offers,
   selectedId,
   selectedName,
+  wholeHouse,
   look,
   caption,
   disabled,
@@ -1348,6 +1514,8 @@ function SeeItOnYourHouse({
   offers: PricedOffer[];
   selectedId: string;
   selectedName: string;
+  // The option covers every run, so the Main shows exactly it.
+  wholeHouse: boolean;
   look: string | null;
   caption: string | null;
   disabled: boolean;
@@ -1358,6 +1526,38 @@ function SeeItOnYourHouse({
   const onScreen = seeItPicture(pictures, selectedId, look);
   if (!onScreen) return null;
   const lookOn = onScreen.kind === "look" ? onScreen.picture.name.trim() : null;
+  // Round 17: full screen keeps the looks. Its row is the option's own
+  // picture (when there is one) and each look, one always on, so they can
+  // flip through their house in every look without closing it.
+  const optionPictureNow = offerPicture(pictures, selectedId);
+  const viewerLooks: ViewerLooks | undefined =
+    looks.length > 0
+      ? {
+          items: [
+            // Named for the option when the picture shows exactly it (its
+            // own, or the Main for an option with every run); the Main
+            // standing in for an option that leaves runs out shows every
+            // run lit, so it reads "Your house" (round 17 critique).
+            ...(optionPictureNow
+              ? [
+                  {
+                    key: OPTION_PICTURE,
+                    label: optionPictureNow.own || wholeHouse ? selectedName : "Your house",
+                    on: lookOn === null,
+                    url: optionPictureNow.picture.url,
+                  },
+                ]
+              : []),
+            ...looks.map((picture) => ({
+              key: picture.name.trim(),
+              label: picture.name.trim(),
+              on: lookOn === picture.name.trim(),
+              url: picture.url,
+            })),
+          ],
+          onPick: (key) => onLook(key === OPTION_PICTURE ? null : key),
+        }
+      : undefined;
   const chip = (on: boolean) =>
     cn(
       "inline-flex min-h-12 items-center rounded-md px-4 text-base font-semibold outline-none transition-colors duration-150",
@@ -1377,9 +1577,9 @@ function SeeItOnYourHouse({
         data-look={lookOn ?? undefined}
       >
         <Mockup
-          key={onScreen.picture.url}
           url={onScreen.picture.url}
           caption={onScreen.kind === "own" ? null : caption}
+          looks={viewerLooks}
           alt={
             lookOn
               ? `Your house in the ${lookOn} look, as a mockup`
@@ -1418,15 +1618,17 @@ function SeeItOnYourHouse({
           </div>
         </div>
       ) : null}
+      {offers.length > 0 ? (
       <div role="group" aria-labelledby="see-it-options" className="mt-4" data-testid="see-it-options">
         <p id="see-it-options" className="text-sm font-semibold text-muted-foreground">
           {offers.length > 1 ? "Options" : "Your option"}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           {offers.map((priced) => {
-            // Pressed while its picture is the one on screen: a look takes
-            // the picture, the price below keeps the option.
-            const on = lookOn === null && priced.offer.id === selectedId;
+            // Pressed while it is their option, whatever look is on screen,
+            // so this row, the card below and the bar always agree (round 17
+            // critique; a look takes the picture, never the choice).
+            const on = priced.offer.id === selectedId;
             return (
               <button
                 key={priced.offer.id}
@@ -1444,6 +1646,7 @@ function SeeItOnYourHouse({
           })}
         </div>
       </div>
+      ) : null}
     </section>
   );
 }
@@ -1497,6 +1700,7 @@ function Mockup({
   inset = false,
   laptopFrame = false,
   ids = HERO_IDS,
+  looks,
 }: {
   url: string;
   caption: string | null;
@@ -1506,9 +1710,14 @@ function Mockup({
   // The hero, full bleed on a phone, framed like the others on a laptop.
   laptopFrame?: boolean;
   ids?: { image: string; caption: string; viewer: string };
+  // Round 17: the looks to flip through in full screen.
+  looks?: ViewerLooks;
 }) {
   const [open, setOpen] = useState(false);
-  const [broken, setBroken] = useState(false);
+  // The picture that failed, by its address: a new picture (another look)
+  // starts fresh, and full screen stays open while it changes.
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
+  const broken = brokenUrl === url;
   const opener = useRef<HTMLButtonElement>(null);
   const picture = useRef<HTMLImageElement>(null);
   const close = useCallback(() => {
@@ -1519,11 +1728,16 @@ function Mockup({
   // here; check once on arrival.
   useEffect(() => {
     const image = picture.current;
-    if (image && image.complete && image.naturalWidth === 0) setBroken(true);
+    if (image && image.complete && image.naturalWidth === 0) setBrokenUrl(image.getAttribute("src"));
   }, []);
-  if (broken) return <PictureNeedsRefresh />;
+  // A picture that fails swaps the opener for the refresh note, but full
+  // screen stays mounted: open, it shows its own note (and a look that
+  // still loads can be picked); closed, nothing reopens it by itself.
   return (
     <figure className="relative">
+      {broken ? (
+        <PictureNeedsRefresh />
+      ) : (
       <button
         ref={opener}
         type="button"
@@ -1541,11 +1755,12 @@ function Mockup({
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- a private photo behind a ten-minute signed link */}
         <img
+          key={url}
           ref={picture}
           src={url}
           alt={alt}
           className={cn("block size-full object-contain", inset && "animate-in fade-in duration-300 motion-reduce:animate-none")}
-          onError={() => setBroken(true)}
+          onError={() => setBrokenUrl(url)}
           data-testid={ids.image}
         />
         <span
@@ -1555,14 +1770,40 @@ function Mockup({
           <Maximize2 className="size-5" strokeWidth={1.5} />
         </span>
       </button>
-      {caption ? (
+      )}
+      {caption && !broken ? (
         <figcaption className={cn("pt-2 text-sm text-pretty text-muted-foreground", !inset && "px-5", laptopFrame && "lg:px-0")} data-testid={ids.caption}>
           {caption}
         </figcaption>
       ) : null}
-      <MockupViewer url={url} alt={alt} open={open} onClose={close} testId={ids.viewer} />
+      <MockupViewer url={url} alt={alt} caption={caption} open={open} onClose={close} testId={ids.viewer} looks={looks} />
     </figure>
   );
+}
+
+// Picking a card below an open breakdown closes that breakdown above it,
+// which would pull the card they tapped up the screen by the breakdown's
+// height, its name and price sometimes right off the top (round 17
+// critique). The card is measured as it is tapped and the page scrolled
+// back by however far it moved, before anything is painted. A tap that
+// changes nothing is let go on the next frame.
+function useHoldInPlace() {
+  const held = useRef<{ element: HTMLElement; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const hold = held.current;
+    held.current = null;
+    if (!hold || !hold.element.isConnected) return;
+    const moved = hold.element.getBoundingClientRect().top - hold.top;
+    if (Math.abs(moved) >= 1) window.scrollTo({ top: window.scrollY + moved, behavior: "instant" });
+  });
+  return useCallback((element: HTMLElement | null) => {
+    if (!element) return;
+    const hold = { element, top: element.getBoundingClientRect().top };
+    held.current = hold;
+    requestAnimationFrame(() => {
+      if (held.current === hold) held.current = null;
+    });
+  }, []);
 }
 
 function PictureNeedsRefresh({ className, dark = false }: { className?: string; dark?: boolean }) {
@@ -1601,30 +1842,56 @@ function useFinePointer(): boolean {
   );
 }
 
+// Round 17: the looks in full screen. key OPTION_PICTURE is the option's own
+// picture (or the Main); the others are looks by name.
+const OPTION_PICTURE = "\u0000option";
+type ViewerLooks = { items: { key: string; label: string; on: boolean; url: string }[]; onPick: (key: string) => void };
+
 // A real modal dialog: it sits above the page, keeps focus inside, and
-// Escape closes it. The picture is the one already on the page.
+// Escape closes it. The picture is the one already on the page; with looks
+// (round 17), a row of them along the bottom swaps it in place.
 function MockupViewer({
   url,
   alt,
+  caption = null,
   open,
   onClose,
   testId,
+  looks,
 }: {
   url: string;
   alt: string;
+  // The page's caption ("Our mockup shows every run lit."), kept in full
+  // screen, where they look closest (round 17 critique).
+  caption?: string | null;
   open: boolean;
   onClose: () => void;
   testId: string;
+  looks?: ViewerLooks;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [broken, setBroken] = useState(false);
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
+  const broken = brokenUrl === url;
   const mouse = useFinePointer();
+  // The looks as they stand when full screen opens, read without making the
+  // dialog's effect run again on every pick.
+  const looksRef = useRef(looks);
+  useEffect(() => {
+    looksRef.current = looks;
+  });
   useEffect(() => {
     const element = dialog.current;
     if (!element) return;
     if (open && !element.open) element.showModal();
     if (!open && element.open) element.close();
     if (!open) return;
+    // The looks' pictures start loading as full screen opens, so flipping
+    // through them is quick (only then: a phone on data never fetches a
+    // look nobody asked to see).
+    for (const item of looksRef.current?.items ?? []) {
+      const image = new Image();
+      image.src = item.url;
+    }
     // The page behind stays put while they zoom.
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -1651,17 +1918,49 @@ function MockupViewer({
             </div>
           ) : (
             <PinchZoom
+              key={url}
               src={url}
               alt={alt}
               crossOrigin={null}
-              onError={() => setBroken(true)}
+              onError={() => setBrokenUrl(url)}
               // On a computer (2026-11-12): a click closes it, the wheel or
               // a trackpad pinch zooms. A phone keeps tap to zoom only.
               onTap={mouse ? onClose : undefined}
               wheelZoom
             />
           )}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-4 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          {caption && !broken ? (
+            <p className="self-start rounded-md bg-black/60 px-4 py-1.5 text-sm text-pretty text-white" data-testid="viewer-caption">
+              {caption}
+            </p>
+          ) : null}
+          {looks && looks.items.length > 1 ? (
+            <div
+              role="group"
+              aria-label="Looks"
+              className="pointer-events-auto -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]"
+              data-testid="viewer-looks"
+            >
+              {looks.items.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  aria-pressed={item.on}
+                  onClick={() => looks.onPick(item.key)}
+                  className={cn(
+                    "inline-flex h-12 shrink-0 items-center rounded-md px-4 text-base font-semibold whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-gold",
+                    item.on ? "bg-white text-navy" : "border border-white/45 bg-black/60 text-white hover:bg-white/15",
+                  )}
+                  data-testid="viewer-look"
+                  data-look={item.key === OPTION_PICTURE ? "" : item.key}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="flex items-center justify-between gap-4">
             <p className="text-sm text-white/80 pointer-fine:hidden">Pinch or double-tap to zoom.</p>
             <p className="hidden text-sm text-white/80 pointer-fine:block">Scroll or double-click to zoom. Click or press Esc to close.</p>
             <button
@@ -1673,6 +1972,7 @@ function MockupViewer({
               <X aria-hidden="true" className="size-5" />
               Close
             </button>
+          </div>
           </div>
         </div>
       ) : null}

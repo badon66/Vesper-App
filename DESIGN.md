@@ -131,7 +131,7 @@ A two-colour brand, navy and gold, on night-navy surfaces, with white text that 
 - **Night Text** (#f4f1eb) and **Night Muted Text** (#a9b6bf): body and secondary text in the dark theme.
 - **Night Border** (#27404f) and **Night Input** (#5e7a8a): dividers, and the edges of fields, unpicked answers and unticked boxes. Input edges reach 3:1 on every surface (WCAG 1.4.11), so an empty field still reads outdoors.
 - **Day Background** (#ffffff), **Day Secondary** (#e8edf0), **Day Muted** (#f2f4f6), **Day Muted Text** (#4f6270), **Day Accent** (#f6f1e7), **Day Border** (#d5dce1), **Day Input** (#7d8f9b): the light theme.
-- **Warning Red** (#e5675e at night, #b3261e by day): errors, and only errors. A warning that doesn't block (a long drive, a booking that won't line up) gets a neutral border and a bold first line, not red and not gold.
+- **Warning Red** (#e5675e at night, #b3261e by day): errors, and only errors. A warning that doesn't block (a long drive, a booking that won't line up) gets a neutral border and a bold first line, not red and not gold. (The Christmas banner's deep red on the customer's link is decoration Keenan asked for, not this token; see below.)
 
 ### Named Rules
 **The Porch Light Rule.** Gold appears only where the next action is: the primary button, an open time, the held time. Chosen things (an answer, the evening on screen) are marked in Night Text, not gold, and taken things (booked, blocked, closed) go quiet. If two things on a screen compete in gold, one of them is wrong.
@@ -192,15 +192,20 @@ Gently rounded rectangles: 6 px on buttons, fields and time tiles, 8 px on cards
 - 44 px tall, 1 px input stroke, 6 px corners; focus shows the gold ring.
 
 ### Navigation
-- Phone and iPad: a bottom tab bar with New lead as the prominent gold button. 1024 px and wider: a slim left rail with the same items. No top tabs. The owner's Admin (People, Settings, Pay) is a gear in the header, named Admin where there is room, because Meetings made six items too many for a phone's bar (Keenan, 2026-11-02).
+- Phone and iPad: a bottom tab bar with Session as the prominent gold button (Keenan, 2026-11-05; New lead held that place until then, and is now a button at the top of Leads and a smaller one on Session). 1024 px and wider: a slim left rail with the same items. No top tabs. The owner's Admin (People, Settings, Pay) is a gear in the header, named Admin where there is room, because Meetings made six items too many for a phone's bar (Keenan, 2026-11-02).
 
 ### Added by rounds 7 to 11 (refreshed 2026-11-11)
 
-- **The deck (customer facing, iPad).** Always night navy, whatever the device's theme. One idea per page: one full-bleed picture of their own house (never a generic photo in its place) and a few words at 20 px or more; more is one tap away behind a named button. Options on Your price are outlined buttons with the total on the right; the chosen one is a light fill with a tick, never gold. A struck regular price sits beside the deal price in muted text. Only light moves, and only on the picker; Reduce Motion is honoured.
-- **The customer's page (phone).** Always white with navy text and gold for Book my install only; option rows are radio rows with the price on the right; pictures sit in a 3:2 frame with full-screen zoom.
+- **The deck (customer facing, iPad).** Always night navy, whatever the device's theme. One idea per page: one full-bleed picture of their own house (never a generic photo in its place) and a few words at 20 px or more; more is one tap away behind a named button. Options on Your price are outlined buttons with the total on the right; the chosen one is a light fill with a tick, never gold. A struck regular price sits beside the deal price in muted text. Only light moves, and only on the picker (and, from round 17, Where you're at's current step on What happens next); Reduce Motion is honoured.
+- **The customer's page (phone).** Always white with navy text, and gold only for Book my install and the light in About your track's drawings; option rows are radio rows with the price on the right (round 17: each a card, with the description and the feet under the name and See the breakdown opening inside it); pictures sit in a 3:2 frame with full-screen zoom.
 - **Keenan's drawings (owner only).** Strokes only, no fills: a two-storey outline per view in the muted foreground; a measured line solid at 2.25 px with its feet on it; an unmeasured line dashed at 45%; a line an active offer covers in gold at 3.25 px. Hit targets are a 28 px invisible stroke, so a finger lands on the line.
 - **Quiet lines under the header.** The reminder bar (accent background) and the update notice (muted text on the page background, one line, tappable) sit under the header, 44 px tall, and never over a booking sheet or in meeting mode.
 - **Talking points.** A small muted mark in the top right of a deck page; the panel shows only while pressed, after 200 ms, and is never in the tab order.
+
+### Added by round 17 (Keenan, 2026-11-12)
+
+- **The Christmas banner (customer's link).** Keenan's own exception to navy and gold, and the only red and green on the page: a pine green band (#1d4734) with white text, full width right under the navy header with the logo, above Where you're at and the rest of the page. Along its top edge a string of small bulbs on a dark wire (#0e2a1e), red (#e5484d), green (#4fb37f) and warm white (#ffe1a1) in turn, each with a soft glow, twinkle slowly (3.8 s, each on its own beat, so it twinkles rather than blinks); with Reduce Motion they hold still. The days left sit on a small deep red tag (#9e2a2f). It shows only by Keenan's Christmas dates, and never on the accepted page.
+- **Where you're at (the link and the deck's What happens next).** Four lights on a low roofline drawn in the foreground at 30%, each light a 44 px tap target, with the steps' names under them (the open one underlined) and its words in a muted box below. Done and current steps are lit a warm light colour (#e9b65a, edged #c7913a, with a soft glow), never the brand gold, which on the link is kept for Book my install and the light in About your track's drawings; the current step glows gently (2.8 s), holding still with Reduce Motion; later steps are hollow and dim. Everything but the lit bulbs' fill and edge uses the theme's tokens, so it reads on the link's white and the deck's navy alike. On What happens next it is the one thing that moves on its own.
 
 ## Do's and Don'ts
 

@@ -1,17 +1,21 @@
 "use client";
 
-import { ChevronDown, Trash2 } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { ChevronDown, Star, Trash2 } from "lucide-react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 
+import { polishOfferDescription } from "@/app/(app)/app/leads/polish-actions";
 import { OfferPhoto, type OfferPhotos } from "@/components/quotes/quote-editor/offer-photo";
 import { BreakdownList, Choice, MoneyBox, Stepper, useTyping } from "@/components/quotes/quote-editor/parts";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { coverageLine } from "@/lib/meeting/price-screen";
 import { cleanFeet, formatMoney, hasUpperRun, screenTotal, selectRuns, type QuoteRun, type QuoteTotals } from "@/lib/pricing";
 import { areaDisplayName, isGable } from "@/lib/quotes/areas";
-import { automaticUpperAccess, moneyText, offerNameIssue, toggleOfferRun } from "@/lib/quotes/editor";
-import { cleanUpperAccess, isCustomerOffer, OFFER_NAME_EDITOR_MAX, ONE_OFFER_SHOWN, type QuoteOffer } from "@/lib/quotes/offers";
+import { automaticUpperAccess, moneyText, offerDescriptionIssue, offerNameIssue, toggleOfferRun } from "@/lib/quotes/editor";
+import { canLead, cleanUpperAccess, isCustomerOffer, OFFER_DESCRIPTION_MAX, OFFER_NAME_EDITOR_MAX, ONE_OFFER_SHOWN, type QuoteOffer } from "@/lib/quotes/offers";
+import { POLISH_WORDS, polishFacts } from "@/lib/quotes/polish";
 import { cn } from "@/lib/utils";
 
 // One offer in Keenan's quote editor (round 9, the spec 3.7; round 11): its
@@ -25,7 +29,10 @@ import { cn } from "@/lib/utils";
 // nothing. Round 13 (Keenan, 2026-11-11): a "Show to customer" switch, on
 // to start. Off, the card is marked Hidden and the offer shows nowhere the
 // customer looks (Your price, their link); the last shown offer's switch
-// stays on (canHide), because at least one offer is always shown.
+// stays on (canHide), because at least one offer is always shown. Round 17
+// (Keenan, 2026-11-12): "Lead with this one", a star on each shown offer of
+// his, one per quote: the starred offer is listed first and the customer's
+// link opens on it unless they booked one.
 
 export function OfferCard({
   offer,
@@ -41,7 +48,9 @@ export function OfferCard({
   onActivate,
   onChange,
   onShow,
+  onLead,
   onDelete,
+  polishReady = false,
 }: {
   offer: QuoteOffer;
   runs: QuoteRun[];
@@ -61,6 +70,11 @@ export function OfferCard({
   canHide?: boolean;
   // The Show to customer switch (round 13).
   onShow?: (shown: boolean) => void;
+  // Round 17: star this offer (true) or take the star off (false).
+  onLead?: (lead: boolean) => void;
+  // Round 17: the AI key is in the server's environment; Polish is greyed
+  // out until it is, and the description box works as plain text.
+  polishReady?: boolean;
   // Pointer down or focus within the card: it is the active offer.
   onActivate?: () => void;
   onChange: (offer: QuoteOffer) => void;
@@ -68,10 +82,45 @@ export function OfferCard({
 }) {
   const nameId = useId();
   const showId = useId();
+  const descriptionId = useId();
+  const descriptionBox = useRef<HTMLTextAreaElement>(null);
+  // Round 17: the polish's suggestion, or what it said instead. Nothing
+  // here saves: Use or Edit puts the words in the box, and the quote saves
+  // with Save quote as always.
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [polishNote, setPolishNote] = useState<string | null>(null);
+  const [polishing, startPolish] = useTransition();
+  const description = offer.description ?? "";
+  const polish = () => {
+    setPolishNote(null);
+    setSuggestion(null);
+    startPolish(async () => {
+      const result = await polishOfferDescription({ notes: description, facts: polishFacts(offer, runs) }).catch(() => ({
+        ok: false as const,
+        message: POLISH_WORDS.failed,
+      }));
+      if (result.ok) setSuggestion(result.suggestion);
+      else setPolishNote(result.message);
+    });
+  };
+  const takeSuggestion = (edit: boolean) => {
+    if (suggestion === null) return;
+    onChange({ ...offer, description: suggestion });
+    setSuggestion(null);
+    if (edit) {
+      window.requestAnimationFrame(() => {
+        const box = descriptionBox.current;
+        if (!box) return;
+        box.focus();
+        box.setSelectionRange(box.value.length, box.value.length);
+      });
+    }
+  };
   const hidden = offer.hidden === true;
   const [open, setOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const issue = offerNameIssue(offer.name);
+  const descriptionIssue = offerDescriptionIssue(offer.description);
   const coverage = coverageLine(runs, offer);
   const hasFeet = totals !== null && totals.totalFeet > 0;
   const boxes = offer.boxes ?? Math.min(9, Math.max(1, quoteBoxes));
@@ -148,7 +197,7 @@ export function OfferCard({
 
       {onShow ? (
         <div className="flex flex-col">
-          <div className="flex flex-wrap items-center gap-x-3">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1">
             {/* The label is the tap target (48 px); the switch itself is small. */}
             <label htmlFor={showId} className="flex min-h-12 cursor-pointer items-center gap-3 text-sm font-semibold">
               <Switch
@@ -160,18 +209,108 @@ export function OfferCard({
               />
               Show to customer
             </label>
+            {onLead && canLead(offer) ? (
+              <button
+                type="button"
+                aria-pressed={offer.lead === true}
+                disabled={locked}
+                onClick={() => onLead(offer.lead !== true)}
+                className={cn(
+                  "inline-flex min-h-12 items-center gap-2 rounded-md px-1 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+                  offer.lead === true ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+                )}
+                data-testid="offer-lead"
+              >
+                <Star aria-hidden="true" className={cn("size-5 shrink-0", offer.lead === true && "fill-current")} strokeWidth={1.75} />
+                {offer.lead === true ? "Leading with this one" : "Lead with this one"}
+              </button>
+            ) : null}
             {hidden ? (
               <span className="rounded-md border border-foreground px-2 py-0.5 text-xs font-bold tracking-wide uppercase" data-testid="offer-hidden">
                 Hidden
               </span>
             ) : null}
           </div>
+          {offer.lead === true && !hidden ? (
+            <p className="text-xs text-pretty text-muted-foreground" data-testid="offer-lead-note">
+              Listed first, and their link opens on it unless they booked another.
+            </p>
+          ) : null}
           {hidden ? (
             <p className="text-xs text-pretty text-muted-foreground">Not on Your price in the meeting, and not on their link.</p>
           ) : !canHide && !locked ? (
             <p className="text-xs text-muted-foreground" data-testid="offer-show-note">
               {ONE_OFFER_SHOWN}
             </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* Round 17: what customers read under the offer's name on their
+          link (and inside the breakdown at the table). Rough notes are
+          fine: Polish turns them into a suggestion he can use, edit or
+          dismiss. */}
+      {!isCustomerOffer(offer) ? (
+        <div className="flex flex-col gap-2" data-testid="offer-description-block">
+          <label htmlFor={descriptionId} className="text-sm font-semibold text-muted-foreground">
+            Description
+          </label>
+          <Textarea
+            ref={descriptionBox}
+            id={descriptionId}
+            value={description}
+            rows={3}
+            maxLength={OFFER_DESCRIPTION_MAX}
+            placeholder="Rough notes are fine: does the whole front, both gables, best value"
+            disabled={locked}
+            onChange={(event) => onChange({ ...offer, description: event.target.value })}
+            aria-invalid={descriptionIssue ? true : undefined}
+            aria-describedby={descriptionIssue ? `${descriptionId}-issue ${descriptionId}-hint` : `${descriptionId}-hint`}
+            className="min-h-20 text-base"
+            data-testid="offer-description"
+          />
+          {descriptionIssue ? (
+            <p id={`${descriptionId}-issue`} className="text-xs font-semibold text-destructive" data-testid="offer-description-issue">
+              {descriptionIssue}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!polishReady || locked || polishing || description.trim() === ""}
+              aria-busy={polishing}
+              onClick={polish}
+              data-testid="offer-polish"
+            >
+              {polishing ? "Polishing" : "Polish"}
+            </Button>
+            <p id={`${descriptionId}-hint`} className="text-xs text-pretty text-muted-foreground" data-testid="offer-polish-hint">
+              {polishReady ? "Customers read this under the offer's name. Polish suggests a cleaner version; nothing changes until you use it." : POLISH_WORDS.noKey}
+            </p>
+          </div>
+          {polishNote ? (
+            <p role="status" className="text-sm font-semibold text-pretty" data-testid="offer-polish-note">
+              {polishNote}
+            </p>
+          ) : null}
+          {suggestion !== null ? (
+            <div role="status" aria-live="polite" className="flex flex-col gap-3 rounded-md border border-input px-3 py-3" data-testid="offer-suggestion">
+              <p className="text-xs font-semibold text-muted-foreground">Suggestion</p>
+              <p className="text-base text-pretty">{suggestion}</p>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={() => takeSuggestion(false)} data-testid="offer-suggestion-use">
+                  Use
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => takeSuggestion(true)} data-testid="offer-suggestion-edit">
+                  Edit
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setSuggestion(null)} data-testid="offer-suggestion-dismiss">
+                  Dismiss
+                </Button>
+              </div>
+            </div>
           ) : null}
         </div>
       ) : null}

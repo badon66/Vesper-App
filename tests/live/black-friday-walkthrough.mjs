@@ -682,9 +682,13 @@ try {
     await page.goto(A.quoteUrl);
     await settle(page);
     await page.waitForTimeout(800);
+    // Round 17: What's in sits behind See the breakdown on the picked card.
+    await page.locator('[data-testid="option-row"][data-selected="true"] [data-testid="option-breakdown-toggle"]').click();
+    await page.getByTestId("quote-lines").waitFor({ timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(300);
     let rows = await linkRows(page);
     check(
-      "the link opens on Full wrap at $3,532.60, with the Black Friday line in What's in",
+      "the link opens on Full wrap at $3,532.60, with the Black Friday line in its breakdown",
       rows.find((row) => row.selected)?.offer === "full" &&
         (await heroTotal(page)) === FULL_AT_PERCENT &&
         (await dealLineOnLink(page).count()) === 1 &&
@@ -693,12 +697,12 @@ try {
     );
     check("no sideways scroll at 390", (await page.evaluate(() => document.documentElement.scrollWidth)) <= 390);
     await shot(page, "link-390-full-wrap");
-    await page.locator('[data-testid="option-row"][data-offer="front_lower"]').click();
+    await page.locator('[data-testid="option-row"][data-offer="front_lower"] label').click();
     await page.waitForTimeout(800);
     rows = await linkRows(page);
     check("Front lower: $2,500, the minimum", rows.find((row) => row.selected)?.offer === "front_lower" && (await heroTotal(page)) === MINIMUM, `hero ${await heroTotal(page)}`);
     await shot(page, "link-390-front-lower");
-    await page.locator('[data-testid="option-row"][data-offer="full"]').click();
+    await page.locator('[data-testid="option-row"][data-offer="full"] label').click();
     await page.waitForTimeout(800);
     check("back to Full wrap: $3,532.60 again", (await linkRows(page)).find((row) => row.selected)?.offer === "full" && (await heroTotal(page)) === FULL_AT_PERCENT, `hero ${await heroTotal(page)}`);
     await customer.close();
@@ -856,7 +860,7 @@ try {
     await page.waitForTimeout(800);
     check("the second link opens on Front lower at $2,500", (await linkRows(page)).find((row) => row.selected)?.offer === "front_lower" && (await heroTotal(page)) === MINIMUM, `hero ${await heroTotal(page)}`);
     await shot(page, "link-390-dollars-front-lower");
-    await page.locator('[data-testid="option-row"][data-offer="full"]').click();
+    await page.locator('[data-testid="option-row"][data-offer="full"] label').click();
     await page.waitForTimeout(800);
     check("Full wrap on it: $3,856, the same $300 off", (await linkRows(page)).find((row) => row.selected)?.offer === "full" && (await heroTotal(page)) === FULL_AT_DOLLARS, `hero ${await heroTotal(page)}`);
     await shot(page, "link-390-dollars-full-wrap");

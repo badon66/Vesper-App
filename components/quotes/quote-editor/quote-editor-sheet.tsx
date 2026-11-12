@@ -17,6 +17,7 @@ import {
   quoteInputs,
   quoteOffers,
   quoteStateFromDraft,
+  withColourRule,
   type QuoteContext,
   type QuoteDraft,
   type QuoteUIState,
@@ -56,7 +57,14 @@ export function QuoteEditorCard({ leadId, leadName, context, draft, mockups, use
   // The quote as last saved from this page, until the page's own read
   // catches up with it.
   const [local, setLocal] = useState<{ state: QuoteUIState; savedAt: string } | null>(null);
-  const fromServer = useMemo(() => (draft ? quoteStateFromDraft(draft, context) : null), [draft, context]);
+  // The one colour rule, as meeting mode applies it, unless it's the
+  // accepted quote, which stays as agreed (round 17: a White track never
+  // keeps a rush fee from when the lead had another colour).
+  const fromServer = useMemo(() => {
+    if (!draft) return null;
+    const state = quoteStateFromDraft(draft, context);
+    return draft.accepted ? state : withColourRule(state, context.lead.colourKind, context.lead.colourText);
+  }, [draft, context]);
   const latest =
     local && (!draft || Date.parse(local.savedAt) >= Date.parse(draft.updatedAt))
       ? { state: local.state, savedAt: local.savedAt, quoteId: draft?.quoteId ?? null }

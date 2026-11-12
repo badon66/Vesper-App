@@ -127,10 +127,16 @@ describe("every seeded page's words", () => {
   });
 
   it("carry no dash, exclamation mark, jargon, matching claim or promise the business can't keep", () => {
+    // Round 17: "Where you're at" is Keenan's own wording, word for word,
+    // and its site visit step names him ("Keenan comes by").
+    const ownName = new Set([WORDS.lines.tracker_visit]);
     for (const text of customerStrings()) {
       expect(hasDash(text), text).toBe(false);
       expect(hasExclamation(text), text).toBe(false);
-      for (const never of NEVER) expect(never.test(text), `${text} (${never})`).toBe(false);
+      for (const never of NEVER) {
+        if (ownName.has(text) && String(never) === String(/\bKeenan\b/)) continue;
+        expect(never.test(text), `${text} (${never})`).toBe(false);
+      }
     }
   });
 
@@ -187,11 +193,13 @@ describe("every seeded page's words", () => {
       step_pay_label: "Paying",
       closing: "We'll text you a link to this quote, with every option.",
     });
-    // App set-up is said once, on What happens next; colour once, on the colour page.
+    // App set-up is said on What happens next: its More, the old On the day
+    // line (kept so nothing saved breaks, no longer shown), and round 17's
+    // install step in Keenan's own words.
     const appSetUp = [...Object.values(WORDS.pages).flatMap((page) => Object.values(page)), ...Object.values(WORDS.lines)].filter((text) =>
       /set up the app/i.test(text),
     );
-    expect(appSetUp).toEqual([WORDS.pages.next_steps.moreText, DEFAULT_LINES.step_on_day]);
+    expect(appSetUp).toEqual([WORDS.pages.next_steps.moreText, DEFAULT_LINES.step_on_day, DEFAULT_LINES.tracker_install]);
     expect(WORDS.pages.hidden_by_day.moreText).not.toMatch(/colour/i);
     expect(WORDS.pages.what_vesper_is.moreText).not.toMatch(/app/i);
   });

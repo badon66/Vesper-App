@@ -64,6 +64,10 @@ gst_number text                      -- printed on formal documents when GST is 
 warranty_text text not null
 presentation jsonb not null          -- M5: six pages in order, [{kind, title, body, image_paths[]}]; take 1 only, not read from round 7
 deck jsonb not null                  -- round 7: the deck's words, {version, pages: {page: {headline, words, more_label, more_text}}, warranty_lines_up_front}
+                                     -- round 9 added lines (the built pages' words, lib/deck.ts DECK_LINE_DEFAULTS). Round 17 (2026-11-12) added tracker_title, tracker_meeting_label, tracker_meeting,
+                                     -- tracker_choose_label, tracker_choose_sign_label, tracker_choose, tracker_visit_label, tracker_visit, tracker_install_label, tracker_install and tracker_pay
+                                     -- (Where you're at, on the link and the meeting's What happens next) and colour_season_included; it retired step_colour_label, step_colour_done,
+                                     -- step_colour_todo, step_on_day_label, step_on_day, step_pay_label and link_colour_done: kept as stored, no longer in Settings, never checked on a save
 light_looks jsonb not null           -- round 7: the light picker's looks in order, [{key, name, words, colours: [{hex, name}], block, active}], at most 6 active
                                      -- kinds: what_vesper_is | hidden_by_day | whites_first | install_day | warranty | gallery
                                      -- hidden_by_day image_paths = [day, night]; gallery holds many; other pages are text
@@ -72,14 +76,23 @@ booking_pay numeric(10,2) not null default 20.00      -- flat pay per qualified 
 commission_rate numeric(5,4) not null default 0.0500  -- share of the lights and control boxes after discounts on the accepted quote (round 8, 2026-11-09)
 rush_colour_fee_per_ft numeric(10,2)             -- M5: per foot; unused since 2026-11-04 (rush_colour_fee replaced it), kept per the additive rule
 rush_colour_fee numeric(10,2)                    -- 2026-11-04: one flat amount a job ($350) for a non-stock colour powder coated this season; null = not set, the choice and its line are hidden. Copied onto each quote
+                                                 -- round 17 (2026-11-12): no longer copied onto every quote; it fills in a quote's rush_fee only when Keenan switches Charge a rush fee on (null: the switch starts with an empty amount), and the this-season choice always shows
 upper_access_fee numeric(10,2)                   -- 2026-11-04: added to a quote with upper runs and no upper gable ($200); null = no line. Copied onto each quote
 upper_gable_access_fee numeric(10,2)             -- 2026-11-04: added instead when an upper gable is in the quote ($400); null = no line. Copied onto each quote
 service_call_fee numeric(10,2)                   -- M5: warranty years 6 to 10 ($200 since 2026-11-04); null = not set, no amount shows
 quote_valid_days int not null default 14         -- M5: unused since 2026-11-04 (price_hold_days replaced it); set to 90, and its 1..90 check was dropped on 2026-11-05 (Keenan approved)
 price_hold_days int not null default 120         -- 2026-11-04: a new quote holds its prices until this many days out (1..365), shown to the customer as "Price held until"
-christmas_banner_on boolean not null default true  -- 2026-11-04: the customer quote page's Christmas banner; it shows only from September 1 to November 30 (Calgary) while on (2026-11-05; it was to December 24)
-christmas_banner_title text not null             -- its bold first line, "Want them up for Christmas?" (1..80 characters)
-christmas_banner_text text not null              -- its words, "We install every day the weather allows. Book now to get on the schedule." (up to 300)
+christmas_banner_on boolean not null default true  -- 2026-11-04: the customer quote page's Christmas banner; it showed only from September 1 to November 30 (Calgary) while on (2026-11-05; it was to December 24); from round 17 it runs by the three dates below
+christmas_banner_title text not null             -- its bold first line, "Want them up for Christmas?" (1..80 characters); retired in round 17: no longer edited or shown, still returned from September to November for a page from before
+christmas_banner_text text not null              -- its words, "We install every day the weather allows. Book now to get on the schedule." (up to 300); retired in round 17, like the title
+christmas_book_by_white date                     -- round 17 (Keenan, 2026-11-12), Settings, Pricing: book by this day to be lit up for Christmas, for white track (2026-12-15); needed while the banner is on
+christmas_book_by_colour date                    -- round 17: the same for a colour-matched track, any colour but white (2026-12-08); empty reads the white date
+christmas_season_end date                        -- round 17: the season's end (2026-12-24); needed while the banner is on; both book-by dates on or before it; from the day after, no banner
+christmas_banner_book_by text not null           -- round 17, Settings, Customer quote page: "Book by {date} to be lit up for Christmas." (1..120 characters; Settings also requires {date})
+christmas_banner_white text not null             -- round 17: the line under it for white track (up to 300; an empty line is left off the banner)
+christmas_banner_colour text not null            -- round 17: the line under it for a colour-matched track (up to 300)
+christmas_banner_no_colour text not null         -- round 17: the note added while the lead has no track colour yet, which reads the white date (up to 300)
+christmas_banner_after text not null             -- round 17: after their date, until the season ends; promises nothing (up to 300)
 product_points jsonb not null                    -- 2026-11-04: [{icon, text}], up to 8 (the form offers 6), under "What you're getting" on the quote page; icon is one of lightbulb, house, zap, smartphone, plug, shield-check, paintbrush, sun, snowflake, wrench, clock, check
 min_job_total numeric(10,2)                      -- quote link (2026-11-02): the least a job can cost before GST; null = no minimum. Copied onto each quote when it is saved
 black_friday_kind text                           -- round 10 (2026-11-10): 'percent' or 'amount'; null = no deal, and meeting mode shows no Black Friday button
@@ -394,9 +407,11 @@ subtotal numeric(10,2) not null default 0
 gst numeric(10,2) not null default 0
 total numeric(10,2) not null default 0
 financing_offered boolean not null default false
-colour_timing text                               -- M5: stock | factory_order | rush; how the colour is priced (see the spec)
+colour_timing text                               -- M5: stock | factory_order | rush; how the colour is priced (see the spec). Round 17 (2026-11-12): 'rush' now means Install this season and
+                                                 -- 'factory_order' Install in spring, both included; the value stays 'rush' because its check can't change additively
 rush_fee_per_ft numeric(10,2)                    -- M5: unused since 2026-11-04 (no quote ever had one), kept per the additive rule
-rush_fee numeric(10,2)                           -- 2026-11-04: this quote's flat rush colour fee, kept whatever the timing (the link names it); counted only when colour_timing = 'rush'; null on a quote made before
+rush_fee numeric(10,2)                           -- 2026-11-04: this quote's flat rush colour fee; null on a quote made before. Round 17: set only while Keenan charges it (Charge a rush fee, this season),
+                                                 -- charged only when colour_timing = 'rush' and it is more than 0; a spring quote's fee, kept whatever the timing until round 17, is never named and is cleared on its next save
 upper_access_fee numeric(10,2)                   -- 2026-11-04: this quote's upper access amount without an upper gable; null on a quote made before, so no line
 upper_gable_access_fee numeric(10,2)             -- 2026-11-04: this quote's amount with an upper gable; null on a quote made before
 track_colour_name text                           -- copied from the lead's track colour when the quote is made ready (take 1 copies what is already set)
@@ -415,13 +430,16 @@ cancel_reason text                               -- round 8: the same five, for 
 cancelled_at timestamptz                         -- round 8
 outcome_note text                                -- round 8: the note with Other, at most 300 characters; owner only like every quote column, never copied anywhere setters read
 offers jsonb not null default '[]'               -- round 9 (2026-11-10): [{id, name, runs, boxes, upper_access}], runs = positions into runs, boxes 1..9 or null for box_count, upper_access (round 11) = the upper access amount typed over for this offer, 0 included, or null for the automatic amount; at most 4 in the app; empty = one "Full wrap" over every run (quote_offers_clean). Round 13: an offer may carry "hidden": true (Keenan's Show to customer switch, off; kept only when true); `quote_offers_shown` is the same list without the hidden ones, which is all the customer's link reads; check `quotes_offers_one_shown`: never every offer hidden
+                                                 -- round 17 (2026-11-12): an offer may also carry "lead": true (Keenan's Lead with this one star; quote_offers_clean keeps it only on the first starred offer
+                                                 -- that is neither hidden nor the customer's, and drops the rest) and "description" (spaces tidied to one paragraph, at most 400 characters, left out when empty);
+                                                 -- quote_offers_shown passes both to the link
 meeting_offer text                               -- round 9: the option chosen at the table (an offer id); prefills Accepted
 meeting_install_on date                          -- round 9: the install day picked at the table; prefills Accepted, never written to the lead before it
 accepted_offer text                              -- round 9: the option Accepted recorded (an offer id); cleared by Undo
 accepted_boxes smallint                          -- round 9: that option's control box count; cleared by Undo
 created_at, updated_at
 ```
-A quote can't be marked ready until the lead's track colour is set; the quote stores the colour name and RAL code it used, prints them, and shows a Custom colour as needing powder coating. Totals are computed in one pure function in `lib/pricing.ts`, used by the UI and the server action, and covered by unit tests. The database stores the result so history is stable if prices change later. `subtotal` is the total before GST. It is not the commission base (round 8): the commission counts only the lights and control boxes after discounts (see `earnings`). Every price on a quote belongs to that quote: `price_per_ft`, `box_price`, each adder and discount amount, and custom lines in `adders` and `discounts`. Settings supplies the defaults when the quote is created; later changes to settings never alter an existing quote. Accepting a quote creates a `commission` earning (see `earnings`). Take 1 (M5) writes drafts only, one draft per lead reused; presented, the ready rule and the PDF arrive in take 2. Accepted, declined and cancelled arrive in round 8, on the lead page, through the outcome functions below. The rush line ("Rush colour fee", 2026-11-04) is the quote's flat `rush_fee` when `colour_timing` is 'rush'; a stocked colour and a factory order add nothing. Upper access ("Upper roof access") follows the runs that are on: nothing without an upper run with feet, `upper_gable_access_fee` when an upper run's part is a gable, otherwise `upper_access_fee`; on the customer's link it changes as they switch runs. Quotes made before 2026-11-04 have neither amount, so neither line. Commission is round 8's (see `earnings`).
+A quote can't be marked ready until the lead's track colour is set; the quote stores the colour name and RAL code it used, prints them, and shows a Custom colour as needing powder coating. Totals are computed in one pure function in `lib/pricing.ts`, used by the UI and the server action, and covered by unit tests. The database stores the result so history is stable if prices change later. `subtotal` is the total before GST. It is not the commission base (round 8): the commission counts only the lights and control boxes after discounts (see `earnings`). Every price on a quote belongs to that quote: `price_per_ft`, `box_price`, each adder and discount amount, and custom lines in `adders` and `discounts`. Settings supplies the defaults when the quote is created; later changes to settings never alter an existing quote. Accepting a quote creates a `commission` earning (see `earnings`). Take 1 (M5) writes drafts only, one draft per lead reused; presented, the ready rule and the PDF arrive in take 2. Accepted, declined and cancelled arrive in round 8, on the lead page, through the outcome functions below. The rush line ("Rush colour fee", 2026-11-04) is the quote's flat `rush_fee` when `colour_timing` is 'rush' and the fee is more than 0 (round 17: Keenan's choice, off to start); a stocked colour and a factory order add nothing. Upper access ("Upper roof access") follows the runs that are on: nothing without an upper run with feet, `upper_gable_access_fee` when an upper run's part is a gable, otherwise `upper_access_fee`; on the customer's link it changes as they switch runs. Quotes made before 2026-11-04 have neither amount, so neither line. Commission is round 8's (see `earnings`).
 
 Round 8 (Keenan, 2026-11-09): a quote's outcome.
 - Only the database moves a quote to `accepted`, `declined` or `cancelled`. A guard (`quotes_outcome_guard`, before insert or update) refuses a row entering or leaving any of the three, or inserted with one, unless the outcome functions are running (hint `outcome_only`). While a quote stays accepted, its numbers are locked: any change outside its outcome fields, `notes`, `pdf_path`, `presented_at` and `updated_at` is refused (hint `quote_locked`). The guard compares the whole row as JSON, so it never names a column that only some databases have. It also refuses a new quote on a lead whose quote is accepted (hint `quote_locked`; review, 2026-11-10), so a later draft never stands in for the sale. To change an accepted quote, Keenan undoes the acceptance.
@@ -466,7 +484,7 @@ Functions (all `security definer`, `search_path = ''`):
 - `issue_quote_link(lead_id)`: owner only. Returns the live link's token, making one (and a `quote_link_created` event) when there is none and the lead has a quote.
 - `revoke_quote_link(lead_id)`: owner only. Stamps the live link revoked and writes `quote_link_revoked`.
 - `quote_lights_cents(quote, runs)` (round 11): the lights of the runs counted, in cents, each run its flat price or its feet at its own rate or the quote's price a foot; what `quote_commission_base_boxes` and `quote_commission_base` now count as lights. Internal.
-- `quote_for_customer(token)`: anyone. One call returns what the page shows: `{state: 'live', first_name, last_name, address, city, valid_until, today, quote: {runs (with parts), runs_fingerprint, price_per_ft, box_price, box_count, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, min_job_total, gst_enabled, gst_rate, track_colour_name, track_custom}, warranty, service_call_fee, christmas, product_points, install_day, gallery, company, mockup_path, selection, booked_at, booked_option}` for a live token. `today` is Calgary's date, so the page knows whether the price hold has passed without trusting the phone's clock; `christmas` is `{title, text}` only while Settings has it on and the date is September 1 to November 30, otherwise null; `install_day` is the presentation's install day page; `gallery` is the presentation gallery's photo paths. For anything else (unknown or revoked) it returns `{state: 'closed', company: {name, phone, email}}` (2026-11-04; it was 'expired'): Vesper's public contact for the call and text buttons, with no customer name and no prices. No notes, costs, setter, status, timeline or other customer, ever.
+- `quote_for_customer(token)`: anyone. One call returns what the page shows: `{state: 'live', first_name, last_name, address, city, valid_until, today, quote: {runs (with parts), runs_fingerprint, price_per_ft, box_price, box_count, adders, discounts, colour_timing, rush_fee, upper_access_fee, upper_gable_access_fee, min_job_total, gst_enabled, gst_rate, track_colour_name, track_custom}, warranty, service_call_fee, christmas, product_points, install_day, gallery, company, mockup_path, selection, booked_at, booked_option}` for a live token. `today` is Calgary's date, so the page knows whether the price hold has passed without trusting the phone's clock; `christmas` was `{title, text}` only while Settings has it on and the date is September 1 to November 30, otherwise null (for round 17's shape, see below); `install_day` is the presentation's install day page; `gallery` is the presentation gallery's photo paths. For anything else (unknown or revoked) it returns `{state: 'closed', company: {name, phone, email}}` (2026-11-04; it was 'expired'): Vesper's public contact for the call and text buttons, with no customer name and no prices. No notes, costs, setter, status, timeline or other customer, ever.
 - `quote_gallery_signable(name)`: storage's rule for the presentation bucket (2026-11-04): true only for a request carrying a live token in `x-quote-token` and an object that is one of the gallery's photos. Nothing else in that bucket can be signed or listed by an anonymous caller.
 - `quote_link_visit(token)`: anyone. Adds one visit and stamps the time; the first visit writes `quote_link_opened`.
 - `quote_link_select(token, positions int[])`: anyone. Saves which runs they have on.
@@ -499,6 +517,30 @@ settings.agreement_text text  -- the agreement's words; empty keeps Agreement to
 settings.double_track_per_ft, settings.j_track_per_ft numeric(10,2)  -- null until set
 ```
 Token functions (anyone with a live token, `security definer`): `quote_link_documents(token)` (the files to sign), `quote_document_signable(name)` (storage's rule for `link-documents`, by the `x-quote-token` header), `quote_link_agreement(token)` (null unless ticked and Settings has text; the text and this link's signing), `quote_link_sign_agreement(token, name, offer, signature)` (saves the signing with the snapshots, writes `agreement_signed` (option and signer, no price), books the option, returns the sealed push targets), `quote_link_signed_copy(token)` (this link's signing, for their PDF). No table here is ever written by an anonymous caller directly, and nothing is taken out of one: unticking and Remove set a time.
+
+### Round 17: the link before the Christmas push (Keenan, 2026-11-12)
+Six migrations, all additive: `r17_christmas_dates`, `r17_christmas_link`, `r17_offer_lead_description`, `r17_ai_polish_count`, `r17_site_visits` and `r17_progress_link`. The new `settings` columns, the new meaning of `quotes.colour_timing` and `rush_fee`, and the offers' `lead` and `description` are with their tables above.
+
+`quote_for_customer(token)` also returns, for a live token:
+- `christmas`: `{book_by_white, book_by_colour, season_end, words: {book_by, white, colour, no_colour, after}}` while the banner is on, the white date and the season's end are set, and Calgary's date is on or before the season's end. `book_by_colour` is the white date when Settings has none. From September to November, while the banner is on, it also carries the old `title` and `text`, so a page from before round 17 keeps working; in those months it is never null: when the dates aren't set or the season has ended it is only `{title, text}`, which today's page reads as no banner. Otherwise null. The page picks the date for the customer's own track colour (`lib/quote-link/christmas.ts`).
+- `progress`: `{site_visit_on, site_visit_done, installed}`, the lead's site visit day, whether it is done, and whether the lead is Installed, for Where you're at.
+- each shown offer's `lead` and `description`, through `quote_offers_shown`.
+
+```
+lead_site_visits              -- the site visit, step 3 of Where you're at on the link; one row per lead; owner only
+  lead_id uuid pk references leads    -- no cascade: a lead with a row can't be removed until the row is
+  visit_on date                       -- the day Keenan set; null = no day yet
+  done_at timestamptz                 -- when he marked it Done; null = not done (Not done yet clears it)
+  updated_by uuid references profiles default auth.uid()
+  updated_at timestamptz not null default now()   -- set by the app on every change; there is no created_at
+ai_polishes                   -- one row per AI polish of an offer's description: who and when, never the notes or the text; owner only
+  id bigint generated always as identity pk
+  created_at timestamptz not null default now()
+  created_by uuid not null default auth.uid() references profiles
+```
+- `lead_site_visits`: RLS select, insert and update for the owner (`is_owner()`); no delete policy, and nothing for setters or anonymous callers. The app writes it only from the lead's Outcome card (`setSiteVisitDay` and `setSiteVisitDone` in `app/(app)/app/leads/quote-outcome-actions.ts`), refused under View as and on a Lost lead. Rows are never taken out: the day can be cleared and Done undone. It writes no `lead_events` row.
+- `ai_polishes`: RLS select for the owner only; no insert, update or delete policy and nothing for anonymous callers, so rows come only through `ai_polish_take()`.
+- `ai_polish_take() returns jsonb` (security definer, signed-in callers only): anyone but the owner gets `{ok: false, state: 'not_owner'}`. For the owner it takes a transaction lock, counts the rows since the start of Calgary's day, and returns `{ok: false, state: 'cap', used, cap}` once there are 100; otherwise it adds a row and returns `{ok: true, used, cap}`. The server calls it before each polish goes out, so two taps at once can't pass the cap, and a suggestion thrown out afterwards still counts.
 
 ### push_subscriptions
 Web push addresses for members' devices (2026-11-02). Built for Book my install first and for any later alert (the backlog's booking alerts) without changes.
@@ -562,6 +604,7 @@ Sales users collaborate, so they can read the team's leads, meetings and knock s
 | leads | all, phone and email through `lead_contacts` | insert as themselves; select every lead, every column but `phone` and `email`; update where `created_by = auth.uid()` or `assigned_to = auth.uid()`; change status only among `new`, `follow_up`, `lost`; no delete |
 | lead_contacts (view) | every lead's phone and email | the phone and email of their own leads only (created or assigned) |
 | lead_photos | all | select all; insert for their own leads, with the file inside their own storage folder |
+| lead_mockups (round 10) | select, insert, update; never delete (Remove stamps `removed_at`) | none |
 | lead_events | select and insert; never update or delete | select all; insert `note` events on their own leads |
 | knock_sessions | all | select all; insert and update own rows |
 | time_blocks | select, insert, update (removing stamps the row) | select |
@@ -570,6 +613,12 @@ Sales users collaborate, so they can read the team's leads, meetings and knock s
 | meetings | select; writes only through the booking functions | select all; book, move and cancel their own leads' meetings through the booking functions |
 | quotes | all, except that accepted, declined and cancelled come only through the outcome functions, and an accepted quote's numbers are locked (round 8) | none |
 | quote_links | all, through `issue_quote_link` and `revoke_quote_link` for writes | none |
+| link_documents (take 3) | select, insert, update; never delete (Remove stamps `retired_at`) | none |
+| lead_link_documents (take 3) | select, insert, update; never delete (untick and Remove stamp `removed_at`) | none |
+| lead_link_options (take 3) | select, insert, update; never delete | none |
+| agreement_signatures (take 3) | select; rows only through `quote_link_sign_agreement` | none |
+| lead_site_visits (round 17) | select, insert, update; never delete | none |
+| ai_polishes (round 17) | select; rows only through `ai_polish_take()` | none |
 | push_subscriptions | their own rows | their own rows |
 | earnings | select; writes only through the booking functions and, from round 8, the quote outcome functions and the lead status safety net | select where `profile_id = auth.uid()`; no writes |
 

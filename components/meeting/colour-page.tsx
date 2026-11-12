@@ -339,7 +339,15 @@ export function ColourPage({
         {view.kind === "made" ? (
           <div className="mt-5 flex max-w-[36rem] flex-col gap-3" data-testid="deck-colour-timing">
             <p className={DECK_TYPE.body}>{say(view.line)}</p>
-            <div role="group" aria-label={say(view.line)} className={cn("grid gap-3", view.season ? "grid-cols-2" : "grid-cols-1 max-w-[17rem]")}>
+            <div role="group" aria-label={say(view.line)} className="grid grid-cols-2 gap-3">
+              {/* Round 17: this season first, included unless Keenan charges a rush fee. */}
+              <TimingButton
+                label={view.season.label}
+                value={view.season.value}
+                chosen={view.chosen === "season"}
+                onChoose={() => onTiming("rush")}
+                testId="deck-colour-season"
+              />
               <TimingButton
                 label={view.spring.label}
                 value={view.spring.value}
@@ -347,15 +355,6 @@ export function ColourPage({
                 onChoose={() => onTiming("factory_order")}
                 testId="deck-colour-spring"
               />
-              {view.season ? (
-                <TimingButton
-                  label={view.season.label}
-                  value={view.season.value}
-                  chosen={view.chosen === "season"}
-                  onChoose={() => onTiming("rush")}
-                  testId="deck-colour-season"
-                />
-              ) : null}
             </div>
           </div>
         ) : null}

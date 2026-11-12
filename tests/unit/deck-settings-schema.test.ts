@@ -2,7 +2,19 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { firstFamily } from "@/app/(app)/app/(owner)/admin/settings/presentation/measure-labels";
 import { TRAY, TRAY_AT_PRO } from "@/components/meeting/picker/layout";
-import { DECK_LINE_DEFAULTS, DECK_LINE_KEYS, DEFAULT_LINES, parseDeckWords, parseLooks, WORDS_PAGES, type DeckWords, type Look } from "@/lib/deck";
+import {
+  DECK_LINE_DEFAULTS,
+  DECK_LINE_KEYS,
+  DEFAULT_LINES,
+  LINE_GROUPS,
+  LINE_SPECS,
+  linesIn,
+  parseDeckWords,
+  parseLooks,
+  WORDS_PAGES,
+  type DeckWords,
+  type Look,
+} from "@/lib/deck";
 import { BAND_AT_AIR, BAND_AT_PRO, bottomRowRight, DECK_CLEAR_PX, DECK_ROW, DECK_SIZES, fluidPx } from "@/lib/meeting/deck-pages";
 import {
   BAND_FIT,
@@ -183,6 +195,19 @@ describe("the deck's words as a whole", () => {
       "lines.closing": "No exclamation marks.",
       "lines.next_prefix": "Keep {page}: it is filled in on screen.",
     });
+  });
+
+  it("leaves the old four steps' words out of Settings and never blocks a save on them (round 17)", () => {
+    const retired = ["step_colour_label", "step_colour_done", "step_colour_todo", "step_on_day_label", "step_on_day", "step_pay_label", "link_colour_done"];
+    expect(DECK_LINE_KEYS.filter((key) => LINE_SPECS[key].retired)).toEqual(retired);
+    const offered = LINE_GROUPS.flatMap((group) => linesIn(group.key));
+    for (const key of retired) expect(offered).not.toContain(key);
+    expect(linesIn("next_steps")).toEqual(
+      expect.arrayContaining(["recap", "step_day_label", "step_day_none", "step_day_button", "closing", "thanks", "tracker_visit", "tracker_pay"]),
+    );
+    const edited = copy();
+    edited.lines.step_on_day = "Talk soon!";
+    expect(deckWordIssues(edited)).toEqual({});
   });
 
   it("tidies what it stores: lines trimmed, blank lines and double spaces gone, headlines on one line", () => {
@@ -779,7 +804,8 @@ describe("Settings' help for Keenan", () => {
       expect(PAGE_HELP[page], page).not.toMatch(/["']/);
     }
     expect(PAGE_HELP.whites_first).toContain("\u201cso warm white looks warm\u201d");
-    expect(PAGE_HELP.next_steps).toContain("\u201cNo payment until your install is complete.\u201d");
+    expect(PAGE_HELP.next_steps).toContain("Where you\u2019re at");
+    expect(PAGE_HELP.next_steps).toContain("\u201cbefore Christmas\u201d");
   });
 
   it("says what to say about the track's colour, plainly", () => {

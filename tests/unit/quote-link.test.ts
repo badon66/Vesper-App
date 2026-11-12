@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DECK_LINE_DEFAULTS, fillLine } from "@/lib/deck";
+import { DECK_LINE_DEFAULTS, DEFAULT_LINES, fillLine } from "@/lib/deck";
 import { UPPER_ACCESS_LABEL } from "@/lib/pricing";
 import {
   choiceInSentence,
@@ -12,15 +12,13 @@ import {
   leavesRunsOut,
   lineAmount,
   linkOffers,
-  nextStepsFor,
   offerChoice,
   openingOffer,
   optionName,
   parseCustomerQuote,
   phoneHref,
   priceHoldPassed,
-  christmasSeason,
-  otherColoursLine,
+  colourSectionLines,
   priceSelection,
   quoteFromRow,
   quoteLinkMessage,
@@ -225,7 +223,12 @@ const rework = {
     track_custom: false,
   },
   service_call_fee: 200,
-  christmas: { title: "Want them up for Christmas?", text: "We install every day the weather allows." },
+  christmas: {
+    book_by_white: "2026-12-15",
+    book_by_colour: "2026-12-08",
+    season_end: "2026-12-24",
+    words: { book_by: "Book by {date} to be lit up for Christmas.", white: "White line.", colour: "Colour line.", no_colour: "No colour.", after: "After." },
+  },
   product_points: [
     { icon: "lightbulb", text: "RGBW lights with a dedicated white." },
     { icon: "rocket", text: "An icon Settings doesn't offer." },
@@ -242,7 +245,7 @@ describe("the reworked page's answer", () => {
     expect(view.state).toBe("live");
     if (view.state !== "live") return;
     expect([view.validUntil, view.today]).toEqual(["2027-03-02", "2026-11-04"]);
-    expect(view.christmas).toEqual({ title: "Want them up for Christmas?", text: "We install every day the weather allows." });
+    expect(view.christmas).toMatchObject({ bookByWhite: "2026-12-15", bookByColour: "2026-12-08", seasonEnd: "2026-12-24" });
     // An unknown icon is a tick; a blank line is left out.
     expect(view.productPoints).toEqual([
       { icon: "lightbulb", text: "RGBW lights with a dedicated white." },
@@ -269,14 +272,20 @@ describe("the reworked page's answer", () => {
   it("prices the full quote with the upper gable amount and the rush colour fee", () => {
     if (!quote) throw new Error("not live");
     const priced = priceSelection(quote, null);
+    // Round 17: every area on its own line, the same $3,960 of lights.
     expect(priced.lines.map((line) => [line.label, line.amount])).toEqual([
-      ["Track and lights", 3960],
+      ["Garage Gable", 816],
+      ["Garage Eave", 720],
+      ["Lower Porch Eave", 312],
+      ["Upper Front Eave", 768],
+      ["Two Upper Gables", 720],
+      ["Upper & Lower Sides", 624],
       ["Control box", 500],
       [UPPER_ACCESS_LABEL, 400],
       ["Rush colour fee", 350],
       ["Family & Friends Discount", -300],
     ]);
-    expect(priced.lines[3].detail).toBe("Brown track, made to order this season");
+    expect(priced.lines.find((line) => line.label === "Rush colour fee")?.detail).toBe("Brown track, made to order this season");
     expect(customerTotal(quote, null)).toBe("$4,910");
   });
 
@@ -298,38 +307,38 @@ describe("the reworked page's answer", () => {
     expect(labels).not.toContain("Rush colour fee");
   });
 
-  it("keeps the Christmas season to September 1 to November 30, like the banner", () => {
-    expect(["2026-08-31", "2026-09-01", "2026-11-30", "2026-12-01", "2027-01-15", null].map((day) => christmasSeason(day))).toEqual([
-      false,
-      true,
-      true,
-      false,
-      false,
-      false,
-    ]);
-  });
-
-  it("words the other track colours with the iPad's one rule: made to order, spring included, the rush fee this season", () => {
-    expect(otherColoursLine({ season: true, rushFee: 350, rush: false })).toBe(
-      "Any other colour is made to order: nothing extra if it can wait for spring, or the $350 rush colour fee to have it this season.",
+  it("words the track colour with one rule: white in stock, any other colour made to order, a rush fee only when charged (round 17)", () => {
+    const words = DEFAULT_LINES;
+    expect(colourSectionLines({ words, colourName: "White", custom: false, timing: "stock", rushFee: null })).toEqual({
+      stock: "White is in stock and included.",
+      // No cost claim: a colour this season may carry Keenan's rush fee.
+      other: "Any other colour is made to order.",
+      made: null,
+      timing: null,
+    });
+    // No colour yet reads like white.
+    expect(colourSectionLines({ words, colourName: null, custom: false, timing: null, rushFee: 350 }).other).toBe("Any other colour is made to order.");
+    // This season is the default and included; a fee stored on a spring quote is never named.
+    expect(colourSectionLines({ words, colourName: "Brown", custom: false, timing: "rush", rushFee: null })).toEqual({
+      stock: null,
+      other: null,
+      made: "Brown is made to order.",
+      timing: "Install this season, included.",
+    });
+    expect(colourSectionLines({ words, colourName: "Brown", custom: false, timing: "factory_order", rushFee: 350 }).timing).toBe(
+      "Install in spring, included.",
     );
-    expect(otherColoursLine({ season: true, rushFee: null, rush: false })).toBe(
-      "Any other colour is made to order: nothing extra if it can wait for spring.",
-    );
-    expect(otherColoursLine({ season: false, rushFee: 350, rush: false })).toBe(
-      "Any other colour is made to order for a spring install, at no extra cost.",
-    );
-    expect(otherColoursLine({ season: false, rushFee: 350, rush: true })).toBe(
-      "Any other colour is made to order: nothing extra if it can wait for spring, or the $350 rush colour fee to have it sooner.",
-    );
-    expect(otherColoursLine({ season: false, rushFee: null, rush: true })).toBe(
-      "Any other colour is made to order for a spring install, at no extra cost.",
-    );
-    for (const season of [true, false]) {
-      for (const rush of [true, false]) {
-        const line = otherColoursLine({ season, rushFee: 350, rush });
-        expect(line).not.toMatch(/Christmas|powder|colour match/);
-        expect(line).not.toMatch(/[\u2013\u2014!]/);
+    // Keenan switched the fee on: named, exactly what the quote charges.
+    expect(colourSectionLines({ words, colourName: "RAL 7016 Anthracite grey", custom: true, timing: "rush", rushFee: 350 })).toMatchObject({
+      made: "RAL 7016 Anthracite grey is made to order.",
+      timing: "Install this season, $350 rush colour fee.",
+    });
+    for (const timing of ["stock", "factory_order", "rush", null] as const) {
+      for (const rushFee of [null, 0, 350]) {
+        const lines = colourSectionLines({ words, colourName: "Brown", custom: false, timing, rushFee });
+        const said = JSON.stringify(lines);
+        if (!(timing === "rush" && rushFee === 350)) expect(said).not.toMatch(/rush|fee/i);
+        expect(said).not.toMatch(/[\u2013\u2014!]|Christmas/);
       }
     }
   });
@@ -424,7 +433,8 @@ describe("the options", () => {
     const garage = offerChoice(quote, "garage");
     expect([garage?.name, garage?.total]).toEqual(["Garage", "$2,586"]);
     expect(garage?.totals.lines.map((line) => [line.label, line.detail, line.amount])).toEqual([
-      ["Track and lights", "64 ft at $24 a foot", 1536],
+      ["Garage Gable", "34 ft", 816],
+      ["Garage Eave", "30 ft", 720],
       ["Control boxes (2)", "2 at $500", 1000],
       ["Rush colour fee", "Brown track, made to order this season", 350],
       ["Family & Friends Discount", null, -300],
@@ -468,28 +478,26 @@ describe("the options", () => {
 });
 
 describe("what happens next", () => {
-  it("reads back the colour initialled at the meeting and the planned day, in the meeting's words", () => {
-    expect(nextStepsFor(liveOf(withOffers)).map((step) => [step.label, step.text, step.done])).toEqual([
-      ["Your colour", "Brown, confirmed with your initials at the meeting.", true],
-      ["Your install day", "Saturday, November 21", true],
-      ["On the day", "A small crew fits the track and plugs in the control box. We clean up and set up the app with you.", false],
-      ["Paying", "No payment until your install is complete.", false],
-    ]);
-  });
-
-  it("says we confirm the colour from the colour book and pick the day together when neither is done", () => {
-    const steps = nextStepsFor(liveOf({ ...withOffers, next_steps: { colour_confirmed: false, install_on: "soon", what_we_need: " " } }));
-    expect(steps.slice(0, 2).map((step) => [step.text, step.done])).toEqual([
-      ["We confirm it with you from the colour book.", false],
-      ["We pick the day together.", false],
-    ]);
+  it("reads where they're at from the database: the site visit and Installed, safely when missing or odd", () => {
+    expect(liveOf(withOffers).progress).toEqual({ siteVisitOn: null, siteVisitDone: false, installed: false });
+    expect(liveOf({ ...withOffers, progress: { site_visit_on: "2026-12-02", site_visit_done: true, installed: true } }).progress).toEqual({
+      siteVisitOn: "2026-12-02",
+      siteVisitDone: true,
+      installed: true,
+    });
+    expect(liveOf({ ...withOffers, progress: { site_visit_on: "next week", site_visit_done: "yes", installed: 1 } }).progress).toEqual({
+      siteVisitOn: null,
+      siteVisitDone: false,
+      installed: false,
+    });
+    expect(liveOf({ ...withOffers, progress: "nonsense" }).progress).toEqual({ siteVisitOn: null, siteVisitDone: false, installed: false });
   });
 
   it("after Book my install, Keenan confirms a day already planned, or sets one", () => {
     expect(inTouchAbout("2026-11-21")).toBe("to confirm your install day");
     expect(inTouchAbout(null)).toBe("to set your install date");
     const planned = liveOf(withOffers);
-    expect(nextStepsFor(planned)[1].done).toBe(true);
+    expect(planned.nextSteps.installOn).toBe("2026-11-21");
     expect(inTouchAbout(planned.nextSteps.installOn)).toBe("to confirm your install day");
   });
 
@@ -520,15 +528,14 @@ describe("what happens next", () => {
       "link_drawing_caption",
       "link_meeting_tag",
       "link_something_else",
-      "link_colour_done",
-      "step_colour_todo",
-      "step_day_none",
-      "step_on_day",
+      "tracker_title",
+      "tracker_meeting",
+      "tracker_choose",
+      "tracker_visit",
+      "tracker_install",
+      "tracker_pay",
     ] as const;
-    const lines = [
-      ...keys.map((key) => fillLine(view.words[key], { name: "Main floor", colour: "Brown" })),
-      ...nextStepsFor(view).map((step) => step.text),
-    ];
+    const lines = keys.map((key) => fillLine(view.words[key], { name: "Main floor", colour: "Brown" }));
     for (const line of lines) expect(line).not.toMatch(/[–—!]/);
     expect(fillLine(view.words.link_drawing_caption, { name: "Main floor" })).toBe("Gold marks the lights in Main floor.");
   });

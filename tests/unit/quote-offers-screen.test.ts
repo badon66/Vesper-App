@@ -11,7 +11,9 @@ import {
   editorOrder,
   LEVEL_WARNING,
   nameHasLevel,
+  offerDescriptionIssue,
   offerNameIssue,
+  offersBlock,
   offerWarnings,
   quoteSummary,
   toggleOfferRun,
@@ -141,6 +143,15 @@ describe("the quote editor", () => {
     expect(offerNameIssue("Best deal!")).toBe("No exclamation marks.");
     expect(nameHasLevel("Lower level")).toBe(true);
     expect(nameHasLevel("Main floor")).toBe(false);
+  });
+
+  it("checks an offer's description with the same word rules, and stops a save on it (round 17)", () => {
+    expect(offerDescriptionIssue("The whole front, both gables.")).toBeNull();
+    expect(offerDescriptionIssue(undefined)).toBeNull();
+    expect(offerDescriptionIssue("Whole front — best value")).toBe("No dashes. Use a comma or a full stop instead.");
+    expect(offerDescriptionIssue("Best value!")).toBe("No exclamation marks.");
+    expect(offersBlock([{ ...FRONT, description: "Whole front — best value!" }])).toBe("An offer's description needs fixing first.");
+    expect(offersBlock([{ ...FRONT, description: "The whole front." }])).toBeNull();
   });
 
   it("warns quietly about offers that repeat, tie, cost more for less, or sit at the minimum", () => {

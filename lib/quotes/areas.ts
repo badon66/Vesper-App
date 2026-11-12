@@ -141,6 +141,19 @@ export function areaDisplayName(run: QuoteRun): string {
   return name && name.toLowerCase() !== STANDARD_NAMES[key].toLowerCase() ? `${AREA_LABELS[key]}: ${name}` : AREA_LABELS[key];
 }
 
+// An area's name on the customer's link (round 17): an area measured on the
+// drawing under its standard name reads as the editor labels it ("Front
+// lower", "Front upper gable"), so the front's two storeys never both read
+// "Front"; a name Keenan gave it ("Garage", "Shed"), or any run from an
+// older quote, reads as he typed it.
+export function customerAreaName(run: QuoteRun): string {
+  const name = run.name.trim();
+  if (!run.area) return name;
+  const key = areaKeyOf(run);
+  if (!key) return name;
+  return name === "" || name.toLowerCase() === STANDARD_NAMES[key].toLowerCase() ? AREA_LABELS[key] : name;
+}
+
 // The runs on a standard area (several, when an old quote had two runs on
 // it, say Front and Garage), by position.
 export function runsOnArea(runs: readonly QuoteRun[], key: AreaKey): number[] {

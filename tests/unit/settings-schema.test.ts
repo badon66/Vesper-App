@@ -38,8 +38,14 @@ const valid = {
   company_email: "info@vesperlighting.ca",
   company_address: "",
   christmas_banner_on: true,
-  christmas_banner_title: " Want them up for Christmas? ",
-  christmas_banner_text: "We install every day\r\nthe weather allows.",
+  christmas_book_by_white: "2026-12-15",
+  christmas_book_by_colour: "2026-12-08",
+  christmas_season_end: "2026-12-24",
+  christmas_banner_book_by: " Book by {date} to be lit up\r\nfor Christmas. ",
+  christmas_banner_white: "White track is in stock and we install on any good-weather day.",
+  christmas_banner_colour: "Your colour-matched track takes about a week to prepare.",
+  christmas_banner_no_colour: "A custom track colour needs about a week more.",
+  christmas_banner_after: "We can't promise Christmas now.",
   product_points: [
     { icon: "lightbulb", text: " RGBW lights. " },
     { icon: "rocket", text: "Unknown icon." },
@@ -71,8 +77,12 @@ describe("parseSettingsForm", () => {
       expect(result.values.upper_gable_access_fee).toBeNull();
       expect(result.values.service_call_fee).toBe(95);
       expect(result.values.price_hold_days).toBe(120);
-      expect(result.values.christmas_banner_title).toBe("Want them up for Christmas?");
-      expect(result.values.christmas_banner_text).toBe("We install every day the weather allows.");
+      expect(result.values.christmas_banner_book_by).toBe("Book by {date} to be lit up for Christmas.");
+      expect([result.values.christmas_book_by_white, result.values.christmas_book_by_colour, result.values.christmas_season_end]).toEqual([
+        "2026-12-15",
+        "2026-12-08",
+        "2026-12-24",
+      ]);
       // A blank line is left out; an unknown icon becomes a tick.
       expect(result.values.product_points).toEqual([
         { icon: "lightbulb", text: "RGBW lights." },
@@ -243,6 +253,7 @@ describe("settingsRowToFormDefaults", () => {
       rush_colour_fee: 350, upper_access_fee: null, upper_gable_access_fee: 400, price_hold_days: 120,
       double_track_per_ft: null, j_track_per_ft: null, agreement_text: null,
       christmas_banner_on: false, christmas_banner_title: "Want them up for Christmas?", christmas_banner_text: "Book now.",
+      christmas_book_by_white: "2026-12-15", christmas_book_by_colour: "2026-12-08", christmas_season_end: "2026-12-24", christmas_banner_book_by: "Book by {date} to be lit up for Christmas.", christmas_banner_white: "White line.", christmas_banner_colour: "Colour line.", christmas_banner_no_colour: "No colour line.", christmas_banner_after: "After line.",
       product_points: [{ icon: "zap", text: "A 24V system." }, { icon: "rocket", text: "Odd icon." }, "junk", { icon: "plug", text: "" }],
       updated_at: "2026-10-26T00:00:00Z",
     });
@@ -252,7 +263,12 @@ describe("settingsRowToFormDefaults", () => {
     expect(defaults.upper_gable_access_fee).toBe("400.00");
     expect(defaults.service_call_fee).toBe("95.00");
     expect(defaults.price_hold_days).toBe("120");
-    expect([defaults.christmas_banner_on, defaults.christmas_banner_title, defaults.christmas_banner_text]).toEqual([false, "Want them up for Christmas?", "Book now."]);
+    expect([defaults.christmas_banner_on, defaults.christmas_book_by_white, defaults.christmas_season_end, defaults.christmas_banner_after]).toEqual([
+      false,
+      "2026-12-15",
+      "2026-12-24",
+      "After line.",
+    ]);
     // Always six rows for the form, blank ones filling the rest.
     expect(defaults.product_points).toEqual([
       { icon: "zap", text: "A 24V system." },
@@ -292,6 +308,8 @@ const ROW: Parameters<typeof settingsRowToFormDefaults>[0] = {
   rush_colour_fee: null, upper_access_fee: 200, upper_gable_access_fee: 400, price_hold_days: 120,
   double_track_per_ft: null, j_track_per_ft: null, agreement_text: null,
   christmas_banner_on: true, christmas_banner_title: "T", christmas_banner_text: "", product_points: [],
+  christmas_book_by_white: null, christmas_book_by_colour: null, christmas_season_end: null, christmas_banner_book_by: "Book by {date}.",
+  christmas_banner_white: "", christmas_banner_colour: "", christmas_banner_no_colour: "", christmas_banner_after: "",
   updated_at: "2026-10-26T00:00:00Z",
 };
 
@@ -370,5 +388,33 @@ describe("the Black Friday deal (Keenan, 2026-11-10)", () => {
     expect([row("percent", 15).black_friday_kind, row("percent", 15).black_friday_value]).toEqual(["percent", "15"]);
     expect([row("amount", 300).black_friday_kind, row("amount", 300).black_friday_value]).toEqual(["amount", "300.00"]);
     expect(row("other", 5).black_friday_kind).toBe("none");
+  });
+});
+
+describe("the Christmas banner's dates and words (round 17)", () => {
+  it("needs the white date and the season's end while the banner is on, and {date} in the book-by line", () => {
+    const blank = parseSettingsForm({ ...valid, christmas_book_by_white: "", christmas_season_end: "" });
+    expect(!blank.ok && [blank.errors.christmas_book_by_white, blank.errors.christmas_season_end]).toEqual([
+      "needs a date while the Christmas banner is on",
+      "needs a date while the Christmas banner is on",
+    ]);
+    const off = parseSettingsForm({ ...valid, christmas_banner_on: false, christmas_book_by_white: "", christmas_book_by_colour: "", christmas_season_end: "" });
+    expect(off.ok && [off.values.christmas_book_by_white, off.values.christmas_book_by_colour, off.values.christmas_season_end]).toEqual([null, null, null]);
+    const noDate = parseSettingsForm({ ...valid, christmas_banner_book_by: "Book soon." });
+    expect(!noDate.ok && noDate.errors.christmas_banner_book_by).toBe("needs {date} where the date goes");
+  });
+
+  it("keeps both book-by dates on or before the end of the season", () => {
+    const late = parseSettingsForm({ ...valid, christmas_book_by_colour: "2026-12-26" });
+    expect(!late.ok && late.errors.christmas_book_by_colour).toBe("must be on or before the end of the season");
+  });
+
+  it("saves the dates and words, and leaves the old heading and words alone", () => {
+    const result = parseSettingsForm(valid);
+    if (!result.ok) throw new Error(JSON.stringify(result.errors));
+    const update = settingsUpdateFromValues(result.values);
+    expect(update.christmas_book_by_colour).toBe("2026-12-08");
+    expect(update.christmas_banner_after).toBe("We can't promise Christmas now.");
+    expect("christmas_banner_title" in update || "christmas_banner_text" in update).toBe(false);
   });
 });

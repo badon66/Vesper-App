@@ -102,6 +102,10 @@ const quoteDraftSchema = z.object({
         hidden: z.boolean().optional(),
         // Take 3: the customer's own (Build your own on the link).
         fromCustomer: z.boolean().optional(),
+        // Round 17: Keenan's "Lead with this one" star, and the offer's
+        // description (cleaned again by offersForSave and the database).
+        lead: z.boolean().optional(),
+        description: z.string().max(2000).optional(),
       }),
     )
     .max(OFFERS_MAX + 1)
@@ -141,6 +145,10 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
   // An option's name is read by the customer: the deck's word checks.
   if ((draft.offers ?? []).some((offer) => hasDash(offer.name) || hasExclamation(offer.name))) {
     return { ok: false, code: "bad_input", message: "An option's name has a dash or an exclamation mark. Take it out and save again." };
+  }
+  // Round 17: its description too, which customers read under the name.
+  if ((draft.offers ?? []).some((offer) => hasDash(offer.description ?? "") || hasExclamation(offer.description ?? ""))) {
+    return { ok: false, code: "bad_input", message: "An option's description has a dash or an exclamation mark. Take it out and save again." };
   }
   // The offers as the database keeps them, and the table's choice only
   // while it names one of them (an empty list is one full wrap, "full").
@@ -209,10 +217,11 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     })),
     discounts: draft.discounts,
     colour_timing: draft.colourTiming,
-    // The flat fee is kept whatever the timing, so switching to rush at the
-    // table finds it; the price counts it only for rush. The fee per foot
-    // is no longer used (2026-11-04).
-    rush_fee: draft.rushFee ?? null,
+    // Round 17: the flat fee is kept only while Keenan charges it for a
+    // this-season install (lib/meeting/state.ts quoteRushFee), so a fee
+    // nobody is charged is never stored or named; the price counts it only
+    // then. The fee per foot is no longer used (2026-11-04).
+    rush_fee: draft.colourTiming === "rush" ? (draft.rushFee ?? null) : null,
     rush_fee_per_ft: null,
     upper_access_fee: draft.upperAccessFee ?? null,
     upper_gable_access_fee: draft.upperGableAccessFee ?? null,
@@ -232,12 +241,15 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     // Round 9: the offers, the table's choice and the install day picked
     // there (never written to the lead before Accepted). Stored the way the
     // database cleans them: upper_access for the typed amount (round 11),
-    // hidden only when the switch is off (round 13).
-    offers: offers.map(({ upperAccess, hidden, fromCustomer, ...offer }) => ({
+    // hidden only when the switch is off (round 13); round 17's star only
+    // when on, and a description only when written.
+    offers: offers.map(({ upperAccess, hidden, fromCustomer, lead, description, ...offer }) => ({
       ...offer,
       upper_access: upperAccess ?? null,
       ...(hidden === true ? { hidden: true } : {}),
       ...(fromCustomer === true ? { from_customer: true } : {}),
+      ...(lead === true ? { lead: true } : {}),
+      ...(description ? { description } : {}),
     })),
     meeting_offer: meetingOffer,
     meeting_install_on: draft.meetingInstallOn ?? null,

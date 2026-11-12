@@ -16,23 +16,29 @@ import {
   slotHasPicture,
 } from "@/components/meeting/deck-parts";
 import { MoreButton, type MoreState } from "@/components/meeting/deck-pages";
-import { deckLine, NO_PAYMENT_LINE, SLOT_BY_KEY, type DeckLines, type PageWords } from "@/lib/deck";
+import { RooflineTracker } from "@/components/quote-link/roofline-tracker";
+import { deckLine, SLOT_BY_KEY, type DeckLines, type PageWords } from "@/lib/deck";
 import { installDayGrid, moreWords, slotView } from "@/lib/meeting/deck-pages";
 import type { RecapView } from "@/lib/meeting/black-friday-state";
-import type { DeckPayload } from "@/lib/meeting/state";
+import type { DeckPayload, TrackerProgress } from "@/lib/meeting/state";
+import { trackerSteps } from "@/lib/quote-link/tracker";
 import { BLACK_FRIDAY_LABEL } from "@/lib/quotes/black-friday";
 import { formatLongDay } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 // What happens next (round 9, the meeting as one story; round 10, Keenan,
-// 2026-11-10: a wrap-up): their choice and total once one is chosen on the
-// price page, the install day (picked at the table, or "We pick the day
-// together.", with Pick a day), "No payment until your install is
-// complete." word for word, the closing line and thanks. The colour and
-// its initials are settled on the price page now, so no colour book line
-// here. It is never skipped. Meeting mode never accepts the quote: there
-// is no Book button, acceptance, commission, setter or notes here. What
-// we'll need is behind its button.
+// 2026-11-10: a wrap-up; round 17, 2026-11-12: Where you're at): their
+// choice and total once one is chosen on the price page, then the same four
+// steps as their link, as lights along a roofline in the same words
+// (Meeting, Choose your option, Site visit, Install day), with step 2 lit
+// once they say yes (an option chosen at the table, or the accepted one),
+// and Keenan's line under them ("You pay nothing until it's installed and
+// you're happy with it."), which takes the place of the old Paying row.
+// Then the install day (picked at the table, or "We pick the day
+// together.", with Pick a day), the closing line and thanks. It is never
+// skipped. Meeting mode never accepts the quote: there is no Book button,
+// acceptance, commission, setter or notes here. What we'll need is behind
+// its button.
 //
 // With Keenan's install day photo (install_day.hero), the photo sits on the
 // left third and the words on the right; until then, the words alone,
@@ -52,6 +58,9 @@ export type NextStepsPageProps = {
   installOn: string | null;
   today: string;
   onInstallOn: ((day: string | null) => void) | null;
+  // Round 17: the agreement tick, the site visit and Installed, from the
+  // lead (null in the rehearsal with no lead).
+  progress: TrackerProgress | null;
   // What we'll need, and the Pick a day layer.
   more: MoreState;
   dayLayer: MoreState;
@@ -68,12 +77,21 @@ function Row({ label, children, testId }: { label: string; children: ReactNode; 
   );
 }
 
-export function NextStepsPage({ deck, words, lines, near, fillEmpty, recap, installOn, today, onInstallOn, more, dayLayer }: NextStepsPageProps) {
+export function NextStepsPage({ deck, words, lines, near, fillEmpty, recap, installOn, today, onInstallOn, progress, more, dayLayer }: NextStepsPageProps) {
   const hero = slotView(deck, "install_day.hero", fillEmpty);
   const withPicture = slotHasPicture(hero);
   const layer = moreWords(words);
   const headline = words.headline.trim();
   const thanks = deckLine(lines, "thanks").trim();
+  const steps = trackerSteps({
+    words: lines,
+    chosen: recap !== null,
+    sign: progress?.sign ?? false,
+    siteVisitOn: progress?.siteVisitOn ?? null,
+    siteVisitDone: progress?.siteVisitDone ?? false,
+    installOn,
+    installed: progress?.installed ?? false,
+  });
 
   const content = (
     <>
@@ -95,6 +113,12 @@ export function NextStepsPage({ deck, words, lines, near, fillEmpty, recap, inst
           {recap.after ? (/^[,.:;?]/.test(recap.after) ? say(recap.after) : ` ${say(recap.after)}`) : null}
         </p>
       ) : null}
+      <RooflineTracker
+        steps={steps}
+        pay={deckLine(lines, "tracker_pay")}
+        tone="deck"
+        headingId="next-steps-tracker"
+      />
       <ul className="flex flex-col gap-4" aria-label={headline ? say(headline) : undefined}>
         <Row label={lines.step_day_label} testId="next-step-install">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
@@ -107,9 +131,6 @@ export function NextStepsPage({ deck, words, lines, near, fillEmpty, recap, inst
               </DeckButton>
             ) : null}
           </div>
-        </Row>
-        <Row label={lines.step_pay_label} testId="next-step-pay">
-          <p className={cn(DECK_TYPE.body, "font-semibold")}>{NO_PAYMENT_LINE}</p>
         </Row>
       </ul>
       <p className={cn(DECK_TYPE.small, "text-muted-foreground")} data-testid="next-steps-closing">

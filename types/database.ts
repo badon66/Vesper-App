@@ -95,6 +95,46 @@ export type Database = {
           },
         ]
       }
+      ai_polishes: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          id?: never
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: never
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_polishes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_polishes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_polishes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       day_schedules: {
         Row: {
           created_at: string
@@ -825,6 +865,73 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_site_visits: {
+        Row: {
+          done_at: string | null
+          lead_id: string
+          updated_at: string
+          updated_by: string | null
+          visit_on: string | null
+        }
+        Insert: {
+          done_at?: string | null
+          lead_id: string
+          updated_at?: string
+          updated_by?: string | null
+          visit_on?: string | null
+        }
+        Update: {
+          done_at?: string | null
+          lead_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          visit_on?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_site_visits_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_site_visits_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "lead_notes"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_site_visits_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_site_visits_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_site_visits_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_site_visits_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
             referencedColumns: ["id"]
           },
         ]
@@ -1928,9 +2035,17 @@ export type Database = {
           booking_pay: number
           booking_window_days: number
           box_price: number
+          christmas_banner_after: string
+          christmas_banner_book_by: string
+          christmas_banner_colour: string
+          christmas_banner_no_colour: string
           christmas_banner_on: boolean
           christmas_banner_text: string
           christmas_banner_title: string
+          christmas_banner_white: string
+          christmas_book_by_colour: string | null
+          christmas_book_by_white: string | null
+          christmas_season_end: string | null
           commission_rate: number
           company: Json
           confirm_text: string
@@ -1981,9 +2096,17 @@ export type Database = {
           booking_pay?: number
           booking_window_days?: number
           box_price?: number
+          christmas_banner_after?: string
+          christmas_banner_book_by?: string
+          christmas_banner_colour?: string
+          christmas_banner_no_colour?: string
           christmas_banner_on?: boolean
           christmas_banner_text?: string
           christmas_banner_title?: string
+          christmas_banner_white?: string
+          christmas_book_by_colour?: string | null
+          christmas_book_by_white?: string | null
+          christmas_season_end?: string | null
           commission_rate?: number
           company: Json
           confirm_text?: string
@@ -2034,9 +2157,17 @@ export type Database = {
           booking_pay?: number
           booking_window_days?: number
           box_price?: number
+          christmas_banner_after?: string
+          christmas_banner_book_by?: string
+          christmas_banner_colour?: string
+          christmas_banner_no_colour?: string
           christmas_banner_on?: boolean
           christmas_banner_text?: string
           christmas_banner_title?: string
+          christmas_banner_white?: string
+          christmas_book_by_colour?: string | null
+          christmas_book_by_white?: string | null
+          christmas_season_end?: string | null
           commission_rate?: number
           company?: Json
           confirm_text?: string
@@ -2583,6 +2714,7 @@ export type Database = {
         }
         Returns: string
       }
+      ai_polish_take: { Args: never; Returns: Json }
       book_meeting: {
         Args: {
           p_everyone_deciding_present: boolean

@@ -98,3 +98,16 @@ describe("next.config.ts", () => {
     await expect(import("@/next.config")).rejects.toThrow(/Refusing to build: NEXT_PUBLIC_GUARD_PROBE/);
   });
 });
+
+describe("an Anthropic key in a NEXT_PUBLIC_ variable (round 17)", () => {
+  it("refuses to build, names the variable and never prints the value", () => {
+    const env = { NEXT_PUBLIC_POLISH_KEY: "sk-ant-api03-not-a-real-key", ANTHROPIC_API_KEY: "sk-ant-api03-fine-here" };
+    expect(() => assertNoSecretsInPublicEnv(env)).toThrow(/Refusing to build: NEXT_PUBLIC_POLISH_KEY holds an Anthropic API key/);
+    try {
+      assertNoSecretsInPublicEnv(env);
+    } catch (e) {
+      expect(String(e)).not.toContain("not-a-real-key");
+    }
+    expect(() => assertNoSecretsInPublicEnv({ ANTHROPIC_API_KEY: "sk-ant-api03-fine-here" })).not.toThrow();
+  });
+});

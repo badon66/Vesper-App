@@ -50,7 +50,7 @@ import {
   type DeckPage,
 } from "@/lib/meeting/deck-pages";
 import {
-  colourTimingFor,
+  withColourRule,
   quoteFingerprint,
   quoteInputs,
   quoteOffers,
@@ -241,8 +241,7 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
   const [quote, setQuote] = useState<QuoteUIState | null>(() => {
     const opened = start?.quote ?? null;
     if (!opened || accepted) return opened;
-    const timing = colourTimingFor(colour.kind, colour.text, opened.colourTiming);
-    const timed = timing === opened.colourTiming ? opened : { ...opened, colourTiming: timing };
+    const timed = withColourRule(opened, colour.kind, colour.text);
     // Its Black Friday line as Settings' deal works it out now.
     return meeting ? settleBlackFriday(timed, meeting.pricing) : timed;
   });
@@ -556,6 +555,7 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             onInstallOn={
               meeting && quote && !accepted ? (day) => setQuote((now) => (now ? { ...now, installOn: day } : now)) : null
             }
+            progress={meeting?.lead.progress ?? null}
             more={moreOf("next_steps")}
             dayLayer={moreOf("next_steps:day")}
           />

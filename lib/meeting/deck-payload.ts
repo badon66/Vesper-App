@@ -12,6 +12,7 @@ import { pickEditableQuote, type DeckPayload, type MeetingPayload, type QuoteDra
 import { DECK_BUCKET } from "@/lib/photos-deck";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { blackFridayFrom } from "@/lib/quotes/black-friday";
+import { CHRISTMAS_WORD_DEFAULTS, type ChristmasSettings } from "@/lib/quote-link/christmas";
 import type { createClient } from "@/lib/supabase/server";
 import { calgaryToday } from "@/lib/time";
 
@@ -99,11 +100,14 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
     draft,
     { data: trace },
     deckPhotoRows,
+    { data: linkOptions },
+    { data: siteVisit },
+    { data: agreementRow },
   ] = await Promise.all([
       supabase
         .from("leads")
         .select(
-          "id, first_name, last_name, address_line, neighbourhood, soffit_colour, soffit_colour_2, track_colour_id, track_ral_code, track_colour_initials, track_colour_initialled_at",
+          "id, first_name, last_name, address_line, neighbourhood, soffit_colour, soffit_colour_2, track_colour_id, track_ral_code, track_colour_initials, track_colour_initialled_at, status",
         )
         .eq("id", leadId)
         .maybeSingle(),
@@ -123,6 +127,12 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
       editableQuotes(supabase, leadId),
       supabase.from("roofline_traces").select(TRACE).eq("lead_id", leadId).maybeSingle(),
       deckPhotos(supabase),
+      // Round 17, Where you're at: the agreement tick, the site visit, and
+      // whether Settings has an agreement at all (only a yes or no leaves
+      // the server; the text never reaches the iPad).
+      supabase.from("lead_link_options").select("agreement_to_sign").eq("lead_id", leadId).maybeSingle(),
+      supabase.from("lead_site_visits").select("visit_on, done_at").eq("lead_id", leadId).maybeSingle(),
+      supabase.from("settings").select("agreement_text").eq("id", 1).maybeSingle(),
     ]);
   if (!lead || !settings) return null;
 
@@ -177,6 +187,12 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
       colourText: trackColourText(trackColour),
       initials: lead.track_colour_initials,
       initialledAt: lead.track_colour_initialled_at,
+      progress: {
+        sign: Boolean(linkOptions?.agreement_to_sign) && Boolean(agreementRow?.agreement_text?.trim()),
+        siteVisitOn: siteVisit?.visit_on ?? null,
+        siteVisitDone: Boolean(siteVisit?.done_at),
+        installed: lead.status === "installed",
+      },
     },
     deck,
     colours: {
@@ -199,7 +215,7 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
 // The prices Settings gives a new quote (shared with the lead page's quote
 // editor, lib/quotes/editor-data.ts).
 export const PRICING_SETTINGS =
-  "price_per_ft, box_price, neighbour_discount, gst_enabled, gst_rate, gst_number, rush_colour_fee, upper_access_fee, upper_gable_access_fee, price_hold_days, min_job_total, black_friday_kind, black_friday_value, double_track_per_ft, j_track_per_ft";
+  "price_per_ft, box_price, neighbour_discount, gst_enabled, gst_rate, gst_number, rush_colour_fee, upper_access_fee, upper_gable_access_fee, price_hold_days, min_job_total, black_friday_kind, black_friday_value, double_track_per_ft, j_track_per_ft, christmas_banner_on, christmas_book_by_white, christmas_book_by_colour, christmas_season_end, christmas_banner_book_by, christmas_banner_white, christmas_banner_colour, christmas_banner_no_colour, christmas_banner_after";
 
 type PricingRow = {
   price_per_ft: number;
@@ -217,7 +233,35 @@ type PricingRow = {
   black_friday_value?: number | null;
   double_track_per_ft?: number | null;
   j_track_per_ft?: number | null;
+  christmas_banner_on?: boolean;
+  christmas_book_by_white?: string | null;
+  christmas_book_by_colour?: string | null;
+  christmas_season_end?: string | null;
+  christmas_banner_book_by?: string;
+  christmas_banner_white?: string;
+  christmas_banner_colour?: string;
+  christmas_banner_no_colour?: string;
+  christmas_banner_after?: string;
 };
+
+// Round 17: the Christmas banner's dates and words while it is on and dated.
+function christmasFrom(settings: PricingRow): ChristmasSettings | null {
+  const white = settings.christmas_book_by_white ?? null;
+  const end = settings.christmas_season_end ?? null;
+  if (!settings.christmas_banner_on || !white || !end) return null;
+  return {
+    bookByWhite: white,
+    bookByColour: settings.christmas_book_by_colour ?? white,
+    seasonEnd: end,
+    words: {
+      bookBy: settings.christmas_banner_book_by ?? CHRISTMAS_WORD_DEFAULTS.bookBy,
+      white: settings.christmas_banner_white ?? CHRISTMAS_WORD_DEFAULTS.white,
+      colour: settings.christmas_banner_colour ?? CHRISTMAS_WORD_DEFAULTS.colour,
+      noColour: settings.christmas_banner_no_colour ?? CHRISTMAS_WORD_DEFAULTS.noColour,
+      after: settings.christmas_banner_after ?? CHRISTMAS_WORD_DEFAULTS.after,
+    },
+  };
+}
 
 export function pricingFrom(settings: PricingRow): MeetingPayload["pricing"] {
   return {
@@ -234,6 +278,9 @@ export function pricingFrom(settings: PricingRow): MeetingPayload["pricing"] {
     minJobTotal: settings.min_job_total,
     blackFriday: blackFridayFrom(settings),
     trackPrices: { double: settings.double_track_per_ft ?? null, j: settings.j_track_per_ft ?? null },
+    christmas: christmasFrom(settings),
+    // Read on the server only; a browser has no such variable and reads no.
+    polishReady: Boolean(process.env.ANTHROPIC_API_KEY?.trim()),
   };
 }
 

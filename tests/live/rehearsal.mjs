@@ -973,24 +973,32 @@ async function rehearse(lead, { deal, tag, chooseName, bookName, pickDay }) {
   );
   check("no sideways scroll at 390", (await page.evaluate(() => document.documentElement.scrollWidth)) <= 390);
   if (deal > 0) {
+    // Round 17: the breakdown sits behind See the breakdown on the picked card.
+    await tap(page.locator('[data-testid="option-row"][data-selected="true"] [data-testid="option-breakdown-toggle"]'));
+    await page.getByTestId("quote-lines").waitFor({ timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(300);
     const dealLine = page.locator(`[data-testid="quote-lines"] .quote-row[data-line="${DEAL}"][data-shown="true"]`);
     check("the Black Friday line is in What's in, $300", (await dealLine.count()) === 1 && dollarsIn(await dealLine.innerText().catch(() => "")) === deal, flat(await dealLine.innerText().catch(() => "none")));
   }
   await shot(page, "link-top");
   for (const id of [lowerId, frontId, fullId]) {
-    await tap(page.locator(`[data-testid="option-row"][data-offer="${id}"]`));
+    await tap(page.locator(`[data-testid="option-row"][data-offer="${id}"] label`));
     await page.waitForTimeout(700);
     const hero = await heroTotal(page);
     check(`switching to ${lead.offers.find((offer) => offer.id === id)?.name}: the hero follows, ${money(expectedLink[id])}`, (await linkRows(page)).find((row) => row.selected)?.offer === id && hero === expectedLink[id], `hero ${hero}`);
   }
-  const nextSteps = flat(await page.getByTestId("quote-next-steps").innerText().catch(() => ""));
-  if (installDay) check("the link's What happens next shows the day picked at the table", nextSteps.includes(longDay(installDay)), nextSteps.slice(0, 160));
+  // Round 17: Where you're at, near the top, shows the day picked at the
+  // table under Install day.
+  await tap(page.locator('[data-testid="tracker-step"][data-step="install"]'));
+  await page.waitForTimeout(300);
+  const nextSteps = flat(await page.getByTestId("tracker-detail").innerText().catch(() => ""));
+  if (installDay) check("the link's Where you're at shows the day picked at the table under Install day", nextSteps.includes(longDay(installDay)), nextSteps.slice(0, 160));
   check("the page never offers the customer a day to pick (Keenan sets it)", (await page.getByTestId("install-day-picker").count()) === 0);
-  await page.getByTestId("quote-next-steps").scrollIntoViewIfNeeded().catch(() => {});
-  await shot(page, "link-what-happens-next");
+  await page.getByTestId("tracker").scrollIntoViewIfNeeded().catch(() => {});
+  await shot(page, "link-where-youre-at");
   // Book my install on bookName.
   const bookId = offerId(bookName);
-  await tap(page.locator(`[data-testid="option-row"][data-offer="${bookId}"]`));
+  await tap(page.locator(`[data-testid="option-row"][data-offer="${bookId}"] label`));
   await page.waitForTimeout(700);
   await tap(page.getByTestId("bar-book"));
   const confirm = page.getByTestId("book-confirm");

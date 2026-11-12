@@ -17,6 +17,13 @@
 //   with the offers (2026-11-12: it once stayed pinned over the sections
 //   below, which full-page screenshots never show because they don't scroll);
 // - on a phone: the single column as before, with the finger wording.
+// Round 17 (Keenan, 2026-11-12): the Christmas banner across the very top
+// and Where you're at full width above the top section; the bar's middle
+// naming the option on screen and its price as they pick (Build your own
+// and a Black Friday price included), never on a phone; the house once on a
+// phone, in See it on your house under the price; and the accepted-quote
+// page at laptop size, on the lead assigned to Keenan so no commission is
+// made, with the same scroll check.
 // Everything staged is removed at the end; Settings' agreement text is set
 // only when empty and no other lead waits on it, and put back after.
 import { randomUUID } from "node:crypto";
@@ -155,6 +162,7 @@ async function clean() {
     const files = (docs ?? []).flatMap((d) => (d.storage_path ? [d.storage_path] : []));
     const { data: mockups } = await admin.from("lead_mockups").select("storage_path").in("lead_id", ids);
     await admin.from("agreement_signatures").delete().in("lead_id", ids);
+    await admin.from("lead_site_visits").delete().in("lead_id", ids);
     await admin.from("lead_link_documents").delete().in("lead_id", ids);
     await admin.from("lead_link_options").delete().in("lead_id", ids);
     if (files.length > 0) await admin.storage.from(DOCS).remove(files);
@@ -194,6 +202,12 @@ async function layoutAt(page, name, width) {
   );
   const hero = await page.getByTestId("quote-mockup").isVisible().catch(() => false);
   check(`${name}: the house is shown once, not again above the page`, !hero);
+  // On the link no step of Where you're at is open until they choose (round
+  // 17 critique): Site visit is opened, so its words are measured too.
+  const closed = !(await page.getByTestId("tracker-detail").isVisible());
+  await page.locator('[data-testid="tracker-step"][data-step="visit"]').click();
+  await page.getByTestId("tracker-detail").waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+  check(`${name}: Where you're at opens a step only when tapped`, closed && (await page.getByTestId("tracker-detail").getAttribute("data-step")) === "visit");
   const widths = await page.evaluate(() => {
     const measure = (selector) => {
       const element = document.querySelector(selector);
@@ -213,7 +227,7 @@ async function layoutAt(page, name, width) {
         const rect = element.getBoundingClientRect();
         return Math.round(Math.abs(rect.left + rect.width / 2 - window.innerWidth / 2));
       })(),
-      next: measure('[data-testid="quote-next-steps"]'),
+      next: measure('[data-testid="tracker-detail"]'),
       track: measure('[data-testid="about-track"]'),
       options: measure('[data-testid="quote-options"]'),
       left: Math.round(document.getElementById("quote-for").getBoundingClientRect().left),
@@ -221,6 +235,31 @@ async function layoutAt(page, name, width) {
     };
   });
   check(`${name}: no sideways scroll`, widths.page <= widths.viewport, `${widths.page} in ${widths.viewport}`);
+  // Round 17: the banner across the whole width at the very top, then Where
+  // you're at across the page's width, above the picture and the price.
+  const top = await page.evaluate(() => {
+    const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect() ?? null;
+    const banner = rect('[data-testid="quote-christmas"]');
+    const tracker = rect('[data-testid="tracker"]');
+    const grid = rect('[data-testid="laptop-top"]');
+    const main = rect('[data-testid="quote-live"]');
+    return {
+      banner: banner ? { left: Math.round(banner.left), width: Math.round(banner.width), bottom: Math.round(banner.bottom) } : null,
+      mainTop: main ? Math.round(main.top) : null,
+      tracker: tracker ? { left: Math.round(tracker.left), right: Math.round(tracker.right), bottom: Math.round(tracker.bottom) } : null,
+      grid: grid ? { left: Math.round(grid.left), right: Math.round(grid.right), top: Math.round(grid.top) } : null,
+    };
+  });
+  check(
+    `${name}: the Christmas banner runs the full width at the very top`,
+    top.banner && top.banner.left === 0 && top.banner.width === width && top.banner.bottom <= top.mainTop + 1,
+    JSON.stringify(top.banner),
+  );
+  check(
+    `${name}: Where you're at runs the width of the page above the picture and the price`,
+    top.tracker && top.grid && top.tracker.bottom <= top.grid.top + 1 && Math.abs(top.tracker.left - top.grid.left) <= 24 && Math.abs(top.tracker.right - top.grid.right) <= 24,
+    JSON.stringify({ tracker: top.tracker, top: top.grid }),
+  );
   check(`${name}: the page stops short of the screen's edges`, widths.main <= 1280 && widths.left >= 40 && widths.right >= 40, `page ${widths.main} px of ${width}, text from ${widths.left} px, offers end ${widths.right} px from the edge`);
   const reading = [widths.points, widths.next, widths.track].filter((w) => w !== null);
   check(`${name}: text runs at a reading width`, reading.length === 3 && reading.every((w) => w > 300 && w <= 760), `text ${reading.join(", ")} px; offers ${widths.options} px`);
@@ -235,12 +274,12 @@ async function layoutAt(page, name, width) {
 // reads: at every step no text on the page sits under the picture (only the
 // picture's own Looks and Options, and the bar fixed at the bottom, may
 // share its space), and by the end the picture has left the screen.
-async function scrollCheck(engine, launcher, [width, height]) {
-  const name = `${engine} ${width} x ${height}`;
+async function scrollCheck(engine, launcher, [width, height], main = "quote-live") {
+  const name = `${main === "quote-agreed" ? "accepted page, " : ""}${engine} ${width} x ${height}`;
   const context = await launcher.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   await page.goto(`${base}/q/${staged.token}`, { waitUntil: "networkidle" });
-  await page.getByTestId("quote-live").waitFor({ timeout: 30000 });
+  await page.getByTestId(main).waitFor({ timeout: 30000 });
   const total = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight);
   const step = Math.round(height * 0.4);
   const covered = [];
@@ -287,6 +326,7 @@ async function scrollCheck(engine, launcher, [width, height]) {
 
 await mkdir(out, { recursive: true });
 let browser = null;
+let safari = null;
 try {
   await stage();
   const agreementOffered = await offerAgreement();
@@ -299,7 +339,13 @@ try {
     await layoutAt(page, `${width} wide`, width);
     if (width === 1440) {
       // The picture stays in view while they read the offers.
-      await page.getByTestId("whats-in").scrollIntoViewIfNeeded();
+      // Round 17: the offer cards in the middle of the screen, as they read
+      // them (each card's breakdown is closed until asked for, so the
+      // offers are shorter and the picture leaves with their last line).
+      await page.evaluate(() => {
+        const rows = document.querySelector('[data-testid="option-rows"]').getBoundingClientRect();
+        window.scrollTo(0, window.scrollY + (rows.top + rows.bottom) / 2 - window.innerHeight / 2);
+      });
       await page.waitForTimeout(300);
       const kept = await box(page, "option-mockup");
       check("1440 wide: the picture stays in view while they go down the offers", kept && kept.y >= 0 && kept.y + kept.height <= 900, kept ? `top ${Math.round(kept.y)}` : "missing");
@@ -309,7 +355,6 @@ try {
 
   // The scroll check, in Chromium and in WebKit when it runs here.
   for (const size of [[1440, 900], [1280, 800]]) await scrollCheck("Chromium", browser, size);
-  let safari = null;
   try {
     safari = await webkit.launch(process.env.WEBKIT_EXECUTABLE ? { executablePath: process.env.WEBKIT_EXECUTABLE } : {});
   } catch (error) {
@@ -317,7 +362,6 @@ try {
   }
   if (safari) {
     for (const size of [[1440, 900], [1280, 800]]) await scrollCheck("WebKit", safari, size);
-    await safari.close();
   }
 
   // 1440 x 900 as a customer sees it: the top, halfway down the offers, below the offers.
@@ -329,8 +373,8 @@ try {
     await page.screenshot({ path: `${out}/${tag}-1440x900-1-top.png` });
     await page.evaluate(() => {
       const rows = document.querySelector('[data-testid="option-rows"]').getBoundingClientRect();
-      const lines = document.querySelector('[data-testid="quote-lines"]').getBoundingClientRect();
-      window.scrollTo(0, window.scrollY + (rows.top + lines.bottom) / 2 - window.innerHeight / 2);
+      const under = document.querySelector('[data-testid="quote-includes"]').getBoundingClientRect();
+      window.scrollTo(0, window.scrollY + (rows.top + under.bottom) / 2 - window.innerHeight / 2);
     });
     await page.waitForTimeout(300);
     await page.screenshot({ path: `${out}/${tag}-1440x900-2-offers.png` });
@@ -394,6 +438,11 @@ try {
   await page.locator('[data-testid="see-it-option"][data-offer="front"]').click();
   await page.waitForTimeout(300);
   check("an option picked beside the picture changes the price", flat(await page.getByTestId("hero-option").innerText()) === "Full front" && flat(await page.getByTestId("hero-total").innerText()).includes("$3,936"), flat(await page.getByTestId("hero-total").innerText()));
+  check(
+    "the middle of the bar names the option on screen and its price, and follows the pick",
+    flat(await page.getByTestId("bar-summary").innerText().catch(() => "")) === "Full front, $3,936",
+    flat(await page.getByTestId("bar-summary").innerText().catch(() => "")),
+  );
 
   // Build your own from the keyboard.
   await page.getByTestId("build-row").focus();
@@ -405,6 +454,11 @@ try {
   await page.waitForTimeout(300);
   const after = flat(await page.getByTestId("hero-total").innerText());
   check("Build your own opens and ticks from the keyboard, and the price follows", before !== after && /\$[\d,]+/.test(after), `${before} -> ${after}`);
+  check(
+    "with Build your own, the bar names their own option and its price, the same as the price at the top",
+    flat(await page.getByTestId("bar-summary").innerText().catch(() => "")) === `Your own option, ${after}`,
+    flat(await page.getByTestId("bar-summary").innerText().catch(() => "")),
+  );
   await page.keyboard.press("Space");
   await page.waitForTimeout(200);
 
@@ -460,19 +514,96 @@ try {
     const page2 = await phone.newPage();
     await page2.goto(`${base}/q/${staged.token}`, { waitUntil: "networkidle" });
     await page2.getByTestId("quote-live").waitFor({ timeout: 30000 });
-    const hero = await box(page2, "quote-mockup");
     const seeIt = await box(page2, "see-it");
     const options = await box(page2, "quote-options");
-    check("phone: the house across the top, edge to edge, as before", hero && hero.x === 0 && Math.round(hero.width) === 390 && hero.y < 80, hero ? `${Math.round(hero.width)} wide at y ${Math.round(hero.y)}` : "missing");
+    const price = await box(page2, "quote-promises");
+    const tracker = await box(page2, "tracker");
+    const banner = await box(page2, "quote-christmas");
+    check(
+      "phone (round 17): the banner at the top, Where you're at under it, then the price, then their house once, in See it on your house",
+      (await page2.getByTestId("quote-mockup").count()) === 0 &&
+        banner && tracker && price && seeIt &&
+        banner.y < tracker.y && tracker.y < price.y && price.y + price.height <= seeIt.y + 1,
+      JSON.stringify({ banner: banner && Math.round(banner.y), tracker: tracker && Math.round(tracker.y), price: price && Math.round(price.y), seeIt: seeIt && Math.round(seeIt.y) }),
+    );
     check("phone: one column, See it on your house above the offers", seeIt && options && options.y > seeIt.y + seeIt.height - 1 && Math.round(options.width) === 390);
+    check("phone: the bar keeps Call, Text and Book alone, no option or price in it", !(await page2.getByTestId("bar-summary").isVisible().catch(() => false)));
     check("phone: no sideways scroll", await page2.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
     await page2.screenshot({ path: `${out}/${tag}-phone.png`, fullPage: true });
     await phone.close();
+  }
+  // Round 17: a Black Friday price in the bar. Keenan's iPad saves the deal
+  // as one discount line on the quote; the service role stands in for it.
+  {
+    const { data: q } = await admin.from("quotes").select("id, discounts").eq("lead_id", staged.leadId).single();
+    const deal = await admin.from("quotes").update({ discounts: [...(q.discounts ?? []), { label: "Black Friday", amount: 300 }] }).eq("id", q.id);
+    if (deal.error) throw new Error(`black friday: ${deal.error.message}`);
+    const bf = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+    const bfPage = await bf.newPage();
+    await bfPage.goto(`${base}/q/${staged.token}`, { waitUntil: "networkidle" });
+    await bfPage.getByTestId("quote-live").waitFor({ timeout: 30000 });
+    await bfPage.locator('[data-testid="see-it-option"][data-offer="full"]').click();
+    await bfPage.waitForTimeout(300);
+    const heroTotal = flat(await bfPage.getByTestId("hero-total").innerText());
+    const barText = flat(await bfPage.getByTestId("bar-summary").innerText().catch(() => ""));
+    check(
+      "with a Black Friday price on the quote, the bar names Full wrap at that price, the same as the price at the top",
+      heroTotal === "$4,836" && barText === "Full wrap, $4,836",
+      `${heroTotal} | ${barText}`,
+    );
+    await bfPage.screenshot({ path: `${out}/${tag}-1440-black-friday-bar.png` });
+    await bf.close();
+  }
+
+  // Round 17: the accepted page at laptop size, on the lead assigned to
+  // Keenan, so accepting it makes no commission. The service role stands
+  // in for his Accepted sheet, as in the quote outcomes walk-through.
+  {
+    await admin.from("leads").update({ assigned_to: staged.ownerId }).eq("id", staged.leadId);
+    const { data: q } = await admin.from("quotes").select("id").eq("lead_id", staged.leadId).single();
+    const accepted = await admin.rpc("quote_accept_offer", { p_quote: q.id, p_offer: "full", p_install_on: null });
+    if (accepted.error) throw new Error(`accept: ${accepted.error.message}`);
+    const { count: earned } = await admin.from("earnings").select("id", { count: "exact", head: true }).eq("lead_id", staged.leadId);
+    check("accepted on the lead assigned to Keenan: no commission is made", (earned ?? 0) === 0, `${earned ?? 0} earnings`);
+    for (const [width, height] of [[1440, 900], [1280, 800]]) {
+      const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
+      const page = await context.newPage();
+      await page.goto(`${base}/q/${staged.token}`, { waitUntil: "networkidle" });
+      await page.getByTestId("quote-agreed").waitFor({ timeout: 30000 });
+      const facts = await page.evaluate(() => {
+        const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect() ?? null;
+        const picture = rect('[data-testid="see-it"]');
+        const head = rect("#quote-for");
+        const tracker = rect('[data-testid="tracker"]');
+        const grid = rect('[data-testid="laptop-top"]');
+        const below = rect('[data-testid="laptop-below"]');
+        return {
+          sideways: document.documentElement.scrollWidth > window.innerWidth,
+          beside: Boolean(picture && head && picture.right <= head.left + 1 && Math.abs(picture.top - head.top) < 140),
+          tracker: Boolean(tracker && grid && tracker.bottom <= grid.top + 1),
+          looks: [...document.querySelectorAll('[data-testid="see-it-look"]')].map((e) => e.textContent).join(),
+          centred: below ? Math.round(Math.abs(below.left + below.width / 2 - window.innerWidth / 2)) : 9999,
+          steps: [...document.querySelectorAll('[data-testid="tracker-step"]')].map((e) => `${e.getAttribute("data-step")}:${e.getAttribute("data-state")}`).join(" "),
+          banner: Boolean(document.querySelector('[data-testid="quote-christmas"]')),
+          summary: Boolean(document.querySelector('[data-testid="bar-summary"]')),
+        };
+      });
+      check(
+        `accepted page ${width} x ${height}: Where you're at full width above, their house with its Looks beside what was agreed, the rest in one centred column, no sideways scroll`,
+        !facts.sideways && facts.beside && facts.tracker && facts.looks === "Christmas" && facts.centred <= 2 && facts.steps === "meeting:done choose:done visit:current install:later" && !facts.banner && !facts.summary,
+        JSON.stringify(facts),
+      );
+      await page.screenshot({ path: `${out}/${tag}-agreed-${width}x${height}.png` });
+      await context.close();
+    }
+    for (const size of [[1440, 900], [1280, 800]]) await scrollCheck("Chromium", browser, size, "quote-agreed");
+    if (safari) for (const size of [[1440, 900], [1280, 800]]) await scrollCheck("WebKit", safari, size, "quote-agreed");
   }
 } catch (error) {
   failures += 1;
   say(`SCRIPT ERROR ${error?.message ?? error}`);
 } finally {
+  if (safari) await safari.close().catch(() => {});
   if (browser) await browser.close();
   await clean();
   say(`DONE ${failures === 0 ? "all checks passed" : `${failures} failed`}`);

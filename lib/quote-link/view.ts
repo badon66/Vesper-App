@@ -5,7 +5,7 @@
 // text Keenan sends. No React and no network, so it is unit tested like the
 // pricing it feeds, and the page and the server share it.
 
-import { AREA_KINDS } from "@/lib/quotes/areas";
+import { AREA_KINDS, customerAreaName } from "@/lib/quotes/areas";
 import { z } from "zod";
 import {
   cleanFeet,
@@ -26,7 +26,7 @@ import {
   type QuoteRun,
   type QuoteTotals,
 } from "@/lib/pricing";
-import { fillLine, NO_PAYMENT_LINE, parseDeckLines, type DeckLines } from "@/lib/deck";
+import { deckLine, parseDeckLines, type DeckLines } from "@/lib/deck";
 import {
   CUSTOMER_OFFER_ID,
   CUSTOMER_OFFER_NAME,
@@ -39,6 +39,7 @@ import {
   type QuoteOffer,
 } from "@/lib/quotes/offers";
 import { formatLongDay } from "@/lib/time";
+import { CHRISTMAS_WORD_DEFAULTS, isWhiteTrack, type ChristmasSettings } from "@/lib/quote-link/christmas";
 
 // The token's shape, as the database makes it: 24 base64url characters.
 export const TOKEN_PATTERN = /^[A-Za-z0-9_-]{24}$/;
@@ -112,14 +113,19 @@ export type CustomerQuote = {
   warranty: string;
   // Warranty years 6 to 10 (Settings); null hides its line.
   serviceCallFee: number | null;
-  // Shown only while Keenan has it on, September 1 to November 30 (the
-  // database decides, by Calgary's date).
-  christmas: { title: string; text: string } | null;
+  // Round 17: the Christmas banner's dates and words while Keenan has it on
+  // and the season hasn't ended (the database decides, by Calgary's date);
+  // lib/quote-link/christmas.ts picks the date for their track colour.
+  christmas: ChristmasSettings | null;
   productPoints: ProductPoint[];
   // What happens next: whether the colour was initialled at the meeting,
   // the planned install day (the lead's, else the one picked at the table),
   // and What we'll need, in the meeting's own words.
   nextSteps: NextStepsData;
+  // Round 17: where they're at, for the tracker: the site visit Keenan
+  // marks on the lead (its date, and whether it is done) and whether the
+  // job is installed.
+  progress: { siteVisitOn: string | null; siteVisitDone: boolean; installed: boolean };
   // The presentation gallery's photo paths: Vesper's own installs.
   gallery: string[];
   company: Company;
@@ -280,7 +286,26 @@ const liveSchema = z.object({
   warranty: z.string().catch(""),
   service_call_fee: z.coerce.number().nullable().optional().catch(null),
   christmas: z
-    .object({ title: z.string().catch(""), text: z.string().catch("") })
+    .object({
+      book_by_white: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      book_by_colour: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional().catch(null),
+      season_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      words: z
+        .object({
+          book_by: z.string().catch(CHRISTMAS_WORD_DEFAULTS.bookBy),
+          white: z.string().catch(CHRISTMAS_WORD_DEFAULTS.white),
+          colour: z.string().catch(CHRISTMAS_WORD_DEFAULTS.colour),
+          no_colour: z.string().catch(CHRISTMAS_WORD_DEFAULTS.noColour),
+          after: z.string().catch(CHRISTMAS_WORD_DEFAULTS.after),
+        })
+        .catch({
+          book_by: CHRISTMAS_WORD_DEFAULTS.bookBy,
+          white: CHRISTMAS_WORD_DEFAULTS.white,
+          colour: CHRISTMAS_WORD_DEFAULTS.colour,
+          no_colour: CHRISTMAS_WORD_DEFAULTS.noColour,
+          after: CHRISTMAS_WORD_DEFAULTS.after,
+        }),
+    })
     .nullable()
     .optional()
     .catch(null),
@@ -290,6 +315,15 @@ const liveSchema = z.object({
       colour_confirmed: z.boolean().catch(false),
       install_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().catch(null),
       what_we_need: z.string().nullable().catch(null),
+    })
+    .nullable()
+    .optional()
+    .catch(null),
+  progress: z
+    .object({
+      site_visit_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().catch(null),
+      site_visit_done: z.boolean().catch(false),
+      installed: z.boolean().catch(false),
     })
     .nullable()
     .optional()
@@ -319,7 +353,20 @@ export function parseCustomerQuote(data: unknown): CustomerQuote | ClosedQuote {
   }
   const v = live.data;
   const fee = v.service_call_fee ?? null;
-  const christmas = v.christmas && v.christmas.title.trim() ? { title: v.christmas.title.trim(), text: v.christmas.text.trim() } : null;
+  const christmas: ChristmasSettings | null = v.christmas
+    ? {
+        bookByWhite: v.christmas.book_by_white,
+        bookByColour: v.christmas.book_by_colour ?? v.christmas.book_by_white,
+        seasonEnd: v.christmas.season_end,
+        words: {
+          bookBy: v.christmas.words.book_by,
+          white: v.christmas.words.white,
+          colour: v.christmas.words.colour,
+          noColour: v.christmas.words.no_colour,
+          after: v.christmas.words.after,
+        },
+      }
+    : null;
   return {
     state: "live",
     firstName: v.first_name,
@@ -339,6 +386,11 @@ export function parseCustomerQuote(data: unknown): CustomerQuote | ClosedQuote {
       colourConfirmed: v.next_steps?.colour_confirmed === true,
       installOn: v.next_steps?.install_on ?? null,
       whatWeNeed: v.next_steps?.what_we_need?.trim() || null,
+    },
+    progress: {
+      siteVisitOn: v.progress?.site_visit_on ?? null,
+      siteVisitDone: v.progress?.site_visit_done === true,
+      installed: v.progress?.installed === true,
     },
     gallery: v.gallery.filter((path) => path.trim() !== ""),
     company: v.company,
@@ -362,34 +414,43 @@ export function parseCustomerQuote(data: unknown): CustomerQuote | ClosedQuote {
 // the words.
 export type LinkWords = DeckLines;
 
-// Whether it is the Christmas season on the page: September 1 to November 30
-// by Calgary's date, the same window the database gives the Christmas
-// banner (Keenan, 2026-11-05). Outside it nothing on the page mentions
-// Christmas. Without a date it counts as outside, so nothing is promised.
-export function christmasSeason(today: string | null): boolean {
-  const month = today ? Number(today.slice(5, 7)) : 0;
-  return month >= 9 && month <= 11;
-}
-
-// The track colour section's line about other colours: one colour rule,
-// the same as the iPad's colour page (round 9). White is in stock; every
-// other colour is made to order, included for spring or the rush colour
-// fee this season. From September 1 to November 30 the fee is "to have it
-// this season". From December 1 the spring option only, at no extra cost;
-// a quote Keenan priced for this season still names its fee, "to have it
-// sooner", so the line never contradicts that customer's own breakdown
-// (Keenan, 2026-11-05). A fee that isn't set drops its clause.
-export function otherColoursLine({ season, rushFee, rush }: { season: boolean; rushFee: number | null; rush: boolean }): string {
-  const fee = rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
-  if (season) {
-    return `Any other colour is made to order: nothing extra if it can wait for spring${
-      fee !== null ? `, or the ${formatMoney(fee)} rush colour fee to have it this season` : ""
-    }.`;
+// The track colour section's lines (round 17, Keenan, 2026-11-12): one
+// colour rule, the same as Your price in the meeting. White is in stock and
+// included. Any other colour is made to order: installed this season at no
+// extra cost by default, or in spring; a rush fee is Keenan's choice on a
+// quote and is named only when he charged it (this season with an amount),
+// so a link never mentions a fee its customer isn't paying. The words are
+// the meeting's own (colour_stock, colour_made and the two timing buttons).
+// The old September to November window is gone: the Christmas banner runs
+// by Keenan's dates instead (lib/quote-link/christmas.ts).
+export function colourSectionLines({
+  words,
+  colourName,
+  custom,
+  timing,
+  rushFee,
+}: {
+  words: DeckLines;
+  colourName: string | null;
+  custom: boolean;
+  timing: ColourTiming | null;
+  rushFee: number | null;
+}): { stock: string | null; other: string | null; made: string | null; timing: string | null } {
+  const name = (colourName ?? "").trim();
+  const madeToOrder = custom || (name !== "" && !isWhiteTrack(name));
+  if (!madeToOrder) {
+    // No cost claim: a colour this season may carry Keenan's rush fee.
+    return { stock: deckLine(words, "colour_stock"), other: "Any other colour is made to order.", made: null, timing: null };
   }
-  if (rush && fee !== null) {
-    return `Any other colour is made to order: nothing extra if it can wait for spring, or the ${formatMoney(fee)} rush colour fee to have it sooner.`;
-  }
-  return "Any other colour is made to order for a spring install, at no extra cost.";
+  const fee = timing === "rush" && rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
+  const lowerFirst = (text: string) => (text ? text.charAt(0).toLowerCase() + text.slice(1) : text);
+  const when =
+    timing === "factory_order"
+      ? `${deckLine(words, "colour_spring_label")}, ${lowerFirst(deckLine(words, "colour_spring_value"))}.`
+      : `${deckLine(words, "colour_season_label")}, ${lowerFirst(
+          fee === null ? deckLine(words, "colour_season_included") : deckLine(words, "colour_season_value", { fee: formatMoney(fee) }),
+        )}.`;
+  return { stock: null, other: null, made: deckLine(words, "colour_made", { colour: name || "Your colour" }), timing: when };
 }
 
 // Whether the price hold has passed: after the valid-until date (Calgary),
@@ -427,6 +488,10 @@ export function customerInputs(quote: CustomerQuote["quote"], positions: readonl
     gstEnabled: quote.gstEnabled,
     gstRate: quote.gstRate,
     colourName: quote.trackColourName,
+    // Round 17: every area on its own line on the link and its signed copy,
+    // by the name the quote editor shows it ("Front lower", "Front upper").
+    perArea: true,
+    areaName: customerAreaName,
   };
 }
 
@@ -464,13 +529,15 @@ export function offerChoice(
   return { id: offer.id, name: offer.name, total: screenTotal(totals.subtotal, quote.gstEnabled), totals, offer };
 }
 
-// Which option the page opens on: the one they booked, else the one chosen
-// at the meeting, else the biggest. Null when no option covers a run.
+// Which option the page opens on: the one they booked, else the one Keenan
+// leads with (round 17, his star), else the one chosen at the meeting, else
+// the biggest. Null when no option covers a run.
 export function openingOffer(
   shown: readonly PricedOffer[],
   { booked, meeting }: { booked: string | null; meeting: string | null },
 ): string | null {
-  for (const id of [booked, meeting]) {
+  const lead = shown.find((priced) => priced.offer.lead === true)?.offer.id ?? null;
+  for (const id of [booked, lead, meeting]) {
     if (id && shown.some((priced) => priced.offer.id === id)) return id;
   }
   return shown[0]?.offer.id ?? null;
@@ -609,27 +676,6 @@ export function parseLinkAgreement(data: unknown): LinkAgreement | null {
 }
 
 // ---------------------------------------------------------------- what happens next
-
-export type NextStep = { key: "colour" | "day" | "on_day" | "pay"; label: string; text: string; done: boolean };
-
-// The meeting's four steps in the same words (round 9, section 4): the
-// colour, read back from the initials taken at the meeting; the install
-// day if one is planned; the day itself; and paying.
-export function nextStepsFor(view: Pick<CustomerQuote, "nextSteps" | "words"> & { quote: Pick<CustomerQuote["quote"], "trackColourName"> }): NextStep[] {
-  const w = view.words;
-  const { colourConfirmed, installOn } = view.nextSteps;
-  return [
-    {
-      key: "colour",
-      label: w.step_colour_label,
-      text: colourConfirmed ? fillLine(w.link_colour_done, { colour: view.quote.trackColourName ?? "Your track colour" }) : w.step_colour_todo,
-      done: colourConfirmed,
-    },
-    { key: "day", label: w.step_day_label, text: installOn ? formatLongDay(installOn) : w.step_day_none, done: installOn !== null },
-    { key: "on_day", label: w.step_on_day_label, text: w.step_on_day, done: false },
-    { key: "pay", label: w.step_pay_label, text: NO_PAYMENT_LINE, done: false },
-  ];
-}
 
 // What Keenan gets in touch about once they ask to book: with an install
 // day already planned (What happens next shows it), confirming that day;
@@ -806,17 +852,21 @@ export function linkLooks<T extends { scene: boolean; name: string }>(pictures: 
 }
 
 // The picture on screen: the look they tapped, else the option's own
-// picture, else the Main, else none. kind says which, for the caption (only
-// an option's own picture shows exactly what that option covers).
+// picture, else the Main, else (round 17) the first look, so a house with
+// scenes and no other picture still shows, with its Looks; else none. kind
+// says which, for the caption (only an option's own picture shows exactly
+// what that option covers).
 export function seeItPicture<T extends { main: boolean; scene: boolean; name: string; offers: readonly string[] }>(
   pictures: readonly T[],
   offerId: string | null | undefined,
   look: string | null,
 ): { picture: T; kind: "look" | "own" | "main" } | null {
-  const scene = look ? linkLooks(pictures).find((picture) => picture.name.trim() === look) : undefined;
+  const looks = linkLooks(pictures);
+  const scene = look ? looks.find((picture) => picture.name.trim() === look) : undefined;
   if (scene) return { picture: scene, kind: "look" };
   const chosen = offerPicture(pictures, offerId);
-  return chosen ? { picture: chosen.picture, kind: chosen.own ? "own" : "main" } : null;
+  if (chosen) return { picture: chosen.picture, kind: chosen.own ? "own" : "main" };
+  return looks[0] ? { picture: looks[0], kind: "look" } : null;
 }
 
 // Whether the page shows the section with its rows: there is a picture, and
