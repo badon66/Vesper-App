@@ -237,7 +237,7 @@ export const DECK_LINE_DEFAULTS = {
   price_headline: "Your price",
   price_sub_many: "{Count} options, all with {colour} track.",
   price_sub_one: "With {colour} track.",
-  price_includes: "Every option includes the control box, install by our own crew and our 10-year warranty.",
+  price_includes: "Every option includes the smart controller, install by our own crew and our 10-year warranty.",
   price_held: "Price held until {date}.",
   financing: "Financing is available. Just ask.",
   price_empty: "Your options show here once we've measured.",
@@ -248,6 +248,10 @@ export const DECK_LINE_DEFAULTS = {
   // it is already at the minimum job total.
   price_lowest: "Already at our lowest price.",
   price_feet: "{feet} ft of lights",
+  // Round 18 (Keenan, 2026-11-12): the control box's line in every
+  // breakdown says what it is; its price stays Settings' box price.
+  controller_label: "Smart controller and power supply",
+  controller_detail: "600 W, Bluetooth and Wi-Fi, all-weather, installs indoors or outdoors. Run it from the app on your phone.",
   // What happens next
   recap: "Your choice: {name}, {total}",
   step_colour_label: "Your colour",
@@ -269,12 +273,13 @@ export const DECK_LINE_DEFAULTS = {
   link_colour_done: "{colour}, confirmed with your initials at the meeting.",
   // Quote link take 3 (2026-11-11): About your track, Build your own,
   // Documents and the agreement. The three track lines say only what Keenan
-  // told us (Hat track is the standard; the others go where it doesn't
-  // suit, upper gables most often); he rewrites them in Settings.
+  // told us (Standard track is the standard; the others go where it
+  // doesn't suit, upper gables most often); he rewrites them in Settings.
+  // Round 18: J track is "L track (back track)".
   link_track_title: "About your track",
-  link_track_hat: "Hat track is our standard track. It sits under the edge of your roof with the lights built in.",
+  link_track_hat: "Our standard track sits under the edge of your roof with the lights built in.",
   link_track_double: "Double track is for parts of a roofline where our standard track is not the right fit.",
-  link_track_j: "J track is for parts of a roofline where our standard track is not the right fit, most often upper gables.",
+  link_track_j: "L track (back track) is for parts of a roofline where our standard track is not the right fit, most often upper gables.",
   link_build_title: "Build your own",
   link_build_note: "Start from the option on screen and tick the parts you want. The price updates as you go.",
   link_docs_title: "Documents",
@@ -345,8 +350,9 @@ export const LINE_SPECS: Record<DeckLineKey, LineSpec> = {
   colour_spring_label: { group: "colour", label: "Spring button", words: LABEL },
   colour_spring_value: { group: "colour", label: "Spring button, under it", words: LABEL },
   colour_season_label: { group: "colour", label: "This season button", words: LABEL },
-  colour_season_value: { group: "colour", label: "This season button, under it, when Keenan charges a rush fee", words: 5, fill: ["fee"] },
-  colour_season_included: { group: "colour", label: "This season button, under it, with no rush fee", words: LABEL },
+  // Round 18: a rush fee is an offer's own line, never the colour's.
+  colour_season_value: { group: "colour", label: "This season button, under it, when Keenan charges a rush fee", words: 5, fill: ["fee"], retired: true },
+  colour_season_included: { group: "colour", label: "This season button, under it", words: LABEL },
   colour_book: { group: "colour", label: "The colour book line", words: 18 },
   initials_prompt: { group: "colour", label: "Beside the initials", words: 12 },
   initials_done: { group: "colour", label: "Once initialled", words: 8 },
@@ -362,6 +368,8 @@ export const LINE_SPECS: Record<DeckLineKey, LineSpec> = {
   your_choice: { group: "price", label: "Once chosen", words: LABEL },
   price_lowest: { group: "price", label: "With a deal on, under an option already at the minimum", words: 8 },
   price_feet: { group: "price", label: "Under each option's name (the meeting and the link)", words: 6, fill: ["feet"], need: ["feet"] },
+  controller_label: { group: "price", label: "The controller's line in the breakdown", words: 8 },
+  controller_detail: { group: "price", label: "The controller's line, under it", words: 30 },
   recap: { group: "next_steps", label: "Their choice, once chosen", words: 10, fill: ["name", "total"] },
   step_colour_label: { group: "next_steps", label: "Step 1", words: LABEL, retired: true },
   step_colour_done: { group: "next_steps", label: "Step 1, once initialled", words: 10, fill: ["colour"], retired: true },
@@ -380,9 +388,9 @@ export const LINE_SPECS: Record<DeckLineKey, LineSpec> = {
   link_something_else: { group: "link", label: "Under the options", words: 12 },
   link_colour_done: { group: "link", label: "What happens next, step 1, once initialled", words: 12, fill: ["colour"], retired: true },
   link_track_title: { group: "link", label: "About your track: the heading", words: LABEL },
-  link_track_hat: { group: "link", label: "About your track: Hat track (the standard)", words: SENTENCE },
+  link_track_hat: { group: "link", label: "About your track: Standard track", words: SENTENCE },
   link_track_double: { group: "link", label: "About your track: Double track", words: SENTENCE },
-  link_track_j: { group: "link", label: "About your track: J track", words: SENTENCE },
+  link_track_j: { group: "link", label: "About your track: L track (back track)", words: SENTENCE },
   link_build_title: { group: "link", label: "Build your own: the option's name", words: LABEL },
   link_build_note: { group: "link", label: "Build your own: how it works", words: SENTENCE },
   link_docs_title: { group: "link", label: "Documents: the heading", words: LABEL },

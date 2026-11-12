@@ -37,8 +37,9 @@ export function coverageLine(runs: QuoteRun[], offer: Pick<QuoteOffer, "runs">):
   return offerCoverage(runs, { runs: offer.runs.filter((p) => p >= 0 && p < runs.length && cleanFeet(runs[p].feet) > 0) });
 }
 
+// Round 18: a track's line carries its areas for the drop-down under it.
 export type BreakdownRow =
-  | { kind: "line"; label: string; detail: string | null; amount: string; minimum: boolean }
+  | { kind: "line"; label: string; detail: string | null; amount: string; minimum: boolean; areas?: { label: string; detail: string | null; amount: string }[] }
   | { kind: "sum"; label: string; amount: string };
 
 const MINIMUM_PREFIX = "To reach our";
@@ -52,7 +53,14 @@ export function breakdownRows(totals: QuoteTotals): BreakdownRow[] {
   for (const line of totals.lines) {
     const minimum = line.label.startsWith(MINIMUM_PREFIX);
     if (minimum) rows.push({ kind: "sum", label: "Before the minimum", amount: money(totals.beforeMinimum) });
-    rows.push({ kind: "line", label: line.label, detail: line.detail, amount: money(line.amount), minimum });
+    rows.push({
+      kind: "line",
+      label: line.label,
+      detail: line.detail,
+      amount: money(line.amount),
+      minimum,
+      ...(line.areas ? { areas: line.areas.map((area) => ({ label: area.label, detail: area.detail, amount: money(area.amount) })) } : {}),
+    });
   }
   return rows;
 }

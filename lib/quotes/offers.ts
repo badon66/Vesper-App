@@ -2,8 +2,9 @@
 // runs once (quotes.runs); each offer picks which runs it covers, by their
 // positions in that list. An offer is priced with the quote's own prices
 // through lib/pricing.ts, the same function as everywhere else: lights at
-// the price per foot for its runs, the control box, upper access for its own
-// runs, rush colour if chosen, extra work, discounts and the minimum. Offers
+// the price per foot for its runs, the controller, upper access for its own
+// runs, its own rush fee and extra charges (round 18), the shared extra
+// work, discounts and the minimum. Offers
 // show biggest first, so Keenan walks them down from the full wrap.
 //
 // One shape everywhere: quotes.offers (the database cleans it the same way
@@ -33,6 +34,14 @@ import { areaOf, hasArea } from "@/lib/quotes/areas";
 // when true. description (round 17): a few sentences under the offer's
 // name on the link, and inside the breakdown at the table; one paragraph,
 // up to 400 characters, left out when empty.
+// rushFee (round 18, Keenan, 2026-11-12): this offer's own "Rush fee"
+// switch, off to start; on, it holds Settings' amount ($350) or what
+// Keenan typed over it. Kept as rush_fee only when more than 0. charges
+// (round 18): "+ Extra charge" lines on this offer only, each a name and
+// an amount, as many as he likes; the shared "Extra work, for every offer"
+// stays on the quote. Commission leaves out both, as it always left out
+// extra work and the rush fee.
+export type OfferCharge = { label: string; amount: number };
 export type QuoteOffer = {
   id: string;
   name: string;
@@ -43,7 +52,62 @@ export type QuoteOffer = {
   fromCustomer?: boolean;
   lead?: boolean;
   description?: string;
+  rushFee?: number | null;
+  charges?: OfferCharge[];
 };
+
+export const OFFER_CHARGES_MAX = 10;
+const CHARGE_LABEL_MAX = 80;
+
+// An offer's rush fee as saved: a number more than 0 and at most 100,000,
+// to the cent; anything else is off.
+export function cleanRushFee(value: unknown): number | null {
+  const n = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+  return typeof n === "number" && Number.isFinite(n) && n > 0 && n <= 100_000 ? Math.round(n * 100) / 100 : null;
+}
+
+// An offer's extra charges as saved: each with a name or an amount, the
+// name tidied (never a dollar sign, which reads as a price in a name), the
+// amount 0 to 1,000,000 to the cent; at most ten.
+export function cleanCharges(value: unknown): OfferCharge[] {
+  if (!Array.isArray(value)) return [];
+  const out: OfferCharge[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const label = typeof record.label === "string" ? record.label.replace(/\s+/g, " ").replace(/\$/g, "").trim().slice(0, CHARGE_LABEL_MAX) : "";
+    const raw = typeof record.amount === "string" && record.amount.trim() !== "" ? Number(record.amount) : record.amount;
+    const amount = typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? Math.min(1_000_000, Math.round(raw * 100) / 100) : 0;
+    if (label === "" && amount === 0) continue;
+    out.push({ label, amount });
+    if (out.length === OFFER_CHARGES_MAX) break;
+  }
+  return out;
+}
+
+// The rush fee every one of Keenan's shown offers charges, or null (round
+// 18). Pricing the whole quote, or a customer's ticks from a link made
+// before options, has no one offer to read a fee from: an old quote's fee,
+// carried onto every offer, still counts there, so no total moves. priceOffer
+// always uses the offer's own fee instead.
+export function sharedRushFee(offers: readonly QuoteOffer[]): number | null {
+  const own = offers.filter((offer) => offer.hidden !== true && offer.fromCustomer !== true);
+  if (own.length === 0) return null;
+  const fee = cleanRushFee(own[0].rushFee);
+  return fee !== null && own.every((offer) => cleanRushFee(offer.rushFee) === fee) ? fee : null;
+}
+
+// Round 18: a quote from before kept one rush fee for the whole quote
+// (this season, with an amount). It is carried onto every offer, so no
+// total moves; a quote whose offers already hold their own fees is left be.
+export function carryQuoteRushFee(
+  offers: readonly QuoteOffer[],
+  quote: { colourTiming: string | null; rushFee: number | null },
+): QuoteOffer[] {
+  const fee = quote.colourTiming === "rush" ? cleanRushFee(quote.rushFee) : null;
+  if (fee === null || offers.some((offer) => offer.rushFee !== undefined && offer.rushFee !== null)) return [...offers];
+  return offers.map((offer) => ({ ...offer, rushFee: fee }));
+}
 
 export const OFFER_DESCRIPTION_MAX = 400;
 
@@ -189,6 +253,8 @@ export function parseOffers(value: unknown, runCount: number): QuoteOffer[] {
     const lead = record.lead === true && !starred && !hidden && !fromCustomer;
     if (lead) starred = true;
     const description = cleanOfferDescription(record.description);
+    const rushFee = cleanRushFee(record.rush_fee ?? record.rushFee);
+    const charges = cleanCharges(record.charges);
     offers.push({
       id,
       name: cleanOfferName(record.name),
@@ -199,6 +265,8 @@ export function parseOffers(value: unknown, runCount: number): QuoteOffer[] {
       ...(fromCustomer ? { fromCustomer: true } : {}),
       ...(lead ? { lead: true } : {}),
       ...(description ? { description } : {}),
+      ...(rushFee !== null ? { rushFee } : {}),
+      ...(charges.length > 0 ? { charges } : {}),
     });
   }
   if (offers.length > 0) return offers;
@@ -340,8 +408,10 @@ export function addRunToOffers(offers: readonly QuoteOffer[], runsBefore: QuoteR
   });
 }
 
-// An offer's price: the quote's inputs with only the offer's runs. Null
-// when the offer covers no run yet (it shows "Pick the runs" instead).
+// An offer's price: the quote's inputs with only the offer's runs, its own
+// box count and upper access, and (round 18) its own rush fee and extra
+// charges after the shared extra work. Null when the offer covers no run
+// yet (it shows "Pick the runs" instead).
 export function priceOffer(inputs: QuoteInputs, offer: QuoteOffer): QuoteTotals | null {
   if (offer.runs.length === 0) return null;
   return priceQuote({
@@ -349,6 +419,8 @@ export function priceOffer(inputs: QuoteInputs, offer: QuoteOffer): QuoteTotals 
     runs: selectRuns(inputs.runs, offer.runs),
     boxCount: offer.boxes ?? inputs.boxCount,
     upperAccess: offer.upperAccess ?? null,
+    rushFee: cleanRushFee(offer.rushFee),
+    adders: [...inputs.adders, ...cleanCharges(offer.charges).map((charge) => ({ label: charge.label || "Extra charge", amount: charge.amount }))],
   });
 }
 
@@ -462,6 +534,8 @@ export function offersForSave(offers: readonly QuoteOffer[], runCount: number): 
     const lead = offer.lead === true && !starred && offer.hidden !== true && !customer;
     if (lead) starred = true;
     const description = cleanOfferDescription(offer.description);
+    const rushFee = cleanRushFee(offer.rushFee);
+    const charges = cleanCharges(offer.charges);
     out.push({
       id,
       name: cleanOfferName(offer.name),
@@ -472,6 +546,8 @@ export function offersForSave(offers: readonly QuoteOffer[], runCount: number): 
       ...(customer ? { fromCustomer: true } : {}),
       ...(lead ? { lead: true } : {}),
       ...(description ? { description } : {}),
+      ...(rushFee !== null ? { rushFee } : {}),
+      ...(charges.length > 0 ? { charges } : {}),
     });
   }
   return out;

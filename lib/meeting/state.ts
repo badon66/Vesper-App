@@ -6,11 +6,11 @@
 import type { ChristmasSettings } from "@/lib/quote-link/christmas";
 import type { SoffitColour } from "@/lib/leads/status";
 import type { TrackColour } from "@/lib/leads/track-colour";
-import { areaOf, isGable, runFlat, runRate, tagRun } from "@/lib/quotes/areas";
+import { areaOf, cleanGableCount, gableCount, isGable, runDisplayName, runFlat, runRate, tagRun } from "@/lib/quotes/areas";
 import { defaultValidUntil, guessRunPart, RUN_PARTS, trackFields, usablePercent, type ColourTiming, type QuoteInputs, type QuoteRun, type RunPart } from "@/lib/pricing";
 import { EFFECTS, type DeckPageKey, type DeckWords, type Effect, type Look, type Trace } from "@/lib/deck";
 import type { BlackFridayDeal } from "@/lib/quotes/black-friday";
-import { cleanPositions, offersForSave, parseOffers, type QuoteOffer } from "@/lib/quotes/offers";
+import { carryQuoteRushFee, cleanCharges, cleanPositions, offersForSave, parseOffers, sharedRushFee, type QuoteOffer } from "@/lib/quotes/offers";
 
 // Round 7 (Keenan, 2026-11-08): the deck's own part of the payload. Keenan's
 // photos come as short-lived signed storage links, so Get tonight ready keeps
@@ -141,6 +141,9 @@ export type MeetingPayload = {
     // Polish button on an offer's description can work; greyed out until
     // then. Only the yes or no ever leaves the server, never the key.
     polishReady?: boolean;
+    // Round 18: the controller line's words from Settings (deck lines);
+    // left out by an iPad holding a payload from before, which shows ours.
+    controller?: { label: string; detail: string } | null;
   };
   draft: {
     quoteId: string;
@@ -264,9 +267,7 @@ export const SPRING: ColourTiming = "factory_order";
 // The one colour rule on a quote as it opens (round 9; round 17): only White
 // is stock. Meeting mode and the lead page's editor both apply it to any
 // quote that isn't accepted, so the two never price the same quote apart.
-// A quote the rule moves to another timing starts with no rush fee: the fee
-// is Keenan's to switch on, never carried over (a White track can't keep
-// one, and a quote moved into this season starts included).
+// Round 18: the rule never touches a fee; a rush fee is each offer's own.
 export function withColourRule(state: QuoteUIState, kind: "list" | "custom" | "none", colourText: string): QuoteUIState {
   const timing = colourTimingFor(kind, colourText, state.colourTiming);
   return timing === state.colourTiming ? state : { ...state, colourTiming: timing, rushFee: "" };
@@ -281,40 +282,10 @@ const parseMoney = (value: string) => {
 const moneyOrNone = (value: string | undefined) => ((value ?? "").trim() === "" ? null : parseMoney(value ?? ""));
 const feeString = (value: number | null | undefined) => (value === null || value === undefined ? "" : moneyString(value));
 
-// This quote's flat rush colour fee as typed. Round 17: it is set only while
-// Keenan has switched "Charge a rush fee" on for a this-season install, and
-// cleared for spring, so a fee nobody charges is never named. Null: none.
-export function quoteRushFee(state: QuoteUIState): number | null {
-  return state.colourTiming === THIS_SEASON ? moneyOrNone(state.rushFee) : null;
-}
-
-// The amount Keenan has switched on, whichever timing is picked now: what
-// This season charges (Your price's This season button names it even while
-// Spring is picked, so tapping it never adds a fee the button didn't show).
-// A saved spring quote opens with none in hand. Null: none.
-export function rushFeeInHand(state: QuoteUIState): number | null {
-  const fee = moneyOrNone(state.rushFee);
-  return fee !== null && fee > 0 ? fee : null;
-}
-
-// Whether this quote charges the rush fee: this season, with an amount.
-export function rushFeeOn(state: QuoteUIState): boolean {
-  const fee = quoteRushFee(state);
-  return fee !== null && fee > 0;
-}
-
-// The colour timing as Keenan picks it (round 17). Spring never charges the
-// rush fee (quoteRushFee, and the save stores none), but the amount Keenan
-// switched on stays in hand, so a customer who looks at Spring and comes
-// back to This season sees his price again, not a fee quietly dropped.
+// The colour timing as Keenan picks it (round 17). Round 18: it no longer
+// touches any fee; a rush fee is each offer's own.
 export function withColourTiming(timing: ColourTiming): Partial<QuoteUIState> {
   return { colourTiming: timing };
-}
-
-// "Charge a rush fee" switched on fills in Settings' amount (he can type
-// over it); off clears it.
-export function withRushFee(on: boolean, pricing: Pick<MeetingPayload["pricing"], "rushFee">): Partial<QuoteUIState> {
-  return on ? { colourTiming: THIS_SEASON, rushFee: feeString(pricing.rushFee) } : { rushFee: "" };
 }
 
 // Each stored discount's percent, in the order items() keeps the lines
@@ -371,6 +342,12 @@ export function quoteStateFromDraft(draft: QuoteDraft, payload: QuoteContext): Q
                 rate: (run as QuoteRun).rate ?? null,
                 flat: (run as QuoteRun).flat ?? null,
                 ...trackFields(run),
+                // Round 18: the view's name Keenan gave it and how many
+                // gables the line holds.
+                ...(typeof (run as QuoteRun).view === "string" && String((run as QuoteRun).view).trim() !== ""
+                  ? { view: String((run as QuoteRun).view).slice(0, 40) }
+                  : {}),
+                ...(cleanGableCount((run as QuoteRun).count) !== null ? { count: cleanGableCount((run as QuoteRun).count) } : {}),
               }),
             ]
           : [],
@@ -412,20 +389,37 @@ export function quoteStateFromDraft(draft: QuoteDraft, payload: QuoteContext): Q
       draft.colourTiming === "stock" || draft.colourTiming === "factory_order" || draft.colourTiming === "rush"
         ? draft.colourTiming
         : defaultQuoteState(payload).colourTiming,
-    // A saved this-season quote keeps its fee exactly; any other timing never
-    // charged the fee it carried, so it isn't brought along (round 17).
-    rushFee: draft.colourTiming === "rush" ? feeString(draft.rushFee) : "",
+    // Round 18: the rush fee lives on each offer; a quote from before
+    // carries its this-season fee onto every offer (below).
+    rushFee: "",
     upperAccessFee: feeString(draft.upperAccessFee),
     upperGableAccessFee: feeString(draft.upperGableAccessFee),
     financingOffered: draft.financingOffered,
     validUntil: draft.validUntil ?? defaultValidUntil(payload.today, payload.pricing.priceHoldDays),
-    // Saved offers as they are; an empty list stays empty (one full wrap).
-    offers: Array.isArray(draft.offers) && draft.offers.length > 0 ? parseOffers(draft.offers, runs.length) : [],
+    // Saved offers as they are; an empty list stays empty (one full wrap),
+    // unless it must carry an old quote-wide rush fee, which the full wrap
+    // then holds as a real offer, so no total moves (round 18).
+    offers: legacyOffers(
+      Array.isArray(draft.offers) && draft.offers.length > 0 ? parseOffers(draft.offers, runs.length) : [],
+      runs.length,
+      draft.colourTiming,
+      draft.rushFee,
+    ),
     // An accepted quote shows the option they said yes to as the choice.
     chosenOffer: chosenFromDraft(draft),
     installOn: typeof draft.meetingInstallOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(draft.meetingInstallOn) ? draft.meetingInstallOn : null,
     ...(draft.minJobTotal !== undefined ? { minJobTotal: feeString(draft.minJobTotal) } : {}),
   };
+}
+
+// Round 18: a quote from before kept one rush fee for the whole quote, this
+// season. It goes onto every offer (the full wrap stand-in made real), so
+// no total moves; offers that hold their own fees are left be.
+function legacyOffers(offers: QuoteOffer[], runCount: number, timing: string | null, fee: number | null | undefined): QuoteOffer[] {
+  if (timing !== "rush" || !(typeof fee === "number" && fee > 0)) return offers;
+  const list = offers.length > 0 ? offers : parseOffers([], runCount);
+  const carried = carryQuoteRushFee(list, { colourTiming: timing, rushFee: fee });
+  return carried.some((offer) => offer.rushFee) ? carried : offers;
 }
 
 function chosenFromDraft(draft: QuoteDraft): string | null {
@@ -447,10 +441,14 @@ export function pickEditableQuote<T extends { status: string }>(rows: readonly T
 // and the colour rule would now move such a quote to this season with that
 // old fee still in it: a $350 nobody switched on.
 export function storedQuote(quote: QuoteUIState): QuoteUIState {
+  // Round 18: a copy from before held the rush fee on the quote; it goes
+  // onto every offer the same way a saved quote's does.
+  const offers = Array.isArray(quote.offers) ? quote.offers : [];
+  const fee = quote.colourTiming === THIS_SEASON && typeof quote.rushFee === "string" ? moneyOrNone(quote.rushFee) : null;
   return {
     ...quote,
-    rushFee: quote.colourTiming === THIS_SEASON && typeof quote.rushFee === "string" ? quote.rushFee : "",
-    offers: Array.isArray(quote.offers) ? quote.offers : [],
+    rushFee: "",
+    offers: legacyOffers(offers, Array.isArray(quote.runs) ? quote.runs.length : 0, quote.colourTiming, fee),
     chosenOffer: typeof quote.chosenOffer === "string" && quote.chosenOffer !== "" ? quote.chosenOffer : null,
     installOn: typeof quote.installOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(quote.installOn) ? quote.installOn : null,
   };
@@ -469,7 +467,19 @@ export function quoteFingerprint(state: QuoteUIState): string {
   return JSON.stringify([
     state.runs
       .filter((run) => run.feet > 0)
-      .map((run) => [run.name.trim(), Math.round(run.feet), run.level, run.part ?? guessRunPart(run.name), areaOf(run), isGable(run), runRate(run), runFlat(run)]),
+      .map((run) => [
+        run.name.trim(),
+        Math.round(run.feet),
+        run.level,
+        run.part ?? guessRunPart(run.name),
+        areaOf(run),
+        isGable(run),
+        runRate(run),
+        runFlat(run),
+        // Round 18: a view's name and a gable count, only when there.
+        ...((run.view ?? "").trim() !== "" ? [`view:${(run.view ?? "").trim()}`] : []),
+        ...(gableCount(run) > 1 ? [`count:${gableCount(run)}`] : []),
+      ]),
     state.boxCount,
     parseMoney(state.pricePerFt),
     parseMoney(state.boxPrice),
@@ -500,6 +510,9 @@ export function quoteFingerprint(state: QuoteUIState): string {
       // Round 17: the star and the description, only when there.
       ...(offer.lead === true ? ["lead"] : []),
       ...(offer.description ? [`description:${offer.description}`] : []),
+      // Round 18: its own rush fee and extra charges, only when there.
+      ...(offer.rushFee ? [`rush:${offer.rushFee}`] : []),
+      ...(cleanCharges(offer.charges).length > 0 ? [`charges:${JSON.stringify(cleanCharges(offer.charges))}`] : []),
     ]),
     state.chosenOffer,
     state.installOn,
@@ -532,12 +545,16 @@ export function quoteInputs(state: QuoteUIState, pricing: MeetingPayload["pricin
       })),
     discounts,
     colourTiming: state.colourTiming,
-    rushFee: state.colourTiming === "rush" ? moneyOrNone(state.rushFee) : null,
+    // Round 18: the rush fee is each offer's own (priceOffer uses it); the
+    // whole quote counts one only when every offer charges it.
+    rushFee: sharedRushFee(quoteOffers(state)),
     upperAccessFee: moneyOrNone(state.upperAccessFee),
     upperGableAccessFee: moneyOrNone(state.upperGableAccessFee),
     minJobTotal: quoteMinimum(state, pricing),
     gstEnabled: pricing.gstEnabled,
     gstRate: pricing.gstRate,
+    areaName: runDisplayName,
+    controller: pricing.controller ?? null,
   };
 }
 

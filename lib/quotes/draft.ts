@@ -5,7 +5,7 @@
 // from the quote as the controls hold it, and the plain words for a quote
 // that can't change.
 
-import { quoteInputs, quoteMinimum, quoteRushFee, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
+import { quoteInputs, quoteMinimum, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
 import { offersForSave } from "@/lib/quotes/offers";
 import { formatTime } from "@/lib/time";
 
@@ -91,7 +91,8 @@ export function quoteSaveInput(state: QuoteUIState, pricing: MeetingPayload["pri
     adders: inputs.adders,
     discounts: inputs.discounts,
     colourTiming: state.colourTiming,
-    rushFee: quoteRushFee(state),
+    // Round 18: the rush fee rides on each offer, never the quote.
+    rushFee: null,
     upperAccessFee: inputs.upperAccessFee ?? null,
     upperGableAccessFee: inputs.upperGableAccessFee ?? null,
     minJobTotal: quoteMinimum(state, pricing),

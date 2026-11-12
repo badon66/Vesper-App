@@ -2,13 +2,14 @@
 
 import type { KeyboardEvent } from "react";
 
-import { AREA_VIEWS, type AreaKey, type AreaKind } from "@/lib/quotes/areas";
+import { VIEW_TITLES, type AreaKey, type AreaKind } from "@/lib/quotes/areas";
 import { drawOrder, houseLineLabel, type HouseLine } from "@/lib/quotes/editor";
 import { cn } from "@/lib/utils";
 
-// The measuring views, drawn (Keenan, 2026-11-11): two plain two-storey
-// house outlines, FRONT and BACK, and a slim strip for the Sides, at the top
-// of the quote editor. Each area is a line on the house: the lower roofline
+// The measuring views, drawn (Keenan, 2026-11-11; round 18): four plain
+// two-storey house outlines, FRONT, BACK, LEFT SIDE and RIGHT SIDE (an old
+// quote's Sides keeps its slim strip until Keenan splits it), at the top of
+// the quote editor. Each area is a line on the house: the lower roofline
 // along the lower eave, the lower gable over one end (the garage end at the
 // front), the upper roofline and the upper gable; the Back is the Front seen
 // from behind, so its garage end sits on the other side. A measured line is
@@ -25,7 +26,9 @@ import { cn } from "@/lib/utils";
 //
 // CONTRACT
 //   <HouseView view lines onTap? className? />
-//     view     "front" | "back" (the house outlines) | "sides" (the strip)
+//     view     "front" | "back" | "left" | "right" (the house outlines) |
+//              "sides" (an old quote's strip)
+//     title    the view's name on this quote (Keenan may rename it)
 //     lines    every line's state (lib/quotes/editor.ts houseLines)
 //     onTap    a line tapped, or Enter or Space on it; none while the quote
 //              is locked, and the lines are then plain pictures
@@ -132,8 +135,84 @@ const BACK: ViewShape = {
   lines: FRONT.lines.map(({ key, shape }) => ({ key: key.replace("front", "back") as AreaKey, shape: flip(shape) })),
 };
 
-// The sides as a slim strip: the house end on, its two rooflines, one
-// number each for both sides together.
+// Round 18 (Keenan, 2026-11-12): each side is a view of its own, the house
+// seen end on: the lower roofline along the side, a lower gable at its
+// garage end, the upper roofline and the main roof's gable end over the
+// upper storey. The Right side is the Left seen from the other side.
+const LEFT: ViewShape = {
+  width: WIDTH,
+  height: 200,
+  context: [
+    "M12 184 L308 184",
+    "M40 112 L40 184 M280 112 L280 184",
+    "M96 56 L96 112 M240 56 L240 112",
+    "M232 184 L232 146 L252 146 L252 184",
+    "M64 136 L88 136 L88 156 L64 156 Z",
+    "M128 74 L148 74 L148 94 L128 94 Z M188 74 L208 74 L208 94 L188 94 Z",
+  ].join(" "),
+  captions: [],
+  lines: [
+    {
+      key: "left_lower",
+      shape: {
+        points: [
+          [40, 112],
+          [280, 112],
+        ],
+        label: [196, 112],
+      },
+    },
+    {
+      key: "left_lower_gable",
+      shape: {
+        points: [
+          [40, 112],
+          [78, 82],
+          [116, 112],
+        ],
+        label: [78, 70],
+      },
+    },
+    {
+      key: "left_upper",
+      shape: {
+        points: [
+          [96, 56],
+          [240, 56],
+        ],
+        label: [168, 56],
+      },
+    },
+    {
+      key: "left_upper_gable",
+      shape: {
+        points: [
+          [96, 56],
+          [168, 22],
+          [240, 56],
+        ],
+        label: [168, 10],
+      },
+    },
+  ],
+};
+
+const RIGHT: ViewShape = {
+  ...LEFT,
+  context: [
+    "M12 184 L308 184",
+    "M40 112 L40 184 M280 112 L280 184",
+    "M80 56 L80 112 M224 56 L224 112",
+    "M68 184 L68 146 L88 146 L88 184",
+    "M232 136 L256 136 L256 156 L232 156 Z",
+    "M112 74 L132 74 L132 94 L112 94 Z M172 74 L192 74 L192 94 L172 94 Z",
+  ].join(" "),
+  lines: LEFT.lines.map(({ key, shape }) => ({ key: key.replace("left", "right") as AreaKey, shape: flip(shape) })),
+};
+
+// An old quote's Sides as a slim strip: the house end on, its two
+// rooflines, one number each for both sides together, until Keenan splits
+// them into Left side and Right side.
 const SIDES: ViewShape = {
   width: WIDTH,
   height: 84,
@@ -166,7 +245,7 @@ const SIDES: ViewShape = {
   ],
 };
 
-const SHAPES: Record<HouseViewKind, ViewShape> = { front: FRONT, back: BACK, sides: SIDES };
+const SHAPES: Record<HouseViewKind, ViewShape> = { front: FRONT, back: BACK, left: LEFT, right: RIGHT, sides: SIDES };
 
 const pathOf = (points: readonly Pt[]) => points.map(([x, y], at) => `${at === 0 ? "M" : "L"}${x} ${y}`).join(" ");
 
@@ -175,14 +254,16 @@ export function HouseView({
   lines,
   onTap,
   className,
+  title = VIEW_TITLES[view],
 }: {
   view: HouseViewKind;
   lines: Record<AreaKey, HouseLine>;
   onTap?: (key: AreaKey) => void;
   className?: string;
+  // The view's name on this quote (round 18: Keenan may rename it).
+  title?: string;
 }) {
   const shape = SHAPES[view];
-  const title = AREA_VIEWS.find((item) => item.kind === view)?.title ?? view;
   return (
     <svg
       viewBox={`0 0 ${shape.width} ${shape.height}`}

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MarkPaidForm } from "@/components/pay/mark-paid-form";
+import { commissionFor, commissionQuoteFromRow } from "@/lib/pay/commission";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { namesById } from "@/lib/leads/queries";
 import { leadName } from "@/lib/leads/status";
@@ -27,10 +28,29 @@ export default async function PayPage() {
   const { data: rows } = await supabase
     .from("earnings")
     .select(
-      "id, profile_id, type, rate, base_amount, amount, status, payable_at, paid_at, note, created_at, updated_at, meeting:meetings!earnings_meeting_id_fkey(starts_at), lead:leads!earnings_lead_id_fkey(id, first_name, last_name, address_line)",
+      "id, profile_id, type, rate, base_amount, amount, status, payable_at, paid_at, note, created_at, updated_at, quote_id, meeting:meetings!earnings_meeting_id_fkey(starts_at), lead:leads!earnings_lead_id_fkey(id, first_name, last_name, address_line)",
     )
     .order("created_at", { ascending: false })
     .limit(1000);
+  // Round 18 (Keenan, 2026-11-12): a commission follows its quote's new
+  // numbers until it is paid; after that a change leaves the paid line
+  // alone, and here Keenan sees what it would come to now.
+  const paidQuoteIds = Array.from(
+    new Set((rows ?? []).filter((row) => row.type === "commission" && row.status === "paid" && row.quote_id).map((row) => row.quote_id as string)),
+  );
+  const { data: paidQuotes } = paidQuoteIds.length
+    ? await supabase
+        .from("quotes")
+        .select("id, status, runs, box_count, price_per_ft, box_price, discounts, accepted_runs, accepted_boxes")
+        .in("id", paidQuoteIds)
+    : { data: [] };
+  const quoteById = new Map((paidQuotes ?? []).map((quote) => [quote.id, quote]));
+  const nowOwed = (line: { quote_id: string | null; rate: number; amount: number }): number | null => {
+    const quote = line.quote_id ? quoteById.get(line.quote_id) : undefined;
+    if (!quote || quote.status !== "accepted") return null;
+    const now = commissionFor(commissionQuoteFromRow({ ...quote, box_count: quote.accepted_boxes ?? quote.box_count }, quote.accepted_runs), Number(line.rate)).amount;
+    return Math.round(now * 100) === Math.round(line.amount * 100) ? null : now;
+  };
   const lines = (rows ?? []).map((row) => ({
     ...row,
     amount: Number(row.amount),
@@ -137,12 +157,21 @@ export default async function PayPage() {
                   <div className="text-sm text-muted-foreground">
                     <p className="font-semibold">Recently paid</p>
                     <ul className="list-disc pl-5">
-                      {paid.map((line) => (
-                        <li key={line.id}>
-                          {describe(line)}: {formatMoney(line.amount)}
-                          {line.paid_at ? `, paid ${formatDate(line.paid_at)}` : ""}
-                        </li>
-                      ))}
+                      {paid.map((line) => {
+                        const now = line.type === "commission" ? nowOwed(line) : null;
+                        return (
+                          <li key={line.id}>
+                            {describe(line)}: {formatMoney(line.amount)}
+                            {line.paid_at ? `, paid ${formatDate(line.paid_at)}` : ""}
+                            {now !== null ? (
+                              <span className="block font-semibold text-foreground" data-testid="pay-paid-changed">
+                                The quote changed after this was paid. It would now be {formatMoney(now)},{" "}
+                                {formatMoney(Math.abs(now - line.amount))} {now > line.amount ? "more" : "less"} than paid.
+                              </span>
+                            ) : null}
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 ) : null}

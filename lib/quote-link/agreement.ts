@@ -45,7 +45,8 @@ export type SignedAgreement = {
   address: string;
   // The option they chose and its lines, priced from the saved quote.
   option: string;
-  lines: { label: string; detail: string | null; amount: string }[];
+  // Round 18: a track's line lists every area on it, indented under it.
+  lines: { label: string; detail: string | null; amount: string; areas?: { label: string; detail: string | null; amount: string }[] }[];
   // Before GST, the GST in dollars and the total, as a formal document
   // shows them (CLAUDE.md); with GST off only the total, and no mention of
   // GST at all.
@@ -95,7 +96,12 @@ export function signedAgreement(input: unknown): SignedAgreement | null {
     customerName: name,
     address,
     option: customerChoice(choice.name),
-    lines: totals.lines.map((line) => ({ label: line.label, detail: line.detail, amount: lineAmount(line) })),
+    lines: totals.lines.map((line) => ({
+      label: line.label,
+      detail: line.detail,
+      amount: lineAmount(line),
+      ...(line.areas ? { areas: line.areas.map((area) => ({ label: area.label, detail: area.detail, amount: lineAmount(area) })) } : {}),
+    })),
     subtotal: formatMoney(totals.subtotal),
     gst: gstOn ? formatMoney(totals.gst) : null,
     total: formatMoney(gstOn ? totals.total : totals.subtotal),

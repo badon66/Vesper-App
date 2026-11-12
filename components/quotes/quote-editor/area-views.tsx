@@ -4,15 +4,35 @@ import { Plus, Trash2 } from "lucide-react";
 import { createContext, useContext, useRef, useState, type ReactNode, type Ref } from "react";
 
 import { HouseView } from "@/components/quotes/quote-editor/house-views";
-import { MoneyBox, Segmented, useTyping } from "@/components/quotes/quote-editor/parts";
+import { MoneyBox, Segmented, Stepper, useTyping } from "@/components/quotes/quote-editor/parts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cleanFeet, formatMoney, runRateOf, runTrack, TRACK_NAMES, type QuoteRun, type TrackType } from "@/lib/pricing";
-import { AREA_LABELS, AREA_VIEWS, areaDisplayName, otherRuns, type AreaKey } from "@/lib/quotes/areas";
+import {
+  AREA_LABELS,
+  AREA_VIEWS,
+  areaDisplayName,
+  areaOf,
+  GABLE_COUNT_MAX,
+  gableCount,
+  hasOwnNames,
+  isGable,
+  lineLabel,
+  lineRenamed,
+  otherRuns,
+  resetNames,
+  runLineLabel,
+  SIDES_VIEW,
+  sidesRuns,
+  standardName,
+  VIEW_TITLES,
+  viewName,
+  type AreaKey,
+  type AreaKind,
+} from "@/lib/quotes/areas";
 import {
   addOtherRun,
   areaLines,
-  areaShortLabel,
   dropRun,
   houseLines,
   moneyText,
@@ -21,17 +41,21 @@ import {
   setAreaFeet,
   setRunFeet,
   setRunPricing,
+  splitSides,
   type PricingMode,
   type RunsAndOffers,
 } from "@/lib/quotes/editor";
 import type { QuoteOffer } from "@/lib/quotes/offers";
 import { cn } from "@/lib/utils";
 
-// Measuring, the views drawn (round 11, Keenan, 2026-11-11). Keenan measures
-// the house as areas on two drawings, FRONT and BACK (lower roofline, lower
-// gable, upper roofline, upper gable on each), a slim strip for the Sides
-// (one number each for both sides together) and Other for anything off the
-// views (a shed, a detached garage). On the drawing a measured line is solid
+// Measuring, the views drawn (round 11, Keenan, 2026-11-11; round 18).
+// Keenan measures the house as areas on four drawings, FRONT, BACK, LEFT
+// SIDE and RIGHT SIDE (lower roofline, lower gable, upper roofline, upper
+// gable on each; a gable line can hold several gables, their feet typed as
+// one total), an old quote's Sides strip until he splits it, and Other for
+// anything off the views (a shed, a detached garage). Rename turns every
+// view's and line's name into a box (the names show in the breakdown,
+// Build your own and the link); Reset names puts them all back. On the drawing a measured line is solid
 // with its feet on it, an unmeasured one faint and dashed, and the lines the
 // active offer covers light up in gold (house-views.tsx). Under each drawing
 // sit its rows: one per area, the feet box and, once measured, its price
@@ -54,6 +78,26 @@ const LEVELS = [
 // Settings, for the Track control on each measured area.
 export type TrackPrices = { double: number | null; j: number | null };
 const TrackPricesContext = createContext<TrackPrices>({ double: null, j: null });
+
+// A view's name as Keenan types it, raw (spaces kept while he types; the
+// save tidies it): on every run of that view, so the breakdown, the link
+// and the signed copy read it. Empty, or the view's own name, is no rename.
+function nameView(runs: readonly QuoteRun[], kind: Exclude<AreaKind, "other">, text: string): QuoteRun[] {
+  const raw = text.replace(/\$/g, "").slice(0, 40);
+  const none = raw.trim() === "" || raw.trim().toLowerCase() === VIEW_TITLES[kind].toLowerCase();
+  return runs.map((run) => {
+    if (areaOf(run) !== kind) return run;
+    const { view: _old, ...rest } = run;
+    void _old;
+    return none ? rest : { ...rest, view: raw };
+  });
+}
+
+// A line's name as Keenan types it, raw; empty puts its standard name back.
+function nameLine(run: QuoteRun, key: AreaKey, text: string): QuoteRun {
+  const raw = text.replace(/\$/g, "").slice(0, 60);
+  return { ...run, name: raw.trim() === "" ? standardName(key) : raw };
+}
 
 export function AreaViews({
   runs,
@@ -79,7 +123,13 @@ export function AreaViews({
   const lines = areaLines(runs);
   const house = houseLines(runs, lit);
   const others = otherRuns(runs);
+  const sides = sidesRuns(runs);
   const setRun = (at: number, next: QuoteRun) => onChange({ ...state, runs: runs.map((run, which) => (which === at ? next : run)) });
+  // Round 18: Rename turns every view's name and every measured line's name
+  // into a box; Reset names puts them all back, after a confirm.
+  const [naming, setNaming] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const ownNames = hasOwnNames(runs);
 
   // Each area's own feet box, so a tap on its line on the drawing lands in
   // it: a measured line's feet selected to type over, an empty line's box
@@ -95,32 +145,87 @@ export function AreaViews({
     box.focus();
     box.select();
   };
+  const lineProps = (key: AreaKey) => ({
+    areaKey: key,
+    positions: lines[key],
+    runs,
+    pricePerFt,
+    locked,
+    naming,
+    feetRef: keep(key),
+    onFeet: (feet: number) => onChange(setAreaFeet(state, key, feet)),
+    onRunFeet: (at: number, feet: number) => onChange(setRunFeet(state, at, feet)),
+    onRun: setRun,
+  });
 
   return (
     <TrackPricesContext.Provider value={trackPrices}>
+      {!locked ? (
+        <div className="flex flex-wrap items-center gap-2" data-testid="area-names">
+          <Button type="button" variant="outline" size="sm" aria-pressed={naming} onClick={() => setNaming((now) => !now)} data-testid="area-names-edit">
+            {naming ? "Done renaming" : "Rename"}
+          </Button>
+          {ownNames || confirmReset ? (
+            confirmReset ? (
+              <span className="flex flex-wrap items-center gap-2" role="group" aria-label="Reset names" data-testid="area-names-confirm">
+                <span className="text-sm text-pretty">Put every name back to its default? Feet, prices and offers stay as they are.</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    onChange({ ...state, runs: resetNames(runs) });
+                    setConfirmReset(false);
+                  }}
+                  data-testid="area-names-reset-confirm"
+                >
+                  Reset names
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmReset(false)} data-testid="area-names-reset-cancel">
+                  Keep them
+                </Button>
+              </span>
+            ) : (
+              <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmReset(true)} data-testid="area-names-reset">
+                Reset names
+              </Button>
+            )
+          ) : null}
+        </div>
+      ) : null}
       <div className="grid gap-4 md:grid-cols-2">
-        {AREA_VIEWS.map((view) => (
-          <Panel key={view.kind} title={view.title}>
-            <HouseView view={view.kind} lines={house} onTap={locked ? undefined : tapLine} />
+        {AREA_VIEWS.map((view) => {
+          const title = viewName(runs, view.kind);
+          const onView = runs.some((run) => areaOf(run) === view.kind);
+          return (
+            <Panel
+              key={view.kind}
+              kind={view.kind}
+              title={title}
+              naming={naming && !locked}
+              canName={onView}
+              rawName={runs.find((run) => areaOf(run) === view.kind && (run.view ?? "") !== "")?.view ?? ""}
+              onName={(text) => onChange({ ...state, runs: nameView(runs, view.kind, text) })}
+            >
+              <HouseView view={view.kind} title={title} lines={house} onTap={locked ? undefined : tapLine} />
+              <ul className="flex flex-col divide-y">
+                {view.keys.map((key) => (
+                  <AreaLine key={key} {...lineProps(key)} />
+                ))}
+              </ul>
+            </Panel>
+          );
+        })}
+        {sides.length > 0 ? (
+          <Panel kind="sides" title={VIEW_TITLES.sides} hint="From before the left and right sides: one number for both. Split it to measure each side on its own.">
+            <HouseView view="sides" lines={house} onTap={locked ? undefined : tapLine} />
             <ul className="flex flex-col divide-y">
-              {view.keys.map((key) => (
-                <AreaLine
-                  key={key}
-                  areaKey={key}
-                  positions={lines[key]}
-                  runs={runs}
-                  pricePerFt={pricePerFt}
-                  locked={locked}
-                  feetRef={keep(key)}
-                  onFeet={(feet) => onChange(setAreaFeet(state, key, feet))}
-                  onRunFeet={(at, feet) => onChange(setRunFeet(state, at, feet))}
-                  onRun={setRun}
-                />
+              {SIDES_VIEW.keys.map((key) => (
+                <AreaLine key={key} {...lineProps(key)} onSplit={locked ? undefined : (at) => onChange(splitSides(state, at))} />
               ))}
             </ul>
           </Panel>
-        ))}
-        <Panel title="Other" hint="Anything off the views: a shed, a detached garage.">
+        ) : null}
+        <Panel kind="other" title="Other" hint="Anything off the views: a shed, a detached garage.">
           {others.length > 0 ? (
             <ul className="flex flex-col divide-y">
               {others.map((at, which) => (
@@ -150,13 +255,56 @@ export function AreaViews({
   );
 }
 
-// A view's panel: a small caption (FRONT, BACK, SIDES, OTHER), then its
-// drawing and its rows.
-function Panel({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+// A view's panel: a small caption (FRONT, LEFT SIDE, OTHER), then its
+// drawing and its rows. While Keenan renames, the caption is a box (a view
+// takes a name once it has a measured line, since the name rides on them).
+function Panel({
+  kind,
+  title,
+  hint,
+  naming = false,
+  canName = false,
+  rawName = "",
+  onName,
+  children,
+}: {
+  kind: AreaKind;
+  title: string;
+  hint?: string;
+  naming?: boolean;
+  canName?: boolean;
+  rawName?: string;
+  onName?: (text: string) => void;
+  children: ReactNode;
+}) {
+  const typing = useTyping(rawName);
+  const own = kind === "other" ? title : VIEW_TITLES[kind];
   return (
-    <section aria-label={title} className="flex flex-col gap-3 rounded-lg border bg-card p-4" data-testid="area-view" data-view={title.toLowerCase()}>
+    <section aria-label={title} className="flex flex-col gap-3 rounded-lg border bg-card p-4" data-testid="area-view" data-view={kind}>
       <div className="flex flex-col gap-0.5">
-        <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">{title}</h4>
+        {naming && onName ? (
+          <>
+            <Input
+              value={typing.value}
+              aria-label={`${own} view name`}
+              placeholder={own}
+              maxLength={40}
+              disabled={!canName}
+              onFocus={typing.start}
+              onChange={(event) => {
+                typing.type(event.target.value);
+                onName(event.target.value);
+              }}
+              onBlur={typing.stop}
+              className="h-10 max-w-64 text-sm font-semibold"
+              data-testid="area-view-name"
+              data-view={kind}
+            />
+            {!canName ? <p className="text-xs text-muted-foreground">Measure a line first, then name the view.</p> : null}
+          </>
+        ) : (
+          <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">{title}</h4>
+        )}
         {hint ? <p className="text-xs text-pretty text-muted-foreground">{hint}</p> : null}
       </div>
       {children}
@@ -164,47 +312,92 @@ function Panel({ title, hint, children }: { title: string; hint?: string; childr
   );
 }
 
-// One standard area's row under the drawing: its label, its feet box and,
-// once measured, its price; then an old quote's extra runs on it, each a
-// row of its own by name.
+// One standard area's row under the drawing: its label (a box while Keenan
+// renames), its feet box and, once measured, how many gables it holds (a
+// gable line) and its price; then an old quote's extra runs on it, each a
+// row of its own by name. An old Sides line offers to split.
 function AreaLine({
   areaKey,
   positions,
   runs,
   pricePerFt,
   locked,
+  naming,
   feetRef,
   onFeet,
   onRunFeet,
   onRun,
+  onSplit,
 }: {
   areaKey: AreaKey;
   positions: number[];
   runs: QuoteRun[];
   pricePerFt: number;
   locked: boolean;
+  naming: boolean;
   feetRef: Ref<HTMLInputElement>;
   onFeet: (feet: number) => void;
   onRunFeet: (at: number, feet: number) => void;
   onRun: (at: number, next: QuoteRun) => void;
+  onSplit?: (at: number) => void;
 }) {
   const at = positions.length > 0 ? positions[0] : null;
   const run = at !== null ? runs[at] : null;
   const feet = run ? cleanFeet(run.feet) : 0;
-  // An old run on this area under its own name ("Garage" on Front lower).
-  const ownName = run && areaDisplayName(run) !== AREA_LABELS[areaKey] ? run.name.trim() : null;
+  const label = run ? runLineLabel(run) : lineLabel(areaKey);
+  const nameTyping = useTyping(run && lineRenamed(run) ? run.name : "");
+  const gable = run !== null && isGable(run);
   return (
     <>
       <li className="flex flex-col py-2" data-testid={feet > 0 ? "editor-run" : undefined} data-area={areaKey}>
         <div className="flex min-h-11 items-center gap-3">
           <div className="min-w-0 flex-1">
-            <p className={cn("text-base font-semibold", feet === 0 && "text-muted-foreground")}>{areaShortLabel(areaKey)}</p>
-            {ownName ? <p className="truncate text-xs text-muted-foreground">{ownName}</p> : null}
+            {naming && run && at !== null && feet > 0 && !locked ? (
+              <Input
+                value={nameTyping.value}
+                aria-label={`${AREA_LABELS[areaKey]} name`}
+                placeholder={lineLabel(areaKey)}
+                maxLength={60}
+                onFocus={nameTyping.start}
+                onChange={(event) => {
+                  nameTyping.type(event.target.value);
+                  onRun(at, nameLine(run, areaKey, event.target.value));
+                }}
+                onBlur={nameTyping.stop}
+                className="h-10 text-base font-semibold"
+                data-testid="area-line-name"
+                data-area={areaKey}
+              />
+            ) : (
+              <p className={cn("text-base font-semibold", feet === 0 && "text-muted-foreground")} data-testid="area-line-label" data-area={areaKey}>
+                {label}
+              </p>
+            )}
           </div>
           <FeetBox label={`${AREA_LABELS[areaKey]} feet`} area={areaKey} feet={feet} disabled={locked} inputRef={feetRef} onFeet={onFeet} />
         </div>
+        {run && at !== null && feet > 0 && gable ? (
+          <div className="flex flex-wrap items-center gap-3 pt-1" data-testid="area-gable-count" data-area={areaKey}>
+            <span className="text-sm text-muted-foreground">How many gables</span>
+            <Stepper
+              value={gableCount(run)}
+              min={1}
+              max={GABLE_COUNT_MAX}
+              label={`gables on ${AREA_LABELS[areaKey]}`}
+              disabled={locked}
+              onChange={(count) => onRun(at, { ...run, count: count > 1 ? count : null })}
+              testId="area-gable-count-stepper"
+            />
+            <span className="text-xs text-muted-foreground">The feet are their total.</span>
+          </div>
+        ) : null}
         {run && at !== null && feet > 0 ? (
           <PriceControl run={run} area={areaKey} pricePerFt={pricePerFt} disabled={locked} onRun={(next) => onRun(at, next)} />
+        ) : null}
+        {onSplit && run && at !== null && feet > 0 ? (
+          <Button type="button" variant="outline" size="sm" className="mt-1 self-start" onClick={() => onSplit(at)} data-testid="area-sides-split" data-area={areaKey}>
+            Split into Left side and Right side
+          </Button>
         ) : null}
       </li>
       {positions.slice(1).map((extra) => (
@@ -446,7 +639,7 @@ function PriceControl({
 }
 
 const TRACK_CHOICES: readonly TrackType[] = ["hat", "double", "j"];
-const TRACK_SHORT: Record<TrackType, string> = { hat: "Hat", double: "Double", j: "J track" };
+const TRACK_SHORT: Record<TrackType, string> = { hat: "Standard", double: "Double", j: "L track" };
 
 // The area's track: Hat track (the standard, the quote's price a foot),
 // Double or J track at that track's price a foot from Settings, copied onto

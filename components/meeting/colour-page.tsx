@@ -247,7 +247,6 @@ export function ColourPage({
   onColourSaved,
   lines,
   timing,
-  rushFee,
   onTiming,
   chooser,
   readOnly = false,
@@ -263,11 +262,9 @@ export function ColourPage({
   onColourSaved: (choice: string | null, ralCode: string | null) => void;
   // The page's words (settings.deck.lines).
   lines: DeckLines;
-  // The quote's colour timing and its rush fee, and how the two timing
-  // buttons set it, so every option arrives on the price page already
-  // priced.
+  // The quote's colour timing, and how the two timing buttons set it
+  // (round 18: a rush fee is each offer's own, never the colour's).
   timing: ColourTiming | null;
-  rushFee: number | null;
   onTiming: (timing: "factory_order" | "rush") => void;
   // The colour chooser, one of the deck's layers.
   chooser: MoreState;
@@ -278,7 +275,7 @@ export function ColourPage({
   const soffit = soffitView(lead);
   const colourSet = colour.kind !== "none";
   const tonight = confirmedTonight(confirmation, today);
-  const view = colourTimingView({ lines, kind: colour.kind, text: colour.text, timing, rushFee });
+  const view = colourTimingView({ lines, kind: colour.kind, text: colour.text, timing });
 
   const small = cn(DECK_TYPE.small, "text-muted-foreground");
 

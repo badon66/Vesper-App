@@ -10,6 +10,7 @@ import { breakdownRows, minimumSentence } from "@/lib/meeting/price-screen";
 import { screenTotal, type QuoteTotals } from "@/lib/pricing";
 import { formatFullDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { TrackLine } from "@/components/quotes/track-line";
 
 // The quote editor's small parts (round 9): one-tap choices, a stepper, a
 // money field, a date field, the sheet's Close and Save changes pair, a
@@ -401,6 +402,16 @@ export function BreakdownList({ totals, gstEnabled, className }: { totals: Quote
             <dt className="text-muted-foreground">{row.label}</dt>
             <dd className="shrink-0 font-semibold tabular-nums">{row.amount}</dd>
           </div>
+        ) : row.areas ? (
+          <TrackLine
+            key={at}
+            label={row.label}
+            detail={row.detail}
+            amount={row.amount}
+            areas={row.areas}
+            rowClassName="border-t py-1"
+            detailClassName="text-muted-foreground"
+          />
         ) : (
           <div key={at} className="flex flex-col border-t py-2">
             <div className="flex items-baseline justify-between gap-4">

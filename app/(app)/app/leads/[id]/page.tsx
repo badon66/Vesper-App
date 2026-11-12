@@ -53,6 +53,7 @@ import {
 } from "@/lib/leads/track-colour";
 import { soffitCodeBlocks, soffitCodes, trackFormKey } from "@/lib/leads/soffit-code";
 import { describeEvent, isCustomerEvent } from "@/lib/leads/timeline";
+import { revisionTimelineLine } from "@/lib/quotes/revise";
 import { formatPhone } from "@/lib/phone";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { mapsLink } from "@/lib/places";
@@ -117,6 +118,7 @@ export default async function LeadPage({
     ownerRal,
     cardRows,
     linkExtras,
+    revisionRows,
   ] = await Promise.all([
     supabase.from("leads").select(LEAD_FIELDS).eq("id", id).maybeSingle(),
     supabase.from("lead_photos").select("id, storage_path, slot").eq("lead_id", id).order("created_at"),
@@ -144,6 +146,17 @@ export default async function LeadPage({
     // Take 3: what their link shows besides the quote (documents, the
     // agreement and its signings). The owner's only.
     isOwner ? loadLinkExtras(supabase, id) : Promise.resolve(null),
+    // Round 18: changes to the quote after the yes, with the old and new
+    // totals, on the timeline. Owner only (quote_revisions), never a
+    // setter's or View as's.
+    isOwner
+      ? supabase
+          .from("quote_revisions")
+          .select("id, revised_at, revised_by, total_before, total_after, changes")
+          .eq("lead_id", id)
+          .order("revised_at", { ascending: false })
+          .limit(50)
+      : Promise.resolve({ data: null }),
   ]);
   if (!row) notFound();
   // Contact privacy (2026-11-04): the phone and email only on the viewer's
@@ -155,6 +168,12 @@ export default async function LeadPage({
   // session, drops them here for the person viewed.
   const events = (eventRows ?? []).filter((event) => contactShown || event.type !== "note");
   const timelineNotes = events.filter((event) => event.type === "note");
+  // Round 18: the timeline with the quote's changes after the yes (owner
+  // only), newest first.
+  const timeline: ({ kind: "event"; at: string; event: (typeof events)[number] } | { kind: "revision"; at: string; revision: NonNullable<typeof revisionRows.data>[number] })[] = [
+    ...events.map((event) => ({ kind: "event" as const, at: event.created_at, event })),
+    ...(revisionRows.data ?? []).map((revision) => ({ kind: "revision" as const, at: revision.revised_at, revision })),
+  ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 
   // Track colour and the soffit colour code. The owner gets the whole RAL
   // Classic list (asked for above), and so does the lead's own setter, to
@@ -703,23 +722,39 @@ export default async function LeadPage({
         </CardHeader>
         <CardContent>
           <ol className="flex flex-col gap-4" aria-label="Timeline">
-            {events.map((event) => (
-              <li key={event.id} className="flex flex-col gap-1 border-l-2 border-border pl-3">
-                <p className={event.type === "note" ? "text-sm whitespace-pre-wrap" : "text-sm font-semibold"}>
-                  {describeEvent(event)}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {event.actor_id
-                    ? event.actor_id === me.id
-                      ? "You"
-                      : (names.get(event.actor_id) ?? "Someone")
-                    : isCustomerEvent(event.type)
-                      ? lead.first_name
-                      : "Vesper"},{" "}
-                  {formatDateTime(event.created_at)}
-                </p>
-              </li>
-            ))}
+            {timeline.map((entry) =>
+              entry.kind === "revision" ? (
+                <li key={`revision-${entry.revision.id}`} className="flex flex-col gap-1 border-l-2 border-border pl-3" data-testid="timeline-revision">
+                  <p className="text-sm font-semibold text-pretty">
+                    {revisionTimelineLine(
+                      Number(entry.revision.total_before),
+                      Number(entry.revision.total_after),
+                      Array.isArray(entry.revision.changes) ? entry.revision.changes.filter((change): change is string => typeof change === "string") : [],
+                    )}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {entry.revision.revised_by === me.id ? "You" : entry.revision.revised_by ? (names.get(entry.revision.revised_by) ?? "Keenan") : "Keenan"},{" "}
+                    {formatDateTime(entry.revision.revised_at)}
+                  </p>
+                </li>
+              ) : (
+                <li key={entry.event.id} className="flex flex-col gap-1 border-l-2 border-border pl-3">
+                  <p className={entry.event.type === "note" ? "text-sm whitespace-pre-wrap" : "text-sm font-semibold"}>
+                    {describeEvent(entry.event)}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {entry.event.actor_id
+                      ? entry.event.actor_id === me.id
+                        ? "You"
+                        : (names.get(entry.event.actor_id) ?? "Someone")
+                      : isCustomerEvent(entry.event.type)
+                        ? lead.first_name
+                        : "Vesper"},{" "}
+                    {formatDateTime(entry.event.created_at)}
+                  </p>
+                </li>
+              ),
+            )}
           </ol>
         </CardContent>
       </Card>

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { offersBlock, quoteSummary } from "@/lib/quotes/editor";
 import type { LeadMockupItem } from "@/lib/leads/mockup-roles";
-import { QUOTE_LOCKED_LEAD, savedLine } from "@/lib/quotes/draft";
+import { savedLine } from "@/lib/quotes/draft";
 import {
   defaultQuoteState,
   quoteFingerprint,
@@ -102,7 +102,7 @@ export function QuoteEditorCard({ leadId, leadName, context, draft, mockups, use
         <CardTitle>Quote</CardTitle>
         <CardDescription className="text-pretty">
           {accepted
-            ? "Accepted, so its prices are locked."
+            ? "Accepted. You can still change it: a save updates their link and the commission, and their signed agreement stays as signed."
             : latest
               ? "Meeting mode opens with this quote."
               : "No quote yet. Build it here before the meeting, and meeting mode opens with it."}
@@ -117,7 +117,7 @@ export function QuoteEditorCard({ leadId, leadName, context, draft, mockups, use
           <p className="text-sm text-muted-foreground">No option has measured runs yet.</p>
         ) : null}
         <Button type="button" variant="outline" onClick={() => setOpen(true)} data-testid="edit-quote">
-          {accepted ? "See the quote" : "Edit the quote"}
+          Edit the quote
         </Button>
       </CardContent>
       {open ? (
@@ -127,6 +127,7 @@ export function QuoteEditorCard({ leadId, leadName, context, draft, mockups, use
           context={context}
           start={latest}
           accepted={accepted}
+          acceptedOffer={accepted ? (draft?.acceptedOffer ?? null) : null}
           mockups={mockups}
           userId={userId}
           onSaved={(state, savedAt) => setLocal({ state, savedAt })}
@@ -137,12 +138,17 @@ export function QuoteEditorCard({ leadId, leadName, context, draft, mockups, use
   );
 }
 
+// Round 18 (Keenan, 2026-11-12): what a save does to an accepted quote.
+const ACCEPTED_EDIT_WORDS =
+  "They said yes to this quote. A save updates their link at once, with what changed listed for them, and the commission until it's paid. Their signed agreement stays as signed.";
+
 function QuoteSheet({
   leadId,
   leadName,
   context,
   start,
   accepted,
+  acceptedOffer,
   mockups,
   userId,
   onSaved,
@@ -153,6 +159,8 @@ function QuoteSheet({
   context: QuoteContext;
   start: { state: QuoteUIState; savedAt: string; quoteId: string | null } | null;
   accepted: boolean;
+  // Round 18: the option they said yes to, on an accepted quote.
+  acceptedOffer: string | null;
   mockups?: LeadMockupItem[];
   userId?: string;
   onSaved: (state: QuoteUIState, savedAt: string) => void;
@@ -172,7 +180,8 @@ function QuoteSheet({
   const dirty = saved.fingerprint === null ? hasMeasuredRun(state) : quoteFingerprint(state) !== saved.fingerprint;
   // A name that needs fixing, or (round 13) nothing shown to the customer.
   const offersIssue = offersBlock(quoteOffers(state));
-  const canSave = !accepted && !busy && hasMeasuredRun(state) && offersIssue === null;
+  // Round 18: an accepted quote saves too (lib/quotes/revise.ts).
+  const canSave = !busy && hasMeasuredRun(state) && offersIssue === null;
 
   useEffect(() => {
     const element = dialog.current;
@@ -192,7 +201,7 @@ function QuoteSheet({
   }, [leaving]);
 
   function tryClose() {
-    if (dirty && !accepted && !leaving) {
+    if (dirty && !leaving) {
       setLeaving(true);
       return;
     }
@@ -206,9 +215,7 @@ function QuoteSheet({
     onSaved(state, result.savedAt);
   }
 
-  const status = accepted
-    ? null
-    : dirty
+  const status = dirty
       ? saved.at
         ? "Changes not saved yet."
         : "Not saved yet."
@@ -232,7 +239,7 @@ function QuoteSheet({
           <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
             <div className="flex min-w-0 flex-col">
               <h2 id="quote-sheet-title" ref={title} tabIndex={-1} className="text-xl font-bold outline-none">
-                {accepted ? "The quote" : "Edit the quote"}
+                Edit the quote
               </h2>
               <p className="truncate text-sm text-muted-foreground">{leadName}</p>
             </div>
@@ -248,8 +255,8 @@ function QuoteSheet({
               colourKind={context.lead.colourKind}
               colourText={context.lead.colourText}
               today={context.today}
-              locked={accepted}
-              lockedWords={QUOTE_LOCKED_LEAD}
+              acceptedOffer={acceptedOffer}
+              acceptedWords={accepted ? ACCEPTED_EDIT_WORDS : undefined}
               mockups={mockups}
               leadId={leadId}
               userId={userId}
@@ -257,8 +264,9 @@ function QuoteSheet({
             />
           </div>
         </div>
-        {/* An accepted quote says why at the top; it has nothing to save. */}
-        {accepted ? null : (
+        {/* Round 18: an accepted quote saves like any other. */}
+        {(
+
           <footer className="shrink-0 border-t pb-[env(safe-area-inset-bottom)]">
             <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
               <div className="flex min-w-0 flex-col text-sm" aria-live="polite">

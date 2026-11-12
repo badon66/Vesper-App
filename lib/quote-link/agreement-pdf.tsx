@@ -82,12 +82,24 @@ function AgreementDocument({ agreement, logoSrc }: { agreement: SignedAgreement;
         <View style={styles.section}>
           <Text style={styles.heading}>Your choice: {agreement.option}</Text>
           {agreement.lines.map((line, at) => (
-            <View key={at} style={styles.row} wrap={false}>
-              <View style={styles.rowLabel}>
-                <Text>{line.label}</Text>
-                {line.detail ? <Text style={[styles.muted, { fontSize: 9 }]}>{line.detail}</Text> : null}
+            <View key={at} wrap={false}>
+              <View style={styles.row}>
+                <View style={styles.rowLabel}>
+                  <Text>{line.label}</Text>
+                  {line.detail ? <Text style={[styles.muted, { fontSize: 9 }]}>{line.detail}</Text> : null}
+                </View>
+                <Text style={styles.rowAmount}>{line.amount}</Text>
               </View>
-              <Text style={styles.rowAmount}>{line.amount}</Text>
+              {/* Round 18: every area on the track, indented under it. */}
+              {(line.areas ?? []).map((area, which) => (
+                <View key={which} style={[styles.row, { paddingLeft: 14 }]}>
+                  <View style={styles.rowLabel}>
+                    <Text style={{ fontSize: 9.5 }}>{area.label}</Text>
+                    {area.detail ? <Text style={[styles.muted, { fontSize: 8.5 }]}>{area.detail}</Text> : null}
+                  </View>
+                  <Text style={[styles.rowAmount, { fontSize: 9.5 }]}>{area.amount}</Text>
+                </View>
+              ))}
             </View>
           ))}
           {agreement.gst ? (

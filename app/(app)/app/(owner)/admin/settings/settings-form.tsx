@@ -253,7 +253,7 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
           <Field name="price_hold_days" label="Prices held for (days)" hint="Each new quote holds its prices until this many days out, shown to the customer as Price held until. It can be changed on the quote." errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="numeric" min="1" max="365" defaultValue={defaults.price_hold_days} />}
           </Field>
-          <Field name="rush_colour_fee" label="Rush colour fee ($ a job)" hint="One flat amount for powder coating a colour other than stock this season. No quote charges it until you switch on Charge a rush fee in the quote, which starts from this amount (blank: it starts empty for you to type)." errors={errors}>
+          <Field name="rush_colour_fee" label="Rush fee ($ a job)" hint="One flat amount. No offer charges it until you switch on Rush fee on that offer's card, which starts from this amount and lets you type over it (blank: it starts empty for you to type)." errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.rush_colour_fee} />}
           </Field>
           <Field name="upper_access_fee" label="Upper access ($)" hint="Added on its own to a quote with upper runs and no upper gable. Each quote keeps its own copy, and Keenan can change it in the quote builder. Blank: no line." errors={errors}>
@@ -262,10 +262,10 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
           <Field name="upper_gable_access_fee" label="Upper access with an upper gable ($)" hint="Added instead of the amount above when an upper gable is in the quote. Blank: no line." errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.upper_gable_access_fee} />}
           </Field>
-          <Field name="double_track_per_ft" label="Double track price per foot ($)" hint="For an area set to Double track in the quote editor. Hat track, the standard, is the price per foot above. Blank: Double track can't be picked yet. Each quote keeps the price it used." errors={errors}>
+          <Field name="double_track_per_ft" label="Double track price per foot ($)" hint="For an area set to Double track in the quote editor. Standard track is the price per foot above. Blank: Double track can't be picked yet. Each quote keeps the price it used." errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.double_track_per_ft} />}
           </Field>
-          <Field name="j_track_per_ft" label="J track price per foot ($)" hint="For an area set to J track, often the upper gables. Blank: J track can't be picked yet. Each quote keeps the price it used." errors={errors}>
+          <Field name="j_track_per_ft" label="L track (back track) price per foot ($)" hint="For an area set to L track (back track), often the upper gables. Blank: L track can't be picked yet. Each quote keeps the price it used." errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.j_track_per_ft} />}
           </Field>
           <Field name="service_call_fee" label="Service call fee ($)" hint="The flat fee for a service call in years 6 to 10 of the warranty. Blank means the warranty page names no amount." errors={errors}>

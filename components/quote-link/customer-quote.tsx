@@ -8,6 +8,7 @@ import { Disclosure } from "@/components/quote-link/disclosure";
 import { AboutYourTrack, AgreementSection, BuildYourOwn, BuildYourOwnRow, LinkDocuments, type SignOutcome } from "@/components/quote-link/link-extras";
 import { ChristmasBanner } from "@/components/quote-link/christmas-banner";
 import { RooflineTracker } from "@/components/quote-link/roofline-tracker";
+import { TrackLine } from "@/components/quotes/track-line";
 import { trackerSteps } from "@/lib/quote-link/tracker";
 import { PointIconMark } from "@/components/quote-link/point-icon";
 import { ClosedQuote, ContactButtons } from "@/components/quote-link/quote-shell";
@@ -146,13 +147,13 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
     }
     setBreakdownOpen((open) => !open);
   };
-  // Round 17: their track colour's lines; a rush fee only when charged.
+  // Round 17: their track colour's lines (round 18: never a fee; a rush
+  // fee is each option's own line).
   const colourLines = colourSectionLines({
     words,
     colourName: quote.trackColourName,
     custom: quote.trackCustom,
     timing: quote.colourTiming,
-    rushFee: quote.rushFee,
   });
   // Round 17: the Christmas banner, by the date for their own track colour.
   const banner = christmasBanner({
@@ -759,6 +760,7 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
         <section aria-labelledby="quote-for" className={cn("flex flex-col", laptopPicture && AREA.head)}>
           <div className="flex flex-col px-5 pt-6 lg:pt-10">
             <Greeting firstName={view.firstName} />
+            {view.revised ? <QuoteUpdated revised={view.revised} /> : null}
             {agreed ? (
               <>
                 <p className="mt-4 text-base font-semibold text-pretty text-muted-foreground" data-testid="agreed-choice">
@@ -1266,7 +1268,20 @@ function Breakdown({
           <div key={key} className="quote-row" data-shown={shown} aria-hidden={!shown} data-line={line.label}>
             <div>
               {isMinimum(line) ? <SumRow label="Before the minimum" amount={lineAmount(beforeMinimum)} testId="line-before-minimum" /> : null}
-              <LineRow label={line.label} detail={line.detail} amount={lineAmount(line.amount)} />
+              {line.areas ? (
+                // Round 18: a track's line ("Standard track, 165 ft at $24 a
+                // foot"); a tap drops down every area on it.
+                <TrackLine
+                  label={line.label}
+                  detail={line.detail}
+                  amount={lineAmount(line.amount)}
+                  areas={line.areas.map((area) => ({ label: area.label, detail: area.detail, amount: lineAmount(area.amount) }))}
+                  rowClassName="border-b py-1"
+                  detailClassName="text-sm text-muted-foreground"
+                />
+              ) : (
+                <LineRow label={line.label} detail={line.detail} amount={lineAmount(line.amount)} />
+              )}
             </div>
           </div>
         );
@@ -1804,6 +1819,25 @@ function useHoldInPlace() {
       if (held.current === hold) held.current = null;
     });
   }, []);
+}
+
+// Round 18 (Keenan, 2026-11-12): Keenan changed their quote after they
+// said yes. At the top of the price, the day he last changed it and every
+// change since the yes, in plain words ("Added: Extra outlet, $150"), so the
+// customer is never surprised. Their signed agreement stays as signed.
+function QuoteUpdated({ revised }: { revised: { at: string; changes: string[] } }) {
+  return (
+    <section aria-label="Your quote was updated" className="mt-4 rounded-md border border-navy/30 px-4 py-3" data-testid="quote-updated">
+      <p className="text-base font-semibold">Updated by Keenan on {formatFullDate(calgaryDateOf(revised.at))}</p>
+      {revised.changes.length > 0 ? (
+        <ul className="mt-1.5 flex flex-col gap-1 text-base text-pretty" data-testid="quote-updated-changes">
+          {revised.changes.map((change, at) => (
+            <li key={at}>{change}</li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
 }
 
 function PictureNeedsRefresh({ className, dark = false }: { className?: string; dark?: boolean }) {

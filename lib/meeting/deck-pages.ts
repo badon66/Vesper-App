@@ -26,7 +26,7 @@ import type { DeckPayload, DeckPhoto, MeetingMockup, MeetingPayload } from "@/li
 import { galleryPhotos, isGallerySlot, photosInOrder } from "@/lib/photos-deck";
 import { parseTalkingPoints } from "@/lib/meeting/talking-points";
 import { addDays } from "@/lib/time";
-import { cleanFeet, formatMoney, screenTotal, type QuoteRun } from "@/lib/pricing";
+import { cleanFeet, screenTotal, type QuoteRun } from "@/lib/pricing";
 import type { Json } from "@/types/database";
 
 // The deck (round 7, the settled spec's page_order, pages and colour_screen;
@@ -397,25 +397,21 @@ export function colourTimingView({
   kind,
   text,
   timing,
-  rushFee,
 }: {
   lines: DeckLines;
   kind: "none" | "list" | "custom";
   text: string;
   timing: "stock" | "factory_order" | "rush" | null;
-  rushFee: number | null;
 }): ColourTimingView {
   if (kind === "none") return { kind: "none" };
   if (colourIsStock(kind, text)) return { kind: "stock", line: deckLine(lines, "colour_stock") };
-  // rushFee: what This season charges, whichever timing is picked now (the
-  // caller passes none for a quote that isn't charging one).
-  const fee = rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
+  // Round 18: a rush fee is an offer's own line, never the colour's.
   return {
     kind: "made",
     line: deckLine(lines, "colour_made", { colour: text.trim() }),
     season: {
       label: deckLine(lines, "colour_season_label"),
-      value: fee === null ? deckLine(lines, "colour_season_included") : deckLine(lines, "colour_season_value", { fee: formatMoney(fee) }),
+      value: deckLine(lines, "colour_season_included"),
     },
     spring: { label: deckLine(lines, "colour_spring_label"), value: deckLine(lines, "colour_spring_value") },
     chosen: timing === "factory_order" ? "spring" : "season",

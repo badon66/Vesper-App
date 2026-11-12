@@ -14,7 +14,7 @@ import { DEFAULT_LINES, deckLine, priceSubLine, type DeckLines } from "@/lib/dec
 import { breakdownRows, minimumSentence, NO_PAYMENT, screenOptions, type BreakdownRow } from "@/lib/meeting/price-screen";
 import { blackFridayOn, chooseWithBlackFriday, offerPrice, withBlackFriday } from "@/lib/meeting/black-friday-state";
 import { colourTimingView, mockupJobs, offerMockup } from "@/lib/meeting/deck-pages";
-import { quoteInputs, quoteOffers, rushFeeInHand, withColourTiming, type MeetingMockup, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
+import { quoteInputs, quoteOffers, withColourTiming, type MeetingMockup, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
 import { MOTION, transition } from "@/lib/motion";
 import { formatMoney, type QuoteTotals } from "@/lib/pricing";
 import { QUOTE_LOCKED_MEETING, savedLine } from "@/lib/quotes/draft";
@@ -24,6 +24,7 @@ import { cleanOfferName, customerOfferName, feetWords, offerFeet, type PricedOff
 import { christmasPriceLine, trackColourKindOf } from "@/lib/quote-link/christmas";
 import { formatFullDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
+import { TrackLine } from "@/components/quotes/track-line";
 
 // Your price (round 9, the spec 3.5; round 10, Keenan, 2026-11-10): a
 // presentation, not a form. The option on screen shows its own mockup big
@@ -206,7 +207,8 @@ export function QuoteScreen({
     [picture, viewing, mockups],
   );
   // The one colour line: stock, or made to order with spring or this season.
-  const timing = colourTimingView({ lines, kind: colourKind, text: colourText, timing: state.colourTiming, rushFee: rushFeeInHand(state) });
+  // Round 18: the rush fee is each offer's own, never the colour's.
+  const timing = colourTimingView({ lines, kind: colourKind, text: colourText, timing: state.colourTiming });
 
   // The pick, the install day and the colour's timing save with the quote,
   // quietly, when there's signal: a moment after they change, and again when the signal comes
@@ -672,6 +674,17 @@ function Breakdown({ totals }: { totals: QuoteTotals }) {
             <dt className="text-muted-foreground">{row.label}</dt>
             <dd className="shrink-0 font-semibold tabular-nums">{row.amount}</dd>
           </div>
+        ) : row.areas ? (
+          // Round 18: a track's line, its areas a tap away.
+          <TrackLine
+            key={at}
+            label={row.label}
+            detail={row.detail}
+            amount={row.amount}
+            areas={row.areas}
+            rowClassName={cn("border-t border-border", pad)}
+            detailClassName={detail}
+          />
         ) : (
           <div key={at} className={cn("flex flex-col border-t border-border", pad)} data-line={row.label}>
             <div className="flex items-baseline justify-between gap-4">

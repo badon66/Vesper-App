@@ -6,9 +6,12 @@ import { NotOwnerError, ReadOnlyError, requireOwnerForAction, type SessionProfil
 import { hasDash, hasExclamation } from "@/lib/deck";
 import { guessRunPart, RUN_PARTS, totalFeet, TRACK_TYPES, type QuoteInputs } from "@/lib/pricing";
 import { quoteLockedWords, type QuoteSaveInput } from "@/lib/quotes/draft";
-import { AREA_KINDS } from "@/lib/quotes/areas";
-import { chosenOfferTotals, NO_OFFER_SHOWN, noOfferShown, OFFERS_MAX, offersForSave } from "@/lib/quotes/offers";
+import { AREA_KINDS, areaOf, cleanGableCount, cleanViewName, isGable } from "@/lib/quotes/areas";
+import { chosenOfferTotals, cleanCharges, cleanRushFee, NO_OFFER_SHOWN, noOfferShown, OFFERS_MAX, offersForSave, priceOffer } from "@/lib/quotes/offers";
+import { revisionChanges } from "@/lib/quotes/revise";
+import { customerInputs, quoteFromRow } from "@/lib/quote-link/view";
 import { createClient } from "@/lib/supabase/server";
+import type { Json } from "@/types/database";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 
 // Meeting mode's writes (M5). All of them are Keenan's: meeting mode is
@@ -53,9 +56,13 @@ const quoteDraftSchema = z.object({
         // copied from Settings when Keenan picked it.
         track: z.enum(TRACK_TYPES).nullable().optional(),
         trackRate: z.number().min(0).max(10_000).nullable().optional(),
+        // Round 18: the view's name Keenan gave it, and how many gables a
+        // gable line holds.
+        view: z.string().max(60).nullable().optional(),
+        count: z.number().int().min(1).max(50).nullable().optional(),
       }),
     )
-    .max(30),
+    .max(40),
   boxCount: z.number().int().min(0).max(20),
   pricePerFt: money,
   boxPrice: money,
@@ -94,7 +101,7 @@ const quoteDraftSchema = z.object({
       z.object({
         id: z.string().trim().min(1).max(40),
         name: z.string().max(60),
-        runs: z.array(z.number().int().min(0).max(29)).max(30),
+        runs: z.array(z.number().int().min(0).max(39)).max(40),
         boxes: z.number().int().min(1).max(9).nullable().optional(),
         // Round 11: the upper access amount typed over for this offer.
         upperAccess: z.number().min(0).max(100_000).nullable().optional(),
@@ -106,6 +113,9 @@ const quoteDraftSchema = z.object({
         // description (cleaned again by offersForSave and the database).
         lead: z.boolean().optional(),
         description: z.string().max(2000).optional(),
+        // Round 18: the offer's own rush fee and extra charges.
+        rushFee: z.number().min(0).max(100_000).nullable().optional(),
+        charges: z.array(z.object({ label: z.string().max(200), amount: z.number().min(0).max(1_000_000) })).max(20).optional(),
       }),
     )
     .max(OFFERS_MAX + 1)
@@ -198,9 +208,17 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     price_per_ft: draft.pricePerFt,
     box_price: draft.boxPrice,
     box_count: draft.boxCount,
-    runs: draft.runs.map(({ area, gable, rate, flat, track, trackRate, ...run }) => ({
+    runs: draft.runs.map(({ area, gable, rate, flat, track, trackRate, view, count, ...run }) => ({
       ...run,
       ...(area ? { area } : {}),
+      // Round 18: a view's name only when Keenan gave one, a gable count
+      // only when a gable line holds more than one.
+      ...(() => {
+        const kind = areaOf({ name: run.name, part: run.part, area: area ?? null });
+        const name = kind === "other" ? null : cleanViewName(view, kind);
+        return name ? { view: name } : {};
+      })(),
+      ...(isGable({ name: run.name, part: run.part, gable: gable ?? null }) && cleanGableCount(count) !== null ? { count: cleanGableCount(count) } : {}),
       ...(typeof gable === "boolean" ? { gable } : {}),
       ...(typeof rate === "number" && rate > 0 ? { rate } : {}),
       ...(typeof flat === "number" ? { flat } : {}),
@@ -217,11 +235,10 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     })),
     discounts: draft.discounts,
     colour_timing: draft.colourTiming,
-    // Round 17: the flat fee is kept only while Keenan charges it for a
-    // this-season install (lib/meeting/state.ts quoteRushFee), so a fee
-    // nobody is charged is never stored or named; the price counts it only
-    // then. The fee per foot is no longer used (2026-11-04).
-    rush_fee: draft.colourTiming === "rush" ? (draft.rushFee ?? null) : null,
+    // Round 18: the rush fee lives on each offer (rush_fee there), so the
+    // quote's own is cleared on every save. The fee per foot is no longer
+    // used (2026-11-04).
+    rush_fee: null,
     rush_fee_per_ft: null,
     upper_access_fee: draft.upperAccessFee ?? null,
     upper_gable_access_fee: draft.upperGableAccessFee ?? null,
@@ -243,28 +260,31 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     // database cleans them: upper_access for the typed amount (round 11),
     // hidden only when the switch is off (round 13); round 17's star only
     // when on, and a description only when written.
-    offers: offers.map(({ upperAccess, hidden, fromCustomer, lead, description, ...offer }) => ({
+    offers: offers.map(({ upperAccess, hidden, fromCustomer, lead, description, rushFee, charges, ...offer }) => ({
       ...offer,
       upper_access: upperAccess ?? null,
       ...(hidden === true ? { hidden: true } : {}),
       ...(fromCustomer === true ? { from_customer: true } : {}),
       ...(lead === true ? { lead: true } : {}),
       ...(description ? { description } : {}),
+      // Round 18: its own rush fee and extra charges, only when there.
+      ...(cleanRushFee(rushFee) !== null ? { rush_fee: cleanRushFee(rushFee) } : {}),
+      ...(cleanCharges(charges).length > 0 ? { charges: cleanCharges(charges) } : {}),
     })),
     meeting_offer: meetingOffer,
     meeting_install_on: draft.meetingInstallOn ?? null,
   };
 
-  // While the lead has an accepted quote, its prices are locked: nothing
-  // saves until the acceptance is undone on the lead page.
-  const { data: accepted } = await supabase
-    .from("quotes")
-    .select("id")
-    .eq("lead_id", draft.leadId)
-    .eq("status", "accepted")
-    .limit(1)
-    .maybeSingle();
-  if (accepted) return locked;
+  // Round 18 (Keenan, 2026-11-12): an accepted quote stays editable from
+  // the lead page. The save goes through the database's quote_revise, which
+  // updates the quote (and so the link) at once, keeps the commission in
+  // step until it is paid, and records what changed. Meeting mode, which the
+  // customer watches, keeps an accepted quote as agreed.
+  const { data: accepted } = await supabase.from("quotes").select("*").eq("lead_id", draft.leadId).eq("status", "accepted").limit(1).maybeSingle();
+  if (accepted) {
+    if (draft.from !== "lead") return locked;
+    return reviseAccepted(supabase, accepted, row, draft.leadId);
+  }
 
   // One draft per lead, reused on every save.
   const { data: existing } = await supabase
@@ -305,6 +325,56 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
   }
   revalidatePath(`/app/leads/${draft.leadId}`);
   return { ok: true, quoteId: created.id, savedAt: created.updated_at };
+}
+
+// Saving an accepted quote (round 18). The option they said yes to is
+// priced before and after from the stored rows the way their link prices
+// it, the change list worked out from the two (lib/quotes/revise.ts), and
+// the database does the rest under one lock: the quote, the accepted
+// option's runs and boxes, a pending commission, and the record.
+async function reviseAccepted(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  before: Record<string, unknown> & { id: string; accepted_offer: string | null; subtotal: number },
+  row: Record<string, unknown>,
+  leadId: string,
+): Promise<SaveQuoteResult> {
+  const offerId = before.accepted_offer;
+  const was = quoteFromRow(before);
+  const now = quoteFromRow({ ...before, ...row });
+  const wasOffer = offerId && was ? was.offers.find((offer) => offer.id === offerId) : undefined;
+  const nowOffer = offerId && now ? now.offers.find((offer) => offer.id === offerId && offer.hidden !== true) : undefined;
+  if (offerId && !nowOffer) {
+    return { ok: false, code: "bad_input", message: "The option they said yes to has to stay on the quote, shown to them." };
+  }
+  const beforeTotals = was && wasOffer ? priceOffer(customerInputs(was, null), wasOffer) : null;
+  const afterTotals = now && nowOffer ? priceOffer(customerInputs(now, null), nowOffer) : null;
+  if (offerId && !afterTotals) {
+    return { ok: false, code: "bad_input", message: "The option they said yes to needs at least one measured area." };
+  }
+  const changes = revisionChanges(beforeTotals, afterTotals);
+  const totals = afterTotals ?? null;
+  const update = {
+    ...row,
+    // The stored numbers are the accepted option's own.
+    ...(totals ? { subtotal: totals.subtotal, gst: totals.gst, total: totals.total } : {}),
+  };
+  for (const key of ["lead_id", "created_by", "status", "meeting_offer", "meeting_install_on", "track_colour_name", "track_ral_code", "track_custom"]) {
+    delete (update as Record<string, unknown>)[key];
+  }
+  const { data, error } = await supabase.rpc("quote_revise", {
+    p_quote: before.id,
+    p_fields: update as unknown as Json,
+    p_changes: changes as unknown as Json,
+    p_total_before: Number(before.subtotal) || (beforeTotals?.subtotal ?? 0),
+    p_total_after: totals?.subtotal ?? Number(before.subtotal) ?? 0,
+  });
+  if (error) {
+    if (error.hint === "bad_offer") return { ok: false, code: "bad_input", message: "The option they said yes to has to stay on the quote, shown to them." };
+    return { ok: false, code: "save_failed", message: "The quote could not be saved. Check your signal and try again." };
+  }
+  const savedAt = (data as { updated_at?: string } | null)?.updated_at ?? new Date().toISOString();
+  revalidatePath(`/app/leads/${leadId}`);
+  return { ok: true, quoteId: before.id, savedAt };
 }
 
 export type ConfirmInitialsResult =

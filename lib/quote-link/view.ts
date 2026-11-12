@@ -5,7 +5,7 @@
 // text Keenan sends. No React and no network, so it is unit tested like the
 // pricing it feeds, and the page and the server share it.
 
-import { AREA_KINDS, customerAreaName } from "@/lib/quotes/areas";
+import { AREA_KINDS, cleanGableCount, runDisplayName } from "@/lib/quotes/areas";
 import { z } from "zod";
 import {
   cleanFeet,
@@ -28,12 +28,14 @@ import {
 } from "@/lib/pricing";
 import { deckLine, parseDeckLines, type DeckLines } from "@/lib/deck";
 import {
+  carryQuoteRushFee,
   CUSTOMER_OFFER_ID,
   CUSTOMER_OFFER_NAME,
   OWN_OPTION,
   isCustomerOffer,
   parseOffers,
   priceOffer,
+  sharedRushFee,
   shownOffers,
   type PricedOffer,
   type QuoteOffer,
@@ -109,6 +111,8 @@ export type CustomerQuote = {
     // before options).
     accepted: boolean;
     acceptedOffer: string | null;
+    // Round 18: the controller line's words from Settings; null reads ours.
+    controller?: { label: string; detail: string } | null;
   };
   warranty: string;
   // Warranty years 6 to 10 (Settings); null hides its line.
@@ -126,6 +130,10 @@ export type CustomerQuote = {
   // marks on the lead (its date, and whether it is done) and whether the
   // job is installed.
   progress: { siteVisitOn: string | null; siteVisitDone: boolean; installed: boolean };
+  // Round 18: on an accepted quote Keenan changed after the yes, when he
+  // last changed it and what changed since, in their own words; null
+  // otherwise.
+  revised: { at: string; changes: string[] } | null;
   // The presentation gallery's photo paths: Vesper's own installs.
   gallery: string[];
   company: Company;
@@ -184,9 +192,12 @@ const runSchema = z.object({
   gable: z.boolean().nullable().optional().catch(null),
   rate: z.coerce.number().nullable().optional().catch(null),
   flat: z.coerce.number().nullable().optional().catch(null),
-  // Take 3: Double or J track, and that track's price a foot on the quote.
+  // Take 3: Double or L track, and that track's price a foot on the quote.
   track: z.enum(TRACK_TYPES).nullable().optional().catch(null),
   trackRate: z.coerce.number().nullable().optional().catch(null),
+  // Round 18: the view's name Keenan gave it, and a gable line's count.
+  view: z.string().nullable().optional().catch(null),
+  count: z.coerce.number().nullable().optional().catch(null),
 });
 
 const quoteSchema = z.object({
@@ -224,8 +235,11 @@ const quoteSchema = z.object({
 });
 
 function toQuote(q: z.infer<typeof quoteSchema>): CustomerQuote["quote"] {
+  // Round 18: a quote from before kept one rush fee for the whole quote
+  // (this season); it rides on every offer, so no total moves.
+  const parsedOffers = parseOffers(q.offers, q.runs.length);
   return {
-    offers: parseOffers(q.offers, q.runs.length),
+    offers: carryQuoteRushFee(parsedOffers, { colourTiming: q.colour_timing, rushFee: q.rush_fee ?? null }),
     financingOffered: q.financing_offered === true,
     meetingOffer: q.meeting_offer?.trim() || null,
     accepted: q.accepted === true,
@@ -240,6 +254,8 @@ function toQuote(q: z.infer<typeof quoteSchema>): CustomerQuote["quote"] {
       ...(typeof run.rate === "number" && run.rate > 0 ? { rate: run.rate } : {}),
       ...(typeof run.flat === "number" && run.flat >= 0 ? { flat: run.flat } : {}),
       ...trackFields(run),
+      ...(typeof run.view === "string" && run.view.trim() !== "" ? { view: run.view.trim().slice(0, 40) } : {}),
+      ...(cleanGableCount(run.count) !== null ? { count: cleanGableCount(run.count) } : {}),
     })),
     runsFingerprint: q.runs_fingerprint,
     pricePerFt: q.price_per_ft,
@@ -336,6 +352,11 @@ const liveSchema = z.object({
   booked_offer: text,
   booked_at: z.string().nullable().catch(null),
   booked_option: z.string().nullable().catch(null),
+  revised: z
+    .object({ at: z.string(), changes: z.array(z.string()).catch([]) })
+    .nullable()
+    .optional()
+    .catch(null),
   // The meeting's words from settings.deck.lines, when the database hands
   // them over; otherwise the defaults below, which are the same words.
   lines: z.record(z.string(), z.unknown()).nullable().optional().catch(null),
@@ -375,7 +396,7 @@ export function parseCustomerQuote(data: unknown): CustomerQuote | ClosedQuote {
     city: v.city,
     validUntil: v.valid_until,
     today: v.today ?? null,
-    quote: toQuote(v.quote),
+    quote: { ...toQuote(v.quote), controller: controllerWords(parseDeckLines(v.lines)) },
     warranty: v.warranty,
     serviceCallFee: fee !== null && Number.isFinite(fee) && fee > 0 ? fee : null,
     christmas,
@@ -392,6 +413,7 @@ export function parseCustomerQuote(data: unknown): CustomerQuote | ClosedQuote {
       siteVisitDone: v.progress?.site_visit_done === true,
       installed: v.progress?.installed === true,
     },
+    revised: v.revised ? { at: v.revised.at, changes: v.revised.changes.map((change) => change.trim()).filter(Boolean) } : null,
     gallery: v.gallery.filter((path) => path.trim() !== ""),
     company: v.company,
     mockupPath: v.mockup_path,
@@ -414,13 +436,18 @@ export function parseCustomerQuote(data: unknown): CustomerQuote | ClosedQuote {
 // the words.
 export type LinkWords = DeckLines;
 
+// Round 18: the controller line's two lines from Settings.
+export function controllerWords(words: DeckLines): { label: string; detail: string } {
+  return { label: deckLine(words, "controller_label"), detail: deckLine(words, "controller_detail") };
+}
+
 // The track colour section's lines (round 17, Keenan, 2026-11-12): one
 // colour rule, the same as Your price in the meeting. White is in stock and
 // included. Any other colour is made to order: installed this season at no
-// extra cost by default, or in spring; a rush fee is Keenan's choice on a
-// quote and is named only when he charged it (this season with an amount),
-// so a link never mentions a fee its customer isn't paying. The words are
-// the meeting's own (colour_stock, colour_made and the two timing buttons).
+// extra cost, or in spring. Round 18: a rush fee is an option's own line in
+// its breakdown, never the colour's, so these lines never name one. The
+// words are the meeting's own (colour_stock, colour_made and the two
+// timing buttons).
 // The old September to November window is gone: the Christmas banner runs
 // by Keenan's dates instead (lib/quote-link/christmas.ts).
 export function colourSectionLines({
@@ -428,13 +455,11 @@ export function colourSectionLines({
   colourName,
   custom,
   timing,
-  rushFee,
 }: {
   words: DeckLines;
   colourName: string | null;
   custom: boolean;
   timing: ColourTiming | null;
-  rushFee: number | null;
 }): { stock: string | null; other: string | null; made: string | null; timing: string | null } {
   const name = (colourName ?? "").trim();
   const madeToOrder = custom || (name !== "" && !isWhiteTrack(name));
@@ -442,14 +467,13 @@ export function colourSectionLines({
     // No cost claim: a colour this season may carry Keenan's rush fee.
     return { stock: deckLine(words, "colour_stock"), other: "Any other colour is made to order.", made: null, timing: null };
   }
-  const fee = timing === "rush" && rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
+  // Round 18: a rush fee is an offer's own line, never the colour's, so
+  // these lines never name one.
   const lowerFirst = (text: string) => (text ? text.charAt(0).toLowerCase() + text.slice(1) : text);
   const when =
     timing === "factory_order"
       ? `${deckLine(words, "colour_spring_label")}, ${lowerFirst(deckLine(words, "colour_spring_value"))}.`
-      : `${deckLine(words, "colour_season_label")}, ${lowerFirst(
-          fee === null ? deckLine(words, "colour_season_included") : deckLine(words, "colour_season_value", { fee: formatMoney(fee) }),
-        )}.`;
+      : `${deckLine(words, "colour_season_label")}, ${lowerFirst(deckLine(words, "colour_season_included"))}.`;
   return { stock: null, other: null, made: deckLine(words, "colour_made", { colour: name || "Your colour" }), timing: when };
 }
 
@@ -481,17 +505,19 @@ export function customerInputs(quote: CustomerQuote["quote"], positions: readonl
     adders: quote.adders.map((a) => ({ label: a.label, amount: a.amount, ...(a.upperOnly ? { upperOnly: true } : {}) })),
     discounts: quote.discounts,
     colourTiming: quote.colourTiming,
-    rushFee: quote.colourTiming === "rush" ? quote.rushFee : null,
+    // Round 18: the rush fee is each offer's own (priceOffer uses it); the
+    // whole quote counts one only when every offer charges it.
+    rushFee: sharedRushFee(quote.offers),
     upperAccessFee: quote.upperAccessFee,
     upperGableAccessFee: quote.upperGableAccessFee,
     minJobTotal: quote.minJobTotal,
     gstEnabled: quote.gstEnabled,
     gstRate: quote.gstRate,
     colourName: quote.trackColourName,
-    // Round 17: every area on its own line on the link and its signed copy,
-    // by the name the quote editor shows it ("Front lower", "Front upper").
-    perArea: true,
-    areaName: customerAreaName,
+    // Round 18: the lights by track, each area by the name the quote
+    // editor shows it ("Front lower", Keenan's own names, "Upper gables (2)").
+    areaName: runDisplayName,
+    controller: quote.controller ?? null,
   };
 }
 
@@ -580,6 +606,9 @@ export function customOption(
   const picked = [...new Set(runs)].filter((at) => allowed.has(at)).sort((a, b) => a - b);
   if (picked.length === 0) return null;
   const from = quote.offers.find((offer) => offer.id === fromOfferId && offer.hidden !== true && !isCustomerOffer(offer));
+  // Round 18: their own option carries the rush fee of the option they
+  // started from (the database books it the same way); never that option's
+  // own extra charges, which are for that option's work.
   const offer: QuoteOffer = {
     id: CUSTOMER_OFFER_ID,
     name: CUSTOMER_OFFER_NAME,
@@ -587,6 +616,7 @@ export function customOption(
     boxes: from?.boxes ?? null,
     upperAccess: null,
     fromCustomer: true,
+    ...(from?.rushFee ? { rushFee: from.rushFee } : {}),
   };
   const totals = priceOffer(customerInputs(quote, null), offer);
   return totals ? { offer, totals } : null;
