@@ -253,7 +253,7 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
           <Field name="price_hold_days" label="Prices held for (days)" hint="Each new quote holds its prices until this many days out, shown to the customer as Price held until. It can be changed on the quote." errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="numeric" min="1" max="365" defaultValue={defaults.price_hold_days} />}
           </Field>
-          <Field name="rush_colour_fee" label="Rush colour fee ($ a job)" hint="One flat amount when a colour other than stock is powder coated this season instead of waiting for the spring factory order. Blank hides that choice on the quote and on the customer's link." errors={errors}>
+          <Field name="rush_colour_fee" label="Rush colour fee ($ a job)" hint="One flat amount for powder coating a colour other than stock this season. No quote charges it until you switch on Charge a rush fee in the quote, which starts from this amount (blank: it starts empty for you to type)." errors={errors}>
             {(p) => <Input {...p} type="number" inputMode="decimal" step="0.01" min="0" defaultValue={defaults.rush_colour_fee} />}
           </Field>
           <Field name="upper_access_fee" label="Upper access ($)" hint="Added on its own to a quote with upper runs and no upper gable. Each quote keeps its own copy, and Keenan can change it in the quote builder. Blank: no line." errors={errors}>

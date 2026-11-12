@@ -419,9 +419,14 @@ export function pickEditableQuote<T extends { status: string }>(rows: readonly T
 
 // An iPad copy as it is read back: one written before round 9 has no
 // offers, choice or install day, and is read as one full wrap with neither.
+// Round 17: a copy keeps its rush fee only if it was already a this-season
+// quote. Copies from before round 17 held Settings' fee whatever the timing,
+// and the colour rule would now move such a quote to this season with that
+// old fee still in it: a $350 nobody switched on.
 export function storedQuote(quote: QuoteUIState): QuoteUIState {
   return {
     ...quote,
+    rushFee: quote.colourTiming === THIS_SEASON && typeof quote.rushFee === "string" ? quote.rushFee : "",
     offers: Array.isArray(quote.offers) ? quote.offers : [],
     chosenOffer: typeof quote.chosenOffer === "string" && quote.chosenOffer !== "" ? quote.chosenOffer : null,
     installOn: typeof quote.installOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(quote.installOn) ? quote.installOn : null,

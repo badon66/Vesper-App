@@ -242,7 +242,9 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
     const opened = start?.quote ?? null;
     if (!opened || accepted) return opened;
     const timing = colourTimingFor(colour.kind, colour.text, opened.colourTiming);
-    const timed = timing === opened.colourTiming ? opened : { ...opened, colourTiming: timing };
+    // A quote the colour rule moves into this season starts with no rush fee:
+    // the fee is Keenan's to switch on (round 17), never carried over.
+    const timed = timing === opened.colourTiming ? opened : { ...opened, colourTiming: timing, ...(timing === "rush" ? { rushFee: "" } : {}) };
     // Its Black Friday line as Settings' deal works it out now.
     return meeting ? settleBlackFriday(timed, meeting.pricing) : timed;
   });

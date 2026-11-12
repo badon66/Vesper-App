@@ -333,9 +333,10 @@ export function acceptOptions({
 // The option to start on when Accepted opens (round 13, Keenan,
 // 2026-11-11): the one the customer booked on their link, since that is
 // the last thing they asked for, with the table's choice shown beside it;
-// otherwise the one chosen at the table; otherwise the biggest. (Round 9
-// started on the table's choice, so a quick Mark accepted took the option
-// the customer had not asked for.)
+// otherwise the one chosen at the table; otherwise the first in the list,
+// which is Keenan's "Lead with this one" offer when he starred one (round
+// 17), else the biggest. (Round 9 started on the table's choice, so a quick
+// Mark accepted took the option the customer had not asked for.)
 export function startingChoice(options: readonly Pick<AcceptOption, "booked" | "meeting">[]): number {
   const booked = options.findIndex((option) => option.booked);
   if (booked >= 0) return booked;

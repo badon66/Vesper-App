@@ -414,4 +414,21 @@ describe("the rush fee is Keenan's choice, off by default", () => {
     // Its price is what it always was: spring never charged the fee.
     expect(priceQuote(quoteInputs(spring, brown().pricing)).lines.map((line) => line.label)).not.toContain(RUSH_LINE);
   });
+
+  it("never brings back an old iPad copy's prefilled fee: only a this-season copy keeps one", () => {
+    // Before round 17 every copy held Settings' fee whatever its timing.
+    const old = (colourTiming: QuoteUIState["colourTiming"]) => storedQuote({ ...withFeet(defaultQuoteState(payload()), 100), colourTiming, rushFee: "350" });
+    expect(old(null).rushFee).toBe("");
+    expect(old("stock").rushFee).toBe("");
+    expect(old("factory_order").rushFee).toBe("");
+    expect(old("rush").rushFee).toBe("350");
+    // The colour rule then moves the first one to this season, included.
+    const moved = { ...old(null), colourTiming: colourTimingFor("list", "Brown", null) };
+    expect([moved.colourTiming, rushFeeOn(moved)]).toEqual(["rush", false]);
+    expect(priceQuote(quoteInputs(moved, brown().pricing)).lines.map((line) => line.label)).not.toContain(RUSH_LINE);
+    // A copy with no fee at all reads as none.
+    const none = { ...withFeet(defaultQuoteState(payload()), 100), colourTiming: "rush" } as Partial<QuoteUIState>;
+    delete none.rushFee;
+    expect(storedQuote(none as QuoteUIState).rushFee).toBe("");
+  });
 });
