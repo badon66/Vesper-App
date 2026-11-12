@@ -12,7 +12,6 @@ import {
   leavesRunsOut,
   lineAmount,
   linkOffers,
-  nextStepsFor,
   offerChoice,
   openingOffer,
   optionName,
@@ -480,28 +479,26 @@ describe("the options", () => {
 });
 
 describe("what happens next", () => {
-  it("reads back the colour initialled at the meeting and the planned day, in the meeting's words", () => {
-    expect(nextStepsFor(liveOf(withOffers)).map((step) => [step.label, step.text, step.done])).toEqual([
-      ["Your colour", "Brown, confirmed with your initials at the meeting.", true],
-      ["Your install day", "Saturday, November 21", true],
-      ["On the day", "A small crew fits the track and plugs in the control box. We clean up and set up the app with you.", false],
-      ["Paying", "No payment until your install is complete.", false],
-    ]);
-  });
-
-  it("says we confirm the colour from the colour book and pick the day together when neither is done", () => {
-    const steps = nextStepsFor(liveOf({ ...withOffers, next_steps: { colour_confirmed: false, install_on: "soon", what_we_need: " " } }));
-    expect(steps.slice(0, 2).map((step) => [step.text, step.done])).toEqual([
-      ["We confirm it with you from the colour book.", false],
-      ["We pick the day together.", false],
-    ]);
+  it("reads where they're at from the database: the site visit and Installed, safely when missing or odd", () => {
+    expect(liveOf(withOffers).progress).toEqual({ siteVisitOn: null, siteVisitDone: false, installed: false });
+    expect(liveOf({ ...withOffers, progress: { site_visit_on: "2026-12-02", site_visit_done: true, installed: true } }).progress).toEqual({
+      siteVisitOn: "2026-12-02",
+      siteVisitDone: true,
+      installed: true,
+    });
+    expect(liveOf({ ...withOffers, progress: { site_visit_on: "next week", site_visit_done: "yes", installed: 1 } }).progress).toEqual({
+      siteVisitOn: null,
+      siteVisitDone: false,
+      installed: false,
+    });
+    expect(liveOf({ ...withOffers, progress: "nonsense" }).progress).toEqual({ siteVisitOn: null, siteVisitDone: false, installed: false });
   });
 
   it("after Book my install, Keenan confirms a day already planned, or sets one", () => {
     expect(inTouchAbout("2026-11-21")).toBe("to confirm your install day");
     expect(inTouchAbout(null)).toBe("to set your install date");
     const planned = liveOf(withOffers);
-    expect(nextStepsFor(planned)[1].done).toBe(true);
+    expect(planned.nextSteps.installOn).toBe("2026-11-21");
     expect(inTouchAbout(planned.nextSteps.installOn)).toBe("to confirm your install day");
   });
 
@@ -532,15 +529,14 @@ describe("what happens next", () => {
       "link_drawing_caption",
       "link_meeting_tag",
       "link_something_else",
-      "link_colour_done",
-      "step_colour_todo",
-      "step_day_none",
-      "step_on_day",
+      "tracker_title",
+      "tracker_meeting",
+      "tracker_choose",
+      "tracker_visit",
+      "tracker_install",
+      "tracker_pay",
     ] as const;
-    const lines = [
-      ...keys.map((key) => fillLine(view.words[key], { name: "Main floor", colour: "Brown" })),
-      ...nextStepsFor(view).map((step) => step.text),
-    ];
+    const lines = keys.map((key) => fillLine(view.words[key], { name: "Main floor", colour: "Brown" }));
     for (const line of lines) expect(line).not.toMatch(/[–—!]/);
     expect(fillLine(view.words.link_drawing_caption, { name: "Main floor" })).toBe("Gold marks the lights in Main floor.");
   });

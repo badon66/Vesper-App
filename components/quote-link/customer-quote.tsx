@@ -7,6 +7,8 @@ import { PinchZoom } from "@/components/meeting/pinch-zoom";
 import { Disclosure } from "@/components/quote-link/disclosure";
 import { AboutYourTrack, AgreementSection, BuildYourOwn, BuildYourOwnRow, LinkDocuments, type SignOutcome } from "@/components/quote-link/link-extras";
 import { ChristmasBanner } from "@/components/quote-link/christmas-banner";
+import { RooflineTracker } from "@/components/quote-link/roofline-tracker";
+import { trackerSteps } from "@/lib/quote-link/tracker";
 import { PointIconMark } from "@/components/quote-link/point-icon";
 import { ClosedQuote, ContactButtons } from "@/components/quote-link/quote-shell";
 import { DialogPanel } from "@/components/ui/dialog-panel";
@@ -28,7 +30,6 @@ import {
   lineAmount,
   linkLooks,
   linkOffers,
-  nextStepsFor,
   offerChoice,
   offerPicture,
   openingOffer,
@@ -167,7 +168,17 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   const atMinimum = Boolean(totals?.minimumApplied) && minimum !== null;
   const holdPassed = priceHoldPassed(view.validUntil, view.today);
   const everyLines = useMemo(() => shown.flatMap((priced) => (priced.totals ? [priced.totals.lines] : [])), [shown]);
-  const steps = nextStepsFor(view);
+  // Round 17: where they're at. Step 2 is done once they book, sign, or
+  // Keenan marks the quote accepted.
+  const tracker = trackerSteps({
+    words,
+    chosen: booked !== null || Boolean(view.agreement?.signed) || quote.accepted,
+    sign: view.agreement !== null,
+    siteVisitOn: view.progress.siteVisitOn,
+    siteVisitDone: view.progress.siteVisitDone,
+    installOn: view.nextSteps.installOn,
+    installed: view.progress.installed,
+  });
 
   const [phase, setPhase] = useState<"quote" | "confirm" | "sending" | "thanks" | "closed">("quote");
   const [thanks, setThanks] = useState<{ option: string; total: string; preview: boolean } | null>(null);
@@ -340,6 +351,9 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
       {/* Round 17: the Christmas banner, at the very top, full width. */}
       {banner ? <ChristmasBanner banner={banner} /> : null}
       <main className={cn("mx-auto flex max-w-xl flex-col pb-36", laptopPicture ? LAPTOP_PAGE : LAPTOP_SINGLE)} data-testid="quote-live">
+        {/* Round 17: where they're at, near the top (on a laptop, the full
+            width above the top section). */}
+        <RooflineTracker steps={tracker} title={words.tracker_title} pay={words.tracker_pay} className="px-5 pt-6 lg:pt-8" />
         <div className={laptopPicture ? LAPTOP_TOP : "contents"} data-testid="laptop-top">
         {/* 1. Their house and the price of the option on screen. On a
             laptop See it on your house takes the picture's place. */}
@@ -564,8 +578,6 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
           )}
         </section>
 
-        {/* 6. What happens next: the meeting's four steps, in its words. */}
-        <NextSteps steps={steps} whatWeNeed={view.nextSteps.whatWeNeed} />
         </div>
 
         {/* Take 3: what Keenan ticked or uploaded for them, then the
@@ -590,6 +602,8 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
         {/* 7. Tap to open, closed until tapped. See our work leads once
             there are photos; until then it is hidden. */}
         <section aria-label="More about your install" className="mt-12 border-t" data-testid="quote-more">
+          {/* Round 17: What we'll need moved here from the old four steps. */}
+          {view.nextSteps.whatWeNeed ? <WhatWeNeed text={view.nextSteps.whatWeNeed} variant="row" /> : null}
           {view.galleryUrls.length > 0 ? (
             <Disclosure title="See our work" meta={`${view.galleryUrls.length} ${view.galleryUrls.length === 1 ? "photo" : "photos"}`} testId="quote-gallery">
               <ul className="flex flex-col gap-3">
@@ -694,10 +708,21 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
   // Only the tracks in what was agreed.
   const agreedTracks = agreed ? tracksUsed({ runs: quote.runs, offers: [agreed.offer] }) : [];
   const textHref = smsWithBody(view.company.phone, `Hi Keenan, a question about the install at ${view.address}: `);
+  // Round 17: where they're at; step 2 is done once Keenan marks it accepted.
+  const tracker = trackerSteps({
+    words,
+    chosen: true,
+    sign: view.agreement !== null,
+    siteVisitOn: view.progress.siteVisitOn,
+    siteVisitDone: view.progress.siteVisitDone,
+    installOn: view.nextSteps.installOn,
+    installed: view.progress.installed,
+  });
 
   return (
     <>
       <main className={cn("mx-auto flex max-w-xl flex-col pb-36", view.mockupUrl ? LAPTOP_PAGE : LAPTOP_SINGLE)} data-testid="quote-agreed">
+        <RooflineTracker steps={tracker} title={words.tracker_title} pay={words.tracker_pay} className="px-5 pt-6 lg:pt-8" />
         <div className={view.mockupUrl ? LAPTOP_TOP : "contents"} data-testid="laptop-top">
         {view.mockupUrl ? (
           <div className={cn(AREA.pic, "lg:px-5")}>
@@ -1040,44 +1065,6 @@ function ProductPoints({ points, className, laptop = false }: { points: Customer
           </li>
         ))}
       </ul>
-    </section>
-  );
-}
-
-// What happens next: four numbered steps, the same as the meeting's last
-// page, with What we'll need behind a tap.
-function NextSteps({ steps, whatWeNeed }: { steps: ReturnType<typeof nextStepsFor>; whatWeNeed: string | null }) {
-  return (
-    <section aria-labelledby="next-steps" className="mt-12 px-5" data-testid="quote-next-steps">
-      <h2 id="next-steps" className="text-xl font-bold">
-        What happens next
-      </h2>
-      <ol className="mt-5 flex flex-col gap-5">
-        {steps.map((step, at) => (
-          <li key={step.key} className="flex gap-4" data-testid={`next-step-${step.key}`}>
-            <span
-              aria-hidden="true"
-              className="flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-navy text-sm font-bold tabular-nums"
-            >
-              {at + 1}
-            </span>
-            <div className="min-w-0 pt-1">
-              <p className="font-semibold">{step.label}</p>
-              <p className={cn("mt-0.5 text-base text-pretty", step.key === "pay" && "font-semibold")}>
-                {step.key === "colour" && step.done ? (
-                  <Check aria-hidden="true" className="mr-1.5 -mt-0.5 inline size-4 text-navy" strokeWidth={2.5} />
-                ) : null}
-                {step.text}
-              </p>
-            </div>
-          </li>
-        ))}
-      </ol>
-      {whatWeNeed ? (
-        <div className="mt-6">
-          <WhatWeNeed text={whatWeNeed} variant="inline" />
-        </div>
-      ) : null}
     </section>
   );
 }

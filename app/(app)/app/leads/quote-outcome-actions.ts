@@ -277,3 +277,61 @@ export async function markNotInstalled(input: z.input<typeof notInstalledSchema>
   refresh(parsed.data.leadId);
   return { ok: true };
 }
+
+// ---------------------------------------------------------------- the site visit
+
+// Round 17 (Keenan, 2026-11-12): the site visit, step 3 of Where you're at
+// on the customer's link. Keenan sets its day and marks it Done on the
+// Outcome card; the link shows the day until it is done. One row per lead
+// (lead_site_visits, owner only), written here and nowhere else. Never on a
+// declined or cancelled quote's lead, which has no next step.
+const siteVisitDaySchema = z.object({ leadId: id, on: day.nullable() });
+const siteVisitDoneSchema = z.object({ leadId: id, done: z.boolean() });
+
+async function siteVisitLeadOpen(supabase: Awaited<ReturnType<typeof createClient>>, leadId: string): Promise<OutcomeResult | null> {
+  const { data: lead, error } = await supabase.from("leads").select("id, status").eq("id", leadId).maybeSingle();
+  if (error) return outcomeFailure(error);
+  if (!lead) return { ok: false, code: "no_lead", message: OUTCOME_MESSAGES.no_lead };
+  if (lead.status === "lost") {
+    return { ok: false, code: "lost", message: "This lead is Lost, so there is no site visit to plan. Refresh to see where it stands." };
+  }
+  return null;
+}
+
+export async function setSiteVisitDay(input: z.input<typeof siteVisitDaySchema>): Promise<OutcomeResult> {
+  const refused = await owner();
+  if (refused) return refused;
+  const parsed = siteVisitDaySchema.safeParse(input);
+  if (!parsed.success) {
+    return parsed.error.issues[0]?.path[0] === "on"
+      ? { ok: false, code: "bad_date", message: "Pick the day of the site visit." }
+      : { ok: false, code: "no_lead", message: OUTCOME_MESSAGES.no_lead };
+  }
+  const supabase = await createClient();
+  const closed = await siteVisitLeadOpen(supabase, parsed.data.leadId);
+  if (closed) return closed;
+  // Only the columns sent change: setting the day leaves Done as it is.
+  const { error } = await supabase
+    .from("lead_site_visits")
+    .upsert({ lead_id: parsed.data.leadId, visit_on: parsed.data.on, updated_at: new Date().toISOString() }, { onConflict: "lead_id" });
+  if (error) return outcomeFailure(error);
+  refresh(parsed.data.leadId);
+  return { ok: true };
+}
+
+export async function setSiteVisitDone(input: z.input<typeof siteVisitDoneSchema>): Promise<OutcomeResult> {
+  const refused = await owner();
+  if (refused) return refused;
+  const parsed = siteVisitDoneSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, code: "no_lead", message: OUTCOME_MESSAGES.no_lead };
+  const supabase = await createClient();
+  const closed = await siteVisitLeadOpen(supabase, parsed.data.leadId);
+  if (closed) return closed;
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("lead_site_visits")
+    .upsert({ lead_id: parsed.data.leadId, done_at: parsed.data.done ? now : null, updated_at: now }, { onConflict: "lead_id" });
+  if (error) return outcomeFailure(error);
+  refresh(parsed.data.leadId);
+  return { ok: true };
+}

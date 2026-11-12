@@ -855,6 +855,45 @@ export type Database = {
           },
         ]
       }
+      lead_site_visits: {
+        Row: {
+          done_at: string | null
+          lead_id: string
+          updated_at: string
+          updated_by: string | null
+          visit_on: string | null
+        }
+        Insert: {
+          done_at?: string | null
+          lead_id: string
+          updated_at?: string
+          updated_by?: string | null
+          visit_on?: string | null
+        }
+        Update: {
+          done_at?: string | null
+          lead_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          visit_on?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_site_visits_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_site_visits_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           address_line: string

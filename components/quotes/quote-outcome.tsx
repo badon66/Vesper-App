@@ -9,6 +9,8 @@ import {
   markInstalled,
   markNotInstalled,
   setInstallDay,
+  setSiteVisitDay,
+  setSiteVisitDone,
   undoAcceptance,
 } from "@/app/(app)/app/leads/quote-outcome-actions";
 import { ActionMessage } from "@/components/action-message";
@@ -48,7 +50,7 @@ import {
   type OutcomeReason,
   type QuoteStatus,
 } from "@/lib/quotes/outcome";
-import { addDays, formatDay } from "@/lib/time";
+import { addDays, calgaryDateOf, formatDay } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 // The quote's outcome on the lead page (Keenan, 2026-11-09, round 8). Owner
@@ -75,6 +77,9 @@ export type QuoteOutcomeData = {
   // prefills Accepted when no day is set yet.
   meetingInstallOn: string | null;
   installedAt: string | null;
+  // Round 17: the site visit (lead_site_visits), step 3 of Where you're at
+  // on their link: its day, and when Keenan marked it Done.
+  siteVisit: { on: string | null; doneAt: string | null };
   quote: {
     id: string;
     status: QuoteStatus;
@@ -106,7 +111,7 @@ export type QuoteOutcomeProps = QuoteOutcomeData & {
   today: string;
 };
 
-type Sheet = "accept" | "decline" | "cancel" | "undo" | "installed" | "not_installed" | "install_on" | null;
+type Sheet = "accept" | "decline" | "cancel" | "undo" | "installed" | "not_installed" | "install_on" | "site_visit" | null;
 type Answer = { ok: true } | { ok: false; message: string };
 
 const OPEN_FOR_ACCEPT: readonly QuoteStatus[] = ["draft", "presented", "declined", "cancelled"];
@@ -117,6 +122,7 @@ export function QuoteOutcome({
   installOn,
   meetingInstallOn,
   installedAt,
+  siteVisit,
   quote,
   options,
   commission,
@@ -135,6 +141,8 @@ export function QuoteOutcome({
   const [note, setNote] = useState("");
   // Installed
   const [installedOn, setInstalledOn] = useState(today);
+  // The site visit's day (round 17)
+  const [visitOn, setVisitOn] = useState("");
 
   const state = outcomeState(quote.status, leadStatus);
   const offered = outcomeActions(state);
@@ -183,6 +191,7 @@ export function QuoteOutcome({
     }
     if (next === "installed") setInstalledOn(today);
     if (next === "install_on") setPlannedOn(installOn ?? "");
+    if (next === "site_visit") setVisitOn(siteVisit.on ?? "");
     setSheet(next);
   }
 
@@ -227,6 +236,12 @@ export function QuoteOutcome({
     }
   })();
   const showsCommission = state === "accepted" || state === "installed" || state === "cancelled";
+  // Round 17: the site visit, step 3 of Where you're at on their link. Set
+  // while the quote is open or accepted; read only once Installed; gone on
+  // a declined or cancelled quote's lead, which has no next step.
+  const showsSiteVisit = state === "open" || state === "accepted" || state === "installed";
+  const visitEditable = (state === "open" || state === "accepted") && leadStatus !== "lost";
+  const visitDone = siteVisit.doneAt !== null;
   const showsOption = (state === "accepted" || state === "installed" || state === "cancelled") && quote.option;
   const noteField = (
     <div className="flex flex-col gap-1.5">
@@ -272,7 +287,7 @@ export function QuoteOutcome({
             {title.title}
           </p>
         ) : null}
-        {state !== "open" ? (
+        {state !== "open" || showsSiteVisit ? (
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
             {title?.reason ? (
               <>
@@ -316,6 +331,42 @@ export function QuoteOutcome({
                 </dd>
               </>
             ) : null}
+            {showsSiteVisit ? (
+              <>
+                <dt className="self-center text-muted-foreground">Site visit</dt>
+                <dd className="flex flex-wrap items-center gap-x-3" data-testid="quote-outcome-site-visit" data-done={visitDone}>
+                  {visitDone ? (
+                    <span className="inline-flex items-center gap-1.5 font-semibold" data-testid="site-visit-state">
+                      <Check aria-hidden="true" className="size-4" strokeWidth={2.5} />
+                      Done{siteVisit.doneAt ? `, ${formatDay(calgaryDateOf(siteVisit.doneAt))}` : ""}
+                    </span>
+                  ) : (
+                    <span data-testid="site-visit-state">{siteVisit.on ? formatDay(siteVisit.on) : "No day yet"}</span>
+                  )}
+                  {visitEditable && !visitDone ? (
+                    <button
+                      type="button"
+                      onClick={() => open("site_visit")}
+                      className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      data-testid="outcome-site-visit-day"
+                    >
+                      {siteVisit.on ? "Change" : "Add a day"}
+                    </button>
+                  ) : null}
+                  {visitEditable ? (
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => run(() => setSiteVisitDone({ leadId, done: !visitDone }))}
+                      className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                      data-testid="outcome-site-visit-done"
+                    >
+                      {visitDone ? "Not done yet" : "Done"}
+                    </button>
+                  ) : null}
+                </dd>
+              </>
+            ) : null}
             {showsCommission ? (
               <>
                 <dt className="text-muted-foreground">Commission</dt>
@@ -326,6 +377,9 @@ export function QuoteOutcome({
             ) : null}
           </dl>
         ) : null}
+
+        {/* A tap on the card itself (Done on the site visit) says what went wrong here. */}
+        {sheet === null ? <ActionMessage text={message} /> : null}
 
         {can.accept || can.decline || can.installed || can.notInstalled || can.cancel || can.undo ? (
           <div className="flex flex-wrap gap-3">
@@ -726,6 +780,42 @@ export function QuoteOutcome({
         <div className="flex flex-col gap-1.5 text-sm">
           <Label htmlFor="outcome-install-on">Install day</Label>
           <DateField id="outcome-install-on" min={today} max={addDays(today, 365)} value={plannedOn} onChange={setPlannedOn} empty="No day yet" />
+          <ActionMessage text={message} className="mt-3" />
+        </div>
+      </DialogPanel>
+
+      {/* Round 17: the site visit's day. Their link shows it under Site
+          visit until he marks it Done. */}
+      <DialogPanel
+        open={sheet === "site_visit"}
+        onClose={close}
+        title="Site visit"
+        testId="outcome-site-visit-sheet"
+        actions={
+          <>
+            {siteVisit.on ? (
+              <Button type="button" variant="ghost" disabled={pending} onClick={() => run(() => setSiteVisitDay({ leadId, on: null }))}>
+                No day yet
+              </Button>
+            ) : null}
+            <Button type="button" variant="outline" onClick={close} disabled={pending}>
+              Back
+            </Button>
+            <Button
+              type="button"
+              disabled={pending || !visitOn || visitOn === siteVisit.on}
+              data-testid="outcome-site-visit-confirm"
+              onClick={() => run(() => setSiteVisitDay({ leadId, on: visitOn }))}
+            >
+              {pending ? "Saving" : "Save"}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-1.5 text-sm">
+          <Label htmlFor="outcome-site-visit">Day of the site visit</Label>
+          <DateField id="outcome-site-visit" min={addDays(today, -60)} max={addDays(today, 365)} value={visitOn} onChange={setVisitOn} empty="No day yet" />
+          <p className="text-muted-foreground text-pretty">Their link shows this day under Site visit until you mark it Done.</p>
           <ActionMessage text={message} className="mt-3" />
         </div>
       </DialogPanel>

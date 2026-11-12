@@ -100,11 +100,14 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
     draft,
     { data: trace },
     deckPhotoRows,
+    { data: linkOptions },
+    { data: siteVisit },
+    { data: agreementRow },
   ] = await Promise.all([
       supabase
         .from("leads")
         .select(
-          "id, first_name, last_name, address_line, neighbourhood, soffit_colour, soffit_colour_2, track_colour_id, track_ral_code, track_colour_initials, track_colour_initialled_at",
+          "id, first_name, last_name, address_line, neighbourhood, soffit_colour, soffit_colour_2, track_colour_id, track_ral_code, track_colour_initials, track_colour_initialled_at, status",
         )
         .eq("id", leadId)
         .maybeSingle(),
@@ -124,6 +127,12 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
       editableQuotes(supabase, leadId),
       supabase.from("roofline_traces").select(TRACE).eq("lead_id", leadId).maybeSingle(),
       deckPhotos(supabase),
+      // Round 17, Where you're at: the agreement tick, the site visit, and
+      // whether Settings has an agreement at all (only a yes or no leaves
+      // the server; the text never reaches the iPad).
+      supabase.from("lead_link_options").select("agreement_to_sign").eq("lead_id", leadId).maybeSingle(),
+      supabase.from("lead_site_visits").select("visit_on, done_at").eq("lead_id", leadId).maybeSingle(),
+      supabase.from("settings").select("agreement_text").eq("id", 1).maybeSingle(),
     ]);
   if (!lead || !settings) return null;
 
@@ -178,6 +187,12 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
       colourText: trackColourText(trackColour),
       initials: lead.track_colour_initials,
       initialledAt: lead.track_colour_initialled_at,
+      progress: {
+        sign: Boolean(linkOptions?.agreement_to_sign) && Boolean(agreementRow?.agreement_text?.trim()),
+        siteVisitOn: siteVisit?.visit_on ?? null,
+        siteVisitDone: Boolean(siteVisit?.done_at),
+        installed: lead.status === "installed",
+      },
     },
     deck,
     colours: {

@@ -556,6 +556,7 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             onInstallOn={
               meeting && quote && !accepted ? (day) => setQuote((now) => (now ? { ...now, installOn: day } : now)) : null
             }
+            progress={meeting?.lead.progress ?? null}
             more={moreOf("next_steps")}
             dayLayer={moreOf("next_steps:day")}
           />

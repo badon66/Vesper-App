@@ -42,6 +42,7 @@ export async function loadQuoteOutcome(supabase: Client, lead: LeadForOutcome): 
     { data: settings },
     { data: receiverRow },
     { data: planned },
+    { data: visit },
     receiverNames,
   ] = await Promise.all([
     supabase
@@ -71,6 +72,8 @@ export async function loadQuoteOutcome(supabase: Client, lead: LeadForOutcome): 
     // The planned install day, read here so the lead page's shared field
     // list stays as it is.
     supabase.from("leads").select("install_on").eq("id", lead.id).maybeSingle(),
+    // Round 17: the site visit, step 3 of Where you're at on their link.
+    supabase.from("lead_site_visits").select("visit_on, done_at").eq("lead_id", lead.id).maybeSingle(),
     // The setter's name, asked for with the rest (round 13).
     namesById(supabase, [receiverId]),
   ]);
@@ -119,6 +122,7 @@ export async function loadQuoteOutcome(supabase: Client, lead: LeadForOutcome): 
     // The day picked at the table, to prefill Accepted when no day is set.
     meetingInstallOn: quote.meeting_install_on,
     installedAt: lead.installed_at,
+    siteVisit: { on: visit?.visit_on ?? null, doneAt: visit?.done_at ?? null },
     quote: {
       id: quote.id,
       status: quote.status,

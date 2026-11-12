@@ -81,7 +81,7 @@ describe("the seeded deck words and looks", () => {
     const later = new Set(["thanks", "price_lowest", "price_feet", "colour_season_included"]);
     const round9Lines = Object.fromEntries(
       Object.entries(DECK_LINE_DEFAULTS).filter(
-        ([key]) => (!later.has(key) && !/^link_(track|build|docs|agreement)_/.test(key) && !/^r17_/.test(key) && !key.startsWith("cover_")) || key === "cover_line",
+        ([key]) => (!later.has(key) && !/^link_(track|build|docs|agreement)_/.test(key) && !/^tracker_/.test(key) && !key.startsWith("cover_")) || key === "cover_line",
       ),
     );
     expect(JSON.parse(lines?.[1] ?? "{}")).toEqual(round9Lines);

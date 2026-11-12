@@ -26,7 +26,7 @@ import {
   type QuoteRun,
   type QuoteTotals,
 } from "@/lib/pricing";
-import { deckLine, fillLine, NO_PAYMENT_LINE, parseDeckLines, type DeckLines } from "@/lib/deck";
+import { deckLine, parseDeckLines, type DeckLines } from "@/lib/deck";
 import {
   CUSTOMER_OFFER_ID,
   CUSTOMER_OFFER_NAME,
@@ -122,6 +122,10 @@ export type CustomerQuote = {
   // the planned install day (the lead's, else the one picked at the table),
   // and What we'll need, in the meeting's own words.
   nextSteps: NextStepsData;
+  // Round 17: where they're at, for the tracker: the site visit Keenan
+  // marks on the lead (its date, and whether it is done) and whether the
+  // job is installed.
+  progress: { siteVisitOn: string | null; siteVisitDone: boolean; installed: boolean };
   // The presentation gallery's photo paths: Vesper's own installs.
   gallery: string[];
   company: Company;
@@ -315,6 +319,15 @@ const liveSchema = z.object({
     .nullable()
     .optional()
     .catch(null),
+  progress: z
+    .object({
+      site_visit_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().catch(null),
+      site_visit_done: z.boolean().catch(false),
+      installed: z.boolean().catch(false),
+    })
+    .nullable()
+    .optional()
+    .catch(null),
   gallery: z.array(z.string()).catch([]),
   company: companySchema,
   mockup_path: z.string().nullable().catch(null),
@@ -373,6 +386,11 @@ export function parseCustomerQuote(data: unknown): CustomerQuote | ClosedQuote {
       colourConfirmed: v.next_steps?.colour_confirmed === true,
       installOn: v.next_steps?.install_on ?? null,
       whatWeNeed: v.next_steps?.what_we_need?.trim() || null,
+    },
+    progress: {
+      siteVisitOn: v.progress?.site_visit_on ?? null,
+      siteVisitDone: v.progress?.site_visit_done === true,
+      installed: v.progress?.installed === true,
     },
     gallery: v.gallery.filter((path) => path.trim() !== ""),
     company: v.company,
@@ -655,27 +673,6 @@ export function parseLinkAgreement(data: unknown): LinkAgreement | null {
 }
 
 // ---------------------------------------------------------------- what happens next
-
-export type NextStep = { key: "colour" | "day" | "on_day" | "pay"; label: string; text: string; done: boolean };
-
-// The meeting's four steps in the same words (round 9, section 4): the
-// colour, read back from the initials taken at the meeting; the install
-// day if one is planned; the day itself; and paying.
-export function nextStepsFor(view: Pick<CustomerQuote, "nextSteps" | "words"> & { quote: Pick<CustomerQuote["quote"], "trackColourName"> }): NextStep[] {
-  const w = view.words;
-  const { colourConfirmed, installOn } = view.nextSteps;
-  return [
-    {
-      key: "colour",
-      label: w.step_colour_label,
-      text: colourConfirmed ? fillLine(w.link_colour_done, { colour: view.quote.trackColourName ?? "Your track colour" }) : w.step_colour_todo,
-      done: colourConfirmed,
-    },
-    { key: "day", label: w.step_day_label, text: installOn ? formatLongDay(installOn) : w.step_day_none, done: installOn !== null },
-    { key: "on_day", label: w.step_on_day_label, text: w.step_on_day, done: false },
-    { key: "pay", label: w.step_pay_label, text: NO_PAYMENT_LINE, done: false },
-  ];
-}
 
 // What Keenan gets in touch about once they ask to book: with an install
 // day already planned (What happens next shows it), confirming that day;

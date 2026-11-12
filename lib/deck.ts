@@ -283,6 +283,20 @@ export const DECK_LINE_DEFAULTS = {
   // On a laptop or desktop (2026-11-12), where there is no finger to sign with.
   link_agreement_note_mouse: "Read it, type your name, sign with your mouse or trackpad, then click Sign.",
   link_agreement_done: "Signed by {name} on {date}.",
+  // Round 17 (Keenan, 2026-11-12): "Where you're at", four steps as lights
+  // along a roofline, the same words on the customer's link and on What
+  // happens next in the meeting.
+  tracker_title: "Where you're at",
+  tracker_meeting_label: "Meeting",
+  tracker_meeting: "We met and walked through your house.",
+  tracker_choose_label: "Choose your option",
+  tracker_choose_sign_label: "Choose and sign",
+  tracker_choose: "Pick the option you want and book your install.",
+  tracker_visit_label: "Site visit",
+  tracker_visit: "Keenan comes by to measure up close, take photos for your install and check your track colour against your soffit. Then you pick your install day.",
+  tracker_install_label: "Install day",
+  tracker_install: "We fit your custom track, wire and test every light, clean up, set up the app on your phone with you, and leave your warranty and documents.",
+  tracker_pay: "You pay nothing until it's installed and you're happy with it.",
 } as const;
 
 export type DeckLineKey = keyof typeof DECK_LINE_DEFAULTS;
@@ -300,11 +314,14 @@ export const LINE_GROUPS: { key: LineGroup; title: string; note: string }[] = [
   { key: "your_house", title: "Your house", note: "Under our drawing of their roofline, behind What we measured." },
   { key: "colour", title: "Your track colour", note: "The colour page, where the customer chooses the track colour and initials it." },
   { key: "price", title: "Your price", note: "The price page: the options, biggest first, and the one they choose." },
-  { key: "next_steps", title: "What happens next", note: "The last page. Its headline and What we'll need are with its page above." },
+  { key: "next_steps", title: "What happens next", note: "The last page: their choice, Where you're at (the same four steps as their link, which shows them near the top), the install day and the closing line. Its headline and What we'll need are with its page above." },
   { key: "link", title: "The customer's quote link", note: "The private link you text after the meeting." },
 ];
 
-export type LineSpec = { group: LineGroup; label: string; words: number; fill?: readonly string[]; need?: readonly string[] };
+// retired: no longer on any screen (round 17: Where you're at replaced the
+// old four steps), so Settings stops offering it and a save never checks
+// it; the stored words stay, untouched.
+export type LineSpec = { group: LineGroup; label: string; words: number; fill?: readonly string[]; need?: readonly string[]; retired?: true };
 
 const LABEL = 4;
 const SHORT = 8;
@@ -346,22 +363,22 @@ export const LINE_SPECS: Record<DeckLineKey, LineSpec> = {
   price_lowest: { group: "price", label: "With a deal on, under an option already at the minimum", words: 8 },
   price_feet: { group: "price", label: "Under each option's name (the meeting and the link)", words: 6, fill: ["feet"], need: ["feet"] },
   recap: { group: "next_steps", label: "Their choice, once chosen", words: 10, fill: ["name", "total"] },
-  step_colour_label: { group: "next_steps", label: "Step 1", words: LABEL },
-  step_colour_done: { group: "next_steps", label: "Step 1, once initialled", words: 10, fill: ["colour"] },
-  step_colour_todo: { group: "next_steps", label: "Step 1, not initialled yet", words: 12 },
-  step_day_label: { group: "next_steps", label: "Step 2", words: LABEL },
-  step_day_none: { group: "next_steps", label: "Step 2, no day yet", words: 10 },
-  step_day_button: { group: "next_steps", label: "Step 2, the button", words: 3 },
-  step_on_day_label: { group: "next_steps", label: "Step 3", words: LABEL },
-  step_on_day: { group: "next_steps", label: "Step 3, the line", words: SENTENCE },
-  step_pay_label: { group: "next_steps", label: "Step 4 (its line is No payment until your install is complete.)", words: LABEL },
+  step_colour_label: { group: "next_steps", label: "Step 1", words: LABEL, retired: true },
+  step_colour_done: { group: "next_steps", label: "Step 1, once initialled", words: 10, fill: ["colour"], retired: true },
+  step_colour_todo: { group: "next_steps", label: "Step 1, not initialled yet", words: 12, retired: true },
+  step_day_label: { group: "next_steps", label: "The install day", words: LABEL },
+  step_day_none: { group: "next_steps", label: "The install day, no day yet", words: 10 },
+  step_day_button: { group: "next_steps", label: "The install day, the button", words: 3 },
+  step_on_day_label: { group: "next_steps", label: "Step 3", words: LABEL, retired: true },
+  step_on_day: { group: "next_steps", label: "Step 3, the line", words: SENTENCE, retired: true },
+  step_pay_label: { group: "next_steps", label: "Step 4 (its line is No payment until your install is complete.)", words: LABEL, retired: true },
   closing: { group: "next_steps", label: "The closing line", words: 15 },
   thanks: { group: "next_steps", label: "The thank you, last", words: 12 },
   link_mockup_caption: { group: "link", label: "Under the mockup, when an option leaves runs out", words: 10 },
   link_drawing_caption: { group: "link", label: "Under the drawing", words: 10, fill: ["name"] },
   link_meeting_tag: { group: "link", label: "The tag on the option chosen at the meeting", words: 6 },
   link_something_else: { group: "link", label: "Under the options", words: 12 },
-  link_colour_done: { group: "link", label: "What happens next, step 1, once initialled", words: 12, fill: ["colour"] },
+  link_colour_done: { group: "link", label: "What happens next, step 1, once initialled", words: 12, fill: ["colour"], retired: true },
   link_track_title: { group: "link", label: "About your track: the heading", words: LABEL },
   link_track_hat: { group: "link", label: "About your track: Hat track (the standard)", words: SENTENCE },
   link_track_double: { group: "link", label: "About your track: Double track", words: SENTENCE },
@@ -373,10 +390,22 @@ export const LINE_SPECS: Record<DeckLineKey, LineSpec> = {
   link_agreement_note: { group: "link", label: "The agreement: how to sign", words: SENTENCE },
   link_agreement_note_mouse: { group: "link", label: "The agreement: how to sign, on a computer", words: SENTENCE },
   link_agreement_done: { group: "link", label: "The agreement, once signed", words: SHORT, fill: ["name", "date"] },
+  tracker_title: { group: "next_steps", label: "Where you're at: the heading on their link", words: LABEL },
+  tracker_meeting_label: { group: "next_steps", label: "Where you're at, step 1", words: LABEL },
+  tracker_meeting: { group: "next_steps", label: "Step 1, what it means", words: SENTENCE },
+  tracker_choose_label: { group: "next_steps", label: "Step 2", words: LABEL },
+  tracker_choose_sign_label: { group: "next_steps", label: "Step 2, when the agreement is signed on the link", words: LABEL },
+  tracker_choose: { group: "next_steps", label: "Step 2, what it means", words: SENTENCE },
+  tracker_visit_label: { group: "next_steps", label: "Step 3", words: LABEL },
+  tracker_visit: { group: "next_steps", label: "Step 3, what it means", words: 35 },
+  tracker_install_label: { group: "next_steps", label: "Step 4", words: LABEL },
+  tracker_install: { group: "next_steps", label: "Step 4, what it means", words: 35 },
+  tracker_pay: { group: "next_steps", label: "Under the steps", words: 15 },
 };
 
+// The lines Settings offers under a group, retired ones left out.
 export function linesIn(group: LineGroup): DeckLineKey[] {
-  return DECK_LINE_KEYS.filter((key) => LINE_SPECS[key].group === group);
+  return DECK_LINE_KEYS.filter((key) => LINE_SPECS[key].group === group && !LINE_SPECS[key].retired);
 }
 
 // settings.deck.lines as stored, every line present: a stored line that

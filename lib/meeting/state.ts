@@ -64,6 +64,13 @@ export type MeetingMockup = {
   offers: string[];
 };
 
+export type TrackerProgress = {
+  sign: boolean;
+  siteVisitOn: string | null;
+  siteVisitDone: boolean;
+  installed: boolean;
+};
+
 export type MeetingPayload = {
   lead: {
     id: string;
@@ -79,6 +86,11 @@ export type MeetingPayload = {
     colourText: string;
     initials: string | null;
     initialledAt: string | null;
+    // Round 17: where they're at, for What happens next (the same four
+    // steps as their link): the agreement ticked for their link (step 2
+    // reads "Choose and sign"), the site visit Keenan set on the Outcome
+    // card, and whether the lead is Installed. Left out by older copies.
+    progress?: TrackerProgress;
   };
   // The deck's words, Keenan's photos, the looks and the picker (round 7).
   deck: DeckPayload;
