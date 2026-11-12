@@ -11,7 +11,7 @@ export function QuoteShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="quote-light min-h-dvh bg-background text-foreground selection:bg-accent selection:text-foreground">
       <header className="bg-navy pt-[env(safe-area-inset-top)] text-white">
-        <div className="mx-auto flex h-14 max-w-xl items-center px-5">
+        <div className="mx-auto flex h-14 max-w-xl items-center px-5 lg:max-w-6xl lg:px-11 2xl:max-w-7xl">
           <Logo tone="light" className="h-9" />
         </div>
       </header>

@@ -76,6 +76,7 @@ export const LINE_DEFAULTS = {
   link_docs_title: "Documents",
   link_agreement_title: "Your agreement",
   link_agreement_note: "Read it, type your name, sign with your finger, then tap Sign.",
+  link_agreement_note_mouse: "Read it, type your name, sign with your mouse or trackpad, then click Sign.",
   link_agreement_done: "Signed by {name} on {date}.",
   price_includes: "Every option includes the control box, install by our own crew and our 10-year warranty.",
 };

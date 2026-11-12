@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Loader2, Maximize2, MessageSquare, Phone, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { bookCustom, bookInstall, recordVisit, saveSelection, signAgreement } from "@/app/q/[token]/actions";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
 import { Disclosure } from "@/components/quote-link/disclosure";
@@ -129,6 +129,8 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   // in the price below, goes back to that option's picture.
   const [look, setLook] = useState<string | null>(null);
   const seeIt = showsSeeIt(view.pictures, shown.length);
+  // On a laptop the picture gets its own column (2026-11-12).
+  const laptopPicture = Boolean(view.mockupUrl) || (seeIt && selected !== null);
   const totals: QuoteTotals | null = selected?.totals ?? null;
   const name = selected ? customerChoice(selected.offer.name) : "";
   // Inside a sentence their own build reads "your own option".
@@ -224,10 +226,10 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   }
 
   // Back from the thank-you, focus lands on the greeting, not lost.
-  const backToQuote = useCallback(() => {
+  const backToQuote = () => {
     setPhase("quote");
     window.requestAnimationFrame(() => heading.current?.focus());
-  }, []);
+  };
 
   if (phase === "closed") return <ClosedQuote company={view.company} />;
   if (phase === "thanks" && thanks) {
@@ -282,16 +284,20 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
 
   return (
     <>
-      <main className="mx-auto flex max-w-xl flex-col pb-36" data-testid="quote-live">
-        {/* 1. Their house and the price of the option on screen. */}
-        <section aria-labelledby="quote-for" className="flex flex-col">
-          {view.mockupUrl ? (
+      <main className={cn("mx-auto flex max-w-xl flex-col pb-36", laptopPicture ? LAPTOP_GRID : LAPTOP_SINGLE)} data-testid="quote-live">
+        {/* 1. Their house and the price of the option on screen. On a
+            laptop See it on your house takes the picture's place. */}
+        {view.mockupUrl ? (
+          <div className={seeIt ? "lg:hidden" : cn(AREA.pic, "lg:px-5")}>
             <Mockup
               url={view.mockupUrl}
               caption={selected && leavesRunsOut(quote.runs.length, selected.offer.runs) ? words.link_mockup_caption : null}
+              laptopFrame
             />
-          ) : null}
-          <div className="flex flex-col px-5 pt-6">
+          </div>
+        ) : null}
+        <section aria-labelledby="quote-for" className={cn("flex flex-col", laptopPicture && AREA.head)}>
+          <div className="flex flex-col px-5 pt-6 lg:pt-10">
             <Greeting firstName={view.firstName} headingRef={heading} />
             {selected && totals ? (
               <>
@@ -301,7 +307,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
                 {/* A row tapped further down changes this out of view; the
                     polite announcer under Your options says the option and
                     its total once they settle, so it isn't heard twice. */}
-                <p className="mt-1 text-[2.75rem] leading-none font-bold tracking-tight" data-testid="hero-total">
+                <p className="mt-1 text-[2.75rem] leading-none font-bold tracking-tight lg:text-5xl" data-testid="hero-total">
                   <Money subtotal={totals.subtotal} gstEnabled={quote.gstEnabled} />
                 </p>
               </>
@@ -322,25 +328,25 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
               ) : null}
             </ul>
           </div>
+
+          {booked ? (
+            <p role="status" className="mx-5 mt-6 rounded-md border px-4 py-3 text-base text-pretty" data-testid="quote-booked-before">
+              On {formatLongDay(calgaryDateOf(booked.at))} you asked us to book your install:{" "}
+              {customerChoiceInSentence(booked.option)}. Keenan will be in touch {inTouchAbout(view.nextSteps.installOn)}.
+            </p>
+          ) : null}
+
+          {/* 2. A reason to act now, while Keenan has it on (September 1 to November 30). */}
+          {view.christmas ? (
+            <section aria-label="Christmas" className="mt-6 bg-accent px-5 py-5 lg:mx-5 lg:rounded-md" data-testid="quote-christmas">
+              <p className="text-base font-semibold text-pretty">{view.christmas.title}</p>
+              {view.christmas.text ? <p className="mt-1 text-base text-pretty">{view.christmas.text}</p> : null}
+            </section>
+          ) : null}
         </section>
 
-        {booked ? (
-          <p role="status" className="mx-5 mt-6 rounded-md border px-4 py-3 text-base text-pretty" data-testid="quote-booked-before">
-            On {formatLongDay(calgaryDateOf(booked.at))} you asked us to book your install:{" "}
-            {customerChoiceInSentence(booked.option)}. Keenan will be in touch {inTouchAbout(view.nextSteps.installOn)}.
-          </p>
-        ) : null}
-
-        {/* 2. A reason to act now, while Keenan has it on (September 1 to November 30). */}
-        {view.christmas ? (
-          <section aria-label="Christmas" className="mt-6 bg-accent px-5 py-5" data-testid="quote-christmas">
-            <p className="text-base font-semibold text-pretty">{view.christmas.title}</p>
-            {view.christmas.text ? <p className="mt-1 text-base text-pretty">{view.christmas.text}</p> : null}
-          </section>
-        ) : null}
-
         {/* 3. What makes it worth it, in Keenan's words from Settings. */}
-        <ProductPoints points={view.productPoints} />
+        <ProductPoints points={view.productPoints} className={laptopPicture ? AREA.pts : undefined} />
 
         {/* 4. See it on your house (round 13): one picture, the Looks and
             the Options under it. Tapping an option here picks it in the
@@ -356,13 +362,14 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
             disabled={sending}
             onLook={setLook}
             onOption={choose}
+            className={AREA.pic}
           />
         ) : null}
 
         {/* 5. Your options: a row per option to pick from, then what's in
             it, line by line. With one option and no scene, its picture
             sits here, as before. */}
-        <section aria-labelledby="your-options" className="mt-12 px-5" data-testid="quote-options">
+        <section aria-labelledby="your-options" className={cn("mt-12 px-5", laptopPicture && cn(AREA.opts, "lg:mt-10"))} data-testid="quote-options">
           <h2 id="your-options" className="text-xl font-bold">
             {many ? "Your options" : "Your price"}
           </h2>
@@ -468,6 +475,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
           )}
         </section>
 
+        <div className={cn("flex flex-col", laptopPicture && AREA.info)}>
         {/* Take 3: each track type the options use, in plain words with a drawing. */}
         <AboutYourTrack tracks={tracks} words={words} />
 
@@ -491,9 +499,12 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
 
         {/* 6. What happens next: the meeting's four steps, in its words. */}
         <NextSteps steps={steps} whatWeNeed={view.nextSteps.whatWeNeed} />
+        </div>
 
         {/* Take 3: what Keenan ticked or uploaded for them, then the
-            agreement when he asked for it to be signed here. */}
+            agreement when he asked for it to be signed here. On a laptop
+            they sit under the offers. */}
+        <div className={cn("flex flex-col", laptopPicture && AREA.side)}>
         <LinkDocuments documents={view.documents} title={words.link_docs_title} />
         {view.agreement && selected && totals ? (
           <AgreementSection
@@ -506,7 +517,9 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
             onSign={sign}
           />
         ) : null}
+        </div>
 
+        <div className={cn("flex flex-col", laptopPicture && AREA.more)}>
         {/* 7. Tap to open, closed until tapped. See our work leads once
             there are photos; until then it is hidden. */}
         <section aria-label="More about your install" className="mt-12 border-t" data-testid="quote-more">
@@ -526,6 +539,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
         </section>
 
         <Footer company={view.company} />
+        </div>
       </main>
 
       {/* 8. The bar that stays put. */}
@@ -615,22 +629,25 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
 
   return (
     <>
-      <main className="mx-auto flex max-w-xl flex-col pb-36" data-testid="quote-agreed">
-        <section aria-labelledby="quote-for" className="flex flex-col">
-          {view.mockupUrl ? (
+      <main className={cn("mx-auto flex max-w-xl flex-col pb-36", view.mockupUrl ? LAPTOP_GRID : LAPTOP_SINGLE)} data-testid="quote-agreed">
+        {view.mockupUrl ? (
+          <div className={cn(AREA.pic, "lg:px-5")}>
             <Mockup
               url={view.mockupUrl}
               caption={agreed && leavesRunsOut(quote.runs.length, agreed.offer.runs) ? words.link_mockup_caption : null}
+              laptopFrame
             />
-          ) : null}
-          <div className="flex flex-col px-5 pt-6">
+          </div>
+        ) : null}
+        <section aria-labelledby="quote-for" className={cn("flex flex-col", view.mockupUrl && AREA.head)}>
+          <div className="flex flex-col px-5 pt-6 lg:pt-10">
             <Greeting firstName={view.firstName} />
             {agreed ? (
               <>
                 <p className="mt-4 text-base font-semibold text-pretty text-muted-foreground" data-testid="agreed-choice">
                   Your choice: {customerChoice(agreed.name)}
                 </p>
-                <p className="mt-1 text-[2.75rem] leading-none font-bold tracking-tight" data-testid="agreed-total">
+                <p className="mt-1 text-[2.75rem] leading-none font-bold tracking-tight lg:text-5xl" data-testid="agreed-total">
                   <Money subtotal={agreed.totals.subtotal} gstEnabled={quote.gstEnabled} />
                 </p>
               </>
@@ -646,7 +663,7 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
         </section>
 
         {agreed ? (
-          <section aria-labelledby="whats-in" className="mt-12 px-5">
+          <section aria-labelledby="whats-in" className={cn("mt-12 px-5", view.mockupUrl && cn(AREA.opts, "lg:mt-10"))}>
             <h2 id="whats-in" className="text-xl font-bold text-pretty" data-testid="whats-in">
               {fillLine(words.whats_in, { name: isCustomerOffer(agreed.offer) ? customerChoiceInSentence(agreed.name) : agreed.name })}
             </h2>
@@ -669,7 +686,10 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
           </section>
         ) : null}
 
-        <AboutYourTrack tracks={agreedTracks} words={words} />
+        <div className={cn("flex flex-col", view.mockupUrl && cn(AREA.info, "lg:mt-4"))}>
+          <AboutYourTrack tracks={agreedTracks} words={words} />
+        </div>
+        <div className={cn("flex flex-col", view.mockupUrl && AREA.side)}>
         <LinkDocuments documents={view.documents} title={words.link_docs_title} />
         {view.agreement && agreed ? (
           <AgreementSection
@@ -687,13 +707,16 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
             }}
           />
         ) : null}
+        </div>
 
+        <div className={cn("flex flex-col", view.mockupUrl && AREA.more)}>
         <section aria-label="More about your install" className="mt-12 border-t" data-testid="quote-more">
           {view.nextSteps.whatWeNeed ? <WhatWeNeed text={view.nextSteps.whatWeNeed} variant="row" /> : null}
           <Warranty warranty={view.warranty} serviceCallFee={view.serviceCallFee} />
         </section>
 
         <Footer company={view.company} />
+        </div>
       </main>
 
       <BookBar
@@ -711,9 +734,30 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
   );
 }
 
+// The link on a laptop or desktop (Keenan, 2026-11-12). From 1024 px wide
+// the picture of their house, with its Looks and Options, sits beside the
+// price and the offers and stays in view while they compare; below, what
+// they're getting, the track and the next steps run in the picture's column
+// at a reading width, with the documents and the agreement beside them,
+// under the offers. Every class here is lg: or wider, so phones keep the
+// single column exactly as it was. With no picture, one reading column.
+const LAPTOP_GRID =
+  "lg:grid lg:max-w-6xl lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)] lg:items-start lg:gap-x-12 lg:px-6 2xl:max-w-7xl xl:gap-x-20 lg:[grid-template-areas:'pic_head'_'pic_opts'_'pts_side'_'info_side'_'more_side']";
+const LAPTOP_SINGLE = "lg:max-w-2xl";
+const AREA = {
+  // Sticky only where the whole picture fits on the screen.
+  pic: "lg:[grid-area:pic] lg:mt-10 [@media(min-width:1024px)_and_(min-height:760px)]:sticky [@media(min-width:1024px)_and_(min-height:760px)]:top-6",
+  head: "lg:[grid-area:head] lg:pt-4",
+  opts: "lg:[grid-area:opts]",
+  pts: "lg:[grid-area:pts] lg:mt-16",
+  info: "lg:[grid-area:info]",
+  side: "lg:[grid-area:side]",
+  more: "lg:[grid-area:more] lg:mt-4",
+};
+
 function Greeting({ firstName, headingRef }: { firstName: string; headingRef?: React.Ref<HTMLHeadingElement> }) {
   return (
-    <h1 id="quote-for" ref={headingRef} tabIndex={-1} className="text-2xl font-bold text-balance outline-none">
+    <h1 id="quote-for" ref={headingRef} tabIndex={-1} className="text-2xl font-bold text-balance outline-none lg:text-3xl">
       {firstName.trim() ? `${firstName.trim()}, here’s your quote` : "Here’s your quote"}
     </h1>
   );
@@ -851,10 +895,10 @@ function ChoiceCard({ option, total, testIds }: { option: string; total: string;
   );
 }
 
-function ProductPoints({ points }: { points: CustomerQuote["productPoints"] }) {
+function ProductPoints({ points, className }: { points: CustomerQuote["productPoints"]; className?: string }) {
   if (points.length === 0) return null;
   return (
-    <section aria-labelledby="getting" className="mt-12 px-5">
+    <section aria-labelledby="getting" className={cn("mt-12 px-5", className)}>
       <h2 id="getting" className="text-xl font-bold">
         What you’re getting
       </h2>
@@ -1155,21 +1199,21 @@ function BookBar({
   onBook: () => void;
 }) {
   const contact = cn(
-    "inline-flex h-12 shrink-0 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-base font-semibold outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
-    !canBook && "flex-1",
+    "inline-flex h-12 shrink-0 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-base font-semibold outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring lg:px-5",
+    !canBook && "flex-1 lg:flex-none",
   );
   return (
     <aside aria-label={canBook ? "Book your install" : "Call or text us"} className="fixed inset-x-0 bottom-0 z-20 border-t bg-background pb-[env(safe-area-inset-bottom)]" data-testid="quote-bar">
       {error ? (
-        <p role="alert" className="mx-auto max-w-xl px-4 pt-3 text-sm font-semibold text-pretty text-destructive">
+        <p role="alert" className="mx-auto max-w-xl px-4 pt-3 text-sm font-semibold text-pretty text-destructive lg:max-w-6xl lg:px-11 lg:text-right 2xl:max-w-7xl">
           {error}
         </p>
       ) : slow ? (
-        <p role="status" className="mx-auto max-w-xl px-4 pt-3 text-sm font-semibold text-pretty">
+        <p role="status" className="mx-auto max-w-xl px-4 pt-3 text-sm font-semibold text-pretty lg:max-w-6xl lg:px-11 lg:text-right 2xl:max-w-7xl">
           {SLOW}
         </p>
       ) : null}
-      <div className="mx-auto flex max-w-xl items-center gap-2 px-4 py-2.5">
+      <div className="mx-auto flex max-w-xl items-center gap-2 px-4 py-2.5 lg:max-w-6xl lg:px-11 2xl:max-w-7xl">
         <a href={callHref} className={contact} data-testid="bar-call">
           <Phone aria-hidden="true" className="size-[1.125rem]" />
           Call
@@ -1179,7 +1223,7 @@ function BookBar({
           Text
         </a>
         {!canBook ? null : booked ? (
-          <p className="min-w-0 flex-1 text-right text-sm text-pretty" data-testid="bar-requested">
+          <p className="min-w-0 flex-1 text-right text-sm text-pretty lg:text-base" data-testid="bar-requested">
             <span className="block font-semibold">Install requested</span>
             <span className="block text-muted-foreground">Keenan will be in touch.</span>
           </p>
@@ -1192,7 +1236,7 @@ function BookBar({
             aria-disabled={sending}
             aria-busy={sending}
             className={cn(
-              "inline-flex h-12 min-w-0 flex-1 items-center justify-center rounded-md bg-primary px-4 text-base font-semibold whitespace-nowrap text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              "inline-flex h-12 min-w-0 flex-1 items-center justify-center rounded-md bg-primary px-4 text-base font-semibold whitespace-nowrap text-primary-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 lg:ml-auto lg:w-80 lg:flex-none",
               sending && "cursor-progress",
             )}
             data-testid="bar-book"
@@ -1285,7 +1329,9 @@ function SeeItOnYourHouse({
   disabled,
   onLook,
   onOption,
+  className,
 }: {
+  className?: string;
   pictures: LinkPicture[];
   offers: PricedOffer[];
   selectedId: string;
@@ -1307,7 +1353,7 @@ function SeeItOnYourHouse({
       on ? "border-2 border-navy bg-navy px-[0.9375rem] text-white" : "border border-border bg-background text-foreground hover:bg-muted",
     );
   return (
-    <section aria-labelledby="see-it" className="mt-12 px-5" data-testid="see-it">
+    <section aria-labelledby="see-it" className={cn("mt-12 px-5", className)} data-testid="see-it">
       <h2 id="see-it" className="text-xl font-bold">
         See it on your house
       </h2>
@@ -1437,6 +1483,7 @@ function Mockup({
   alt = "Your house with Vesper lights on, as a mockup",
   openLabel = "Open the picture of your house full screen",
   inset = false,
+  laptopFrame = false,
   ids = HERO_IDS,
 }: {
   url: string;
@@ -1444,6 +1491,8 @@ function Mockup({
   alt?: string;
   openLabel?: string;
   inset?: boolean;
+  // The hero, full bleed on a phone, framed like the others on a laptop.
+  laptopFrame?: boolean;
   ids?: { image: string; caption: string; viewer: string };
 }) {
   const [open, setOpen] = useState(false);
@@ -1473,6 +1522,9 @@ function Mockup({
           // Framed like the deck's pictures (2026-11-11): rounded, a hairline
           // edge and a soft shadow, so the house sits just off the white page.
           inset && "rounded-2xl border border-navy/15 shadow-[0_22px_44px_-24px_rgba(19,46,63,0.6),0_8px_18px_-12px_rgba(19,46,63,0.35)]",
+          laptopFrame &&
+            "lg:rounded-2xl lg:border lg:border-navy/15 lg:shadow-[0_22px_44px_-24px_rgba(19,46,63,0.6),0_8px_18px_-12px_rgba(19,46,63,0.35)]",
+          "pointer-fine:cursor-zoom-in",
         )}
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- a private photo behind a ten-minute signed link */}
@@ -1492,7 +1544,7 @@ function Mockup({
         </span>
       </button>
       {caption ? (
-        <figcaption className={cn("pt-2 text-sm text-pretty text-muted-foreground", !inset && "px-5")} data-testid={ids.caption}>
+        <figcaption className={cn("pt-2 text-sm text-pretty text-muted-foreground", !inset && "px-5", laptopFrame && "lg:px-0")} data-testid={ids.caption}>
           {caption}
         </figcaption>
       ) : null}
@@ -1523,6 +1575,20 @@ function PictureNeedsRefresh({ className, dark = false }: { className?: string; 
   );
 }
 
+// A mouse or trackpad (pointer: fine), read without a render of its own.
+const FINE = "(pointer: fine)";
+function useFinePointer(): boolean {
+  return useSyncExternalStore(
+    (changed) => {
+      const query = window.matchMedia(FINE);
+      query.addEventListener("change", changed);
+      return () => query.removeEventListener("change", changed);
+    },
+    () => window.matchMedia(FINE).matches,
+    () => false,
+  );
+}
+
 // A real modal dialog: it sits above the page, keeps focus inside, and
 // Escape closes it. The picture is the one already on the page.
 function MockupViewer({
@@ -1540,6 +1606,7 @@ function MockupViewer({
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [broken, setBroken] = useState(false);
+  const mouse = useFinePointer();
   useEffect(() => {
     const element = dialog.current;
     if (!element) return;
@@ -1571,15 +1638,25 @@ function MockupViewer({
               <PictureNeedsRefresh dark />
             </div>
           ) : (
-            <PinchZoom src={url} alt={alt} crossOrigin={null} onError={() => setBroken(true)} />
+            <PinchZoom
+              src={url}
+              alt={alt}
+              crossOrigin={null}
+              onError={() => setBroken(true)}
+              // On a computer (2026-11-12): a click closes it, the wheel or
+              // a trackpad pinch zooms. A phone keeps tap to zoom only.
+              onTap={mouse ? onClose : undefined}
+              wheelZoom
+            />
           )}
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-4 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <p className="text-sm text-white/80">Pinch or double-tap to zoom.</p>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-4 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <p className="text-sm text-white/80 pointer-fine:hidden">Pinch or double-tap to zoom.</p>
+            <p className="hidden text-sm text-white/80 pointer-fine:block">Scroll or double-click to zoom. Click or press Esc to close.</p>
             <button
               type="button"
               onClick={onClose}
               autoFocus
-              className="inline-flex h-12 items-center gap-2 rounded-md bg-white px-5 text-base font-semibold text-navy outline-none focus-visible:ring-2 focus-visible:ring-gold"
+              className="pointer-events-auto inline-flex h-12 items-center gap-2 rounded-md bg-white px-5 text-base font-semibold text-navy outline-none focus-visible:ring-2 focus-visible:ring-gold"
             >
               <X aria-hidden="true" className="size-5" />
               Close

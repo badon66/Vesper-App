@@ -201,7 +201,7 @@ function kindWords(contentType: string): string {
 export function LinkDocuments({ documents, title }: { documents: LinkDocument[]; title: string }) {
   if (documents.length === 0) return null;
   return (
-    <section aria-labelledby="link-documents" className="mt-12 px-5" data-testid="link-documents">
+    <section aria-labelledby="link-documents" className="mt-12 px-5 lg:first:mt-16" data-testid="link-documents">
       <h2 id="link-documents" className="text-xl font-bold">
         {title}
       </h2>
@@ -290,9 +290,9 @@ function SignaturePad({ disabled, onChange }: { disabled: boolean; onChange: (pn
     <div className="mt-2">
       <canvas
         ref={canvas}
-        aria-label="Sign here with your finger"
+        aria-label="Sign here"
         role="img"
-        className={cn("block h-40 w-full touch-none rounded-md border-2 border-dashed border-input bg-white", disabled && "opacity-60")}
+        className={cn("block h-40 w-full touch-none rounded-md border-2 border-dashed border-input bg-white pointer-fine:cursor-crosshair lg:h-48", disabled && "opacity-60")}
         data-testid="agreement-pad"
         onPointerDown={(event) => {
           if (disabled) return;
@@ -372,7 +372,7 @@ export function AgreementSection({
   const paragraphs = agreement.text.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
 
   return (
-    <section aria-labelledby="agreement" className="mt-12 px-5" data-testid="agreement">
+    <section aria-labelledby="agreement" className="mt-12 px-5 lg:first:mt-16" data-testid="agreement">
       <h2 id="agreement" className="text-xl font-bold">
         {words.link_agreement_title}
       </h2>
@@ -399,7 +399,9 @@ export function AgreementSection({
         </div>
       ) : (
         <>
-          <p className="mt-2 text-base text-pretty">{words.link_agreement_note}</p>
+          {/* A finger on a phone or tablet; a mouse or trackpad on a computer. */}
+          <p className="mt-2 text-base text-pretty pointer-fine:hidden">{words.link_agreement_note}</p>
+          <p className="mt-2 hidden text-base text-pretty pointer-fine:block">{words.link_agreement_note_mouse}</p>
           <div className="mt-3 max-h-[50vh] overflow-y-auto rounded-md border px-4 py-3 text-base" tabIndex={0} aria-label="The agreement" data-testid="agreement-text">
             {paragraphs.map((paragraph, at) => (
               <p key={at} className={cn("text-pretty whitespace-pre-line", at > 0 && "mt-3")}>
@@ -423,7 +425,10 @@ export function AgreementSection({
               data-testid="agreement-name"
             />
           </label>
-          <p className="mt-4 text-sm font-semibold">Sign here with your finger</p>
+          <p className="mt-4 text-sm font-semibold">
+            <span className="pointer-fine:hidden">Sign here with your finger</span>
+            <span className="hidden pointer-fine:inline">Sign here with your mouse or trackpad</span>
+          </p>
           <SignaturePad disabled={sending || disabled} onChange={setSignature} />
           {error ? (
             <p role="alert" className="mt-2 text-base font-semibold text-pretty" data-testid="agreement-error">
