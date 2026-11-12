@@ -33,10 +33,13 @@ export function BuildYourOwnRow({
   totals: QuoteTotals | null;
   gstEnabled: boolean;
   disabled: boolean;
-  onChoose: () => void;
+  // With the row's own element, so the page can keep it in place.
+  onChoose: (row: HTMLElement | null) => void;
 }) {
+  const row = useRef<HTMLLabelElement>(null);
   return (
     <label
+      ref={row}
       className={cn(
         "relative flex min-h-11 cursor-pointer flex-col gap-0.5 rounded-md transition-colors duration-150",
         "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-background",
@@ -47,7 +50,7 @@ export function BuildYourOwnRow({
       data-testid="build-row"
       data-selected={selected}
     >
-      <input type="radio" name="quote-option" value="build" checked={selected} disabled={disabled} onChange={onChoose} className="sr-only" />
+      <input type="radio" name="quote-option" value="build" checked={selected} disabled={disabled} onChange={() => onChoose(row.current)} className="sr-only" />
       <span className="flex items-center gap-3">
         <span
           aria-hidden="true"

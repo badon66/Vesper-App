@@ -97,9 +97,11 @@ export function countdownWords(daysLeft: number): string {
 }
 
 // The book-by headline with the date filled in, "Tuesday, December 15".
+// The month and the day are joined by a no-break space, so a phone never
+// splits the date across two lines ("December" / "15"; round 17 critique).
 export function bookByHeadline(template: string, date: string): string {
   const words = template.trim() || CHRISTMAS_WORD_DEFAULTS.bookBy;
-  return words.includes("{date}") ? words.replaceAll("{date}", formatLongDay(date)) : words;
+  return words.includes("{date}") ? words.replaceAll("{date}", formatLongDay(date).replace(/ (\d{1,2})$/, "\u00a0$1")) : words;
 }
 
 // The banner for one customer on one day, or null when there is none.

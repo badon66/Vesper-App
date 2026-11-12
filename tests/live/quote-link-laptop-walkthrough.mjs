@@ -202,6 +202,12 @@ async function layoutAt(page, name, width) {
   );
   const hero = await page.getByTestId("quote-mockup").isVisible().catch(() => false);
   check(`${name}: the house is shown once, not again above the page`, !hero);
+  // On the link no step of Where you're at is open until they choose (round
+  // 17 critique): Site visit is opened, so its words are measured too.
+  const closed = !(await page.getByTestId("tracker-detail").isVisible());
+  await page.locator('[data-testid="tracker-step"][data-step="visit"]').click();
+  await page.getByTestId("tracker-detail").waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
+  check(`${name}: Where you're at opens a step only when tapped`, closed && (await page.getByTestId("tracker-detail").getAttribute("data-step")) === "visit");
   const widths = await page.evaluate(() => {
     const measure = (selector) => {
       const element = document.querySelector(selector);

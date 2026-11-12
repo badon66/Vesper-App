@@ -26,7 +26,7 @@ describe("the Christmas banner", () => {
     expect(banner).toEqual({
       state: "before",
       date: "2026-12-15",
-      headline: "Book by Tuesday, December 15 to be lit up for Christmas.",
+      headline: "Book by Tuesday, December\u00a015 to be lit up for Christmas.",
       line: "White track is in stock and we install on any good-weather day.",
       note: null,
       daysLeft: 9,
@@ -37,12 +37,12 @@ describe("the Christmas banner", () => {
   it("gives a colour-matched track its own earlier date and line, never both dates", () => {
     const banner = christmasBanner({ today: "2026-11-12", christmas: SEASON, track: "colour" });
     expect(banner?.state === "before" && [banner.headline, banner.line, banner.note, banner.countdown]).toEqual([
-      "Book by Tuesday, December 8 to be lit up for Christmas.",
+      "Book by Tuesday, December\u00a08 to be lit up for Christmas.",
       "Your colour-matched track takes about a week to prepare, and we install on any good-weather day.",
       null,
       "26 days left",
     ]);
-    expect(JSON.stringify(banner)).not.toContain("December 15");
+    expect(JSON.stringify(banner)).not.toMatch(/December\s15/);
   });
 
   it("reads the white date for no colour yet, with the note that a custom colour needs about a week more", () => {
@@ -72,7 +72,7 @@ describe("the Christmas banner", () => {
   });
 
   it("writes the date as a customer reads it", () => {
-    expect(bookByHeadline("Book by {date} to be lit up for Christmas.", "2026-12-15")).toBe("Book by Tuesday, December 15 to be lit up for Christmas.");
+    expect(bookByHeadline("Book by {date} to be lit up for Christmas.", "2026-12-15")).toBe("Book by Tuesday, December\u00a015 to be lit up for Christmas.");
     expect(daysBetween("2026-11-30", "2026-12-08")).toBe(8);
     expect([0, 1, 2].map(countdownWords)).toEqual(["Last day to book", "1 day left", "2 days left"]);
     for (const words of Object.values(CHRISTMAS_WORD_DEFAULTS)) expect(words).not.toMatch(/[–—]/);
@@ -88,7 +88,7 @@ describe("the Christmas banner", () => {
   });
 
   it("puts the same date on Your price in the meeting as one line, and nothing once it has passed", () => {
-    expect(christmasPriceLine({ today: "2026-12-06", christmas: SEASON, track: "white" })).toBe("Book by Tuesday, December 15 to be lit up for Christmas.");
+    expect(christmasPriceLine({ today: "2026-12-06", christmas: SEASON, track: "white" })).toBe("Book by Tuesday, December\u00a015 to be lit up for Christmas.");
     expect(christmasPriceLine({ today: "2026-12-10", christmas: SEASON, track: "colour" })).toBeNull();
   });
 });

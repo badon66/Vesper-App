@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronDown, Loader2, Maximize2, MessageSquare, Phone, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { bookCustom, bookInstall, recordVisit, saveSelection, signAgreement } from "@/app/q/[token]/actions";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
 import { Disclosure } from "@/components/quote-link/disclosure";
@@ -134,6 +134,9 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   // Round 17: See the breakdown, inside the picked offer's card (or under
   // Build your own); opening another card's picks that offer.
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+  // The card they tapped stays put on screen when a breakdown above it
+  // closes (round 17 critique).
+  const holdInPlace = useHoldInPlace();
   const openBreakdown = (id: string) => {
     if (sending) return;
     if (building || selected?.offer.id !== id) {
@@ -353,7 +356,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
       <main className={cn("mx-auto flex max-w-xl flex-col pb-36", laptopPicture ? LAPTOP_PAGE : LAPTOP_SINGLE)} data-testid="quote-live">
         {/* Round 17: where they're at, near the top (on a laptop, the full
             width above the top section). */}
-        <RooflineTracker steps={tracker} title={words.tracker_title} pay={words.tracker_pay} className="px-5 pt-6 pb-3 lg:pt-8 lg:pb-2" />
+        <RooflineTracker steps={tracker} title={words.tracker_title} pay={words.tracker_pay} closedUntilChosen className="px-5 pt-6 pb-3 lg:pt-8 lg:pb-2" />
         <div className={laptopPicture ? LAPTOP_TOP : "contents"} data-testid="laptop-top">
         {/* 1. Their house and the price of the option on screen. With See
             it on your house, it takes the picture's place (round 17: on a
@@ -477,9 +480,15 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
                         feetLine={words.price_feet}
                         gstEnabled={quote.gstEnabled}
                         disabled={sending}
-                        onChoose={choose}
+                        onChoose={(id, row) => {
+                          holdInPlace(row);
+                          choose(id);
+                        }}
                         breakdownOpen={breakdownOpen && picked}
-                        onBreakdown={() => openBreakdown(priced.offer.id)}
+                        onBreakdown={(row) => {
+                          holdInPlace(row);
+                          openBreakdown(priced.offer.id);
+                        }}
                       >
                         {picked ? breakdown : null}
                       </OptionRow>
@@ -492,7 +501,10 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
                       totals={building ? totals : null}
                       gstEnabled={quote.gstEnabled}
                       disabled={sending}
-                      onChoose={startBuilding}
+                      onChoose={(row) => {
+                        holdInPlace(row);
+                        startBuilding();
+                      }}
                     />
                   ) : null}
                 </div>
@@ -732,7 +744,7 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
   return (
     <>
       <main className={cn("mx-auto flex max-w-xl flex-col pb-36", laptopPicture ? LAPTOP_PAGE : LAPTOP_SINGLE)} data-testid="quote-agreed">
-        <RooflineTracker steps={tracker} title={words.tracker_title} pay={words.tracker_pay} className="px-5 pt-6 pb-3 lg:pt-8 lg:pb-2" />
+        <RooflineTracker steps={tracker} title={words.tracker_title} pay={words.tracker_pay} closedUntilChosen className="px-5 pt-6 pb-3 lg:pt-8 lg:pb-2" />
         <div className={laptopPicture ? LAPTOP_TOP : "contents"} data-testid="laptop-top">
         {view.mockupUrl && !seeIt ? (
           <div className={cn(AREA.pic, "lg:px-5")}>
@@ -942,12 +954,14 @@ function OptionRow({
   feetLine: string;
   gstEnabled: boolean;
   disabled: boolean;
-  onChoose: (id: string) => void;
+  // Each with the card's own element, so the page can keep it in place.
+  onChoose: (id: string, row: HTMLElement | null) => void;
   breakdownOpen: boolean;
-  onBreakdown: () => void;
+  onBreakdown: (row: HTMLElement | null) => void;
   // The breakdown itself, for the picked card while it is open.
   children?: React.ReactNode;
 }) {
+  const row = useRef<HTMLDivElement>(null);
   const { offer, totals } = priced;
   if (!totals) return null;
   const regionId = `offer-breakdown-${offer.id}`;
@@ -991,6 +1005,7 @@ function OptionRow({
   );
   return (
     <div
+      ref={row}
       className={cn("relative rounded-md transition-colors duration-150", selected ? "border-2 border-navy" : "border border-border")}
       data-testid="option-row"
       data-offer={offer.id}
@@ -1011,7 +1026,7 @@ function OptionRow({
             value={offer.id}
             checked={selected}
             disabled={disabled}
-            onChange={() => onChoose(offer.id)}
+            onChange={() => onChoose(offer.id, row.current)}
             className="sr-only"
           />
           {body}
@@ -1024,7 +1039,7 @@ function OptionRow({
         aria-expanded={breakdownOpen}
         aria-controls={regionId}
         disabled={disabled}
-        onClick={onBreakdown}
+        onClick={() => onBreakdown(row.current)}
         className={cn(
           "inline-flex min-h-11 items-center gap-1.5 rounded-md text-sm font-semibold outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring",
           radio ? "ml-[3.125rem]" : "ml-[0.875rem]",
@@ -1514,7 +1529,12 @@ function SeeItOnYourHouse({
     looks.length > 0
       ? {
           items: [
-            ...(optionPictureNow ? [{ key: OPTION_PICTURE, label: selectedName, on: lookOn === null, url: optionPictureNow.picture.url }] : []),
+            // Named for the option only when it is the option's own
+            // picture; the Main standing in shows every run lit, whatever
+            // the option covers (round 17 critique).
+            ...(optionPictureNow
+              ? [{ key: OPTION_PICTURE, label: optionPictureNow.own ? selectedName : "Your house", on: lookOn === null, url: optionPictureNow.picture.url }]
+              : []),
             ...looks.map((picture) => ({
               key: picture.name.trim(),
               label: picture.name.trim(),
@@ -1592,9 +1612,10 @@ function SeeItOnYourHouse({
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           {offers.map((priced) => {
-            // Pressed while its picture is the one on screen: a look takes
-            // the picture, the price below keeps the option.
-            const on = lookOn === null && priced.offer.id === selectedId;
+            // Pressed while it is their option, whatever look is on screen,
+            // so this row, the card below and the bar always agree (round 17
+            // critique; a look takes the picture, never the choice).
+            const on = priced.offer.id === selectedId;
             return (
               <button
                 key={priced.offer.id}
@@ -1742,9 +1763,34 @@ function Mockup({
           {caption}
         </figcaption>
       ) : null}
-      <MockupViewer url={url} alt={alt} open={open} onClose={close} testId={ids.viewer} looks={looks} />
+      <MockupViewer url={url} alt={alt} caption={caption} open={open} onClose={close} testId={ids.viewer} looks={looks} />
     </figure>
   );
+}
+
+// Picking a card below an open breakdown closes that breakdown above it,
+// which would pull the card they tapped up the screen by the breakdown's
+// height, its name and price sometimes right off the top (round 17
+// critique). The card is measured as it is tapped and the page scrolled
+// back by however far it moved, before anything is painted. A tap that
+// changes nothing is let go on the next frame.
+function useHoldInPlace() {
+  const held = useRef<{ element: HTMLElement; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const hold = held.current;
+    held.current = null;
+    if (!hold || !hold.element.isConnected) return;
+    const moved = hold.element.getBoundingClientRect().top - hold.top;
+    if (Math.abs(moved) >= 1) window.scrollTo({ top: window.scrollY + moved, behavior: "instant" });
+  });
+  return useCallback((element: HTMLElement | null) => {
+    if (!element) return;
+    const hold = { element, top: element.getBoundingClientRect().top };
+    held.current = hold;
+    requestAnimationFrame(() => {
+      if (held.current === hold) held.current = null;
+    });
+  }, []);
 }
 
 function PictureNeedsRefresh({ className, dark = false }: { className?: string; dark?: boolean }) {
@@ -1794,6 +1840,7 @@ type ViewerLooks = { items: { key: string; label: string; on: boolean; url: stri
 function MockupViewer({
   url,
   alt,
+  caption = null,
   open,
   onClose,
   testId,
@@ -1801,6 +1848,9 @@ function MockupViewer({
 }: {
   url: string;
   alt: string;
+  // The page's caption ("Our mockup shows every run lit."), kept in full
+  // screen, where they look closest (round 17 critique).
+  caption?: string | null;
   open: boolean;
   onClose: () => void;
   testId: string;
@@ -1867,6 +1917,11 @@ function MockupViewer({
             />
           )}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          {caption && !broken ? (
+            <p className="self-start rounded-md bg-black/60 px-4 py-1.5 text-sm text-pretty text-white" data-testid="viewer-caption">
+              {caption}
+            </p>
+          ) : null}
           {looks && looks.items.length > 1 ? (
             <div
               role="group"

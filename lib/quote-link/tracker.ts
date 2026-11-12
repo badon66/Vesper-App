@@ -76,3 +76,13 @@ export function trackerSteps(input: TrackerInput): TrackerStep[] {
 export function openingStep(steps: readonly TrackerStep[]): TrackerStepKey {
   return steps.find((step) => step.state === "current")?.key ?? steps[steps.length - 1]?.key ?? "meeting";
 }
+
+// On the customer's link (round 17 critique): no step is open until they
+// have chosen. Before then the current step's words only repeat the page
+// ("Pick the option you want and book your install."), and on a phone they
+// pushed the price under the bottom bar; a tap reads any step, as Keenan
+// asked. Once they have chosen, the next step opens to start (the site
+// visit, its day when set), since that is news.
+export function linkOpeningStep(steps: readonly TrackerStep[]): TrackerStepKey | null {
+  return steps.find((step) => step.key === "choose")?.state === "done" ? openingStep(steps) : null;
+}

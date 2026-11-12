@@ -465,13 +465,14 @@ try {
     () => document.querySelector('[data-testid="tracker"]').getBoundingClientRect().top < document.getElementById("quote-for").getBoundingClientRect().top,
   );
   check(
-    "Where you're at, above their price: Meeting lit, Choose your option glowing and open, Site visit and Install day still to come, in Keenan's words, with his line under them",
+    "Where you're at, above their price: Meeting lit, Choose your option glowing (its words a tap away until they choose), Site visit and Install day still to come, in Keenan's words, with his line under them",
     trackerAbove &&
       tracker.steps === "meeting:done choose:current visit:later install:later" &&
       tracker.lights === "done current later later" &&
       flat(tracker.labels.join(" | ")) === [words("tracker_meeting_label"), words("tracker_choose_label"), words("tracker_visit_label"), words("tracker_install_label")].join(" | ") &&
-      tracker.open === "choose" &&
-      flat(tracker.detail).includes(words("tracker_choose")) &&
+      tracker.open === null &&
+      tracker.detail === "" &&
+      !(await page.getByTestId("tracker-detail").isVisible()) &&
       flat(tracker.pay) === words("tracker_pay") &&
       flat(await page.getByTestId("tracker").locator("h2").innerText()) === words("tracker_title"),
     JSON.stringify(tracker),
@@ -485,6 +486,9 @@ try {
     visitRead.detail,
   );
   await page.locator('[data-testid="tracker-step"][data-step="choose"]').click();
+  await page.waitForTimeout(200);
+  const chooseRead = await trackerOf(page);
+  check("and Choose your option reads in Keenan's words", chooseRead.open === "choose" && flat(chooseRead.detail).includes(words("tracker_choose")), chooseRead.detail);
   // 3. What you're getting.
   const pointTexts = (Array.isArray(settingsRow?.product_points) ? settingsRow.product_points : []).map((p) => (p?.text ?? "").trim()).filter(Boolean);
   const pointItems = await page.getByTestId("quote-points").locator("li").allInnerTexts().catch(() => []);

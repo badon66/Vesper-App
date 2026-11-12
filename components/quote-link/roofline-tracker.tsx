@@ -1,18 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { openingStep, type TrackerStep, type TrackerStepKey } from "@/lib/quote-link/tracker";
+import { linkOpeningStep, openingStep, type TrackerStep, type TrackerStepKey } from "@/lib/quote-link/tracker";
 import { smartApostrophes as say } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 
 // "Where you're at" (round 17, Keenan, 2026-11-12): four steps as lights
 // along a low roofline. Done steps are lit warm, the current one glows
 // gently (still with reduce motion on), the ones after it are dim. Tap a
-// step, its light or its name, to read it; the current step is open to
-// start. "page" is the white customer link; "deck" is meeting mode, at the
-// deck's sizes. Colours come from the theme's tokens, so it reads on the
-// link's white and the meeting's navy alike; only the lit bulbs are a
-// fixed warm white. The words are Keenan's (lib/quote-link/tracker.ts).
+// step, its light or its name, to read it. In the meeting the current step
+// is open to start; on the link nothing is until they have chosen
+// (linkOpeningStep). "page" is the white customer link; "deck" is meeting
+// mode, at the deck's sizes. Colours come from the theme's tokens, so it
+// reads on the link's white and the meeting's navy alike; only the lit
+// bulbs are a fixed warm white. The words are Keenan's
+// (lib/quote-link/tracker.ts).
 
 // Where each light sits: across the width, on a low gable from eave to
 // eave (the line runs 0,36 to 50,8 to 100,36 in a 100 x 40 box).
@@ -27,6 +29,7 @@ export function RooflineTracker({
   tone = "page",
   className,
   headingId = "tracker-title",
+  closedUntilChosen = false,
 }: {
   steps: TrackerStep[];
   // The heading (the link has one; the meeting's page has its own).
@@ -36,12 +39,17 @@ export function RooflineTracker({
   tone?: "page" | "deck";
   className?: string;
   headingId?: string;
+  // The link's rule: no step open to start until they have chosen.
+  closedUntilChosen?: boolean;
 }) {
-  // The current step reads first, and keeps up as the steps move (a choice
-  // made at the table, a booking on the link) until a step is tapped.
-  const [picked, setOpen] = useState<TrackerStepKey | null>(null);
-  const open = picked ?? openingStep(steps);
-  const shown = steps.find((step) => step.key === open) ?? steps[0];
+  // The step that reads first keeps up as the steps move (a choice made at
+  // the table, a booking on the link). A tapped step stays open until they
+  // move on, then the step that is now news opens.
+  const first = closedUntilChosen ? linkOpeningStep(steps) : openingStep(steps);
+  const [picked, setPicked] = useState<{ key: TrackerStepKey; from: TrackerStepKey | null } | null>(null);
+  const open = picked !== null && picked.from === first ? picked.key : first;
+  const setOpen = (key: TrackerStepKey) => setPicked({ key, from: first });
+  const shown = open === null ? null : (steps.find((step) => step.key === open) ?? steps[0]);
   const deck = tone === "deck";
   return (
     <section
@@ -76,7 +84,7 @@ export function RooflineTracker({
               tabIndex={-1}
               aria-hidden="true"
               onClick={() => setOpen(step.key)}
-              className="absolute flex size-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center outline-none [-webkit-tap-highlight-color:transparent]"
+              className="absolute flex size-11 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center outline-none [-webkit-tap-highlight-color:transparent]"
               style={{ left: `${spot.x}%`, top: `${spot.y}%` }}
               data-testid="tracker-light"
               data-state={step.state}
@@ -89,7 +97,9 @@ export function RooflineTracker({
                 className={cn(
                   "relative block size-4 rounded-full border-2",
                   lit ? "border-[#c7913a]" : "border-muted-foreground/45 bg-background",
-                  open === step.key && "ring-2 ring-foreground ring-offset-2 ring-offset-background",
+                  // An outline, not a ring: a lit bulb's glow is a box
+                  // shadow, which would hide a ring (round 17 critique).
+                  open === step.key && "outline-2 outline-offset-2 outline-foreground outline-solid",
                 )}
                 style={lit ? { backgroundColor: LIT, boxShadow: `0 1px 8px ${LIT}aa` } : undefined}
               />
@@ -107,7 +117,7 @@ export function RooflineTracker({
               aria-controls="tracker-detail"
               onClick={() => setOpen(step.key)}
               className={cn(
-                "flex min-h-11 w-full flex-col items-center justify-start gap-0.5 rounded-md px-0.5 py-1 text-center leading-tight outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "flex min-h-11 w-full cursor-pointer flex-col items-center justify-start gap-0.5 rounded-md px-0.5 py-1 text-center leading-tight outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
                 deck ? "text-[length:var(--deck-small)]" : "text-sm",
                 step.state === "later" ? "text-muted-foreground" : "font-semibold",
               )}
@@ -131,16 +141,21 @@ export function RooflineTracker({
       <div
         id="tracker-detail"
         aria-live="polite"
+        hidden={shown === null}
         className={cn("mt-3 rounded-md bg-muted", deck ? "px-5 py-4" : "px-4 py-3 lg:max-w-2xl lg:flex-1")}
         data-testid="tracker-detail"
-        data-step={shown.key}
+        data-step={shown?.key}
       >
-        <p className={cn("font-semibold", deck ? "text-[length:var(--deck-small)] leading-[1.3]" : "text-base")}>
-          {say(shown.label)}
-          {shown.state === "done" ? <span className="font-normal text-muted-foreground">{" "}· Done</span> : null}
-          {shown.date ? <span className="font-normal text-muted-foreground">{` · ${shown.date.long}`}</span> : null}
-        </p>
-        <p className={cn("mt-1 text-pretty", deck ? "text-[length:var(--deck-small)] leading-[1.3]" : "text-base")}>{say(shown.text)}</p>
+        {shown ? (
+          <>
+            <p className={cn("font-semibold", deck ? "text-[length:var(--deck-small)] leading-[1.3]" : "text-base")}>
+              {say(shown.label)}
+              {shown.state === "done" ? <span className="font-normal text-muted-foreground">{" "}· Done</span> : null}
+              {shown.date ? <span className="font-normal text-muted-foreground">{` · ${shown.date.long}`}</span> : null}
+            </p>
+            <p className={cn("mt-1 text-pretty", deck ? "text-[length:var(--deck-small)] leading-[1.3]" : "text-base")}>{say(shown.text)}</p>
+          </>
+        ) : null}
       </div>
       {pay ? (
         <p

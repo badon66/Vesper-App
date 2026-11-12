@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_LINES } from "@/lib/deck";
-import { openingStep, trackerSteps, type TrackerInput } from "@/lib/quote-link/tracker";
+import { linkOpeningStep, openingStep, trackerSteps, type TrackerInput } from "@/lib/quote-link/tracker";
 
 // Where you're at (round 17, Keenan, 2026-11-12): four steps as lights along
 // a roofline, the same words on the customer's link and on the meeting's
@@ -77,6 +77,14 @@ describe("where you're at", () => {
     expect(openingStep(trackerSteps(base))).toBe("choose");
     expect(openingStep(trackerSteps({ ...base, chosen: true }))).toBe("visit");
     expect(openingStep(trackerSteps({ ...base, installed: true }))).toBe("install");
+  });
+
+  it("on the link, opens no step until they have chosen, then the next one", () => {
+    expect(linkOpeningStep(trackerSteps(base))).toBeNull();
+    expect(linkOpeningStep(trackerSteps({ ...base, sign: true }))).toBeNull();
+    expect(linkOpeningStep(trackerSteps({ ...base, chosen: true }))).toBe("visit");
+    expect(linkOpeningStep(trackerSteps({ ...base, chosen: true, siteVisitDone: true }))).toBe("install");
+    expect(linkOpeningStep(trackerSteps({ ...base, installed: true }))).toBe("install");
   });
 
   it("uses Keenan's own words when he changes them in Settings", () => {
