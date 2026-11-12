@@ -542,6 +542,29 @@ ai_polishes                   -- one row per AI polish of an offer's description
 - `ai_polishes`: RLS select for the owner only; no insert, update or delete policy and nothing for anonymous callers, so rows come only through `ai_polish_take()`.
 - `ai_polish_take() returns jsonb` (security definer, signed-in callers only): anyone but the owner gets `{ok: false, state: 'not_owner'}`. For the owner it takes a transaction lock, counts the rows since the start of Calgary's day, and returns `{ok: false, state: 'cap', used, cap}` once there are 100; otherwise it adds a row and returns `{ok: true, used, cap}`. The server calls it before each polish goes out, so two taps at once can't pass the cap, and a suggestion thrown out afterwards still counts.
 
+### Round 18: measuring by side, the breakdown by track, fees per offer, changes after the yes (Keenan, 2026-11-12)
+Four migrations, all additive: `r18_offer_fees`, `r18_offer_fees_carry` (data only), `r18_quote_revisions` and `r18_customer_revised`.
+
+- `quotes.runs` (no schema change): `area` may also be `left` or `right` (the Left side and Right side views; `sides` stays for an old quote's one Sides line until Keenan splits it); `view` is Keenan's own name for the run's view on this quote (absent for the standard name, kept on every run of that view); `count` is how many gables a gable line holds (2 to 20; absent for one). A line's own name is the run's `name`, as before. Renaming changes the runs, so a customer's saved Build your own ticks reset the way they do after any runs change.
+- `quotes.offers` (no schema change): each offer may carry `rush_fee` (its own Rush fee switch, on with an amount over 0 and at most 100,000, to the cent; absent when off) and `charges` (`[{label, amount}]`, its own extra charges, at most ten; a label with no dollar sign, up to 80 characters; an amount 0 to 1,000,000; a line with neither is dropped). `quote_offers_clean` keeps both and the link reads them through `quote_offers_shown`. `quote_link_book_custom` copies the starting option's `rush_fee` onto the customer's own option, never its charges. Commission never reads either.
+- `quotes.rush_fee` is no longer written by the app (saved as null). `r18_offer_fees_carry` copied each this-season quote's fee onto every one of its offers (an empty list became one real Full wrap with it), so no total moved; the app reads an old quote the same way (`carryQuoteRushFee`).
+
+```
+quote_revisions               -- a change Keenan made to a quote after it was accepted; owner only
+  id uuid pk default gen_random_uuid()
+  quote_id uuid not null references quotes
+  lead_id uuid not null references leads
+  revised_by uuid references profiles
+  revised_at timestamptz not null default now()
+  total_before numeric(10,2) not null     -- the accepted option's total before the change, before GST
+  total_after numeric(10,2) not null      -- and after it
+  changes jsonb not null default '[]'     -- what changed, in the customer's words ("Added: Extra outlet, $150"), at most 12
+```
+- `quote_revisions`: RLS select for the owner only; no insert, update or delete for anyone through the API, and nothing for anonymous callers. Rows come only from `quote_revise`. Totals stay out of `lead_events`, which setters read; the lead page reads this table for Keenan's timeline.
+- `quote_revise(quote uuid, fields jsonb, changes jsonb, total_before numeric, total_after numeric) returns jsonb` (security definer, the owner only, else `not_allowed`): for an accepted quote only (`not_accepted`), under the lead's and the quote's lock, it writes the numbers a draft's save writes (runs, offers, adders, discounts, box count and price, price a foot, total feet, colour timing, rush fee, the upper access amounts, the minimum, financing, valid until and the stored totals; never the status, the outcome, the track colour or the table's choice); the option they said yes to must still be on the quote and shown, with a measured area (`bad_offer`, and nothing is saved); `accepted_runs` and `accepted_boxes` follow that option; a pending commission is worked out again at its own rate on the new numbers; a paid one is left alone. It records the change when anything changed, and returns `{ok, updated_at, commission: {before, after} | null, paid}`.
+- The guards: `quotes_outcome_guard` and `earnings_guard` let through exactly what `quote_revise` changes, only while it runs (`vesper.quote_revise`, set for its own transaction): an accepted quote's numbers, and a pending commission's amount and base. Everything else about both guards is as it was; a paid earning still never changes.
+- `quote_for_customer(token)` also returns `revised`: `{at, changes}` for an accepted quote Keenan changed since the yes (the last change's time and every change since the yes, in order), else null.
+
 ### push_subscriptions
 Web push addresses for members' devices (2026-11-02). Built for Book my install first and for any later alert (the backlog's booking alerts) without changes.
 ```
