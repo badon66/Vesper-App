@@ -55,7 +55,7 @@ export function RooflineTracker({
           {say(title)}
         </h2>
       ) : null}
-      <div className={cn("relative w-full", deck ? "mt-2 h-[88px]" : "mt-4 h-[76px] lg:h-[84px]")}>
+      <div className={cn("relative w-full", deck ? "mt-2 h-[88px]" : "mt-2 h-16 lg:h-[76px]")}>
         <svg aria-hidden="true" viewBox="0 0 100 40" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
           <polyline
             points="0,36 50,8 100,36"
@@ -110,15 +110,14 @@ export function RooflineTracker({
                 "flex min-h-11 w-full flex-col items-center justify-start gap-0.5 rounded-md px-0.5 py-1 text-center leading-tight outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 deck ? "text-[length:var(--deck-small)]" : "text-sm",
                 step.state === "later" ? "text-muted-foreground" : "font-semibold",
-                open === step.key && "underline decoration-2 underline-offset-4",
               )}
               data-testid="tracker-step"
               data-step={step.key}
               data-state={step.state}
             >
-              <span className="text-balance">{say(step.label)}</span>
+              <span className={cn("text-balance", open === step.key && "underline decoration-2 underline-offset-4")}>{say(step.label)}</span>
               {step.date ? (
-                <span className="font-normal text-muted-foreground tabular-nums no-underline" data-testid="tracker-date">
+                <span className="font-normal text-muted-foreground tabular-nums" data-testid="tracker-date">
                   {step.date.short}
                 </span>
               ) : null}
@@ -126,10 +125,13 @@ export function RooflineTracker({
           </li>
         ))}
       </ol>
+      {/* On a laptop the link puts the step's words and the pay line side
+          by side, each at a reading width, to keep the top short. */}
+      <div className={cn("flex flex-col", !deck && "lg:flex-row lg:items-center lg:gap-10")}>
       <div
         id="tracker-detail"
         aria-live="polite"
-        className={cn("mt-3 rounded-md bg-muted", deck ? "px-5 py-4" : "px-4 py-3")}
+        className={cn("mt-3 rounded-md bg-muted", deck ? "px-5 py-4" : "px-4 py-3 lg:max-w-2xl lg:flex-1")}
         data-testid="tracker-detail"
         data-step={shown.key}
       >
@@ -141,10 +143,14 @@ export function RooflineTracker({
         <p className={cn("mt-1 text-pretty", deck ? "text-[length:var(--deck-small)] leading-[1.3]" : "text-base")}>{say(shown.text)}</p>
       </div>
       {pay ? (
-        <p className={cn("mt-3 font-semibold text-pretty", deck ? "text-[length:var(--deck-small)] leading-[1.3]" : "text-base")} data-testid="tracker-pay">
+        <p
+          className={cn("mt-3 font-semibold text-pretty", deck ? "text-[length:var(--deck-small)] leading-[1.3]" : "text-base lg:max-w-sm")}
+          data-testid="tracker-pay"
+        >
           {say(pay)}
         </p>
       ) : null}
+      </div>
     </section>
   );
 }

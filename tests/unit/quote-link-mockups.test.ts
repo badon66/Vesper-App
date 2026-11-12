@@ -91,8 +91,15 @@ describe("See it on your house (round 13)", () => {
     expect(seeItPicture(all, "full", "Halloween")).toEqual({ picture: halloween, kind: "look" });
     // A look that isn't there (the scene was taken off since): the option's picture.
     expect(seeItPicture(all, "front_lower", "Easter")).toEqual({ picture: lower, kind: "own" });
-    expect(seeItPicture([christmas], "full", null)).toBeNull();
     expect(seeItPicture([], "full", "Christmas")).toBeNull();
+    expect(seeItPicture([unnamed], "full", null)).toBeNull();
+  });
+
+  it("opens a house with scenes and no other picture on its first look, so the Looks always show (round 17)", () => {
+    expect(seeItPicture([christmas, halloween], "full", null)).toEqual({ picture: christmas, kind: "look" });
+    expect(seeItPicture([christmas, halloween], "full", "Halloween")).toEqual({ picture: halloween, kind: "look" });
+    expect(seeItPicture([unnamed, halloween], "full", null)).toEqual({ picture: halloween, kind: "look" });
+    expect(showsSeeIt([christmas], 1)).toBe(true);
   });
 
   it("shows the section when there is a picture and something to switch: a look, or more than one option", () => {

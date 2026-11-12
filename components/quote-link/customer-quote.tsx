@@ -353,12 +353,14 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
       <main className={cn("mx-auto flex max-w-xl flex-col pb-36", laptopPicture ? LAPTOP_PAGE : LAPTOP_SINGLE)} data-testid="quote-live">
         {/* Round 17: where they're at, near the top (on a laptop, the full
             width above the top section). */}
-        <RooflineTracker steps={tracker} title={words.tracker_title} pay={words.tracker_pay} className="px-5 pt-6 lg:pt-8" />
+        <RooflineTracker steps={tracker} title={words.tracker_title} pay={words.tracker_pay} className="px-5 pt-6 pb-3 lg:pt-8 lg:pb-2" />
         <div className={laptopPicture ? LAPTOP_TOP : "contents"} data-testid="laptop-top">
-        {/* 1. Their house and the price of the option on screen. On a
-            laptop See it on your house takes the picture's place. */}
-        {view.mockupUrl ? (
-          <div className={seeIt ? "lg:hidden" : cn(AREA.pic, "lg:px-5")}>
+        {/* 1. Their house and the price of the option on screen. With See
+            it on your house, it takes the picture's place (round 17: on a
+            phone too, so the house shows once, with its Looks, right under
+            the price). */}
+        {view.mockupUrl && !seeIt ? (
+          <div className={cn(AREA.pic, "lg:px-5")}>
             <Mockup
               url={view.mockupUrl}
               caption={selected && leavesRunsOut(quote.runs.length, selected.offer.runs) ? words.link_mockup_caption : null}
@@ -407,12 +409,11 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
           ) : null}
         </section>
 
-        {/* 3. What makes it worth it, in Keenan's words from Settings. */}
-        <ProductPoints points={view.productPoints} className={laptopPicture ? "lg:hidden" : undefined} />
-
-        {/* 4. See it on your house (round 13): one picture, the Looks and
+        {/* 3. See it on your house (round 13): one picture, the Looks and
             the Options under it. Tapping an option here picks it in the
-            price below; picking one there swaps the picture. */}
+            price below; picking one there swaps the picture. Round 17:
+            right under the price on a phone, so it's easy to spot; beside
+            the offers on a laptop. */}
         {seeIt && selected ? (
           <SeeItOnYourHouse
             pictures={view.pictures}
@@ -427,6 +428,9 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
             className={AREA.pic}
           />
         ) : null}
+
+        {/* 4. What makes it worth it, in Keenan's words from Settings. */}
+        <ProductPoints points={view.productPoints} className={laptopPicture ? "lg:hidden" : undefined} />
 
         {/* 5. Your options: a row per option to pick from, then what's in
             it, line by line. With one option and no scene, its picture
@@ -707,6 +711,11 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
   const agreed = offerChoice(quote, quote.acceptedOffer);
   // Only the tracks in what was agreed.
   const agreedTracks = agreed ? tracksUsed({ runs: quote.runs, offers: [agreed.offer] }) : [];
+  // Round 17: a house with scenes shows its Looks here too, with the agreed
+  // option's picture first (no Options row: the choice is made).
+  const [look, setLook] = useState<string | null>(null);
+  const seeIt = agreed !== null && linkLooks(view.pictures).length > 0;
+  const laptopPicture = Boolean(view.mockupUrl) || seeIt;
   const textHref = smsWithBody(view.company.phone, `Hi Keenan, a question about the install at ${view.address}: `);
   // Round 17: where they're at; step 2 is done once Keenan marks it accepted.
   const tracker = trackerSteps({
@@ -721,10 +730,10 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
 
   return (
     <>
-      <main className={cn("mx-auto flex max-w-xl flex-col pb-36", view.mockupUrl ? LAPTOP_PAGE : LAPTOP_SINGLE)} data-testid="quote-agreed">
-        <RooflineTracker steps={tracker} title={words.tracker_title} pay={words.tracker_pay} className="px-5 pt-6 lg:pt-8" />
-        <div className={view.mockupUrl ? LAPTOP_TOP : "contents"} data-testid="laptop-top">
-        {view.mockupUrl ? (
+      <main className={cn("mx-auto flex max-w-xl flex-col pb-36", laptopPicture ? LAPTOP_PAGE : LAPTOP_SINGLE)} data-testid="quote-agreed">
+        <RooflineTracker steps={tracker} title={words.tracker_title} pay={words.tracker_pay} className="px-5 pt-6 pb-3 lg:pt-8 lg:pb-2" />
+        <div className={laptopPicture ? LAPTOP_TOP : "contents"} data-testid="laptop-top">
+        {view.mockupUrl && !seeIt ? (
           <div className={cn(AREA.pic, "lg:px-5")}>
             <Mockup
               url={view.mockupUrl}
@@ -733,7 +742,7 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
             />
           </div>
         ) : null}
-        <section aria-labelledby="quote-for" className={cn("flex flex-col", view.mockupUrl && AREA.head)}>
+        <section aria-labelledby="quote-for" className={cn("flex flex-col", laptopPicture && AREA.head)}>
           <div className="flex flex-col px-5 pt-6 lg:pt-10">
             <Greeting firstName={view.firstName} />
             {agreed ? (
@@ -756,17 +765,34 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
           </div>
         </section>
 
+        {seeIt && agreed ? (
+          <SeeItOnYourHouse
+            pictures={view.pictures}
+            offers={[]}
+            selectedId={agreed.offer.id}
+            selectedName={customerChoice(agreed.name)}
+            look={look}
+            caption={leavesRunsOut(quote.runs.length, agreed.offer.runs) ? words.link_mockup_caption : null}
+            disabled={false}
+            onLook={setLook}
+            onOption={() => {}}
+            className={AREA.pic}
+          />
+        ) : null}
+
         {agreed ? (
-          <section aria-labelledby="whats-in" className={cn("mt-12 px-5", view.mockupUrl && cn(AREA.opts, "lg:mt-10"))}>
+          <section aria-labelledby="whats-in" className={cn("mt-12 px-5", laptopPicture && cn(AREA.opts, "lg:mt-10"))}>
             <h2 id="whats-in" className="text-xl font-bold text-pretty" data-testid="whats-in">
               {fillLine(words.whats_in, { name: isCustomerOffer(agreed.offer) ? customerChoiceInSentence(agreed.name) : agreed.name })}
             </h2>
-            <OptionPicture
-              pictures={view.pictures}
-              offerId={agreed.offer.id}
-              name={customerChoice(agreed.name)}
-              caption={leavesRunsOut(quote.runs.length, agreed.offer.runs) ? words.link_mockup_caption : null}
-            />
+            {seeIt ? null : (
+              <OptionPicture
+                pictures={view.pictures}
+                offerId={agreed.offer.id}
+                name={customerChoice(agreed.name)}
+                caption={leavesRunsOut(quote.runs.length, agreed.offer.runs) ? words.link_mockup_caption : null}
+              />
+            )}
             <p className="mt-4 text-sm text-pretty text-muted-foreground tabular-nums" data-testid="whats-in-feet">
               {feetWords(words.price_feet, offerFeet(quote.runs, agreed.offer))}
             </p>
@@ -1463,6 +1489,25 @@ function SeeItOnYourHouse({
   const onScreen = seeItPicture(pictures, selectedId, look);
   if (!onScreen) return null;
   const lookOn = onScreen.kind === "look" ? onScreen.picture.name.trim() : null;
+  // Round 17: full screen keeps the looks. Its row is the option's own
+  // picture (when there is one) and each look, one always on, so they can
+  // flip through their house in every look without closing it.
+  const optionPictureNow = offerPicture(pictures, selectedId);
+  const viewerLooks: ViewerLooks | undefined =
+    looks.length > 0
+      ? {
+          items: [
+            ...(optionPictureNow ? [{ key: OPTION_PICTURE, label: selectedName, on: lookOn === null, url: optionPictureNow.picture.url }] : []),
+            ...looks.map((picture) => ({
+              key: picture.name.trim(),
+              label: picture.name.trim(),
+              on: lookOn === picture.name.trim(),
+              url: picture.url,
+            })),
+          ],
+          onPick: (key) => onLook(key === OPTION_PICTURE ? null : key),
+        }
+      : undefined;
   const chip = (on: boolean) =>
     cn(
       "inline-flex min-h-12 items-center rounded-md px-4 text-base font-semibold outline-none transition-colors duration-150",
@@ -1482,9 +1527,9 @@ function SeeItOnYourHouse({
         data-look={lookOn ?? undefined}
       >
         <Mockup
-          key={onScreen.picture.url}
           url={onScreen.picture.url}
           caption={onScreen.kind === "own" ? null : caption}
+          looks={viewerLooks}
           alt={
             lookOn
               ? `Your house in the ${lookOn} look, as a mockup`
@@ -1523,6 +1568,7 @@ function SeeItOnYourHouse({
           </div>
         </div>
       ) : null}
+      {offers.length > 0 ? (
       <div role="group" aria-labelledby="see-it-options" className="mt-4" data-testid="see-it-options">
         <p id="see-it-options" className="text-sm font-semibold text-muted-foreground">
           {offers.length > 1 ? "Options" : "Your option"}
@@ -1549,6 +1595,7 @@ function SeeItOnYourHouse({
           })}
         </div>
       </div>
+      ) : null}
     </section>
   );
 }
@@ -1602,6 +1649,7 @@ function Mockup({
   inset = false,
   laptopFrame = false,
   ids = HERO_IDS,
+  looks,
 }: {
   url: string;
   caption: string | null;
@@ -1611,9 +1659,14 @@ function Mockup({
   // The hero, full bleed on a phone, framed like the others on a laptop.
   laptopFrame?: boolean;
   ids?: { image: string; caption: string; viewer: string };
+  // Round 17: the looks to flip through in full screen.
+  looks?: ViewerLooks;
 }) {
   const [open, setOpen] = useState(false);
-  const [broken, setBroken] = useState(false);
+  // The picture that failed, by its address: a new picture (another look)
+  // starts fresh, and full screen stays open while it changes.
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
+  const broken = brokenUrl === url;
   const opener = useRef<HTMLButtonElement>(null);
   const picture = useRef<HTMLImageElement>(null);
   const close = useCallback(() => {
@@ -1624,7 +1677,7 @@ function Mockup({
   // here; check once on arrival.
   useEffect(() => {
     const image = picture.current;
-    if (image && image.complete && image.naturalWidth === 0) setBroken(true);
+    if (image && image.complete && image.naturalWidth === 0) setBrokenUrl(image.getAttribute("src"));
   }, []);
   if (broken) return <PictureNeedsRefresh />;
   return (
@@ -1646,11 +1699,12 @@ function Mockup({
       >
         {/* eslint-disable-next-line @next/next/no-img-element -- a private photo behind a ten-minute signed link */}
         <img
+          key={url}
           ref={picture}
           src={url}
           alt={alt}
           className={cn("block size-full object-contain", inset && "animate-in fade-in duration-300 motion-reduce:animate-none")}
-          onError={() => setBroken(true)}
+          onError={() => setBrokenUrl(url)}
           data-testid={ids.image}
         />
         <span
@@ -1665,7 +1719,7 @@ function Mockup({
           {caption}
         </figcaption>
       ) : null}
-      <MockupViewer url={url} alt={alt} open={open} onClose={close} testId={ids.viewer} />
+      <MockupViewer url={url} alt={alt} open={open} onClose={close} testId={ids.viewer} looks={looks} />
     </figure>
   );
 }
@@ -1706,30 +1760,52 @@ function useFinePointer(): boolean {
   );
 }
 
+// Round 17: the looks in full screen. key OPTION_PICTURE is the option's own
+// picture (or the Main); the others are looks by name.
+const OPTION_PICTURE = "\u0000option";
+type ViewerLooks = { items: { key: string; label: string; on: boolean; url: string }[]; onPick: (key: string) => void };
+
 // A real modal dialog: it sits above the page, keeps focus inside, and
-// Escape closes it. The picture is the one already on the page.
+// Escape closes it. The picture is the one already on the page; with looks
+// (round 17), a row of them along the bottom swaps it in place.
 function MockupViewer({
   url,
   alt,
   open,
   onClose,
   testId,
+  looks,
 }: {
   url: string;
   alt: string;
   open: boolean;
   onClose: () => void;
   testId: string;
+  looks?: ViewerLooks;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [broken, setBroken] = useState(false);
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
+  const broken = brokenUrl === url;
   const mouse = useFinePointer();
+  // The looks as they stand when full screen opens, read without making the
+  // dialog's effect run again on every pick.
+  const looksRef = useRef(looks);
+  useEffect(() => {
+    looksRef.current = looks;
+  });
   useEffect(() => {
     const element = dialog.current;
     if (!element) return;
     if (open && !element.open) element.showModal();
     if (!open && element.open) element.close();
     if (!open) return;
+    // The looks' pictures start loading as full screen opens, so flipping
+    // through them is quick (only then: a phone on data never fetches a
+    // look nobody asked to see).
+    for (const item of looksRef.current?.items ?? []) {
+      const image = new Image();
+      image.src = item.url;
+    }
     // The page behind stays put while they zoom.
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -1756,17 +1832,44 @@ function MockupViewer({
             </div>
           ) : (
             <PinchZoom
+              key={url}
               src={url}
               alt={alt}
               crossOrigin={null}
-              onError={() => setBroken(true)}
+              onError={() => setBrokenUrl(url)}
               // On a computer (2026-11-12): a click closes it, the wheel or
               // a trackpad pinch zooms. A phone keeps tap to zoom only.
               onTap={mouse ? onClose : undefined}
               wheelZoom
             />
           )}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-4 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          {looks && looks.items.length > 1 ? (
+            <div
+              role="group"
+              aria-label="Looks"
+              className="pointer-events-auto -mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]"
+              data-testid="viewer-looks"
+            >
+              {looks.items.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  aria-pressed={item.on}
+                  onClick={() => looks.onPick(item.key)}
+                  className={cn(
+                    "inline-flex h-12 shrink-0 items-center rounded-md px-4 text-base font-semibold whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-gold",
+                    item.on ? "bg-white text-navy" : "border border-white/45 bg-black/60 text-white hover:bg-white/15",
+                  )}
+                  data-testid="viewer-look"
+                  data-look={item.key === OPTION_PICTURE ? "" : item.key}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="flex items-center justify-between gap-4">
             <p className="text-sm text-white/80 pointer-fine:hidden">Pinch or double-tap to zoom.</p>
             <p className="hidden text-sm text-white/80 pointer-fine:block">Scroll or double-click to zoom. Click or press Esc to close.</p>
             <button
@@ -1778,6 +1881,7 @@ function MockupViewer({
               <X aria-hidden="true" className="size-5" />
               Close
             </button>
+          </div>
           </div>
         </div>
       ) : null}

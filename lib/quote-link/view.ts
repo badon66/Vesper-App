@@ -849,17 +849,21 @@ export function linkLooks<T extends { scene: boolean; name: string }>(pictures: 
 }
 
 // The picture on screen: the look they tapped, else the option's own
-// picture, else the Main, else none. kind says which, for the caption (only
-// an option's own picture shows exactly what that option covers).
+// picture, else the Main, else (round 17) the first look, so a house with
+// scenes and no other picture still shows, with its Looks; else none. kind
+// says which, for the caption (only an option's own picture shows exactly
+// what that option covers).
 export function seeItPicture<T extends { main: boolean; scene: boolean; name: string; offers: readonly string[] }>(
   pictures: readonly T[],
   offerId: string | null | undefined,
   look: string | null,
 ): { picture: T; kind: "look" | "own" | "main" } | null {
-  const scene = look ? linkLooks(pictures).find((picture) => picture.name.trim() === look) : undefined;
+  const looks = linkLooks(pictures);
+  const scene = look ? looks.find((picture) => picture.name.trim() === look) : undefined;
   if (scene) return { picture: scene, kind: "look" };
   const chosen = offerPicture(pictures, offerId);
-  return chosen ? { picture: chosen.picture, kind: chosen.own ? "own" : "main" } : null;
+  if (chosen) return { picture: chosen.picture, kind: chosen.own ? "own" : "main" };
+  return looks[0] ? { picture: looks[0], kind: "look" } : null;
 }
 
 // Whether the page shows the section with its rows: there is a picture, and
