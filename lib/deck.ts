@@ -246,6 +246,7 @@ export const DECK_LINE_DEFAULTS = {
   // Round 13: under an option the Black Friday deal can't lower, because
   // it is already at the minimum job total.
   price_lowest: "Already at our lowest price.",
+  price_feet: "{feet} ft of lights",
   // What happens next
   recap: "Your choice: {name}, {total}",
   step_colour_label: "Your colour",
@@ -325,6 +326,7 @@ export const LINE_SPECS: Record<DeckLineKey, LineSpec> = {
   choose: { group: "price", label: "The choose button", words: LABEL + 2, fill: ["name"] },
   your_choice: { group: "price", label: "Once chosen", words: LABEL },
   price_lowest: { group: "price", label: "With a deal on, under an option already at the minimum", words: 8 },
+  price_feet: { group: "price", label: "Under each option's name (the meeting and the link)", words: 6, fill: ["feet"], need: ["feet"] },
   recap: { group: "next_steps", label: "Their choice, once chosen", words: 10, fill: ["name", "total"] },
   step_colour_label: { group: "next_steps", label: "Step 1", words: LABEL },
   step_colour_done: { group: "next_steps", label: "Step 1, once initialled", words: 10, fill: ["colour"] },

@@ -11,7 +11,8 @@ import { EditorClose, EditorSave } from "@/components/quotes/quote-editor/parts"
 import { hasMeasuredRun, QuoteEditor } from "@/components/quotes/quote-editor/quote-editor";
 import { useQuoteSave } from "@/components/quotes/quote-editor/use-quote-save";
 import { DEFAULT_LINES, deckLine, priceSubLine, type DeckLines } from "@/lib/deck";
-import { breakdownRows, coverageLine, minimumSentence, NO_PAYMENT, screenOptions, type BreakdownRow } from "@/lib/meeting/price-screen";
+import { breakdownRows, minimumSentence, NO_PAYMENT, screenOptions, type BreakdownRow } from "@/lib/meeting/price-screen";
+import { feetWords, offerFeet } from "@/lib/quotes/offers";
 import { blackFridayOn, chooseWithBlackFriday, offerPrice, withBlackFriday } from "@/lib/meeting/black-friday-state";
 import { colourTimingView, mockupJobs, offerMockup } from "@/lib/meeting/deck-pages";
 import { quoteInputs, quoteOffers, quoteRushFee, type MeetingMockup, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
@@ -298,8 +299,9 @@ export function QuoteScreen({
           ) : null}
 
           {/* Right (or the whole width, with no picture): the options, each
-              with its total and what it covers, the colour line, then the
-              breakdown one tap away and Choose. */}
+              with its name, its feet and its total (round 16: no list of
+              areas, which ran too long), the colour line, then the breakdown
+              one tap away and Choose. */}
           <div className={cn("flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pr-12", picture ? "pl-16 @3xl:pl-8" : "pl-16")} data-testid="price-right">
             <div
               className={cn("grid shrink-0 gap-2.5", !picture && options.length > 1 && (options.length >= 4 ? "grid-cols-4" : options.length === 3 ? "grid-cols-3" : "grid-cols-2"))}
@@ -314,7 +316,7 @@ export function QuoteScreen({
                   total={shownTotals(option)?.subtotal ?? 0}
                   regular={struckTotal(option)}
                   lowest={atLowest(option) ? deckLine(lines, "price_lowest") : null}
-                  coverage={coverageLine(state.runs, option.offer)}
+                  feet={feetWords(lines.price_feet, offerFeet(state.runs, option.offer))}
                   onScreen={option.offer.id === viewing.offer.id}
                   chosen={option.offer.id === chosen?.offer.id}
                   gstEnabled={pricing.gstEnabled}
@@ -420,8 +422,8 @@ export function QuoteScreen({
         <MoreLayer open={breakdownOpen} onClose={() => setBreakdownOpen(false)} label={deckLine(lines, "whats_in", { name: cleanOfferName(viewing.offer.name) })}>
           <div className="flex h-full w-full flex-col pr-16 pl-16" style={{ paddingTop: 88, paddingBottom: "var(--deck-clear, 78px)" }} data-testid="price-breakdown">
             <h2 className={DECK_TYPE.moreLabel}>{say(deckLine(lines, "whats_in", { name: cleanOfferName(viewing.offer.name) }))}</h2>
-            <p className={cn(DECK_TYPE.small, "mt-2 text-muted-foreground")} data-testid="price-coverage">
-              {say(coverageLine(state.runs, viewing.offer))}
+            <p className={cn(DECK_TYPE.small, "mt-2 text-muted-foreground")} data-testid="price-feet">
+              {say(feetWords(lines.price_feet, offerFeet(state.runs, viewing.offer)))}
             </p>
             <div className="mt-4 flex min-h-0 max-w-[760px] flex-col">
               <Breakdown totals={viewingTotals} />
@@ -531,7 +533,8 @@ function TimingChoice({
   );
 }
 
-// One option: its name and total on one line, what it covers under them.
+// One option: its name and total on one line, its feet under them
+// ("165 ft of lights"; round 16 took out the list of areas).
 // On screen: a 2 px Night Text outline. Picked: the Night Text fill, a tick
 // and "Your choice".
 function OptionButton({
@@ -539,7 +542,7 @@ function OptionButton({
   total,
   regular,
   lowest = null,
-  coverage,
+  feet,
   onScreen,
   chosen,
   gstEnabled,
@@ -554,7 +557,7 @@ function OptionButton({
   // "Already at our lowest price.", while the deal is on and can't lower
   // this option (round 13); null otherwise.
   lowest?: string | null;
-  coverage: string;
+  feet: string;
   onScreen: boolean;
   chosen: boolean;
   gstEnabled: boolean;
@@ -603,9 +606,11 @@ function OptionButton({
           </span>
         </span>
       </span>
-      <span className={cn("line-clamp-2 text-pretty text-[19px] leading-snug", chosen ? "text-background/85" : "text-muted-foreground")} data-testid="price-option-coverage">
-        {say(coverage)}
-      </span>
+      {feet ? (
+        <span className={cn("text-[19px] leading-snug tabular-nums", chosen ? "text-background/85" : "text-muted-foreground")} data-testid="price-option-feet">
+          {say(feet)}
+        </span>
+      ) : null}
       {lowest ? (
         <span className={cn("text-pretty text-[17px] leading-snug", chosen ? "text-background/85" : "text-muted-foreground")} data-testid="price-option-lowest">
           {say(lowest)}

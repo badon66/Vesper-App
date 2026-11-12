@@ -9,7 +9,7 @@ import { PointIconMark } from "@/components/quote-link/point-icon";
 import { ClosedQuote, ContactButtons } from "@/components/quote-link/quote-shell";
 import { DialogPanel } from "@/components/ui/dialog-panel";
 import { formatMoney, screenTotal, type QuoteLine, type QuoteRun, type QuoteTotals } from "@/lib/pricing";
-import { offerCoverage, type PricedOffer } from "@/lib/quotes/offers";
+import { feetWords, offerFeet, type PricedOffer } from "@/lib/quotes/offers";
 import { fillLine } from "@/lib/deck";
 import {
   christmasSeason,
@@ -321,6 +321,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
                         selected={priced.offer.id === selected.offer.id}
                         meeting={priced.offer.id === quote.meetingOffer}
                         meetingTag={words.link_meeting_tag}
+                        feetLine={words.price_feet}
                         gstEnabled={quote.gstEnabled}
                         disabled={sending}
                         onChoose={choose}
@@ -333,10 +334,10 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
               <h3 className="mt-8 text-lg font-bold text-pretty" data-testid="whats-in">
                 {fillLine(words.whats_in, { name })}
               </h3>
-              {/* With a list, each row already says what its option covers. */}
+              {/* With a list, each row already gives its option's feet. */}
               {many ? null : (
-                <p className="mt-1 text-sm text-pretty text-muted-foreground" data-testid="whats-in-coverage">
-                  {offerCoverage(quote.runs, selected.offer)}
+                <p className="mt-1 text-sm text-pretty text-muted-foreground tabular-nums" data-testid="whats-in-feet">
+                  {feetWords(words.price_feet, offerFeet(quote.runs, selected.offer))}
                 </p>
               )}
               <Breakdown
@@ -536,8 +537,8 @@ function AgreedQuote({ view }: { view: View }) {
               name={agreed.name}
               caption={leavesRunsOut(quote.runs.length, agreed.offer.runs) ? words.link_mockup_caption : null}
             />
-            <p className="mt-4 text-sm text-pretty text-muted-foreground" data-testid="whats-in-coverage">
-              {offerCoverage(quote.runs, agreed.offer)}
+            <p className="mt-4 text-sm text-pretty text-muted-foreground tabular-nums" data-testid="whats-in-feet">
+              {feetWords(words.price_feet, offerFeet(quote.runs, agreed.offer))}
             </p>
             <Breakdown
               every={[agreed.totals.lines]}
@@ -597,7 +598,7 @@ function Money({ subtotal, gstEnabled }: { subtotal: number; gstEnabled: boolean
 }
 
 // One option as a radio row, in two lines: the radio, its name and its
-// total; then what it covers, across the full width, two lines at most
+// total; then its feet ("165 ft of lights"; round 16), on one line
 // (the critique, 2026-11-10: rows ran 105 to 113 px). The one on screen has
 // a 2 px navy border and a filled navy radio; gold stays Book my install's
 // alone. The meeting's choice carries a small navy tag on the row's top
@@ -609,6 +610,7 @@ function OptionRow({
   selected,
   meeting,
   meetingTag,
+  feetLine,
   gstEnabled,
   disabled,
   onChoose,
@@ -618,6 +620,7 @@ function OptionRow({
   selected: boolean;
   meeting: boolean;
   meetingTag: string;
+  feetLine: string;
   gstEnabled: boolean;
   disabled: boolean;
   onChoose: (id: string) => void;
@@ -670,9 +673,10 @@ function OptionRow({
           ) : null}
         </span>
       </span>
-      {/* Feet included: it's what they compare the options by. */}
-      <span className="line-clamp-2 text-sm leading-[1.3] text-pretty text-muted-foreground" data-testid="option-coverage">
-        {offerCoverage(runs, offer)}
+      {/* The feet: what they compare the options by (round 16: no list of
+          areas, the same as Your price in the meeting). */}
+      <span className="text-sm leading-[1.3] text-muted-foreground tabular-nums" data-testid="option-feet">
+        {feetWords(feetLine, offerFeet(runs, offer))}
       </span>
       {/* 18 px tall, centred on the top border. */}
       {meeting ? (
