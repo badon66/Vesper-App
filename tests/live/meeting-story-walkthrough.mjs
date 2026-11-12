@@ -446,11 +446,12 @@ try {
         flat(await region.getByTestId("price-sub").innerText().catch(() => "")),
       );
       check(
-        "each option shows what it covers in words, and the full wrap's picture is the Main",
-        flat(await region.locator('[data-testid="price-option"][data-option="full"] [data-testid="price-option-coverage"]').innerText()) ===
-          "Front, garage, left side, right side and gable, upper and lower: 226 ft" &&
+        "each option shows only its name, its feet and its price (round 16: no list of areas), and the full wrap's picture is the Main",
+        flat(await region.locator('[data-testid="price-option"][data-option="full"] [data-testid="price-option-feet"]').innerText()) === "226 ft of lights" &&
+          (await region.locator('[data-testid="price-option-coverage"]').count()) === 0 &&
+          !/upper and lower/.test(await region.getByTestId("price-options").innerText()) &&
           (await region.getByTestId("price-mockup").count()) === 1,
-        flat(await region.locator('[data-testid="price-option-coverage"]').first().innerText().catch(() => "")),
+        flat(await region.getByTestId("price-options").innerText().catch(() => "")),
       );
       check(
         "White track: one colour line, in stock",
@@ -460,10 +461,10 @@ try {
       await page.getByTestId("price-breakdown").waitFor({ timeout: 5000 }).catch(() => {});
       const fullBreakdown = flat(await page.getByTestId("price-breakdown").innerText().catch(() => ""));
       check(
-        "the full wrap's breakdown, one tap away: lights at \"$23 a foot\", upper access with an upper gable, and its coverage line",
+        "the full wrap's breakdown, one tap away: lights at \"$23 a foot\", upper access with an upper gable, and its feet line",
         fullBreakdown.includes("226 ft at $23 a foot") &&
           fullBreakdown.includes("Upper roof access") &&
-          flat(await page.getByTestId("price-coverage").innerText().catch(() => "")) === "Front, garage, left side, right side and gable, upper and lower: 226 ft",
+          flat(await page.getByTestId("price-feet").innerText().catch(() => "")) === "226 ft of lights",
         fullBreakdown.slice(0, 200),
       );
       await shot(page, "meeting-price-breakdown");

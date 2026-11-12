@@ -52,6 +52,7 @@ export const LINE_DEFAULTS = {
   choose: "Choose {name}",
   your_choice: "Your choice",
   price_lowest: "Already at our lowest price.",
+  price_feet: "{feet} ft of lights",
   recap: "Your choice: {name}, {total}",
   step_colour_label: "Your colour",
   step_colour_todo: "We confirm it with you from the colour book.",

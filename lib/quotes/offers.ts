@@ -209,6 +209,21 @@ export function offerCoverage(runs: QuoteRun[], offer: Pick<QuoteOffer, "runs">)
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+// The feet an offer lights (round 16, Keenan, 2026-11-11): what each option
+// shows under its name, on Your price and on the link, in place of the
+// areas it covers. The same feet the coverage words counted.
+export function offerFeet(runs: QuoteRun[], offer: Pick<QuoteOffer, "runs">): number {
+  const picked = [...new Set(offer.runs)].filter((p) => p >= 0 && p < runs.length).sort((a, b) => a - b);
+  return totalFeet(selectRuns(runs, picked));
+}
+
+// "165 ft of lights", from the line in Settings; empty with no feet.
+export function feetWords(line: string, feet: number): string {
+  if (!(feet > 0)) return "";
+  const shown = Math.round(feet * 10) / 10;
+  return line.replace(/\{feet\}/g, shown.toLocaleString("en-CA"));
+}
+
 // A new offer's id: short, unique on the quote, never reused.
 export function newOfferId(taken: readonly string[], seed: number = Date.now()): string {
   const used = new Set(taken);

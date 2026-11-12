@@ -1354,3 +1354,9 @@ Tested by what it touches and merged on Keenan's word inside the knocking window
 
 **Full screen.** One way for every house photo: a tap opens it, a tap, swipe down, Escape or the X closes it. Pinch to zoom moved there: the inline picture on Up once there all year no longer zooms, so a tap can open full screen (round 10 had it zoom in place). While it is open the deck hides its dots, Next, the way out and the talking points, and the arrow keys don't turn the page. Hidden by day keeps its slider, so it gets a corner expand button; Your price shows the option's picture first and goes back to it on close.
 
+## 2026-11-11: Round 16, simpler offer cards (Keenan)
+
+Tested by what it touches and merged on Keenan's word inside the knocking window (he overrode it), with no preview.
+
+Each option on Your price now shows three things: its name, its feet on one line under it ("165 ft of lights") and its price. The list of areas it covers ("Front and garage, upper and lower: 165 ft") ran too long and is gone. "Everywhere on Your price" was read to include the breakdown layer's line under "What's in {name}", which now reads the feet too; the breakdown rows themselves are unchanged. Black Friday's struck price and "Already at our lowest price." still show when they apply. The customer's link matches: each option row, the single-option line over the breakdown and the accepted page give the feet in place of the areas. The words are a new deck line, `price_feet` ("{feet} ft of lights"), in Settings with the price page's other lines; it needs no migration, since the link already reads every deck line with the defaults filling any that are missing. The feet are the same feet the old line counted (each run once), shown to one decimal at most. The quote editor's offer cards keep their coverage line: that is Keenan's screen, not the customer's.
+

@@ -85,14 +85,15 @@ const lineShown = async (page, label) =>
 // Round 10: the option's picture (its own mockup, else the Main): "true" when its own.
 const pictureOwn = async (page) => page.getByTestId("option-picture").getAttribute("data-own").catch(() => null);
 const pictureSrc = async (page) => page.getByTestId("option-mockup").getAttribute("src").catch(() => null);
-// The option rows, top to bottom: id, whether selected, the total and the coverage line.
+// The option rows, top to bottom: id, whether selected, the total and the feet line (round 16).
 const optionRows = (page) =>
   page.getByTestId("option-row").evaluateAll((rows) =>
     rows.map((row) => ({
       offer: row.getAttribute("data-offer"),
       selected: row.getAttribute("data-selected") === "true",
       total: (row.querySelector('[data-testid="option-total"]')?.textContent ?? "").replace(/\s+/g, " ").trim(),
-      coverage: (row.querySelector('[data-testid="option-coverage"]')?.textContent ?? "").replace(/\s+/g, " ").trim(),
+      feet: (row.querySelector('[data-testid="option-feet"]')?.textContent ?? "").replace(/\s+/g, " ").trim(),
+      coverageShown: Boolean(row.querySelector('[data-testid="option-coverage"]')),
       tagged: Boolean(row.querySelector('[data-testid="option-meeting-tag"]')),
     })),
   );
@@ -426,13 +427,13 @@ try {
   check("Your options replaces Your lights and Start smaller", flat(await page.locator("#your-options").innerText()) === "Your options" && (await page.getByTestId("start-smaller").count()) === 0 && (await page.getByTestId("quote-runs").count()) === 0 && !/Start smaller|Switch all back on|At least one part stays in/.test(text));
   let rows = await optionRows(page);
   check(
-    "the options as radio rows, biggest first, each with what it covers and its total; the biggest selected",
-    JSON.stringify(rows.map((row) => [row.offer, row.total, row.coverage, row.selected])) ===
+    "the options as radio rows, biggest first, each with its name, its feet and its total (no list of areas, round 16); the biggest selected",
+    JSON.stringify(rows.map((row) => [row.offer, row.total, row.feet, row.selected])) ===
       JSON.stringify([
-        ["full", "$4,959", "Front, garage and left gable, upper and lower: 166 ft", true],
-        ["main", "$2,633", "Front and garage, lower: 92 ft", false],
-        ["front", "$2,500", "Front, lower: 64 ft", false],
-      ]) && rows.every((row) => !row.tagged),
+        ["full", "$4,959", "166 ft of lights", true],
+        ["main", "$2,633", "92 ft of lights", false],
+        ["front", "$2,500", "64 ft of lights", false],
+      ]) && rows.every((row) => !row.tagged && !row.coverageShown) && !/upper and lower|, lower: /.test(text),
     JSON.stringify(rows),
   );
   check(

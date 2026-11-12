@@ -179,7 +179,7 @@ const PAGE_LAYOUT_WORDS: Partial<Record<WordsPageKey, string>> = {
 const BUILT_LAYOUT_WORDS: Record<"cover" | "colour" | "quote", string> = {
   cover: "The wordmark, their address and this line, on navy.",
   colour: "Not a page now: one line on Your price with their colour, in stock or made to order and its timing, then their initials when they say yes.",
-  quote: "Every option with its total and what it covers, the chosen one's mockup big beside them, and the breakdown one tap away.",
+  quote: "Every option with its name, its feet and its total, the chosen one's mockup big beside them, and the breakdown one tap away.",
 };
 
 const layoutWords = (section: Section) => {
