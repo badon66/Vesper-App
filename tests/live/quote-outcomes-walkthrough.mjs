@@ -230,6 +230,7 @@ async function cleanUp() {
   await admin.from("earnings").delete().in("profile_id", ids);
   if (leadIds.length > 0) {
     await admin.from("earnings").delete().in("lead_id", leadIds);
+    await admin.from("lead_site_visits").delete().in("lead_id", leadIds);
     await admin.from("slot_holds").delete().in("lead_id", leadIds);
     await admin.from("meetings").update({ rebooked_as: null }).in("lead_id", leadIds);
     await admin.from("meetings").delete().in("lead_id", leadIds);
@@ -753,6 +754,19 @@ try {
         (await op.getByTestId("outcome-accept").count()) === 0 &&
         (await op.getByTestId("outcome-decline").count()) === 0,
     );
+    // Round 17: the site visit, step 3 of Where you're at on their link.
+    check(
+      "a Site visit row before the install day: no day yet, with Add a day and Done",
+      (await textOf(op.getByTestId("site-visit-state"))) === "No day yet" &&
+        (await textOf(op.getByTestId("outcome-site-visit-day"))) === "Add a day" &&
+        (await textOf(op.getByTestId("outcome-site-visit-done"))) === "Done" &&
+        (await op.evaluate(() => {
+          const visit = document.querySelector('[data-testid="quote-outcome-site-visit"]');
+          const install = document.querySelector('[data-testid="quote-outcome-install-on"]');
+          return Boolean(visit && install && visit.compareDocumentPosition(install) & Node.DOCUMENT_POSITION_FOLLOWING);
+        })),
+      await textOf(op.getByTestId("quote-outcome-site-visit")),
+    );
     check(
       "on a Sold lead the status menu gives way to a pointer to the outcome card",
       (await op.getByTestId("status-from-outcome").count()) === 1 && (await statusMenu(op).count()) === 0,
@@ -811,6 +825,41 @@ try {
     check("no sideways scroll on Pay at 1180 wide", (await sideways(op)) === 0);
     await payCard.screenshot({ path: `${out}/outcome-owner-pay-coming-1180.png` }).catch(() => {});
     check("Keenan's looks wrote nothing", (await testFootprint(leadIds)) === looked);
+  }
+
+  // ---------------------------------------------------------------- the site visit (round 17)
+  // The service role stands in for Keenan's taps on the card (owner only):
+  // a day, then Done. Keenan's session only looks.
+  {
+    const visitDay = addDays(today, 3);
+    const set = await admin.from("lead_site_visits").upsert({ lead_id: soldLead, visit_on: visitDay }, { onConflict: "lead_id" });
+    if (set.error) throw new Error(`site visit: ${set.error.message}`);
+    await op.setViewportSize(IPAD);
+    await open(op, `/app/leads/${soldLead}`);
+    check(
+      "with a day set, the row shows it, with Change and Done",
+      (await textOf(op.getByTestId("site-visit-state"))) === formatDay(visitDay) &&
+        (await textOf(op.getByTestId("outcome-site-visit-day"))) === "Change" &&
+        (await textOf(op.getByTestId("outcome-site-visit-done"))) === "Done",
+      await textOf(op.getByTestId("quote-outcome-site-visit")),
+    );
+    await admin.from("lead_site_visits").update({ done_at: new Date().toISOString() }).eq("lead_id", soldLead);
+    await open(op, `/app/leads/${soldLead}`);
+    check(
+      "marked Done, the row says so with the day it was done, and offers Not done yet in case of a wrong tap",
+      (await textOf(op.getByTestId("site-visit-state"))) === `Done, ${formatDay(today)}` &&
+        (await op.getByTestId("outcome-site-visit-day").count()) === 0 &&
+        (await textOf(op.getByTestId("outcome-site-visit-done"))) === "Not done yet",
+      await textOf(op.getByTestId("quote-outcome-site-visit")),
+    );
+    await op.getByTestId("quote-outcome").screenshot({ path: `${out}/outcome-owner-site-visit-done-1180.png` }).catch(() => {});
+    await open(op, `/app/leads/${declinedLead}`);
+    check("a declined quote's lead has no site visit row", (await op.getByTestId("quote-outcome-site-visit").count()) === 0);
+    const asSetter = createClient(url, anonKey, noSession);
+    const setterIn = await asSetter.auth.signInWithPassword({ email: a.email, password: a.password });
+    const { data: seen, error: seenError } = await asSetter.from("lead_site_visits").select("lead_id").eq("lead_id", soldLead);
+    check("the setter whose lead it is reads no site visit from the table", !setterIn.error && !seenError && (seen ?? []).length === 0, seenError?.message ?? JSON.stringify(seen));
+    await asSetter.auth.signOut({ scope: "local" });
   }
 
   // ---------------------------------------------------------------- Installed

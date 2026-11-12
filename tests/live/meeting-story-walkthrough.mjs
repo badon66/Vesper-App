@@ -516,15 +516,21 @@ try {
 
     if (key === "next_steps") {
       const nextText = flat(await region.innerText());
+      // Round 17: Where you're at, the same four steps and words as their
+      // link; nothing chosen yet, so Choose your option glows.
+      const steps = await region.getByTestId("tracker-step").evaluateAll((els) => els.map((el) => `${el.getAttribute("data-step")}:${el.getAttribute("data-state")}`).join(" "));
       check(
-        "What happens next: a wrap-up with no recap while nothing is chosen, the install day with Pick a day, no payment until it's done, and thanks; no colour book line",
+        "What happens next: a wrap-up with no recap while nothing is chosen, Where you're at in the link's words (Choose your option glowing) with Keenan's line under it, the install day with Pick a day, and thanks; no colour book line",
         (await region.getByTestId("next-steps-recap").count()) === 0 &&
-          (await region.locator('[data-testid="next-step-install"], [data-testid="next-step-pay"]').count()) === 2 &&
-          nextText.includes("No payment until your install is complete.") &&
+          steps === "meeting:done choose:current visit:later install:later" &&
+          [deckLine(settings.deck, "tracker_meeting_label"), deckLine(settings.deck, "tracker_choose_label"), deckLine(settings.deck, "tracker_visit_label"), deckLine(settings.deck, "tracker_install_label")].every((w) => nextText.includes(flat(w))) &&
+          nextText.includes(flat(deckLine(settings.deck, "tracker_pay"))) &&
+          (await region.getByTestId("next-step-install").count()) === 1 &&
+          (await region.getByTestId("next-step-pay").count()) === 0 &&
           (await region.getByTestId("next-steps-thanks").count()) === 1 &&
           !nextText.includes("colour book") &&
           (await region.getByTestId("next-step-pick-day").count()) === 1,
-        nextText.slice(0, 200),
+        `${steps} | ${nextText.slice(0, 200)}`,
       );
       await region.getByTestId("next-step-pick-day").click();
       await page.getByTestId("install-day-picker").waitFor({ timeout: 5000 }).catch(() => {});
@@ -585,11 +591,15 @@ try {
   {
     const region = page.getByRole("region", { name: NEXT, exact: true });
     const recap = flat(await region.getByTestId("next-steps-recap").innerText().catch(() => ""));
+    const chosenSteps = await region.getByTestId("tracker-step").evaluateAll((els) => els.map((el) => `${el.getAttribute("data-step")}:${el.getAttribute("data-state")}`).join(" "));
+    const shortTable = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" }).format(new Date(`${tableDay}T12:00:00Z`));
     check(
-      "What happens next reads the choice back, priced as the price page prices it, with the day picked at the table",
+      "What happens next reads the choice back, priced as the price page prices it, with the day picked at the table; they said yes, so Choose your option is lit and the day shows under Install day",
       recap === fillLine(deckLine(settings.deck, "recap"), { name: "Main floor", total: screen(MAIN) }) &&
-        flat(await region.getByTestId("next-step-day").innerText()) === longDay(tableDay),
-      `${recap} | ${flat(await region.getByTestId("next-step-day").innerText().catch(() => ""))}`,
+        flat(await region.getByTestId("next-step-day").innerText()) === longDay(tableDay) &&
+        chosenSteps === "meeting:done choose:done visit:current install:later" &&
+        (await region.getByTestId("tracker-date").allInnerTexts()).includes(shortTable),
+      `${recap} | ${flat(await region.getByTestId("next-step-day").innerText().catch(() => ""))} | ${chosenSteps}`,
     );
     await shot(page, "meeting-what-happens-next-chosen");
   }
@@ -680,12 +690,25 @@ try {
     await page.waitForTimeout(1000);
     const region = page.getByRole("region", { name: PRICE, exact: true });
     const timing = flat(await region.getByTestId("price-colour").innerText().catch(() => ""));
+    // Round 17: this season first and chosen, included; spring included too;
+    // the rush fee is Keenan's choice, off by default, so none is named (the
+    // quote's old stored fee was never charged at its stock timing).
+    const seasonText = flat(await region.getByTestId("price-timing-season").innerText().catch(() => ""));
+    const springText = flat(await region.getByTestId("price-timing-spring").innerText().catch(() => ""));
+    const seasonFirst = await region.evaluate((el) => {
+      const season = el.querySelector('[data-testid="price-timing-season"]');
+      const spring = el.querySelector('[data-testid="price-timing-spring"]');
+      return Boolean(season && spring && season.compareDocumentPosition(spring) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
     check(
-      `${madeToOrder.name} track: one line on Your price, made to order, with Install in spring (Included, chosen) and Install this season with the quote's rush fee, never tapped here`,
+      `${madeToOrder.name} track: one line on Your price, made to order, with Install this season first and chosen, Included, and Install in spring, Included; no rush fee while Keenan hasn't switched it on; never tapped here`,
       timing.startsWith(fillLine(deckLine(settings.deck, "colour_made"), { colour: madeToOrder.name })) &&
-        (await region.getByTestId("price-timing-spring").getAttribute("aria-pressed")) === "true" &&
-        flat(await region.getByTestId("price-timing-season").innerText().catch(() => "")).includes("$350"),
-      timing,
+        seasonFirst &&
+        (await region.getByTestId("price-timing-season").getAttribute("aria-pressed")) === "true" &&
+        seasonText.includes(deckLine(settings.deck, "colour_season_included")) &&
+        springText.includes(deckLine(settings.deck, "colour_spring_value")) &&
+        !/\$\d|rush/i.test(`${seasonText} ${springText}`),
+      `${timing} | ${seasonText} | ${springText}`,
     );
     await shot(page, `meeting-${slug(PRICE)}-${slug(madeToOrder.name)}-made-to-order`);
     check("looking at the made-to-order colour wrote nothing", (await leadFootprint(leadId)) === looked);
@@ -928,7 +951,7 @@ try {
     await shot(page, `link-${width}-top`);
     await scrollTo(page, "quote-options");
     await shot(page, `link-${width}-options`);
-    await page.locator('[data-testid="option-row"][data-offer="full"]').click();
+    await page.locator('[data-testid="option-row"][data-offer="full"] label').click();
     await page.waitForTimeout(700);
     rows = await rowsAt();
     check(
@@ -937,17 +960,27 @@ try {
     );
     await scrollTo(page, "quote-options");
     await shot(page, `link-${width}-full-wrap-selected`);
-    await scrollTo(page, "whats-in");
+    // Round 17: what's in it, behind See the breakdown on its card.
+    await page.locator('[data-testid="option-row"][data-selected="true"] [data-testid="option-breakdown-toggle"]').click();
+    await page.getByTestId("quote-lines").waitFor({ timeout: 5000 }).catch(() => {});
+    await scrollTo(page, "option-breakdown");
     await shot(page, `link-${width}-whats-in`);
-    await scrollTo(page, "quote-next-steps");
-    const steps = flat(await page.getByTestId("quote-next-steps").innerText());
+    // Round 17: Where you're at near the top, with the day picked at the
+    // table under Install day; the old steps and their pay line are gone.
+    await scrollTo(page, "tracker");
+    await page.locator('[data-testid="tracker-step"][data-step="install"]').click();
+    await page.waitForTimeout(200);
+    const install = flat(await page.getByTestId("tracker-detail").innerText().catch(() => ""));
     check(
-      `${width}: What happens next shows the day picked at the table and no payment until the install`,
-      steps.includes(longDay(tableDay)) && steps.includes("No payment until your install is complete."),
-      steps.slice(0, 200),
+      `${width}: Where you're at shows the day picked at the table under Install day, in Keenan's words, with his line under the steps`,
+      install.includes(longDay(tableDay)) &&
+        install.includes(flat(deckLine(settings.deck, "tracker_install"))) &&
+        flat(await page.getByTestId("tracker-pay").innerText()) === flat(deckLine(settings.deck, "tracker_pay")) &&
+        (await page.getByTestId("quote-next-steps").count()) === 0,
+      install.slice(0, 200),
     );
-    await shot(page, `link-${width}-what-happens-next`);
-    await page.locator('[data-testid="option-row"][data-offer="front"]').click();
+    await shot(page, `link-${width}-where-youre-at`);
+    await page.locator('[data-testid="option-row"][data-offer="front"] label').click();
     await page.waitForTimeout(700);
     await page.getByTestId("bar-book").click();
     const confirm = page.getByTestId("book-confirm");

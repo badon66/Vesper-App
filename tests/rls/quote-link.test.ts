@@ -264,6 +264,8 @@ describe("what a token shows", () => {
         "install_day_deck",
         "lines",
         "next_steps",
+        // Round 17: where they're at (the site visit and Installed).
+        "progress",
         "gallery",
       ].sort(),
     );
@@ -315,7 +317,7 @@ describe("what a token shows", () => {
     const { data } = await anon.rpc("quote_for_customer", { p_token: tokenA });
     const view = data as {
       today: string;
-      christmas: { title: string; text: string } | null;
+      christmas: Record<string, unknown> | null;
       product_points: unknown;
       install_day: { title: string; body: string } | null;
       service_call_fee: number | string | null;
@@ -323,16 +325,35 @@ describe("what a token shows", () => {
     };
     const { data: settings } = await admin
       .from("settings")
-      .select("christmas_banner_on, christmas_banner_title, christmas_banner_text, product_points, service_call_fee")
+      .select(
+        "christmas_banner_on, christmas_banner_title, christmas_banner_text, christmas_book_by_white, christmas_book_by_colour, christmas_season_end, christmas_banner_book_by, christmas_banner_white, christmas_banner_colour, christmas_banner_no_colour, christmas_banner_after, product_points, service_call_fee",
+      )
       .eq("id", 1)
       .single();
     expect(view.today).toBe(calgaryDay(0));
-    // The banner shows from September 1 to November 30 (Calgary), while on.
+    // Round 17: the banner by Keenan's dates, while on and until the season
+    // ends; the old title and words still ride along from September 1 to
+    // November 30 for a page from before the change.
+    const s = settings!;
     const [, month] = calgaryDay(0).split("-").map(Number);
     const inSeason = month >= 9 && month <= 11;
-    expect(view.christmas).toEqual(
-      settings!.christmas_banner_on && inSeason ? { title: settings!.christmas_banner_title, text: settings!.christmas_banner_text } : null,
-    );
+    const dated =
+      s.christmas_banner_on && s.christmas_book_by_white && s.christmas_season_end && calgaryDay(0) <= s.christmas_season_end
+        ? {
+            book_by_white: s.christmas_book_by_white,
+            book_by_colour: s.christmas_book_by_colour ?? s.christmas_book_by_white,
+            season_end: s.christmas_season_end,
+            words: {
+              book_by: s.christmas_banner_book_by,
+              white: s.christmas_banner_white,
+              colour: s.christmas_banner_colour,
+              no_colour: s.christmas_banner_no_colour,
+              after: s.christmas_banner_after,
+            },
+          }
+        : null;
+    const old = s.christmas_banner_on && inSeason ? { title: s.christmas_banner_title, text: s.christmas_banner_text } : null;
+    expect(view.christmas).toEqual(dated || old ? { ...(dated ?? {}), ...(old ?? {}) } : null);
     expect(view.product_points).toEqual(settings!.product_points);
     expect(Number(view.service_call_fee ?? 0)).toBe(Number(settings!.service_call_fee ?? 0));
     expect(Array.isArray(view.gallery)).toBe(true);

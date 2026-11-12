@@ -273,9 +273,17 @@ try {
   // About your track: Hat and J, each with words and a drawing.
   const tracks = await page.getByTestId("about-track-type").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-track")));
   check("About your track names the tracks the options use, with a drawing each", JSON.stringify(tracks) === JSON.stringify(["hat", "j"]) && (await page.locator("[data-track-drawing]").count()) === 2, JSON.stringify(tracks));
-  // The J track line in the breakdown (Full wrap opens first, it has the gable).
-  const lines = await page.getByTestId("quote-lines").innerText();
-  check("the breakdown names the J track area with its price a foot", /Front gable[\s\S]*18 ft of J track at \$30 a foot/.test(lines), lines.replace(/\s+/g, " ").slice(0, 200));
+  // The J track area in the breakdown (Full wrap opens first, it has the
+  // gable). Round 17: behind See the breakdown on its card, one line per
+  // area, named as the editor names it, with its track where it isn't Hat.
+  await page.locator('[data-testid="option-row"][data-selected="true"] [data-testid="option-breakdown-toggle"]').click();
+  await page.getByTestId("quote-lines").waitFor({ timeout: 5000 });
+  const lines = (await page.getByTestId("quote-lines").innerText()).replace(/\s+/g, " ");
+  check(
+    "See the breakdown names the J track area on its own line, with its feet, its track and its price",
+    lines.includes("Front upper gable 18 ft, J track $540") && lines.includes("Front lower 64 ft") && !lines.includes("Track and lights"),
+    lines.slice(0, 200),
+  );
 
   // Documents: the ticked standard one and their own file, each opens and saves.
   const docNames = await page.getByTestId("link-document").allInnerTexts();

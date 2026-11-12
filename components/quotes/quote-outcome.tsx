@@ -313,24 +313,6 @@ export function QuoteOutcome({
                 </dd>
               </>
             ) : null}
-            {state === "accepted" ? (
-              <>
-                <dt className="self-center text-muted-foreground">Install planned</dt>
-                <dd className="flex flex-wrap items-center gap-x-3" data-testid="quote-outcome-install-on">
-                  <span>{installOn ? formatDay(installOn) : "No day yet"}</span>
-                  {sold ? (
-                    <button
-                      type="button"
-                      onClick={() => open("install_on")}
-                      className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      data-testid="outcome-install-on"
-                    >
-                      {installOn ? "Change" : "Add a day"}
-                    </button>
-                  ) : null}
-                </dd>
-              </>
-            ) : null}
             {showsSiteVisit ? (
               <>
                 <dt className="self-center text-muted-foreground">Site visit</dt>
@@ -362,6 +344,24 @@ export function QuoteOutcome({
                       data-testid="outcome-site-visit-done"
                     >
                       {visitDone ? "Not done yet" : "Done"}
+                    </button>
+                  ) : null}
+                </dd>
+              </>
+            ) : null}
+            {state === "accepted" ? (
+              <>
+                <dt className="self-center text-muted-foreground">Install planned</dt>
+                <dd className="flex flex-wrap items-center gap-x-3" data-testid="quote-outcome-install-on">
+                  <span>{installOn ? formatDay(installOn) : "No day yet"}</span>
+                  {sold ? (
+                    <button
+                      type="button"
+                      onClick={() => open("install_on")}
+                      className="inline-flex min-h-11 items-center font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      data-testid="outcome-install-on"
+                    >
+                      {installOn ? "Change" : "Add a day"}
                     </button>
                   ) : null}
                 </dd>
