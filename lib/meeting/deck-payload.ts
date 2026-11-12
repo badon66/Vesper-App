@@ -264,6 +264,8 @@ export function pricingFrom(settings: PricingRow): MeetingPayload["pricing"] {
     blackFriday: blackFridayFrom(settings),
     trackPrices: { double: settings.double_track_per_ft ?? null, j: settings.j_track_per_ft ?? null },
     christmas: christmasFrom(settings),
+    // Read on the server only; a browser has no such variable and reads no.
+    polishReady: Boolean(process.env.ANTHROPIC_API_KEY?.trim()),
   };
 }
 

@@ -442,6 +442,13 @@ export function QuoteScreen({
             <p className={cn(DECK_TYPE.small, "mt-2 text-muted-foreground")} data-testid="price-feet">
               {say(feetWords(lines.price_feet, offerFeet(state.runs, viewing.offer)))}
             </p>
+            {/* Round 17: Keenan's description, here inside the breakdown so
+                Your price itself stays name, feet and price. */}
+            {viewing.offer.description ? (
+              <p className={cn(DECK_TYPE.body, "mt-3 max-w-[760px]")} data-testid="price-description">
+                {say(viewing.offer.description)}
+              </p>
+            ) : null}
             <div className="mt-4 flex min-h-0 max-w-[760px] flex-col">
               <Breakdown totals={viewingTotals} />
               <p className="mt-2 flex items-baseline justify-between gap-4 border-t border-foreground/60 pt-3" data-testid="price-total">

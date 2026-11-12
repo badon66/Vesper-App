@@ -31,6 +31,12 @@ export function isSupabaseSecretKey(raw: string): boolean {
   return value.startsWith(SECRET_KEY_PREFIX) || isLegacyServiceRoleKey(value);
 }
 
+// Round 17 (2026-11-12): the Anthropic key for the offer polish is a
+// secret too (sk-ant-...); it belongs only in ANTHROPIC_API_KEY.
+export function isAnthropicKey(raw: string): boolean {
+  return raw.trim().replace(/^["']+|["']+$/g, "").startsWith("sk-ant-");
+}
+
 // The names of the NEXT_PUBLIC_ variables that hold a Supabase secret key.
 export function publicVariablesHoldingSecrets(env: Record<string, string | undefined>): string[] {
   return Object.entries(env)
@@ -39,7 +45,23 @@ export function publicVariablesHoldingSecrets(env: Record<string, string | undef
     .sort();
 }
 
+// The names of the NEXT_PUBLIC_ variables that hold an Anthropic key.
+export function publicVariablesHoldingAnthropicKeys(env: Record<string, string | undefined>): string[] {
+  return Object.entries(env)
+    .filter(([name, value]) => name.startsWith("NEXT_PUBLIC_") && typeof value === "string" && isAnthropicKey(value))
+    .map(([name]) => name)
+    .sort();
+}
+
 export function assertNoSecretsInPublicEnv(env: Record<string, string | undefined>): void {
+  const anthropic = publicVariablesHoldingAnthropicKeys(env);
+  if (anthropic.length > 0) {
+    throw new Error(
+      `Refusing to build: ${anthropic.join(", ")} ${anthropic.length === 1 ? "holds" : "hold"} an Anthropic API key. ` +
+        "Anything in a NEXT_PUBLIC_ variable is copied into the JavaScript every visitor downloads. " +
+        "Keep the key only in ANTHROPIC_API_KEY. If this value was ever deployed, delete that key in the Anthropic Console and make a new one.",
+    );
+  }
   const names = publicVariablesHoldingSecrets(env);
   if (names.length === 0) return;
   throw new Error(

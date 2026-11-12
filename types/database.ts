@@ -14,6 +14,32 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_polishes: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          id?: never
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: never
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_polishes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agreement_signatures: {
         Row: {
           agreement_text: string
@@ -2598,6 +2624,7 @@ export type Database = {
     }
     Functions: {
       acts_as_owner: { Args: never; Returns: boolean }
+      ai_polish_take: { Args: never; Returns: Json }
       add_time_block: {
         Args: {
           p_ends_at: string

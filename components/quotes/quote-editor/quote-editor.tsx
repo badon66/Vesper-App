@@ -256,6 +256,7 @@ export function QuoteEditor({
                 onShow={(shown) => showOffer(offer.id, shown)}
                 onLead={(lead) => leadOffer(offer.id, lead)}
                 onDelete={() => deleteOffer(offer.id)}
+                polishReady={pricing.polishReady === true}
               />
             ))}
           </div>

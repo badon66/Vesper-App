@@ -125,6 +125,10 @@ export type MeetingPayload = {
     // price shows the book-by date for the lead's track as one quiet line.
     // Left out by an iPad holding a payload from before.
     christmas?: ChristmasSettings | null;
+    // Round 17: whether the AI key is in the server's environment, so the
+    // Polish button on an offer's description can work; greyed out until
+    // then. Only the yes or no ever leaves the server, never the key.
+    polishReady?: boolean;
   };
   draft: {
     quoteId: string;
