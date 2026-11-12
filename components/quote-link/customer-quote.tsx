@@ -112,15 +112,17 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   // Build your own (take 3): on, the areas they ticked, starting from the
   // option they were looking at (whose box count it keeps). The page opens
   // on their own build when that is what they booked.
-  const [building, setBuilding] = useState(() => canBuild && theirs !== null && view.bookedOffer === CUSTOMER_OFFER_ID);
+  const [wantsBuild, setWantsBuild] = useState(() => canBuild && theirs !== null && view.bookedOffer === CUSTOMER_OFFER_ID);
   const [buildRuns, setBuildRuns] = useState<number[]>(() => (theirs ? theirs.runs.filter((at) => buildable.includes(at)) : []));
   const [savedBuild, setSavedBuild] = useState<number[] | null>(() => (theirs ? [...theirs.runs] : null));
   const startFrom: PricedOffer | null = shown.find((priced) => priced.offer.id === chosenId) ?? shown[0] ?? null;
-  const built = building ? customOption(quote, buildRuns, startFrom?.offer.id ?? null) : null;
-  const selected: PricedOffer | null = building
-    ? built
-      ? { offer: built.offer, totals: built.totals, feet: offerFeet(quote.runs, built.offer), everyRun: false }
-      : null
+  const built = wantsBuild && canBuild ? customOption(quote, buildRuns, startFrom?.offer.id ?? null) : null;
+  // Building only while their build has a price. If Keenan has since changed
+  // the quote so none of their areas can be ticked, the page is back on his
+  // option, never on nothing.
+  const building = built !== null;
+  const selected: PricedOffer | null = built
+    ? { offer: built.offer, totals: built.totals, feet: offerFeet(quote.runs, built.offer), everyRun: false }
     : startFrom;
   // See it on your house (round 13): the look on screen, by name, or none
   // (the option's own picture, else the Main). Picking an option, here or
@@ -245,7 +247,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   const textHref = smsWithBody(view.company.phone, `Hi Keenan, a question about the quote for ${view.address}: `);
   const choose = (id: string) => {
     if (sending) return;
-    setBuilding(false);
+    setWantsBuild(false);
     setChosenId(id);
     setLook(null);
   };
@@ -254,7 +256,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
     if (sending || building) return;
     const from = (startFrom?.offer.runs ?? []).filter((at) => buildable.includes(at));
     setBuildRuns(from.length > 0 ? from : buildable);
-    setBuilding(true);
+    setWantsBuild(true);
     setLook(null);
   };
 
@@ -646,12 +648,12 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
         {agreed ? (
           <section aria-labelledby="whats-in" className="mt-12 px-5">
             <h2 id="whats-in" className="text-xl font-bold text-pretty" data-testid="whats-in">
-              {fillLine(words.whats_in, { name: agreed.name })}
+              {fillLine(words.whats_in, { name: isCustomerOffer(agreed.offer) ? customerChoiceInSentence(agreed.name) : agreed.name })}
             </h2>
             <OptionPicture
               pictures={view.pictures}
               offerId={agreed.offer.id}
-              name={agreed.name}
+              name={customerChoice(agreed.name)}
               caption={leavesRunsOut(quote.runs.length, agreed.offer.runs) ? words.link_mockup_caption : null}
             />
             <p className="mt-4 text-sm text-pretty text-muted-foreground tabular-nums" data-testid="whats-in-feet">
@@ -673,7 +675,7 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
           <AgreementSection
             agreement={view.agreement}
             words={words}
-            optionLabel={customerChoice(agreed.name)}
+            optionLabel={isCustomerOffer(agreed.offer) ? customerChoiceInSentence(agreed.name) : agreed.name}
             optionTotal={agreed.total}
             copyHref={`/q/${token}/agreement`}
             disabled={false}

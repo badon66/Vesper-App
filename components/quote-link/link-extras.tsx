@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPoi
 import { cleanFeet, runTrack, screenTotal, TRACK_NAMES, type QuoteRun, type QuoteTotals, type TrackType } from "@/lib/pricing";
 import { fillLine } from "@/lib/deck";
 import { type LinkAgreement, type LinkDocument, type LinkWords, runName } from "@/lib/quote-link/view";
-import { calgaryDateOf, formatLongDay } from "@/lib/time";
+import { calgaryDateOf, formatFullDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 // The customer's quote link, take 3 (Keenan, 2026-11-11): Build your own,
@@ -267,6 +267,18 @@ function SignaturePad({ disabled, onChange }: { disabled: boolean; onChange: (pn
 
   useEffect(() => {
     setup();
+    // Turning the phone changes the box's width: start it clean at the new
+    // size, so the line always lands under the finger. (A height-only
+    // change, like the address bar sliding away, leaves it alone.)
+    let width = canvas.current?.getBoundingClientRect().width ?? 0;
+    const onResize = () => {
+      const next = canvas.current?.getBoundingClientRect().width ?? 0;
+      if (Math.abs(next - width) < 1) return;
+      width = next;
+      setup();
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, [setup]);
 
   const point = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -368,7 +380,7 @@ export function AgreementSection({
         <div className="mt-3 rounded-md border px-4 py-3" role="status" data-testid="agreement-signed">
           <p className="flex items-start gap-2 font-semibold text-pretty">
             <Check aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
-            {fillLine(words.link_agreement_done, { name: signed.signerName, date: formatLongDay(calgaryDateOf(signed.signedAt)) })}
+            {fillLine(words.link_agreement_done, { name: signed.signerName, date: formatFullDate(calgaryDateOf(signed.signedAt)) })}
           </p>
           {signed.preview ? (
             <p className="mt-1 text-sm text-muted-foreground">Preview: nothing was signed or saved.</p>

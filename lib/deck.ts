@@ -267,12 +267,13 @@ export const DECK_LINE_DEFAULTS = {
   link_something_else: "Want something different? Call or text Keenan.",
   link_colour_done: "{colour}, confirmed with your initials at the meeting.",
   // Quote link take 3 (2026-11-11): About your track, Build your own,
-  // Documents and the agreement. The three track lines are first drafts for
-  // Keenan to rewrite in Settings.
+  // Documents and the agreement. The three track lines say only what Keenan
+  // told us (Hat track is the standard; the others go where it doesn't
+  // suit, upper gables most often); he rewrites them in Settings.
   link_track_title: "About your track",
-  link_track_hat: "Hat track is our standard. It fits under the edge of your roof with the lights inside, so it is hard to see by day.",
-  link_track_double: "Double track is for spots where a single track won't sit flat. It holds the same lights.",
-  link_track_j: "J track mounts on the face of the trim where there is nothing to fit under, like some gables. It holds the same lights.",
+  link_track_hat: "Hat track is our standard track. It sits under the edge of your roof with the lights built in.",
+  link_track_double: "Double track is for parts of a roofline where our standard track is not the right fit.",
+  link_track_j: "J track is for parts of a roofline where our standard track is not the right fit, most often upper gables.",
   link_build_title: "Build your own",
   link_build_note: "Start from the option on screen and tick the parts you want. The price updates as you go.",
   link_docs_title: "Documents",

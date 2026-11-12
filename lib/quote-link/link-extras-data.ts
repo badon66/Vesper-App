@@ -1,7 +1,7 @@
 import "server-only";
 import { LINK_DOCUMENTS_BUCKET, documentFacts } from "@/lib/quote-link/documents";
 import type { createClient } from "@/lib/supabase/server";
-import { calgaryDateOf, formatLongDay, formatTime } from "@/lib/time";
+import { calgaryDateOf, formatFullDate, formatTime } from "@/lib/time";
 
 // What the lead page's "On their link" card shows (quote link take 3,
 // Keenan, 2026-11-11): Keenan's standard documents with this lead's ticks,
@@ -65,7 +65,7 @@ export async function loadLinkExtras(supabase: Awaited<ReturnType<typeof createC
     signed: (signatures ?? []).map((sig) => ({
       id: sig.id,
       signerName: sig.signer_name,
-      when: `${formatLongDay(calgaryDateOf(sig.signed_at))}, ${formatTime(sig.signed_at)}`,
+      when: `${formatFullDate(calgaryDateOf(sig.signed_at))}, ${formatTime(sig.signed_at)}`,
       option: sig.offer_name,
       href: `/app/leads/${leadId}/agreements/${sig.id}`,
     })),

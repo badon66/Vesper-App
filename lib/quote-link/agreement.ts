@@ -11,7 +11,7 @@ import { z } from "zod";
 import { formatMoney, type QuoteLine } from "@/lib/pricing";
 import { offerChoice, quoteFromRow, type Company, FALLBACK_COMPANY } from "@/lib/quote-link/view";
 import { customerChoice } from "@/lib/quote-link/view";
-import { calgaryDateOf, formatLongDay, formatTime } from "@/lib/time";
+import { calgaryDateOf, formatFullDate, formatTime } from "@/lib/time";
 
 const recordSchema = z.object({
   signer_name: z.string(),
@@ -37,7 +37,8 @@ export type SignedRecordInput = z.input<typeof recordSchema>;
 
 export type SignedAgreement = {
   signerName: string;
-  // "November 11, 2026" and "9:41 p.m.", in Calgary time.
+  // "November 11, 2026" (always with the year: it is a signed document) and
+  // "9:41 p.m.", in Calgary time.
   signedDay: string;
   signedTime: string;
   customerName: string;
@@ -89,7 +90,7 @@ export function signedAgreement(input: unknown): SignedAgreement | null {
   const address = [r.lead.address, r.lead.city].map((part) => (part ?? "").trim()).filter(Boolean).join(", ");
   return {
     signerName: r.signer_name.trim(),
-    signedDay: formatLongDay(calgaryDateOf(r.signed_at)),
+    signedDay: formatFullDate(calgaryDateOf(r.signed_at)),
     signedTime: formatTime(r.signed_at),
     customerName: name,
     address,
@@ -100,7 +101,7 @@ export function signedAgreement(input: unknown): SignedAgreement | null {
     total: formatMoney(gstOn ? totals.total : totals.subtotal),
     gstNumber: gstOn ? gstNumber : null,
     trackColour: quote.trackColourName,
-    priceHeldUntil: validUntil && /^\d{4}-\d{2}-\d{2}$/.test(validUntil) ? formatLongDay(validUntil) : null,
+    priceHeldUntil: validUntil && /^\d{4}-\d{2}-\d{2}$/.test(validUntil) ? formatFullDate(validUntil) : null,
     agreementText: r.agreement_text.trim(),
     signaturePng: r.signature_png.startsWith("data:image/png;base64,") ? r.signature_png : null,
     company: {

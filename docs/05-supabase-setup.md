@@ -67,6 +67,8 @@ The quote link and push variables (`QUOTE_BASE_URL`, `VAPID_PUBLIC_KEY`, `VAPID_
 
 Nothing in the dashboard changed in rounds 3 to 11 (2026-11-03 to 2026-11-11). Everything those rounds added lives in migrations: the mockups per house (`lead_mockups`, in the same `lead-photos` bucket under the owner's folder, with the storage rule that keeps a setter from reading a mockup file), the Black Friday columns on `settings`, the quoting-by-area shapes in `quotes.runs` and `quotes.offers`, and the commission functions. One more variable exists since 2026-11-11, `NEXT_PUBLIC_APP_BUILD`: it is not set by hand anywhere. `next.config.ts` sets it at build time from Vercel's `VERCEL_GIT_COMMIT_SHA` (a system variable Vercel exposes to builds by default), else from a build stamp, and the update notice compares it with what `/api/version` answers. A second Vercel project needs nothing for it.
 
+Quote link take 3 (2026-11-11) changed nothing in the dashboard either. Its storage bucket, `link-documents` (private; PDFs and photos up to 25 MB; Keenan reads and adds, and a live quote link's token signs only the files that link shows), is created by its migration together with its rules, like the other buckets, and so are its tables, its token functions and the two track prices on `settings`. One new package, `@react-pdf/renderer`, makes the signed agreement's PDF on the server; it needs no key and no setting.
+
 ## Setting up a second project
 
 1. **Create the project.** In the same Supabase organization, region us-west-2 (Oregon), with a name like `vesper-app-test`. Keep the database password in a password manager; the app never uses it. The WorkBase organization is on the Pro plan, so there is no cap on projects; a second project adds roughly $10 USD a month.

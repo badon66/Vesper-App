@@ -30,6 +30,7 @@ import { fillLine, NO_PAYMENT_LINE, parseDeckLines, type DeckLines } from "@/lib
 import {
   CUSTOMER_OFFER_ID,
   CUSTOMER_OFFER_NAME,
+  OWN_OPTION,
   isCustomerOffer,
   parseOffers,
   priceOffer,
@@ -684,9 +685,8 @@ export function choiceInSentence(option: string): string {
 // they were quoted "the full quote"; "Recommended package" stays the name
 // the database and Keenan's card use.
 // The customer's own build (take 3) is saved under Keenan's name for it,
-// "Custom quote (from the customer)"; to the customer it is their own option.
-export const OWN_OPTION = "Your own option";
-
+// "Custom quote (from the customer)"; to the customer it is their own option
+// (OWN_OPTION, lib/quotes/offers.ts).
 export function customerChoice(option: string): string {
   if (option === CUSTOMER_OFFER_NAME) return OWN_OPTION;
   return option === "Recommended package" ? "The full quote" : choiceLabel(option);

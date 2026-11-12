@@ -1,4 +1,6 @@
 import "server-only";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { Document, Image, Page, renderToBuffer, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { SignedAgreement } from "@/lib/quote-link/agreement";
 
@@ -13,12 +15,29 @@ const GOLD = "#B99257";
 const GREY = "#5B6670";
 const RULE = "#D9DEE2";
 
+// The real logo (the navy one, for white paper), read once from public/brand.
+// next.config.ts sends the file along with the two routes that make this
+// PDF; if it ever can't be read, the name is set in type instead, so a
+// signed copy is never held up by a picture.
+let logo: Promise<string | null> | null = null;
+function logoData(): Promise<string | null> {
+  logo ??= readFile(path.join(process.cwd(), "public", "brand", "vesper-logo-navy.png")).then(
+    (bytes) => `data:image/png;base64,${bytes.toString("base64")}`,
+    () => null,
+  );
+  return logo;
+}
+
 const styles = StyleSheet.create({
   page: { paddingTop: 48, paddingBottom: 56, paddingHorizontal: 54, fontSize: 10.5, color: NAVY, fontFamily: "Helvetica", lineHeight: 1.4 },
-  brand: { fontSize: 16, fontFamily: "Helvetica-Bold", letterSpacing: 2 },
+  // 1200 x 409 artwork.
+  logo: { width: 132, height: 45 },
+  // Bigger type sets its own line height: the page's is worked out from the
+  // body size, which is too short for it.
+  brand: { fontSize: 16, fontFamily: "Helvetica-Bold", letterSpacing: 2, lineHeight: 1.2 },
   brandSub: { fontSize: 8, letterSpacing: 3, color: GOLD, marginTop: 2 },
   rule: { height: 1, backgroundColor: GOLD, marginTop: 14, marginBottom: 18, width: 64 },
-  title: { fontSize: 20, fontFamily: "Helvetica-Bold" },
+  title: { fontSize: 20, fontFamily: "Helvetica-Bold", lineHeight: 1.3 },
   muted: { color: GREY },
   section: { marginTop: 18 },
   heading: { fontSize: 11, fontFamily: "Helvetica-Bold", marginBottom: 6 },
@@ -26,21 +45,28 @@ const styles = StyleSheet.create({
   rowLabel: { flexGrow: 1, flexShrink: 1, paddingRight: 12 },
   rowAmount: { fontFamily: "Helvetica-Bold" },
   totalRow: { flexDirection: "row", justifyContent: "space-between", paddingTop: 6 },
-  totalLabel: { fontFamily: "Helvetica-Bold", fontSize: 12 },
-  totalAmount: { fontFamily: "Helvetica-Bold", fontSize: 12 },
+  totalLabel: { fontFamily: "Helvetica-Bold", fontSize: 12, lineHeight: 1.3 },
+  totalAmount: { fontFamily: "Helvetica-Bold", fontSize: 12, lineHeight: 1.3 },
   paragraph: { marginBottom: 6 },
   signatureBox: { marginTop: 8, borderWidth: 0.75, borderColor: RULE, borderRadius: 4, padding: 8, height: 110, justifyContent: "center", alignItems: "flex-start" },
   signature: { height: 90, objectFit: "contain" },
   footer: { position: "absolute", bottom: 28, left: 54, right: 54, fontSize: 8, color: GREY, textAlign: "center" },
 });
 
-function AgreementDocument({ agreement }: { agreement: SignedAgreement }) {
+function AgreementDocument({ agreement, logoSrc }: { agreement: SignedAgreement; logoSrc: string | null }) {
   const paragraphs = agreement.agreementText.split(/\n{2,}|\r\n\r\n/).map((part) => part.trim()).filter(Boolean);
   return (
     <Document title={`Vesper agreement, ${agreement.customerName || "customer"}`} author={agreement.company.name} creator={agreement.company.name}>
       <Page size="LETTER" style={styles.page}>
-        <Text style={styles.brand}>VESPER</Text>
-        <Text style={styles.brandSub}>LIGHTING</Text>
+        {logoSrc ? (
+          // eslint-disable-next-line jsx-a11y/alt-text -- a PDF image, not an HTML one
+          <Image src={logoSrc} style={styles.logo} />
+        ) : (
+          <>
+            <Text style={styles.brand}>VESPER</Text>
+            <Text style={styles.brandSub}>LIGHTING</Text>
+          </>
+        )}
         <View style={styles.rule} />
         <Text style={styles.title}>Your agreement</Text>
         <Text style={[styles.muted, { marginTop: 4 }]}>
@@ -116,5 +142,5 @@ function AgreementDocument({ agreement }: { agreement: SignedAgreement }) {
 }
 
 export async function agreementPdf(agreement: SignedAgreement): Promise<Buffer> {
-  return renderToBuffer(<AgreementDocument agreement={agreement} />);
+  return renderToBuffer(<AgreementDocument agreement={agreement} logoSrc={await logoData()} />);
 }

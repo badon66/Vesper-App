@@ -12,7 +12,6 @@ import { hasMeasuredRun, QuoteEditor } from "@/components/quotes/quote-editor/qu
 import { useQuoteSave } from "@/components/quotes/quote-editor/use-quote-save";
 import { DEFAULT_LINES, deckLine, priceSubLine, type DeckLines } from "@/lib/deck";
 import { breakdownRows, minimumSentence, NO_PAYMENT, screenOptions, type BreakdownRow } from "@/lib/meeting/price-screen";
-import { feetWords, offerFeet } from "@/lib/quotes/offers";
 import { blackFridayOn, chooseWithBlackFriday, offerPrice, withBlackFriday } from "@/lib/meeting/black-friday-state";
 import { colourTimingView, mockupJobs, offerMockup } from "@/lib/meeting/deck-pages";
 import { quoteInputs, quoteOffers, quoteRushFee, type MeetingMockup, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
@@ -21,7 +20,7 @@ import { formatMoney, type QuoteTotals } from "@/lib/pricing";
 import { QUOTE_LOCKED_MEETING, savedLine } from "@/lib/quotes/draft";
 import { offersBlock } from "@/lib/quotes/editor";
 import { BLACK_FRIDAY_LABEL, blackFridayWords } from "@/lib/quotes/black-friday";
-import { cleanOfferName, type PricedOffer } from "@/lib/quotes/offers";
+import { cleanOfferName, customerOfferName, feetWords, offerFeet, type PricedOffer } from "@/lib/quotes/offers";
 import { formatFullDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -140,7 +139,17 @@ export function QuoteScreen({
   initialsLayer,
 }: QuoteScreenProps) {
   const inputs = useMemo(() => quoteInputs(state, pricing), [state, pricing]);
-  const options = useMemo(() => screenOptions(inputs, quoteOffers(state)), [inputs, state]);
+  // The customer's own build from their link (take 3) reads "Your own
+  // option" at the table, as it does on their link; only the name shown
+  // changes here, never what is saved.
+  const options = useMemo(
+    () =>
+      screenOptions(inputs, quoteOffers(state)).map((priced) => {
+        const name = customerOfferName(priced.offer.name);
+        return name === priced.offer.name ? priced : { ...priced, offer: { ...priced.offer, name } };
+      }),
+    [inputs, state],
+  );
   // Black Friday (Keenan, 2026-11-10): the button shows only once the deal
   // is set in Settings. On, every option shows its regular total struck
   // through beside the Black Friday total. An accepted quote shows as it

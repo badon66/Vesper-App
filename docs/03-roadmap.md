@@ -253,9 +253,17 @@ Rules:
 - [ ] Keenan opens the preview and says "push the changes"
 
 ### Take 2 (after the first links go out, with M5 take 2)
-- [ ] Your documents: Quote, Warranty, What you get, FAQ, Install day and Agreement preview, each a phone page with Download PDF, built once together with M5 take 2's leave-behind folder
+- [ ] Your documents: Quote, Warranty, What you get, FAQ, Install day and Agreement preview, each a phone page with Download PDF, built once together with M5 take 2's leave-behind folder (take 3 put Keenan's own uploaded documents and the signed agreement on the link; pages the app writes itself are still to come)
 - [ ] Which documents were opened
 - [ ] Quote version history
+
+### Take 3 (Keenan, 2026-11-11; merged outside the knocking window, no preview)
+- [x] Track types: Hat (the quote's price a foot), Double and J track with their own price a foot in Settings, Pricing; any measured area can be set to one in the quote editor; Keenan's own rate or a flat price on the area still wins; the breakdown names the track where it isn't Hat track; the commission counts it as lights
+- [x] About your track on the link: each track type the options use, in Keenan's words from Settings, with a simple drawing
+- [x] Build your own on the link, after Keenan's offers: starts from the offer on screen, ticks the measured areas of the offers he shows, the price updating with the minimum, Black Friday and GST as everywhere else; Book my install saves it as "Custom quote (from the customer)", the newest replacing their last, never Keenan's; he accepts it like any other
+- [x] Documents: Settings, Documents holds the standard set, each with a name; on the lead Keenan ticks which ones the link shows and uploads files for that customer only; the link shows a Documents section only when there is something to show, each opening on the phone and saving
+- [x] The agreement to sign: only when ticked on the lead and written in Settings (greyed with "Add the agreement text in Settings first." until then); they read it, type their name, sign with a finger and tap Sign; the signed copy is a PDF with the date, time, the quote and the option, on the lead and on their link; Keenan gets the alert
+- [x] Pricing unit tests, database tests for the new tables, the token functions and the commission, and the quote-link, quote-link-extras, meeting and quote-outcomes walk-throughs, one after another
 
 ## M4: Pipeline board and lead detail (iPad and desktop)
 **Parked (Keenan, 2026-11-02).** Not started or planned until Keenan says otherwise.

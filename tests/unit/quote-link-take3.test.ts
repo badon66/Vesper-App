@@ -17,7 +17,10 @@ import {
   tracksUsed,
   type CustomerQuote,
 } from "@/lib/quote-link/view";
-import { CUSTOMER_OFFER_ID, CUSTOMER_OFFER_NAME, offersForSave, parseOffers } from "@/lib/quotes/offers";
+import { describeEvent, isCustomerEvent } from "@/lib/leads/timeline";
+import { quoteStateFromDraft, type QuoteContext, type QuoteDraft } from "@/lib/meeting/state";
+import { quoteSaveInput } from "@/lib/quotes/draft";
+import { CUSTOMER_OFFER_ID, CUSTOMER_OFFER_NAME, customerOfferName, offersForSave, OWN_OPTION, parseOffers } from "@/lib/quotes/offers";
 
 vi.mock("server-only", () => ({}));
 
@@ -260,5 +263,74 @@ describe("the agreement", () => {
     const pdf = await agreementPdf(signedAgreement(record)!);
     expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
     expect(pdf.length).toBeGreaterThan(1000);
+  });
+});
+
+describe("Keenan's side of the customer's build", () => {
+  const context: QuoteContext = {
+    pricing: {
+      pricePerFt: 23,
+      boxPrice: 500,
+      neighbourDiscount: 150,
+      gstEnabled: false,
+      gstRate: 0.05,
+      gstNumber: null,
+      rushFee: 350,
+      upperAccessFee: 200,
+      upperGableAccessFee: 400,
+      priceHoldDays: 120,
+      minJobTotal: null,
+      blackFriday: null,
+      trackPrices: { double: 28, j: 30 },
+    },
+    today: "2026-11-11",
+    lead: { colourKind: "list", colourText: "White" },
+  };
+  const draft: QuoteDraft = {
+    quoteId: "quote-1",
+    runs,
+    boxCount: 1,
+    pricePerFt: 23,
+    boxPrice: 500,
+    adders: [],
+    discounts: [],
+    colourTiming: "stock",
+    rushFee: null,
+    upperAccessFee: 200,
+    upperGableAccessFee: 400,
+    financingOffered: false,
+    validUntil: "2026-12-01",
+    offers: [...keenans, { id: "customer", name: CUSTOMER_OFFER_NAME, runs: [0, 2], boxes: null, upper_access: null, from_customer: true }],
+    meetingOffer: null,
+    meetingInstallOn: null,
+    updatedAt: "2026-11-12T04:00:00+00:00",
+  };
+
+  it("opens their build in the editor with his offers, and saving keeps it and each area's track", () => {
+    const state = quoteStateFromDraft(draft, context);
+    expect(state.offers.map((offer) => offer.id)).toEqual(["full", "lower", "back", "customer"]);
+    expect(state.offers.at(-1)).toMatchObject({ name: CUSTOMER_OFFER_NAME, runs: [0, 2], fromCustomer: true });
+    expect(state.runs[2]).toMatchObject({ track: "j", trackRate: 30 });
+
+    const save = quoteSaveInput(state, context.pricing, "lead-1", "lead");
+    expect(save.offers.map((offer) => offer.id)).toEqual(["full", "lower", "back", "customer"]);
+    expect(save.offers.at(-1)).toMatchObject({ id: "customer", fromCustomer: true, runs: [0, 2] });
+    expect(save.offers.find((offer) => offer.id === "back")?.hidden).toBe(true);
+    expect(save.runs[2]).toMatchObject({ name: "Upper gables", track: "j", trackRate: 30 });
+    expect(save.runs[0].track ?? null).toBeNull();
+  });
+
+  it("reads as the customer's own option to them, and as his name once he renames it", () => {
+    expect(customerOfferName(CUSTOMER_OFFER_NAME)).toBe(OWN_OPTION);
+    expect(customerOfferName("Front and gables")).toBe("Front and gables");
+    expect(customerOfferName("Full wrap")).toBe("Full wrap");
+  });
+
+  it("puts the signing on the timeline as the customer's doing, with no price", () => {
+    const event = { from_status: null, to_status: null, type: "agreement_signed" as const, payload: { option: "Full front", signer: "Jane Smith" } };
+    expect(describeEvent(event)).toBe("Signed the agreement for Full front, as Jane Smith.");
+    expect(describeEvent({ ...event, payload: {} })).toBe("Signed the agreement.");
+    expect(isCustomerEvent("agreement_signed")).toBe(true);
+    expect(describeEvent(event)).not.toMatch(/\$/);
   });
 });

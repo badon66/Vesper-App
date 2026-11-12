@@ -7,7 +7,7 @@ import { HouseView } from "@/components/quotes/quote-editor/house-views";
 import { MoneyBox, Segmented, useTyping } from "@/components/quotes/quote-editor/parts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cleanFeet, formatMoney, runTrack, TRACK_NAMES, type QuoteRun, type TrackType } from "@/lib/pricing";
+import { cleanFeet, formatMoney, runRateOf, runTrack, TRACK_NAMES, type QuoteRun, type TrackType } from "@/lib/pricing";
 import { AREA_LABELS, AREA_VIEWS, areaDisplayName, otherRuns, type AreaKey } from "@/lib/quotes/areas";
 import {
   addOtherRun,
@@ -391,6 +391,11 @@ function PriceControl({
   const typing = useTyping(shown);
   const feet = cleanFeet(run.feet);
   const worth = runByTheFoot(run, pricePerFt);
+  // On Double or J track the first choice is that track's price, and the
+  // $ a foot box starts from it.
+  const onTrack = runTrack(run) !== "hat";
+  const modes = onTrack ? MODES.map((item) => (item.value === "quote" ? { ...item, label: "Track price" } : item)) : MODES;
+  const startRate = runRateOf({ ...run, rate: null }, pricePerFt);
 
   const choose = (next: PricingMode) => {
     setChosen(next === "quote" ? null : next);
@@ -401,14 +406,14 @@ function PriceControl({
   return (
     <div className="flex flex-wrap items-center gap-2 pt-1 pb-1">
       <TrackControl run={run} area={area} disabled={disabled} onRun={onRun} />
-      <Segmented value={mode} options={MODES} label={`${areaDisplayName(run)} price`} disabled={disabled} onChange={choose} size="small" testId="area-price-mode" />
+      <Segmented value={mode} options={modes} label={`${areaDisplayName(run)} price`} disabled={disabled} onChange={choose} size="small" testId="area-price-mode" />
       {mode !== "quote" ? (
         <>
           <MoneyBox
             key={mode}
             label={mode === "rate" ? `${areaDisplayName(run)} price a foot` : `${areaDisplayName(run)} flat price`}
             value={typing.value}
-            placeholder={mode === "rate" ? moneyText(pricePerFt) : moneyText(worth)}
+            placeholder={mode === "rate" ? moneyText(startRate) : moneyText(worth)}
             disabled={disabled}
             autoFocus={focusBox}
             onFocus={() => {

@@ -38,6 +38,10 @@ export type QuoteOffer = {
 
 export const CUSTOMER_OFFER_ID = "customer";
 export const CUSTOMER_OFFER_NAME = "Custom quote (from the customer)";
+// What the customer reads for it, on their link and at the table. Keenan's
+// side keeps his name for it; if he renames the offer, his name shows.
+export const OWN_OPTION = "Your own option";
+export const customerOfferName = (name: string): string => (name === CUSTOMER_OFFER_NAME ? OWN_OPTION : name);
 export const isCustomerOffer = (offer: Pick<QuoteOffer, "id" | "fromCustomer">): boolean =>
   offer.fromCustomer === true || offer.id === CUSTOMER_OFFER_ID;
 
