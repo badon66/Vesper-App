@@ -407,7 +407,9 @@ export function colourTimingView({
 }): ColourTimingView {
   if (kind === "none") return { kind: "none" };
   if (colourIsStock(kind, text)) return { kind: "stock", line: deckLine(lines, "colour_stock") };
-  const fee = timing === "rush" && rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
+  // rushFee: what This season charges, whichever timing is picked now (the
+  // caller passes none for a quote that isn't charging one).
+  const fee = rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
   return {
     kind: "made",
     line: deckLine(lines, "colour_made", { colour: text.trim() }),

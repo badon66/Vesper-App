@@ -13,6 +13,7 @@ import {
   quoteInputs,
   quoteRushFee,
   quoteStateFromDraft,
+  rushFeeInHand,
   rushFeeOn,
   withColourTiming,
   withColourRule,
@@ -402,9 +403,14 @@ describe("the rush fee is Keenan's choice, off by default", () => {
     const spring = { ...on, ...withColourTiming("factory_order") };
     expect([spring.colourTiming, quoteRushFee(spring), rushFeeOn(spring)]).toEqual(["factory_order", null, false]);
     expect(priceQuote(quoteInputs(spring, brown().pricing)).lines.map((line) => line.label)).not.toContain(RUSH_LINE);
+    // Spring's button says Included; This season's still names his amount.
+    expect(rushFeeInHand(spring)).toBe(275);
     // A customer who looks at Spring and comes back sees his price again.
     const back = { ...spring, ...withColourTiming("rush") };
     expect([back.colourTiming, quoteRushFee(back), rushFeeOn(back)]).toEqual(["rush", 275, true]);
+    // A spring quote as saved opens with no fee in hand.
+    const savedSpring = quoteStateFromDraft({ ...serverDraft("2026-11-10T00:00:00Z"), colourTiming: "factory_order", rushFee: 350 }, brown());
+    expect(rushFeeInHand(savedSpring)).toBeNull();
   });
 
   it("applies the one colour rule as a quote opens: a White track never keeps a rush fee", () => {

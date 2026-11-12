@@ -288,6 +288,15 @@ export function quoteRushFee(state: QuoteUIState): number | null {
   return state.colourTiming === THIS_SEASON ? moneyOrNone(state.rushFee) : null;
 }
 
+// The amount Keenan has switched on, whichever timing is picked now: what
+// This season charges (Your price's This season button names it even while
+// Spring is picked, so tapping it never adds a fee the button didn't show).
+// A saved spring quote opens with none in hand. Null: none.
+export function rushFeeInHand(state: QuoteUIState): number | null {
+  const fee = moneyOrNone(state.rushFee);
+  return fee !== null && fee > 0 ? fee : null;
+}
+
 // Whether this quote charges the rush fee: this season, with an amount.
 export function rushFeeOn(state: QuoteUIState): boolean {
   const fee = quoteRushFee(state);

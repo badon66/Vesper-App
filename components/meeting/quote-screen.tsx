@@ -14,7 +14,7 @@ import { DEFAULT_LINES, deckLine, priceSubLine, type DeckLines } from "@/lib/dec
 import { breakdownRows, minimumSentence, NO_PAYMENT, screenOptions, type BreakdownRow } from "@/lib/meeting/price-screen";
 import { blackFridayOn, chooseWithBlackFriday, offerPrice, withBlackFriday } from "@/lib/meeting/black-friday-state";
 import { colourTimingView, mockupJobs, offerMockup } from "@/lib/meeting/deck-pages";
-import { quoteInputs, quoteOffers, quoteRushFee, withColourTiming, type MeetingMockup, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
+import { quoteInputs, quoteOffers, rushFeeInHand, withColourTiming, type MeetingMockup, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
 import { MOTION, transition } from "@/lib/motion";
 import { formatMoney, type QuoteTotals } from "@/lib/pricing";
 import { QUOTE_LOCKED_MEETING, savedLine } from "@/lib/quotes/draft";
@@ -206,7 +206,7 @@ export function QuoteScreen({
     [picture, viewing, mockups],
   );
   // The one colour line: stock, or made to order with spring or this season.
-  const timing = colourTimingView({ lines, kind: colourKind, text: colourText, timing: state.colourTiming, rushFee: quoteRushFee(state) });
+  const timing = colourTimingView({ lines, kind: colourKind, text: colourText, timing: state.colourTiming, rushFee: rushFeeInHand(state) });
 
   // The pick, the install day and the colour's timing save with the quote,
   // quietly, when there's signal: a moment after they change, and again when the signal comes
