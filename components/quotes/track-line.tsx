@@ -37,7 +37,7 @@ export function TrackLine({
   const [open, setOpen] = useState(false);
   const listId = useId();
   return (
-    <div className={cn("flex flex-col", rowClassName)} data-testid={testId} data-line={label} data-open={open ? "true" : "false"}>
+    <div className={cn("flex flex-col", rowClassName)} data-testid={testId} data-track={label} data-open={open ? "true" : "false"}>
       <div className="flex items-baseline justify-between gap-4">
         <dt className="min-w-0">
           <button

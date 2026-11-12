@@ -751,10 +751,30 @@ try {
     flat(await priceScreen.getByTestId("price-sub").innerText().catch(() => "")),
   );
   check(
-    "the breakdown, line by line: the lights at \"$X a foot\", the control box always included",
-    (await breakdown()).includes(`Track and lights ${money(120 * ppf)} 120 ft at ${money(ppf)} a foot`) && (await breakdown()).includes(`Control box ${money(Number(settings.box_price))} Always included`),
-    (await breakdown()).slice(0, 200),
+    "the breakdown, line by line (round 18): Standard track at \"$X a foot\", then the smart controller and power supply in Keenan's words",
+    (await breakdown()).includes(`Standard track ${money(120 * ppf)} 120 ft at ${money(ppf)} a foot`) &&
+      (await breakdown()).includes(
+        `${deckLine(settings.deck, "controller_label")} ${money(Number(settings.box_price))} ${deckLine(settings.deck, "controller_detail")}`,
+      ),
+    (await breakdown()).slice(0, 300),
   );
+  {
+    // Round 18: a tap on the track drops down its areas, closed to start.
+    await priceScreen.getByTestId("price-breakdown-open").click();
+    const layer = page.getByTestId("price-breakdown");
+    await layer.waitFor({ timeout: 5000 }).catch(() => {});
+    const toggle = layer.getByTestId("track-line-toggle").first();
+    const closed = (await toggle.getAttribute("aria-expanded").catch(() => null)) === "false" && (await layer.getByTestId("track-area").count()) === 0;
+    await toggle.click().catch(() => {});
+    const areas = await layer.getByTestId("track-area").allInnerTexts().catch(() => []);
+    check(
+      "a tap on Standard track drops down its areas with their feet, closed to start",
+      closed && (await toggle.getAttribute("aria-expanded").catch(() => null)) === "true" && areas.length > 0 && areas.every((text) => / ft/.test(text)),
+      JSON.stringify(areas.map(flat)),
+    );
+    await page.keyboard.press("Escape");
+    await layer.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  }
   const pageText = flat(await priceScreen.innerText());
   check("No payment until your install is complete., on the price page", pageText.includes("No payment until your install is complete."));
   check("price held until reads as a written-out date", /Price held until [A-Z][a-z]+ \d{1,2}, \d{4}\./.test(pageText));

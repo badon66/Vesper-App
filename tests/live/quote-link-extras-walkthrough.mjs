@@ -229,7 +229,7 @@ try {
     await owner.getByTestId("quote-sheet").waitFor({ timeout: 20000 });
     const areaTracks = await owner.getByTestId("area-track").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-track")));
     check(
-      "the quote editor shows a track for every measured area: Hat to start, the gable on J track",
+      "the quote editor shows a track for every measured area: Standard to start, the gable on L track (back track)",
       areaTracks.length === 5 && areaTracks.filter((track) => track === "j").length === 1 && areaTracks.filter((track) => track === "hat").length === 4,
       JSON.stringify(areaTracks),
     );
@@ -274,15 +274,33 @@ try {
   const tracks = await page.getByTestId("about-track-type").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-track")));
   check("About your track names the tracks the options use, with a drawing each", JSON.stringify(tracks) === JSON.stringify(["hat", "j"]) && (await page.locator("[data-track-drawing]").count()) === 2, JSON.stringify(tracks));
   // The J track area in the breakdown (Full wrap opens first, it has the
-  // gable). Round 17: behind See the breakdown on its card, one line per
-  // area, named as the editor names it, with its track where it isn't Hat.
+  // gable). Round 18: behind See the breakdown on its card, one line per
+  // track, Standard track first, then L track (back track) (J track
+  // renamed); a tap on each drops down its areas, named as the editor names them.
   await page.locator('[data-testid="option-row"][data-selected="true"] [data-testid="option-breakdown-toggle"]').click();
   await page.getByTestId("quote-lines").waitFor({ timeout: 5000 });
   const lines = (await page.getByTestId("quote-lines").innerText()).replace(/\s+/g, " ");
+  const trackOrder = await page.locator('[data-testid="quote-lines"] .quote-row[data-shown="true"] [data-testid="track-line"]').evaluateAll((rows) => rows.map((row) => row.getAttribute("data-track")));
+  const closedToggles = page.locator('[data-testid="quote-lines"] .quote-row[data-shown="true"] [data-testid="track-line-toggle"][aria-expanded="false"]');
+  for (let left = await closedToggles.count(); left > 0; left -= 1) {
+    await closedToggles.first().click();
+    await page.waitForTimeout(150);
+  }
+  const areaTexts = (await page.locator('[data-testid="quote-lines"] .quote-row[data-shown="true"] [data-testid="track-area"]').allInnerTexts()).map((text) => text.replace(/\s+/g, " ").trim());
   check(
-    "See the breakdown names the J track area on its own line, with its feet, its track and its price",
-    lines.includes("Front upper gable 18 ft, J track $540") && lines.includes("Front lower 64 ft") && !lines.includes("Track and lights"),
-    lines.slice(0, 200),
+    "See the breakdown has a line per track, Standard track then L track (back track) at its own price a foot; a tap lists each track's areas",
+    JSON.stringify(trackOrder) === JSON.stringify(["Standard track", "L track (back track)"]) &&
+      lines.includes("L track (back track) $540 18 ft at $30 a foot") &&
+      areaTexts.includes("Front upper gable 18 ft $540") &&
+      areaTexts.some((text) => text.startsWith("Front lower 64 ft")) &&
+      !/\b(Hat|J) track\b/.test(lines) &&
+      !lines.includes("Track and lights"),
+    `${JSON.stringify(trackOrder)} | ${lines.slice(0, 200)} | ${JSON.stringify(areaTexts)}`,
+  );
+  check(
+    "About your track uses the new names: Standard track and L track (back track), never Hat or J track",
+    !/\b(Hat|J) track\b/.test((await page.getByTestId("about-track").innerText().catch(() => "")).replace(/\s+/g, " ")),
+    (await page.getByTestId("about-track").innerText().catch(() => "no about-track")).replace(/\s+/g, " ").slice(0, 200),
   );
 
   // Documents: the ticked standard one and their own file, each opens and saves.

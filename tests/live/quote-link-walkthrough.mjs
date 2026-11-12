@@ -104,6 +104,29 @@ const pickOption = async (page, offer) => {
 };
 // Round 17: the breakdown sits behind See the breakdown on the picked card;
 // once open it follows the card they pick.
+// Round 18: the lights are one line per track; a tap drops down its areas.
+// Each area as the customer reads it ("Front lower 64 ft $1,536"), by its
+// exact name, from the option on screen; null when the option hasn't it.
+const openTracks = async (page) => {
+  const closed = page.locator('[data-testid="quote-lines"] .quote-row[data-shown="true"] [data-testid="track-line-toggle"][aria-expanded="false"]');
+  for (let left = await closed.count(); left > 0; left -= 1) {
+    await closed.first().click();
+    await page.waitForTimeout(150);
+  }
+};
+const trackAreas = async (page) => {
+  await openTracks(page);
+  return page
+    .locator('[data-testid="quote-lines"] .quote-row[data-shown="true"] [data-testid="track-area"]')
+    .evaluateAll((items) => items.map((item) => ({ label: (item.querySelector("span > span")?.textContent ?? "").trim(), text: item.innerText.replace(/\s+/g, " ").trim() })));
+};
+const trackArea = async (page, label) => (await trackAreas(page)).find((area) => area.label === label)?.text ?? null;
+// A track's own line, open or closed: its name, total, feet and rate.
+const trackRow = async (page, label) =>
+  page
+    .locator(`[data-testid="quote-lines"] .quote-row[data-shown="true"] [data-track="${label}"]`)
+    .evaluate((el) => [...el.children].filter((child) => child.tagName !== "DD").map((child) => child.innerText).join(" ").replace(/\s+/g, " ").trim())
+    .catch(() => null);
 const openLines = async (page) => {
   if ((await page.getByTestId("quote-lines").count()) > 0) return;
   const picked = page.locator('[data-testid="option-row"][data-selected="true"] [data-testid="option-breakdown-toggle"]');
@@ -560,21 +583,28 @@ try {
   const cardsClosed = (await page.getByTestId("quote-lines").count()) === 0;
   await openLines(page);
   const lines = flat(await page.getByTestId("quote-lines").innerText());
+  const trackClosed = (await page.locator('[data-testid="quote-lines"] [data-testid="track-area"]').count()) === 0;
+  const fullAreas = (await trackAreas(page)).map((area) => area.text);
   check(
-    "See the breakdown on the Full wrap card opens what's in it, every area on its own line with its feet and price, the box, upper access with its reason, extra work and the discount",
+    "round 18: See the breakdown on the Full wrap card shows Standard track with its feet, rate and total, closed; a tap lists every area with its feet and price",
+    trackClosed &&
+      lines.includes("Standard track $3,984 166 ft at $24 a foot") &&
+      JSON.stringify(fullAreas) === JSON.stringify(["Front 64 ft $1,536", "Front upper 52 ft $1,248", "Garage 28 ft $672", "Left gable 22 ft $528"]) &&
+      !lines.includes("Double track") &&
+      !lines.includes("L track"),
+    `${lines} | ${JSON.stringify(fullAreas)}`,
+  );
+  check(
+    "then the smart controller and power supply in Keenan's words, upper access with its reason, extra work and the discount",
     cardsClosed &&
       flat(await page.getByTestId("whats-in").innerText()) === fillLine(words("whats_in"), { name: "Full wrap" }) &&
-      lines.includes("Front 64 ft $1,536") &&
-      lines.includes("Front upper 52 ft $1,248") &&
-      lines.includes("Garage 28 ft $672") &&
-      lines.includes("Left gable 22 ft $528") &&
-      !lines.includes("Track and lights") &&
-      lines.includes("Control box Always included $500") &&
+      lines.includes(`${words("controller_label")} ${words("controller_detail")} $500`) &&
+      !lines.includes("Control box") &&
       lines.includes("Upper roof access For work up high: $200, or $400 with an upper gable $400") &&
       lines.includes("Extra height") &&
       lines.includes("Garage corner") &&
       lines.includes("−$150") &&
-      !(await lineShown(page, "Rush colour fee")) &&
+      !(await lineShown(page, "Rush fee")) &&
       (await totalOf(page, "line-total")) === "Total $4,959",
     lines,
   );
@@ -687,15 +717,14 @@ try {
       (await optionRows(page)).find((row) => row.selected)?.offer === "main",
     `${await totalOf(page, "hero-option")} ${await totalOf(page, "hero-total")}`,
   );
+  const mainAreas = (await trackAreas(page)).map((area) => area.label);
   check(
-    "with no upper run, no upper access and no extra work marked only with upper runs; the rest stays",
+    "with no upper run, no upper access and no extra work marked only with upper runs; the rest stays (round 18: Front and Garage under Standard track, the upper areas gone)",
     !(await lineShown(page, "Upper roof access")) &&
       !(await lineShown(page, "Extra height")) &&
       (await lineShown(page, "Garage corner")) &&
-      (await lineShown(page, "Front")) &&
-      (await lineShown(page, "Garage")) &&
-      !(await lineShown(page, "Front upper")) &&
-      !(await lineShown(page, "Left gable")) &&
+      (await lineShown(page, "Standard track")) &&
+      JSON.stringify(mainAreas) === JSON.stringify(["Front", "Garage"]) &&
       (await totalOf(page, "line-total")) === "Total $2,633" &&
       flat(await page.getByTestId("whats-in").innerText()) === fillLine(words("whats_in"), { name: "Main floor" }),
   );
@@ -997,43 +1026,45 @@ try {
       JSON.stringify(areaRows),
     );
     check(
-      "What's in Full wrap, one line per area named as the editor names it (Front lower, Front lower gable, Front upper at Keenan's $28), the Shed at its flat price, the box, and the automatic $200 upper roof access",
-      (await row("Front lower")) === "Front lower 64 ft $1,536" &&
-        (await row("Front lower gable")) === "Front lower gable 12 ft $288" &&
-        (await row("Front upper")) === "Front upper 38 ft $1,064" &&
-        (await row("Shed")) === "Shed 20 ft $600" &&
-        (await row("Control box")) === "Control box Always included $500" &&
+      "What's in Full wrap: Standard track with its feet (no one rate), each area named as the editor names it at its own rate (Front upper at Keenan's $28), the Shed at its flat price, the controller, and the automatic $200 upper roof access",
+      (await trackRow(ap, "Standard track")) === "Standard track $3,488 134 ft" &&
+        (await trackArea(ap, "Front lower")) === "Front lower 64 ft at $24 a foot $1,536" &&
+        (await trackArea(ap, "Front lower gable")) === "Front lower gable 12 ft at $24 a foot $288" &&
+        (await trackArea(ap, "Front upper")) === "Front upper 38 ft at $28 a foot $1,064" &&
+        (await trackArea(ap, "Shed")) === "Shed 20 ft, flat price $600" &&
+        (await row(words("controller_label"))) === `${words("controller_label")} ${words("controller_detail")} $500` &&
         (await row("Upper roof access")) === "Upper roof access For work up high: $200, or $400 with an upper gable $200" &&
         !(await lineShown(ap, "To reach our $2,500 minimum")) &&
         (await totalOf(ap, "line-total")) === "Total $4,188",
-      `${await row("Front lower")} | ${await row("Front upper")} | ${await row("Shed")} | ${await row("Upper roof access")} | ${await totalOf(ap, "line-total")}`,
+      `${await trackRow(ap, "Standard track")} | ${JSON.stringify(await trackAreas(ap))} | ${await row("Upper roof access")} | ${await totalOf(ap, "line-total")}`,
     );
     await ap.screenshot({ path: `${out}/ql-phone-areas-full-wrap.png`, fullPage: true });
     await pickOption(ap, "front_lower");
     check(
       "Front lower only: its two areas, no Shed, upper access typed 0 so no line at all, and $2,324 lifted to the $2,500 minimum",
-      (await row("Front lower")) === "Front lower 64 ft $1,536" &&
-        (await row("Front lower gable")) === "Front lower gable 12 ft $288" &&
-        !(await lineShown(ap, "Front upper")) &&
-        !(await lineShown(ap, "Shed")) &&
+      (await trackRow(ap, "Standard track")) === "Standard track $1,824 76 ft at $24 a foot" &&
+        (await trackArea(ap, "Front lower")) === "Front lower 64 ft $1,536" &&
+        (await trackArea(ap, "Front lower gable")) === "Front lower gable 12 ft $288" &&
+        (await trackArea(ap, "Front upper")) === null &&
+        (await trackArea(ap, "Shed")) === null &&
         !(await lineShown(ap, "Upper roof access")) &&
         flat(await ap.getByTestId("quote-lines").innerText()).includes("Before the minimum $2,324 To reach our $2,500 minimum $176") &&
         (await totalOf(ap, "line-total")) === "Total $2,500" &&
         (await totalOf(ap, "hero-total")) === "$2,500",
-      `${await row("Front lower")} | ${await totalOf(ap, "line-total")}`,
+      `${await trackRow(ap, "Standard track")} | ${JSON.stringify(await trackAreas(ap))} | ${await totalOf(ap, "line-total")}`,
     );
     await ap.screenshot({ path: `${out}/ql-phone-areas-front-lower.png`, fullPage: true });
     await pickOption(ap, "nogable");
     check(
       "Front, no gable: Front lower and Front upper, the Shed back, and Upper roof access at the typed $150 with no detail; $3,850",
-      (await row("Front lower")) === "Front lower 64 ft $1,536" &&
-        (await row("Front upper")) === "Front upper 38 ft $1,064" &&
-        !(await lineShown(ap, "Front lower gable")) &&
-        (await row("Shed")) === "Shed 20 ft $600" &&
+      (await trackArea(ap, "Front lower")) === "Front lower 64 ft at $24 a foot $1,536" &&
+        (await trackArea(ap, "Front upper")) === "Front upper 38 ft at $28 a foot $1,064" &&
+        (await trackArea(ap, "Front lower gable")) === null &&
+        (await trackArea(ap, "Shed")) === "Shed 20 ft, flat price $600" &&
         (await row("Upper roof access")) === "Upper roof access $150" &&
         (await totalOf(ap, "line-total")) === "Total $3,850" &&
         (await totalOf(ap, "hero-total")) === "$3,850",
-      `${await row("Front lower")} | ${await row("Upper roof access")} | ${await totalOf(ap, "line-total")}`,
+      `${JSON.stringify(await trackAreas(ap))} | ${await row("Upper roof access")} | ${await totalOf(ap, "line-total")}`,
     );
     await ap.screenshot({ path: `${out}/ql-phone-areas-no-gable.png`, fullPage: true });
     check("nothing internal on the areas page either", !flat(await ap.locator("body").innerText()).includes("INTERNAL"));
