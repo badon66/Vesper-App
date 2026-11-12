@@ -3,6 +3,7 @@ import { parseDeckWords } from "@/lib/deck";
 import { COOL_WHITE, WARM_WHITE } from "@/lib/lights/looks";
 import {
   RESUME_MS,
+  colourTimingFor,
   defaultQuoteState,
   pickEditableQuote,
   pickerFromStored,
@@ -10,7 +11,11 @@ import {
   storedQuote,
   quoteFingerprint,
   quoteInputs,
+  quoteRushFee,
   quoteStateFromDraft,
+  rushFeeOn,
+  withColourTiming,
+  withRushFee,
   startingPoint,
   type MeetingPayload,
   type MeetingStored,
@@ -361,5 +366,52 @@ describe("the quote both screens open", () => {
     expect(quoteMinimum(defaultQuoteState(payload()), { minJobTotal: 2500 })).toBe(2500);
     const own = quoteStateFromDraft({ ...draft, minJobTotal: 1800 }, payload());
     expect(priceQuote(quoteInputs(withFeet(own, 10), { ...payload().pricing, minJobTotal: 2500 })).subtotal).toBe(1800);
+  });
+});
+
+// Round 17 (Keenan, 2026-11-12): a colour-matched track is installed this
+// season at no extra cost by default; the rush fee is his choice, off to start.
+describe("the rush fee is Keenan's choice, off by default", () => {
+  const brown = (draft: MeetingPayload["draft"] = null) => ({ ...payload(draft), lead: { ...payload(draft).lead, colourText: "Brown" } });
+  const RUSH_LINE = "Rush colour fee";
+
+  it("starts a colour-matched quote on This season, included, with no rush fee", () => {
+    const state = withFeet(defaultQuoteState(brown()), 100);
+    expect([state.colourTiming, state.rushFee, quoteRushFee(state), rushFeeOn(state)]).toEqual(["rush", "", null, false]);
+    expect(priceQuote(quoteInputs(state, brown().pricing)).lines.map((line) => line.label)).not.toContain(RUSH_LINE);
+    expect(colourTimingFor("list", "Brown", null)).toBe("rush");
+    expect(colourTimingFor("custom", "RAL 7016", "factory_order")).toBe("factory_order");
+    expect(colourTimingFor("list", "White", "rush")).toBe("stock");
+  });
+
+  it("switched on, fills in Settings' amount, which he can type over; off clears it", () => {
+    const state = withFeet(defaultQuoteState(brown()), 100);
+    const on = { ...state, ...withRushFee(true, brown().pricing) };
+    expect([on.colourTiming, on.rushFee, rushFeeOn(on)]).toEqual(["rush", "350", true]);
+    const line = priceQuote(quoteInputs(on, brown().pricing)).lines.find((item) => item.label === RUSH_LINE);
+    expect(line?.amount).toBe(350);
+    const typed = { ...on, rushFee: "275" };
+    expect(priceQuote(quoteInputs(typed, brown().pricing)).lines.find((item) => item.label === RUSH_LINE)?.amount).toBe(275);
+    const off = { ...typed, ...withRushFee(false, brown().pricing) };
+    expect([off.rushFee, rushFeeOn(off)]).toEqual(["", false]);
+  });
+
+  it("drops the fee when Keenan picks Spring, which is included", () => {
+    const on = { ...withFeet(defaultQuoteState(brown()), 100), ...withRushFee(true, brown().pricing) };
+    const spring = { ...on, ...withColourTiming("factory_order") };
+    expect([spring.colourTiming, spring.rushFee, quoteRushFee(spring)]).toEqual(["factory_order", "", null]);
+    const back = { ...spring, ...withColourTiming("rush") };
+    expect([back.colourTiming, rushFeeOn(back)]).toEqual(["rush", false]);
+  });
+
+  it("keeps a saved quote exactly as it was: a this-season fee stays, a spring quote's unused fee is never named", () => {
+    const rushDraft = { ...serverDraft("2026-11-10T00:00:00Z"), colourTiming: "rush", rushFee: 350 };
+    const kept = quoteStateFromDraft(rushDraft, brown(rushDraft));
+    expect([kept.colourTiming, kept.rushFee, rushFeeOn(kept)]).toEqual(["rush", "350", true]);
+    const springDraft = { ...serverDraft("2026-11-10T00:00:00Z"), colourTiming: "factory_order", rushFee: 350 };
+    const spring = quoteStateFromDraft(springDraft, brown(springDraft));
+    expect([spring.colourTiming, quoteRushFee(spring)]).toEqual(["factory_order", null]);
+    // Its price is what it always was: spring never charged the fee.
+    expect(priceQuote(quoteInputs(spring, brown().pricing)).lines.map((line) => line.label)).not.toContain(RUSH_LINE);
   });
 });

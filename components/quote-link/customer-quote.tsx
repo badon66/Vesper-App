@@ -15,7 +15,6 @@ import { CUSTOMER_OFFER_ID, feetWords, isCustomerOffer, offerFeet, type PricedOf
 import { fillLine } from "@/lib/deck";
 import {
   buildableRuns,
-  christmasSeason,
   customerChoice,
   customerOffer,
   customOption,
@@ -33,7 +32,7 @@ import {
   offerChoice,
   offerPicture,
   openingOffer,
-  otherColoursLine,
+  colourSectionLines,
   phoneHref,
   priceHoldPassed,
   seeItPicture,
@@ -131,6 +130,14 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   // in the price below, goes back to that option's picture.
   const [look, setLook] = useState<string | null>(null);
   const seeIt = showsSeeIt(view.pictures, shown.length);
+  // Round 17: their track colour's lines; a rush fee only when charged.
+  const colourLines = colourSectionLines({
+    words,
+    colourName: quote.trackColourName,
+    custom: quote.trackCustom,
+    timing: quote.colourTiming,
+    rushFee: quote.rushFee,
+  });
   // Round 17: the Christmas banner, by the date for their own track colour.
   const banner = christmasBanner({
     today: view.today,
@@ -495,12 +502,25 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
               Your colour: {quote.trackColourName}.
             </p>
           ) : null}
-          <p className="mt-2 text-pretty" data-testid="quote-colour-stock">
-            {words.colour_stock}
-          </p>
-          <p className="mt-2 text-pretty" data-testid="quote-colour-rush">
-            {otherColoursLine({ season: christmasSeason(view.today), rushFee: quote.rushFee, rush: quote.colourTiming === "rush" })}
-          </p>
+          {colourLines.made ? (
+            <>
+              <p className="mt-2 text-pretty" data-testid="quote-colour-made">
+                {colourLines.made}
+              </p>
+              <p className="mt-2 text-pretty" data-testid="quote-colour-timing">
+                {colourLines.timing}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="mt-2 text-pretty" data-testid="quote-colour-stock">
+                {colourLines.stock}
+              </p>
+              <p className="mt-2 text-pretty" data-testid="quote-colour-other">
+                {colourLines.other}
+              </p>
+            </>
+          )}
         </section>
 
         {/* 6. What happens next: the meeting's four steps, in its words. */}

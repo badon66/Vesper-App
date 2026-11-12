@@ -14,7 +14,7 @@ import { DEFAULT_LINES, deckLine, priceSubLine, type DeckLines } from "@/lib/dec
 import { breakdownRows, minimumSentence, NO_PAYMENT, screenOptions, type BreakdownRow } from "@/lib/meeting/price-screen";
 import { blackFridayOn, chooseWithBlackFriday, offerPrice, withBlackFriday } from "@/lib/meeting/black-friday-state";
 import { colourTimingView, mockupJobs, offerMockup } from "@/lib/meeting/deck-pages";
-import { quoteInputs, quoteOffers, quoteRushFee, type MeetingMockup, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
+import { quoteInputs, quoteOffers, quoteRushFee, withColourTiming, type MeetingMockup, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
 import { MOTION, transition } from "@/lib/motion";
 import { formatMoney, type QuoteTotals } from "@/lib/pricing";
 import { QUOTE_LOCKED_MEETING, savedLine } from "@/lib/quotes/draft";
@@ -255,7 +255,7 @@ export function QuoteScreen({
   const viewingRegular = viewing ? struckTotal(viewing) : null;
   const setTiming = (next: "factory_order" | "rush") => {
     if (locked || state.colourTiming === next) return;
-    onChange({ ...state, colourTiming: next });
+    onChange({ ...state, ...withColourTiming(next) });
   };
 
   return (
@@ -351,6 +351,15 @@ export function QuoteScreen({
                 </p>
                 {timing.kind === "made" ? (
                   <div className="grid grid-cols-2 gap-2.5">
+                    {/* Round 17: this season first, included unless Keenan charges a rush fee. */}
+                    <TimingChoice
+                      label={timing.season.label}
+                      value={timing.season.value}
+                      chosen={timing.chosen === "season"}
+                      disabled={locked}
+                      onChoose={() => setTiming("rush")}
+                      testId="price-timing-season"
+                    />
                     <TimingChoice
                       label={timing.spring.label}
                       value={timing.spring.value}
@@ -359,16 +368,6 @@ export function QuoteScreen({
                       onChoose={() => setTiming("factory_order")}
                       testId="price-timing-spring"
                     />
-                    {timing.season ? (
-                      <TimingChoice
-                        label={timing.season.label}
-                        value={timing.season.value}
-                        chosen={timing.chosen === "season"}
-                        disabled={locked}
-                        onChoose={() => setTiming("rush")}
-                        testId="price-timing-season"
-                      />
-                    ) : null}
                   </div>
                 ) : null}
               </div>

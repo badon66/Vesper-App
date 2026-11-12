@@ -10,8 +10,19 @@ import { Choice, cleanMoneyInput, DateField, MoneyField, QuietWarning, Stepper }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import type { LeadMockupItem } from "@/lib/leads/mockup-roles";
-import { colourTimingFor, quoteInputs, quoteMinimum, quoteRushFee, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
+import {
+  colourTimingFor,
+  quoteInputs,
+  quoteMinimum,
+  quoteRushFee,
+  rushFeeOn,
+  withColourTiming,
+  withRushFee,
+  type MeetingPayload,
+  type QuoteUIState,
+} from "@/lib/meeting/state";
 import { cleanFeet, defaultValidUntil, formatMoney, percentWords, totalFeet, usablePercent } from "@/lib/pricing";
 import { addQuickStart, editorOffers, editorOrder, offerLitPositions, offerWarnings, percentDiscountWords, typeDiscountAmount } from "@/lib/quotes/editor";
 import { canHideOffer, isCustomerOffer, keepOneShown, OFFERS_MAX, pricedOffers, quickStartsFor, setOfferHidden, type QuickStart, type QuoteOffer } from "@/lib/quotes/offers";
@@ -279,13 +290,17 @@ function Prices({
   const minimum = quoteMinimum(state, pricing);
   const rushFee = quoteRushFee(state);
   const timing = colourTimingFor(colourKind, colourText, state.colourTiming);
+  // Round 17: "Charge a rush fee" is off to start; on, it holds the amount
+  // (Settings' to start, his to type over), even while the box is empty.
+  const [feeSwitch, setFeeSwitch] = useState(false);
+  const feeOn = timing === "rush" && (feeSwitch || rushFee !== null);
   const discountCount = inputs.discounts.length;
   const summary = [
     `${formatMoney(inputs.pricePerFt)} a foot`,
     `${formatMoney(inputs.boxPrice)} a box`,
     minimum ? `${formatMoney(minimum)} minimum` : null,
     discountCount > 0 ? `${discountCount} ${discountCount === 1 ? "discount" : "discounts"}` : null,
-    state.colourTiming === "rush" && rushFee ? "rush colour" : null,
+    rushFeeOn(state) ? "rush colour fee" : null,
   ]
     .filter(Boolean)
     .join(", ");
@@ -360,26 +375,65 @@ function Prices({
               <p className="text-sm text-pretty">{colourText}: in stock and included.</p>
             ) : (
               <div className="flex flex-col gap-3">
-                <p className="text-sm text-pretty">{colourText} is made to order. The colour page in the meeting sets this too.</p>
-                <div className="flex flex-wrap items-end gap-3">
-                  <Choice on={timing === "factory_order"} disabled={locked} onToggle={() => set({ colourTiming: "factory_order" })}>
-                    Install in spring, included
-                  </Choice>
-                  {rushFee !== null && rushFee > 0 ? (
-                    <Choice on={timing === "rush"} disabled={locked} onToggle={() => set({ colourTiming: "rush" })}>
-                      Install this season, {formatMoney(rushFee)} rush colour fee
-                    </Choice>
-                  ) : null}
-                  <MoneyField
-                    id="editor-rush"
-                    label="Rush colour fee"
-                    value={state.rushFee}
-                    placeholder="None"
-                    onChange={(value) => set({ rushFee: value })}
+                <p className="text-sm text-pretty">{colourText} is made to order. Your price in the meeting sets this too.</p>
+                {/* Round 17 (Keenan, 2026-11-12): this season is included and the
+                    default; spring is included; a rush fee is his choice. */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <Choice
+                    on={timing === "rush"}
                     disabled={locked}
-                    hint="Blank hides Install this season."
-                  />
+                    onToggle={() => {
+                      if (timing !== "rush") set(withColourTiming("rush"));
+                    }}
+                    testId="editor-timing-season"
+                  >
+                    {feeOn && rushFee !== null ? `This season, ${formatMoney(rushFee)} rush fee` : "This season, included"}
+                  </Choice>
+                  <Choice
+                    on={timing === "factory_order"}
+                    disabled={locked}
+                    onToggle={() => {
+                      if (timing === "factory_order") return;
+                      setFeeSwitch(false);
+                      set(withColourTiming("factory_order"));
+                    }}
+                    testId="editor-timing-spring"
+                  >
+                    Spring, included
+                  </Choice>
                 </div>
+                {timing === "rush" ? (
+                  <div className="flex flex-wrap items-end gap-x-5 gap-y-2">
+                    <label htmlFor="editor-rush-switch" className="flex min-h-12 cursor-pointer items-center gap-3 text-sm font-semibold">
+                      <Switch
+                        id="editor-rush-switch"
+                        checked={feeOn}
+                        disabled={locked}
+                        onCheckedChange={(on) => {
+                          setFeeSwitch(on);
+                          set(withRushFee(on, pricing));
+                        }}
+                        data-testid="editor-rush-switch"
+                      />
+                      Charge a rush fee
+                    </label>
+                    {feeOn ? (
+                      <MoneyField
+                        id="editor-rush"
+                        label="Rush colour fee"
+                        value={state.rushFee}
+                        placeholder="0"
+                        onChange={(value) => set({ rushFee: value })}
+                        disabled={locked}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+                <p className="text-xs text-pretty text-muted-foreground" data-testid="editor-rush-note">
+                  {feeOn
+                    ? "Their price includes the rush colour fee, and their link and Your price name it."
+                    : "No rush fee: nothing on their link or in the meeting mentions one."}
+                </p>
               </div>
             )}
           </div>

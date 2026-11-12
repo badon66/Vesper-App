@@ -224,8 +224,13 @@ export function quoteOffers(state: Pick<QuoteUIState, "offers" | "runs">): Quote
 }
 
 // One colour rule (CLAUDE.md, and the five seats, 2026-11-10): White is the
-// only stock colour. Any other list colour, and Custom, is made to order:
-// spring (factory_order) unless rush was already chosen. No colour: none.
+// only stock colour. Any other list colour, and Custom, is made to order.
+// Round 17 (Keenan, 2026-11-12): a colour-matched track is installed this
+// season at no extra cost by default, or in spring; a rush fee is Keenan's
+// choice on the quote, off to start. The stored value for this season is
+// still "rush" (the database's check allows stock, factory_order and rush),
+// and the fee is charged only while the quote carries one. Spring
+// (factory_order) stays where it was chosen. No colour: none.
 export function colourTimingFor(
   kind: "list" | "custom" | "none",
   colourText: string,
@@ -233,8 +238,12 @@ export function colourTimingFor(
 ): ColourTiming | null {
   if (kind === "none") return null;
   if (kind === "list" && /^white\b/i.test(colourText.trim())) return "stock";
-  return current === "rush" ? "rush" : "factory_order";
+  return current === "factory_order" ? "factory_order" : "rush";
 }
+
+// The colour timings as Keenan picks them (round 17).
+export const THIS_SEASON: ColourTiming = "rush";
+export const SPRING: ColourTiming = "factory_order";
 
 const moneyString = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(2));
 const parseMoney = (value: string) => {
@@ -245,11 +254,28 @@ const parseMoney = (value: string) => {
 const moneyOrNone = (value: string | undefined) => ((value ?? "").trim() === "" ? null : parseMoney(value ?? ""));
 const feeString = (value: number | null | undefined) => (value === null || value === undefined ? "" : moneyString(value));
 
-// This quote's flat rush colour fee as typed, whatever the colour timing:
-// the quote keeps it either way, so the customer's link can name it and
-// switching to rush at the table finds it. Null: none.
+// This quote's flat rush colour fee as typed. Round 17: it is set only while
+// Keenan has switched "Charge a rush fee" on for a this-season install, and
+// cleared for spring, so a fee nobody charges is never named. Null: none.
 export function quoteRushFee(state: QuoteUIState): number | null {
-  return moneyOrNone(state.rushFee);
+  return state.colourTiming === THIS_SEASON ? moneyOrNone(state.rushFee) : null;
+}
+
+// Whether this quote charges the rush fee: this season, with an amount.
+export function rushFeeOn(state: QuoteUIState): boolean {
+  const fee = quoteRushFee(state);
+  return fee !== null && fee > 0;
+}
+
+// The colour timing as Keenan picks it (round 17): spring drops any rush fee.
+export function withColourTiming(timing: ColourTiming): Partial<QuoteUIState> {
+  return timing === THIS_SEASON ? { colourTiming: timing } : { colourTiming: timing, rushFee: "" };
+}
+
+// "Charge a rush fee" switched on fills in Settings' amount (he can type
+// over it); off clears it.
+export function withRushFee(on: boolean, pricing: Pick<MeetingPayload["pricing"], "rushFee">): Partial<QuoteUIState> {
+  return on ? { colourTiming: THIS_SEASON, rushFee: feeString(pricing.rushFee) } : { rushFee: "" };
 }
 
 // Each stored discount's percent, in the order items() keeps the lines
@@ -277,7 +303,8 @@ export function defaultQuoteState(payload: QuoteContext): QuoteUIState {
     neighbourAmount: moneyString(payload.pricing.neighbourDiscount),
     customDiscounts: [],
     colourTiming: colourTimingFor(payload.lead.colourKind, payload.lead.colourText, null),
-    rushFee: feeString(payload.pricing.rushFee),
+    // Round 17: no rush fee until Keenan switches it on.
+    rushFee: "",
     upperAccessFee: feeString(payload.pricing.upperAccessFee),
     upperGableAccessFee: feeString(payload.pricing.upperGableAccessFee),
     financingOffered: false,
@@ -346,7 +373,9 @@ export function quoteStateFromDraft(draft: QuoteDraft, payload: QuoteContext): Q
       draft.colourTiming === "stock" || draft.colourTiming === "factory_order" || draft.colourTiming === "rush"
         ? draft.colourTiming
         : defaultQuoteState(payload).colourTiming,
-    rushFee: feeString(draft.rushFee),
+    // A saved this-season quote keeps its fee exactly; any other timing never
+    // charged the fee it carried, so it isn't brought along (round 17).
+    rushFee: draft.colourTiming === "rush" ? feeString(draft.rushFee) : "",
     upperAccessFee: feeString(draft.upperAccessFee),
     upperGableAccessFee: feeString(draft.upperGableAccessFee),
     financingOffered: draft.financingOffered,

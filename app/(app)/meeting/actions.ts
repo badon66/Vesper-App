@@ -209,10 +209,11 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     })),
     discounts: draft.discounts,
     colour_timing: draft.colourTiming,
-    // The flat fee is kept whatever the timing, so switching to rush at the
-    // table finds it; the price counts it only for rush. The fee per foot
-    // is no longer used (2026-11-04).
-    rush_fee: draft.rushFee ?? null,
+    // Round 17: the flat fee is kept only while Keenan charges it for a
+    // this-season install (lib/meeting/state.ts quoteRushFee), so a fee
+    // nobody is charged is never stored or named; the price counts it only
+    // then. The fee per foot is no longer used (2026-11-04).
+    rush_fee: draft.colourTiming === "rush" ? (draft.rushFee ?? null) : null,
     rush_fee_per_ft: null,
     upper_access_fee: draft.upperAccessFee ?? null,
     upper_gable_access_fee: draft.upperGableAccessFee ?? null,

@@ -377,16 +377,18 @@ export function colourIsStock(kind: "none" | "list" | "custom", text: string): b
 
 // What the colour page says about timing: nothing until a colour is chosen;
 // the stock line for White; for any other colour the made-to-order line and
-// its two buttons, "Install this season" only while the quote has a rush
-// fee. chosen follows the quote's colour timing (spring unless rush).
+// its two buttons. Round 17 (Keenan, 2026-11-12): Install this season comes
+// first and is included, the default; only when Keenan has switched a rush
+// fee on does its button name the fee. Install in spring is included.
+// chosen follows the quote's colour timing (this season unless spring).
 export type ColourTimingView =
   | { kind: "none" }
   | { kind: "stock"; line: string }
   | {
       kind: "made";
       line: string;
+      season: { label: string; value: string };
       spring: { label: string; value: string };
-      season: { label: string; value: string } | null;
       chosen: "spring" | "season";
     };
 
@@ -405,13 +407,16 @@ export function colourTimingView({
 }): ColourTimingView {
   if (kind === "none") return { kind: "none" };
   if (colourIsStock(kind, text)) return { kind: "stock", line: deckLine(lines, "colour_stock") };
-  const fee = rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
+  const fee = timing === "rush" && rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
   return {
     kind: "made",
     line: deckLine(lines, "colour_made", { colour: text.trim() }),
+    season: {
+      label: deckLine(lines, "colour_season_label"),
+      value: fee === null ? deckLine(lines, "colour_season_included") : deckLine(lines, "colour_season_value", { fee: formatMoney(fee) }),
+    },
     spring: { label: deckLine(lines, "colour_spring_label"), value: deckLine(lines, "colour_spring_value") },
-    season: fee === null ? null : { label: deckLine(lines, "colour_season_label"), value: deckLine(lines, "colour_season_value", { fee: formatMoney(fee) }) },
-    chosen: timing === "rush" && fee !== null ? "season" : "spring",
+    chosen: timing === "factory_order" ? "spring" : "season",
   };
 }
 

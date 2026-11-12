@@ -26,7 +26,7 @@ import {
   type QuoteRun,
   type QuoteTotals,
 } from "@/lib/pricing";
-import { fillLine, NO_PAYMENT_LINE, parseDeckLines, type DeckLines } from "@/lib/deck";
+import { deckLine, fillLine, NO_PAYMENT_LINE, parseDeckLines, type DeckLines } from "@/lib/deck";
 import {
   CUSTOMER_OFFER_ID,
   CUSTOMER_OFFER_NAME,
@@ -39,7 +39,7 @@ import {
   type QuoteOffer,
 } from "@/lib/quotes/offers";
 import { formatLongDay } from "@/lib/time";
-import { CHRISTMAS_WORD_DEFAULTS, type ChristmasSettings } from "@/lib/quote-link/christmas";
+import { CHRISTMAS_WORD_DEFAULTS, isWhiteTrack, type ChristmasSettings } from "@/lib/quote-link/christmas";
 
 // The token's shape, as the database makes it: 24 base64url characters.
 export const TOKEN_PATTERN = /^[A-Za-z0-9_-]{24}$/;
@@ -396,34 +396,42 @@ export function parseCustomerQuote(data: unknown): CustomerQuote | ClosedQuote {
 // the words.
 export type LinkWords = DeckLines;
 
-// Whether it is the Christmas season on the page: September 1 to November 30
-// by Calgary's date, the same window the database gives the Christmas
-// banner (Keenan, 2026-11-05). Outside it nothing on the page mentions
-// Christmas. Without a date it counts as outside, so nothing is promised.
-export function christmasSeason(today: string | null): boolean {
-  const month = today ? Number(today.slice(5, 7)) : 0;
-  return month >= 9 && month <= 11;
-}
-
-// The track colour section's line about other colours: one colour rule,
-// the same as the iPad's colour page (round 9). White is in stock; every
-// other colour is made to order, included for spring or the rush colour
-// fee this season. From September 1 to November 30 the fee is "to have it
-// this season". From December 1 the spring option only, at no extra cost;
-// a quote Keenan priced for this season still names its fee, "to have it
-// sooner", so the line never contradicts that customer's own breakdown
-// (Keenan, 2026-11-05). A fee that isn't set drops its clause.
-export function otherColoursLine({ season, rushFee, rush }: { season: boolean; rushFee: number | null; rush: boolean }): string {
-  const fee = rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
-  if (season) {
-    return `Any other colour is made to order: nothing extra if it can wait for spring${
-      fee !== null ? `, or the ${formatMoney(fee)} rush colour fee to have it this season` : ""
-    }.`;
+// The track colour section's lines (round 17, Keenan, 2026-11-12): one
+// colour rule, the same as Your price in the meeting. White is in stock and
+// included. Any other colour is made to order: installed this season at no
+// extra cost by default, or in spring; a rush fee is Keenan's choice on a
+// quote and is named only when he charged it (this season with an amount),
+// so a link never mentions a fee its customer isn't paying. The words are
+// the meeting's own (colour_stock, colour_made and the two timing buttons).
+// The old September to November window is gone: the Christmas banner runs
+// by Keenan's dates instead (lib/quote-link/christmas.ts).
+export function colourSectionLines({
+  words,
+  colourName,
+  custom,
+  timing,
+  rushFee,
+}: {
+  words: DeckLines;
+  colourName: string | null;
+  custom: boolean;
+  timing: ColourTiming | null;
+  rushFee: number | null;
+}): { stock: string | null; other: string | null; made: string | null; timing: string | null } {
+  const name = (colourName ?? "").trim();
+  const madeToOrder = custom || (name !== "" && !isWhiteTrack(name));
+  if (!madeToOrder) {
+    return { stock: deckLine(words, "colour_stock"), other: "Any other colour is made to order at no extra cost.", made: null, timing: null };
   }
-  if (rush && fee !== null) {
-    return `Any other colour is made to order: nothing extra if it can wait for spring, or the ${formatMoney(fee)} rush colour fee to have it sooner.`;
-  }
-  return "Any other colour is made to order for a spring install, at no extra cost.";
+  const fee = timing === "rush" && rushFee !== null && Number.isFinite(rushFee) && rushFee > 0 ? rushFee : null;
+  const lowerFirst = (text: string) => (text ? text.charAt(0).toLowerCase() + text.slice(1) : text);
+  const when =
+    timing === "factory_order"
+      ? `${deckLine(words, "colour_spring_label")}, ${lowerFirst(deckLine(words, "colour_spring_value"))}.`
+      : `${deckLine(words, "colour_season_label")}, ${lowerFirst(
+          fee === null ? deckLine(words, "colour_season_included") : deckLine(words, "colour_season_value", { fee: formatMoney(fee) }),
+        )}.`;
+  return { stock: null, other: null, made: deckLine(words, "colour_made", { colour: name || "Your colour" }), timing: when };
 }
 
 // Whether the price hold has passed: after the valid-until date (Calgary),

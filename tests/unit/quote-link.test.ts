@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DECK_LINE_DEFAULTS, fillLine } from "@/lib/deck";
+import { DECK_LINE_DEFAULTS, DEFAULT_LINES, fillLine } from "@/lib/deck";
 import { UPPER_ACCESS_LABEL } from "@/lib/pricing";
 import {
   choiceInSentence,
@@ -19,8 +19,7 @@ import {
   parseCustomerQuote,
   phoneHref,
   priceHoldPassed,
-  christmasSeason,
-  otherColoursLine,
+  colourSectionLines,
   priceSelection,
   quoteFromRow,
   quoteLinkMessage,
@@ -303,38 +302,39 @@ describe("the reworked page's answer", () => {
     expect(labels).not.toContain("Rush colour fee");
   });
 
-  it("keeps the Christmas season to September 1 to November 30, like the banner", () => {
-    expect(["2026-08-31", "2026-09-01", "2026-11-30", "2026-12-01", "2027-01-15", null].map((day) => christmasSeason(day))).toEqual([
-      false,
-      true,
-      true,
-      false,
-      false,
-      false,
-    ]);
-  });
-
-  it("words the other track colours with the iPad's one rule: made to order, spring included, the rush fee this season", () => {
-    expect(otherColoursLine({ season: true, rushFee: 350, rush: false })).toBe(
-      "Any other colour is made to order: nothing extra if it can wait for spring, or the $350 rush colour fee to have it this season.",
+  it("words the track colour with one rule: white in stock, any other colour made to order, a rush fee only when charged (round 17)", () => {
+    const words = DEFAULT_LINES;
+    expect(colourSectionLines({ words, colourName: "White", custom: false, timing: "stock", rushFee: null })).toEqual({
+      stock: "White is in stock and included.",
+      other: "Any other colour is made to order at no extra cost.",
+      made: null,
+      timing: null,
+    });
+    // No colour yet reads like white.
+    expect(colourSectionLines({ words, colourName: null, custom: false, timing: null, rushFee: 350 }).other).toBe(
+      "Any other colour is made to order at no extra cost.",
     );
-    expect(otherColoursLine({ season: true, rushFee: null, rush: false })).toBe(
-      "Any other colour is made to order: nothing extra if it can wait for spring.",
+    // This season is the default and included; a fee stored on a spring quote is never named.
+    expect(colourSectionLines({ words, colourName: "Brown", custom: false, timing: "rush", rushFee: null })).toEqual({
+      stock: null,
+      other: null,
+      made: "Brown is made to order.",
+      timing: "Install this season, included.",
+    });
+    expect(colourSectionLines({ words, colourName: "Brown", custom: false, timing: "factory_order", rushFee: 350 }).timing).toBe(
+      "Install in spring, included.",
     );
-    expect(otherColoursLine({ season: false, rushFee: 350, rush: false })).toBe(
-      "Any other colour is made to order for a spring install, at no extra cost.",
-    );
-    expect(otherColoursLine({ season: false, rushFee: 350, rush: true })).toBe(
-      "Any other colour is made to order: nothing extra if it can wait for spring, or the $350 rush colour fee to have it sooner.",
-    );
-    expect(otherColoursLine({ season: false, rushFee: null, rush: true })).toBe(
-      "Any other colour is made to order for a spring install, at no extra cost.",
-    );
-    for (const season of [true, false]) {
-      for (const rush of [true, false]) {
-        const line = otherColoursLine({ season, rushFee: 350, rush });
-        expect(line).not.toMatch(/Christmas|powder|colour match/);
-        expect(line).not.toMatch(/[\u2013\u2014!]/);
+    // Keenan switched the fee on: named, exactly what the quote charges.
+    expect(colourSectionLines({ words, colourName: "RAL 7016 Anthracite grey", custom: true, timing: "rush", rushFee: 350 })).toMatchObject({
+      made: "RAL 7016 Anthracite grey is made to order.",
+      timing: "Install this season, $350 rush colour fee.",
+    });
+    for (const timing of ["stock", "factory_order", "rush", null] as const) {
+      for (const rushFee of [null, 0, 350]) {
+        const lines = colourSectionLines({ words, colourName: "Brown", custom: false, timing, rushFee });
+        const said = JSON.stringify(lines);
+        if (!(timing === "rush" && rushFee === 350)) expect(said).not.toMatch(/rush|fee/i);
+        expect(said).not.toMatch(/[\u2013\u2014!]|Christmas/);
       }
     }
   });
