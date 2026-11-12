@@ -603,17 +603,21 @@ try {
   // ---------------------------------------------------------------- What happens next (the last page, at every meeting)
   await goToScreen(page, NEXT);
   const nextScreen = page.getByRole("region", { name: NEXT });
-  const stepLabels = [];
-  for (const id of ["next-step-install", "next-step-pay"]) stepLabels.push(flat(await nextScreen.getByTestId(id).innerText().catch(() => "")));
+  // Round 17: Where you're at, the same four steps and words as the link,
+  // with Keenan's pay line under them in place of the old Paying row.
+  const installRow = flat(await nextScreen.getByTestId("next-step-install").innerText().catch(() => ""));
+  const nextText = flat(await nextScreen.innerText().catch(() => ""));
+  const steps = await nextScreen.getByTestId("tracker-step").evaluateAll((els) => els.map((el) => `${el.getAttribute("data-step")}:${el.getAttribute("data-state")}`).join(" "));
   check(
-    "What happens next (round 10, a wrap-up): Your install day, then Paying with No payment until your install is complete. word for word, and thanks; no colour book line",
+    "What happens next (round 17): Where you're at in the link's words with Keenan's pay line, Your install day with Pick a day, and thanks; no colour book line",
     (await nextScreen.getByTestId("next-steps-page").count()) === 1 &&
-      stepLabels[0].includes(deckLine(settings.deck, "step_day_label")) &&
-      stepLabels[1].includes(deckLine(settings.deck, "step_pay_label")) &&
-      stepLabels[1].includes("No payment until your install is complete.") &&
+      steps === "meeting:done choose:current visit:later install:later" &&
+      nextText.includes(flat(smart(deckLine(settings.deck, "tracker_pay")))) &&
+      installRow.includes(deckLine(settings.deck, "step_day_label")) &&
+      (await nextScreen.getByTestId("next-step-pay").count()) === 0 &&
       (await nextScreen.getByTestId("next-steps-thanks").count()) === 1 &&
-      !flat(await nextScreen.innerText()).includes(smart(deckLine(settings.deck, "step_colour_todo"))),
-    stepLabels.join(" | ").slice(0, 300),
+      !nextText.includes(smart(deckLine(settings.deck, "step_colour_todo"))),
+    `${steps} | ${installRow}`.slice(0, 300),
   );
   check("with nothing chosen there's no recap", (await nextScreen.getByTestId("next-steps-recap").count()) === 0);
   check(
