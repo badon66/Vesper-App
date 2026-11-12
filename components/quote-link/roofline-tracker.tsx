@@ -47,6 +47,9 @@ export function RooflineTracker({
   // move on, then the step that is now news opens.
   const first = closedUntilChosen ? linkOpeningStep(steps) : openingStep(steps);
   const [picked, setPicked] = useState<{ key: TrackerStepKey; from: TrackerStepKey | null } | null>(null);
+  // Once the steps move on, a tap is let go for good, so it never comes
+  // back if they move back (React's adjust-state-while-rendering pattern).
+  if (picked !== null && picked.from !== first) setPicked(null);
   const open = picked !== null && picked.from === first ? picked.key : first;
   const setOpen = (key: TrackerStepKey) => setPicked({ key, from: first });
   const shown = open === null ? null : (steps.find((step) => step.key === open) ?? steps[0]);
@@ -59,9 +62,20 @@ export function RooflineTracker({
       data-testid="tracker"
     >
       {title ? (
-        <h2 id={headingId} className={cn("font-bold", deck ? "text-[length:var(--deck-body)]" : "text-xl")}>
-          {say(title)}
-        </h2>
+        // On the link, where no step is open to start, a quiet line beside
+        // the heading says the steps open (Keenan's "Tap a step to read
+        // it"), at no cost in height; "Click" with a mouse.
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+          <h2 id={headingId} className={cn("font-bold", deck ? "text-[length:var(--deck-body)]" : "text-xl")}>
+            {say(title)}
+          </h2>
+          {closedUntilChosen ? (
+            <p className="text-sm text-muted-foreground" data-testid="tracker-hint">
+              <span className="pointer-fine:hidden">Tap a step to read it.</span>
+              <span className="hidden pointer-fine:inline">Click a step to read it.</span>
+            </p>
+          ) : null}
+        </div>
       ) : null}
       <div className={cn("relative w-full", deck ? "mt-2 h-[88px]" : "mt-2 h-16 lg:h-[76px]")}>
         <svg aria-hidden="true" viewBox="0 0 100 40" preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
@@ -136,11 +150,13 @@ export function RooflineTracker({
         ))}
       </ol>
       {/* On a laptop the link puts the step's words and the pay line side
-          by side, each at a reading width, to keep the top short. */}
-      <div className={cn("flex flex-col", !deck && "lg:flex-row lg:items-center lg:gap-10")}>
+          by side, each at a reading width, to keep the top short. The row
+          is the live region, always present, so a step's words are read
+          out when they appear, the first time too (the box itself is
+          hidden until a step opens on the link). */}
+      <div aria-live="polite" className={cn("flex flex-col", !deck && "lg:flex-row lg:items-center lg:gap-10")}>
       <div
         id="tracker-detail"
-        aria-live="polite"
         hidden={shown === null}
         className={cn("mt-3 rounded-md bg-muted", deck ? "px-5 py-4" : "px-4 py-3 lg:max-w-2xl lg:flex-1")}
         data-testid="tracker-detail"
