@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { commissionLightsCents, commissionQuoteFromRow } from "@/lib/pay/commission";
 import { priceQuote, runRateOf, runTrack, trackFields, type QuoteInputs, type QuoteRun } from "@/lib/pricing";
+import { customerAreaName } from "@/lib/quotes/areas";
 
 // Track types (quote link take 3, Keenan, 2026-11-11): Hat track is the
 // quote's price a foot; Double and J track have their own price a foot,
@@ -140,5 +141,27 @@ describe("every area on its own line (round 17, the customer's link)", () => {
       ["Shed", "Flat price", 250],
     ]);
     expect([areas.subtotal, areas.total]).toEqual([grouped.subtotal, grouped.total]);
+  });
+
+  it("names a quote by area the way the editor does, so the front's two storeys never both read Front", () => {
+    const runs = [
+      { name: "Front", feet: 64, level: "lower" as const, part: "eave" as const, area: "front" as const, gable: false },
+      { name: "Front gable", feet: 12, level: "lower" as const, part: "gable" as const, area: "front" as const, gable: true },
+      { name: "Front", feet: 38, level: "upper" as const, part: "eave" as const, area: "front" as const, gable: false, rate: 28 },
+      { name: "Shed", feet: 20, level: "lower" as const, part: "other" as const, area: "other" as const, gable: false, flat: 600 },
+    ];
+    const base = { runs, boxCount: 1, pricePerFt: 24, boxPrice: 500, adders: [], discounts: [], colourTiming: "stock" as const, rushFee: null, gstEnabled: false, gstRate: 0.05 };
+    const named = priceQuote({ ...base, perArea: true, areaName: customerAreaName });
+    expect(named.lines.slice(0, 4).map((line) => [line.label, line.detail, line.amount])).toEqual([
+      ["Front lower", "64 ft", 1536],
+      ["Front lower gable", "12 ft", 288],
+      ["Front upper", "38 ft", 1064],
+      ["Shed", "20 ft", 600],
+    ]);
+    expect(named.total).toBe(priceQuote(base).total);
+    // A run from an older quote, with no area tag, keeps the name Keenan typed.
+    expect(customerAreaName({ name: "Garage Eave", feet: 30, level: "lower" })).toBe("Garage Eave");
+    // An area Keenan named himself keeps his name.
+    expect(customerAreaName({ name: "Over the garage", feet: 30, level: "upper", area: "front", gable: false })).toBe("Over the garage");
   });
 });

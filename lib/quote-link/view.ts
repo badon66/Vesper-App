@@ -5,7 +5,7 @@
 // text Keenan sends. No React and no network, so it is unit tested like the
 // pricing it feeds, and the page and the server share it.
 
-import { AREA_KINDS } from "@/lib/quotes/areas";
+import { AREA_KINDS, customerAreaName } from "@/lib/quotes/areas";
 import { z } from "zod";
 import {
   cleanFeet,
@@ -487,8 +487,10 @@ export function customerInputs(quote: CustomerQuote["quote"], positions: readonl
     gstEnabled: quote.gstEnabled,
     gstRate: quote.gstRate,
     colourName: quote.trackColourName,
-    // Round 17: every area on its own line on the link and its signed copy.
+    // Round 17: every area on its own line on the link and its signed copy,
+    // by the name the quote editor shows it ("Front lower", "Front upper").
     perArea: true,
+    areaName: customerAreaName,
   };
 }
 
