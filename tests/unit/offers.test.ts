@@ -35,7 +35,7 @@ const inputs = (over: Partial<QuoteInputs> = {}): QuoteInputs => ({
   adders: [],
   discounts: [{ label: "Neighbour discount", amount: 150 }],
   colourTiming: null,
-  rushFee: 350,
+  rushFee: null,
   upperAccessFee: 200,
   upperGableAccessFee: 400,
   minJobTotal: 2500,
@@ -99,8 +99,8 @@ describe("offers", () => {
     const lower = priceOffer(inputs(), { id: "l", name: "Lower level", runs: [0, 1] })!;
     // 90 ft x $23 = $2,070 + $500 box - $150 = $2,420, raised to the $2,500 minimum.
     expect(lower.lines.map((line) => line.label)).toEqual([
-      "Track and lights",
-      "Control box",
+      "Standard track",
+      "Smart controller and power supply",
       "Neighbour discount",
       "To reach our $2,500 minimum",
     ]);
@@ -117,8 +117,11 @@ describe("offers", () => {
     expect(full.lines.find((line) => line.label === "Upper roof access")?.amount).toBe(400);
     expect(full.subtotal).toBe(4200);
 
-    const rush = priceOffer(inputs({ colourTiming: "rush" }), { id: "f", name: "Full wrap", runs: [0, 1, 2, 3] })!;
+    // Round 18: the rush fee is the offer's own switch; a quote-wide one never reaches an offer.
+    const rush = priceOffer(inputs(), { id: "f", name: "Full wrap", runs: [0, 1, 2, 3], rushFee: 350 })!;
     expect(rush.subtotal).toBe(4550);
+    expect(rush.lines.find((line) => line.label === "Rush fee")).toEqual({ label: "Rush fee", detail: null, amount: 350 });
+    expect(priceOffer(inputs({ rushFee: 350, colourTiming: "rush" }), { id: "f", name: "Full wrap", runs: [0, 1, 2, 3] })!.subtotal).toBe(4200);
     expect(priceOffer(inputs(), { id: "x", name: "Front only", runs: [] })).toBeNull();
   });
 
@@ -194,7 +197,7 @@ describe("offers", () => {
 
   it("prices an offer with its own box count, or the quote's", () => {
     const two = priceOffer(inputs(), { id: "f", name: "Full wrap", runs: [0, 1, 2, 3], boxes: 2 })!;
-    expect(two.lines.find((line) => line.label.startsWith("Control boxes"))?.amount).toBe(1000);
+    expect(two.lines.find((line) => line.label === "Smart controller and power supply (2)")?.amount).toBe(1000);
     expect(two.subtotal).toBe(4700);
     expect(priceOffer(inputs(), { id: "f", name: "Full wrap", runs: [0, 1, 2, 3], boxes: null })!.subtotal).toBe(4200);
   });

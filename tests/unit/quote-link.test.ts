@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DECK_LINE_DEFAULTS, DEFAULT_LINES, fillLine } from "@/lib/deck";
-import { UPPER_ACCESS_LABEL } from "@/lib/pricing";
+import { CONTROLLER_DETAIL, CONTROLLER_LABEL, UPPER_ACCESS_LABEL } from "@/lib/pricing";
 import {
   choiceInSentence,
   choiceLabel,
@@ -269,23 +269,27 @@ describe("the reworked page's answer", () => {
     expect(take1.state === "live" && [take1.today, take1.christmas, take1.quote.rushFee, take1.quote.upperAccessFee]).toEqual([null, null, null, null]);
   });
 
-  it("prices the full quote with the upper gable amount and the rush colour fee", () => {
+  it("prices the full quote by track, with the upper gable amount and the old quote's rush fee", () => {
     if (!quote) throw new Error("not live");
     const priced = priceSelection(quote, null);
-    // Round 17: every area on its own line, the same $3,960 of lights.
-    expect(priced.lines.map((line) => [line.label, line.amount])).toEqual([
-      ["Garage Gable", 816],
-      ["Garage Eave", 720],
-      ["Lower Porch Eave", 312],
-      ["Upper Front Eave", 768],
-      ["Two Upper Gables", 720],
-      ["Upper & Lower Sides", 624],
-      ["Control box", 500],
-      [UPPER_ACCESS_LABEL, 400],
-      ["Rush colour fee", 350],
-      ["Family & Friends Discount", -300],
+    // Round 18: the lights by track, the same $3,960; the fee the quote kept
+    // for the whole quote now rides on its one Full wrap, so the total holds.
+    expect(priced.lines.map((line) => [line.label, line.detail, line.amount])).toEqual([
+      ["Standard track", "165 ft at $24 a foot", 3960],
+      [CONTROLLER_LABEL, CONTROLLER_DETAIL, 500],
+      [UPPER_ACCESS_LABEL, "For work up high: $200, or $400 with an upper gable", 400],
+      ["Rush fee", null, 350],
+      ["Family & Friends Discount", null, -300],
     ]);
-    expect(priced.lines.find((line) => line.label === "Rush colour fee")?.detail).toBe("Brown track, made to order this season");
+    expect(priced.lines[0].areas?.map((area) => [area.label, area.detail, area.amount])).toEqual([
+      ["Garage Gable", "34 ft", 816],
+      ["Garage Eave", "30 ft", 720],
+      ["Lower Porch Eave", "13 ft", 312],
+      ["Upper Front Eave", "32 ft", 768],
+      ["Two Upper Gables", "30 ft", 720],
+      ["Upper & Lower Sides", "26 ft", 624],
+    ]);
+    expect(quote.offers.map((offer) => [offer.id, offer.rushFee])).toEqual([["full", 350]]);
     expect(customerTotal(quote, null)).toBe("$4,910");
   });
 
@@ -304,42 +308,34 @@ describe("the reworked page's answer", () => {
     if (!old) throw new Error("unreadable");
     const labels = priceSelection(old, null).lines.map((line) => line.label);
     expect(labels).not.toContain(UPPER_ACCESS_LABEL);
-    expect(labels).not.toContain("Rush colour fee");
+    expect(labels).not.toContain("Rush fee");
   });
 
-  it("words the track colour with one rule: white in stock, any other colour made to order, a rush fee only when charged (round 17)", () => {
+  it("words the track colour with one rule: white in stock, any other colour made to order, never a fee (round 18)", () => {
     const words = DEFAULT_LINES;
-    expect(colourSectionLines({ words, colourName: "White", custom: false, timing: "stock", rushFee: null })).toEqual({
+    expect(colourSectionLines({ words, colourName: "White", custom: false, timing: "stock" })).toEqual({
       stock: "White is in stock and included.",
-      // No cost claim: a colour this season may carry Keenan's rush fee.
       other: "Any other colour is made to order.",
       made: null,
       timing: null,
     });
     // No colour yet reads like white.
-    expect(colourSectionLines({ words, colourName: null, custom: false, timing: null, rushFee: 350 }).other).toBe("Any other colour is made to order.");
-    // This season is the default and included; a fee stored on a spring quote is never named.
-    expect(colourSectionLines({ words, colourName: "Brown", custom: false, timing: "rush", rushFee: null })).toEqual({
+    expect(colourSectionLines({ words, colourName: null, custom: false, timing: null }).other).toBe("Any other colour is made to order.");
+    expect(colourSectionLines({ words, colourName: "Brown", custom: false, timing: "rush" })).toEqual({
       stock: null,
       other: null,
       made: "Brown is made to order.",
       timing: "Install this season, included.",
     });
-    expect(colourSectionLines({ words, colourName: "Brown", custom: false, timing: "factory_order", rushFee: 350 }).timing).toBe(
-      "Install in spring, included.",
+    expect(colourSectionLines({ words, colourName: "Brown", custom: false, timing: "factory_order" }).timing).toBe("Install in spring, included.");
+    expect(colourSectionLines({ words, colourName: "RAL 7016 Anthracite grey", custom: true, timing: "rush" }).made).toBe(
+      "RAL 7016 Anthracite grey is made to order.",
     );
-    // Keenan switched the fee on: named, exactly what the quote charges.
-    expect(colourSectionLines({ words, colourName: "RAL 7016 Anthracite grey", custom: true, timing: "rush", rushFee: 350 })).toMatchObject({
-      made: "RAL 7016 Anthracite grey is made to order.",
-      timing: "Install this season, $350 rush colour fee.",
-    });
+    // A rush fee is an option's own line now, never the colour's.
     for (const timing of ["stock", "factory_order", "rush", null] as const) {
-      for (const rushFee of [null, 0, 350]) {
-        const lines = colourSectionLines({ words, colourName: "Brown", custom: false, timing, rushFee });
-        const said = JSON.stringify(lines);
-        if (!(timing === "rush" && rushFee === 350)) expect(said).not.toMatch(/rush|fee/i);
-        expect(said).not.toMatch(/[\u2013\u2014!]|Christmas/);
-      }
+      const said = JSON.stringify(colourSectionLines({ words, colourName: "Brown", custom: false, timing }));
+      expect(said).not.toMatch(/rush|fee/i);
+      expect(said).not.toMatch(/[\u2013\u2014!]|Christmas/);
     }
   });
 
@@ -433,19 +429,19 @@ describe("the options", () => {
     const garage = offerChoice(quote, "garage");
     expect([garage?.name, garage?.total]).toEqual(["Garage", "$2,586"]);
     expect(garage?.totals.lines.map((line) => [line.label, line.detail, line.amount])).toEqual([
-      ["Garage Gable", "34 ft", 816],
-      ["Garage Eave", "30 ft", 720],
-      ["Control boxes (2)", "2 at $500", 1000],
-      ["Rush colour fee", "Brown track, made to order this season", 350],
+      ["Standard track", "64 ft at $24 a foot", 1536],
+      [`${CONTROLLER_LABEL} (2)`, `2 at $500. ${CONTROLLER_DETAIL}`, 1000],
+      ["Rush fee", null, 350],
       ["Family & Friends Discount", null, -300],
     ]);
+    expect(garage?.totals.lines[0].areas?.map((area) => area.label)).toEqual(["Garage Gable", "Garage Eave"]);
     expect(offerChoice({ ...quote, gstEnabled: true }, "main")?.total).toBe("$3,022 + GST");
     // An option with no runs, one that isn't on the quote, or none at all.
     expect([offerChoice(quote, "front"), offerChoice(quote, "gone"), offerChoice(quote, null)]).toEqual([null, null, null]);
   });
 
   it("raises an option under the minimum to it, with the line saying so", () => {
-    const porch = offerChoice({ ...quote, offers: [{ id: "porch", name: "Porch", runs: [2] }] }, "porch");
+    const porch = offerChoice({ ...quote, offers: [{ id: "porch", name: "Porch", runs: [2], rushFee: 350 }] }, "porch");
     // 13 ft x $24 = $312 + $500 + $350 - $300 = $862, raised to $2,500.
     expect([porch?.totals.minimumApplied, porch?.totals.beforeMinimum, porch?.total]).toEqual([true, 862, "$2,500"]);
     expect(porch?.totals.lines.at(-1)).toEqual({ label: "To reach our $2,500 minimum", detail: null, amount: 1638 });

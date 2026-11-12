@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { commissionLightsCents, commissionQuoteFromRow } from "@/lib/pay/commission";
-import { priceQuote, runRateOf, runTrack, trackFields, type QuoteInputs, type QuoteRun } from "@/lib/pricing";
+import { CONTROLLER_DETAIL, CONTROLLER_LABEL, priceQuote, runRateOf, runTrack, trackFields, type QuoteInputs, type QuoteRun } from "@/lib/pricing";
 import { customerAreaName } from "@/lib/quotes/areas";
 
 // Track types (quote link take 3, Keenan, 2026-11-11): Hat track is the
 // quote's price a foot; Double and J track have their own price a foot,
 // copied onto the area when Keenan picks it. His own rate or a flat price
-// on the area still wins. The breakdown names the track where it isn't Hat
-// track, and the commission counts it as lights.
+// on the area still wins. The commission counts it as lights. Round 18: the
+// breakdown is one line per track (Hat track reads Standard track, J track
+// reads L track (back track)), each with its areas under it.
 function base(runs: QuoteRun[], overrides: Partial<QuoteInputs> = {}): QuoteInputs {
   return {
     runs,
@@ -55,42 +56,49 @@ describe("an area's track", () => {
 });
 
 describe("pricing with track types", () => {
-  it("prices a J track area at J track's price, on its own line naming the track", () => {
+  it("prices a J track area at J track's price, under its own track's line", () => {
     const totals = priceQuote(base([front, garage, gables]));
     expect(totals.lines.map((line) => [line.label, line.detail, line.amount])).toEqual([
-      ["Track and lights", "92 ft at $23 a foot", 2116],
-      ["Upper gables", "22 ft of J track at $30 a foot", 660],
-      ["Control box", "Always included", 500],
+      ["Standard track", "92 ft at $23 a foot", 2116],
+      ["L track (back track)", "22 ft at $30 a foot", 660],
+      [CONTROLLER_LABEL, CONTROLLER_DETAIL, 500],
     ]);
+    expect(totals.lines[0].areas).toEqual([
+      { label: "Front lower", detail: "64 ft", amount: 1472 },
+      { label: "Garage", detail: "28 ft", amount: 644 },
+    ]);
+    expect(totals.lines[1].areas).toEqual([{ label: "Upper gables", detail: "22 ft", amount: 660 }]);
     expect(totals.subtotal).toBe(3276);
     expect(totals.totalFeet).toBe(114);
   });
 
   it("lets Keenan's own rate on the area win, still naming the track", () => {
     const totals = priceQuote(base([front, { ...gables, rate: 26 }]));
-    expect(totals.lines[1]).toEqual({ label: "Upper gables", detail: "22 ft of J track at $26 a foot", amount: 572 });
+    expect(totals.lines[1]).toMatchObject({ label: "L track (back track)", detail: "22 ft at $26 a foot", amount: 572, track: "j" });
   });
 
   it("lets a flat price on the area win, still naming the track", () => {
     const totals = priceQuote(base([front, { ...gables, flat: 500 }]));
-    expect(totals.lines[1]).toEqual({ label: "Upper gables", detail: "22 ft of J track, flat price", amount: 500 });
+    expect(totals.lines[1]).toMatchObject({ label: "L track (back track)", detail: "22 ft", amount: 500 });
+    expect(totals.lines[1].areas).toEqual([{ label: "Upper gables", detail: "22 ft, flat price", amount: 500 }]);
     expect(totals.subtotal).toBe(64 * 23 + 500 + 500);
   });
 
   it("prices Double track the same way", () => {
     const totals = priceQuote(base([front, { name: "Back upper", feet: 40, level: "upper", area: "back", track: "double", trackRate: 27.5 }]));
-    expect(totals.lines[1]).toEqual({ label: "Back upper", detail: "40 ft of Double track at $27.50 a foot", amount: 1100 });
+    expect(totals.lines[1]).toMatchObject({ label: "Double track", detail: "40 ft at $27.50 a foot", amount: 1100, track: "double" });
+    expect(totals.lines[1].areas).toEqual([{ label: "Back upper", detail: "40 ft", amount: 1100 }]);
   });
 
   it("leaves a quote with only Hat track exactly as before", () => {
     const totals = priceQuote(base([front, garage]));
-    expect(totals.lines.map((line) => line.label)).toEqual(["Track and lights", "Control box"]);
+    expect(totals.lines.map((line) => line.label)).toEqual(["Standard track", CONTROLLER_LABEL]);
     expect(totals.subtotal).toBe(92 * 23 + 500);
   });
 
-  it("with only a track area, shows no empty Track and lights line", () => {
+  it("with only an L track area, shows no empty Standard track line", () => {
     const totals = priceQuote(base([gables]));
-    expect(totals.lines.map((line) => line.label)).toEqual(["Upper gables", "Control box"]);
+    expect(totals.lines.map((line) => line.label)).toEqual(["L track (back track)", CONTROLLER_LABEL]);
   });
 
   it("still takes a percent deal off the whole, track lines included", () => {
@@ -124,8 +132,8 @@ describe("the commission counts a track area as lights", () => {
   });
 });
 
-describe("every area on its own line (round 17, the customer's link)", () => {
-  it("names each area with its feet and its track where it isn't Hat track, for the same total", () => {
+describe("every area under its track (round 18, the link, meeting mode and the signed copy)", () => {
+  it("lists each area with its feet, its own rate where the track line has none, for the same total", () => {
     const runs = [
       { name: "Front", feet: 64, level: "lower" as const },
       { name: "Upper gables", feet: 22, level: "upper" as const, track: "j" as const, trackRate: 30 },
@@ -133,14 +141,17 @@ describe("every area on its own line (round 17, the customer's link)", () => {
       { name: "Back", feet: 0, level: "lower" as const },
     ];
     const base = { runs, boxCount: 1, pricePerFt: 23, boxPrice: 500, adders: [], discounts: [], colourTiming: "stock" as const, rushFee: null, gstEnabled: false, gstRate: 0.05 };
-    const grouped = priceQuote(base);
-    const areas = priceQuote({ ...base, perArea: true });
-    expect(areas.lines.slice(0, 3).map((line) => [line.label, line.detail, line.amount])).toEqual([
-      ["Front", "64 ft", 1472],
-      ["Upper gables", "22 ft, J track", 660],
-      ["Shed", "Flat price", 250],
+    const totals = priceQuote(base);
+    expect(totals.lines.slice(0, 2).map((line) => [line.label, line.detail, line.amount])).toEqual([
+      ["Standard track", "64 ft", 1722],
+      ["L track (back track)", "22 ft at $30 a foot", 660],
     ]);
-    expect([areas.subtotal, areas.total]).toEqual([grouped.subtotal, grouped.total]);
+    // An unmeasured area isn't listed; a flat one with no feet says so.
+    expect(totals.lines[0].areas).toEqual([
+      { label: "Front", detail: "64 ft at $23 a foot", amount: 1472 },
+      { label: "Shed", detail: "Flat price", amount: 250 },
+    ]);
+    expect(totals.subtotal).toBe(1472 + 250 + 660 + 500);
   });
 
   it("names a quote by area the way the editor does, so the front's two storeys never both read Front", () => {
@@ -151,12 +162,12 @@ describe("every area on its own line (round 17, the customer's link)", () => {
       { name: "Shed", feet: 20, level: "lower" as const, part: "other" as const, area: "other" as const, gable: false, flat: 600 },
     ];
     const base = { runs, boxCount: 1, pricePerFt: 24, boxPrice: 500, adders: [], discounts: [], colourTiming: "stock" as const, rushFee: null, gstEnabled: false, gstRate: 0.05 };
-    const named = priceQuote({ ...base, perArea: true, areaName: customerAreaName });
-    expect(named.lines.slice(0, 4).map((line) => [line.label, line.detail, line.amount])).toEqual([
-      ["Front lower", "64 ft", 1536],
-      ["Front lower gable", "12 ft", 288],
-      ["Front upper", "38 ft", 1064],
-      ["Shed", "20 ft", 600],
+    const named = priceQuote({ ...base, areaName: customerAreaName });
+    expect(named.lines[0].areas?.map((line) => [line.label, line.detail, line.amount])).toEqual([
+      ["Front lower", "64 ft at $24 a foot", 1536],
+      ["Front lower gable", "12 ft at $24 a foot", 288],
+      ["Front upper", "38 ft at $28 a foot", 1064],
+      ["Shed", "20 ft, flat price", 600],
     ]);
     expect(named.total).toBe(priceQuote(base).total);
     // A run from an older quote, with no area tag, keeps the name Keenan typed.

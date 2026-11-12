@@ -37,7 +37,8 @@ const inputs = (over: Partial<QuoteInputs> = {}): QuoteInputs => ({
   adders: [],
   discounts: [],
   colourTiming: null,
-  rushFee: 350,
+  // Round 18: a rush fee is the offer's own switch, off unless set.
+  rushFee: null,
   upperAccessFee: 200,
   upperGableAccessFee: 400,
   minJobTotal: 2500,
@@ -68,15 +69,20 @@ describe("the areas", () => {
       { name: "Upper gable", feet: 22, level: "upper", part: "gable" },
       { name: "Back", feet: 40, level: "lower" },
       { name: "Left side", feet: 30, level: "lower", part: "sides" },
+      { name: "Sides", feet: 26, level: "lower", part: "sides" },
       { name: "Rear peak", feet: 14, level: "upper" },
     ];
-    expect(old.map(areaOf)).toEqual(["front", "front", "front", "other", "back", "sides", "back"]);
-    expect(old.map(isGable)).toEqual([false, false, false, true, false, false, true]);
-    expect(old.map(areaKeyOf)).toEqual(["front_lower", "front_lower", "front_upper", null, "back_lower", "sides_lower", "back_upper_gable"]);
-    // Two old runs on one area both stay, named apart.
+    // Round 18: a name that says left or right goes to that side's own view;
+    // a run that only says sides stays one Sides line until Keenan splits it.
+    expect(old.map(areaOf)).toEqual(["front", "front", "front", "other", "back", "left", "sides", "back"]);
+    expect(old.map(isGable)).toEqual([false, false, false, true, false, false, false, true]);
+    expect(old.map(areaKeyOf)).toEqual(["front_lower", "front_lower", "front_upper", null, "back_lower", "left_lower", "sides_lower", "back_upper_gable"]);
+    // Two old runs on one area both stay, each by the name it was typed with
+    // (round 18: a line's name is Keenan's to change, so the name shows as is).
     expect(runsOnArea(old, "front_lower")).toEqual([0, 1]);
-    expect(areaDisplayName(old[1])).toBe("Front lower: Garage");
-    expect(areaDisplayName(old[0])).toBe("Front lower");
+    expect(areaDisplayName(old[1])).toBe("Garage");
+    expect(areaDisplayName(old[0])).toBe("Front");
+    expect(areaDisplayName(tagRun(old[1]))).toBe("Garage");
     // Tagging changes nothing that prices.
     const tagged = old.map(tagRun);
     expect(tagged[1]).toMatchObject({ name: "Garage", feet: 28, level: "lower", part: "garage", area: "front", gable: false, rate: null, flat: null });
@@ -89,29 +95,34 @@ describe("pricing an area Keenan's way", () => {
     const totals = priceQuote(inputs());
     // 254 ft x $24 = 6096 + 500 box + 400 (an upper gable is on) = 6996.
     expect(totals.totalFeet).toBe(254);
-    expect(line(totals, "Track and lights")).toEqual({ label: "Track and lights", detail: "254 ft at $24 a foot", amount: 6096 });
+    expect(line(totals, "Standard track")).toMatchObject({ label: "Standard track", detail: "254 ft at $24 a foot", amount: 6096, track: "hat" });
+    expect(line(totals, "Standard track")?.areas?.map((area) => area.detail)).toEqual(["64 ft", "12 ft", "38 ft", "10 ft", "50 ft", "60 ft", "20 ft"]);
     expect(line(totals, "Upper roof access")?.amount).toBe(400);
+    expect(line(totals, "Rush fee")).toBeUndefined();
     expect(totals.subtotal).toBe(6996);
   });
 
   it("an area at Keenan's own price a foot: the line names the feet at each rate", () => {
     const runs = HOUSE.map((run, at) => (at === 2 ? { ...run, rate: 28 } : run));
-    const totals = priceQuote(inputs({ runs }));
+    const totals = priceQuote(inputs({ runs, areaName: areaDisplayName }));
     // 216 ft at $24 = 5184, 38 ft at $28 = 1064.
-    expect(line(totals, "Track and lights")).toEqual({ label: "Track and lights", detail: "216 ft at $24, 38 ft at $28", amount: 6248 });
+    // Round 18: the track's own line gives the feet; its areas each name their rate.
+    expect(line(totals, "Standard track")).toMatchObject({ label: "Standard track", detail: "254 ft", amount: 6248 });
+    expect(line(totals, "Standard track")?.areas?.[2]).toEqual({ label: "Front upper", detail: "38 ft at $28 a foot", amount: 1064 });
+    expect(line(totals, "Standard track")?.areas?.[0]).toEqual({ label: "Front lower", detail: "64 ft at $24 a foot", amount: 1536 });
     expect(totals.subtotal).toBe(6248 + 500 + 400);
     expect(runLightsCents(runs[2], 24)).toBe(38 * 2800);
   });
 
-  it("a flat-priced area is its own line, by its name and price, and still counts its feet", () => {
+  it("a flat-priced area is its own area line under its track, by its name and price, and still counts its feet", () => {
     const runs = HOUSE.map((run, at) => (at === 6 ? { ...run, flat: 600 } : run));
     const totals = priceQuote(inputs({ runs }));
-    expect(line(totals, "Track and lights")).toEqual({ label: "Track and lights", detail: "234 ft at $24 a foot", amount: 5616 });
-    expect(line(totals, "Shed")).toEqual({ label: "Shed", detail: "20 ft, flat price", amount: 600 });
+    expect(line(totals, "Standard track")).toMatchObject({ label: "Standard track", detail: "254 ft", amount: 5616 + 600 });
+    expect(line(totals, "Standard track")?.areas?.[6]).toEqual({ label: "Shed", detail: "20 ft, flat price", amount: 600 });
     expect(totals.totalFeet).toBe(254);
     expect(totals.subtotal).toBe(5616 + 600 + 500 + 400);
     // A flat price of 0 is allowed: the area is on the house for free.
-    expect(line(priceQuote(inputs({ runs: HOUSE.map((run, at) => (at === 6 ? { ...run, flat: 0 } : run)) })), "Shed")?.amount).toBe(0);
+    expect(line(priceQuote(inputs({ runs: HOUSE.map((run, at) => (at === 6 ? { ...run, flat: 0 } : run)) })), "Standard track")?.areas?.[6]?.amount).toBe(0);
     // Every line adds up to the total.
     const sum = totals.lines.reduce((acc, item) => acc + item.amount, 0);
     expect(Math.round(sum * 100) / 100).toBe(totals.subtotal);
@@ -147,6 +158,13 @@ describe("pricing an area Keenan's way", () => {
     expect(small.subtotal).toBe(2500);
     const gst = priceQuote(inputs({ gstEnabled: true }));
     expect(gst.gst).toBeCloseTo(6996 * 0.05, 2);
+  });
+
+  it("adds an offer's own rush fee as one line, before GST (round 18)", () => {
+    const rush = priceQuote(inputs({ rushFee: 350, gstEnabled: true }));
+    expect(line(rush, "Rush fee")).toEqual({ label: "Rush fee", detail: null, amount: 350 });
+    expect(rush.subtotal).toBe(6996 + 350);
+    expect(rush.gst).toBeCloseTo((6996 + 350) * 0.05, 2);
   });
 });
 

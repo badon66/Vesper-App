@@ -280,42 +280,29 @@ describe("the colour page's one colour rule (round 9)", () => {
   });
 
   it("says White is in stock and included, with no buttons", () => {
-    expect(colourTimingView({ lines: DEFAULT_LINES, kind: "list", text: "White", timing: "stock", rushFee: 400 })).toEqual({
+    expect(colourTimingView({ lines: DEFAULT_LINES, kind: "list", text: "White", timing: "stock" })).toEqual({
       kind: "stock",
       line: "White is in stock and included.",
     });
-    expect(colourTimingView({ lines: DEFAULT_LINES, kind: "none", text: "", timing: null, rushFee: 400 })).toEqual({ kind: "none" });
+    expect(colourTimingView({ lines: DEFAULT_LINES, kind: "none", text: "", timing: null })).toEqual({ kind: "none" });
   });
 
   it("any other colour is made to order: Install this season, included, and Install in spring, included (round 17)", () => {
     // No fee switched on: both included.
-    expect(colourTimingView({ lines: DEFAULT_LINES, kind: "list", text: "Brown", timing: "factory_order", rushFee: null })).toEqual({
+    expect(colourTimingView({ lines: DEFAULT_LINES, kind: "list", text: "Brown", timing: "factory_order" })).toEqual({
       kind: "made",
       line: "Brown is made to order.",
       season: { label: "Install this season", value: "Included" },
       spring: { label: "Install in spring", value: "Included" },
       chosen: "spring",
     });
-    for (const rushFee of [null, 0]) {
-      const view = colourTimingView({ lines: DEFAULT_LINES, kind: "list", text: "Black", timing: "rush", rushFee });
-      expect(view.kind === "made" && [view.season.value, view.chosen]).toEqual(["Included", "season"]);
-    }
+    const view = colourTimingView({ lines: DEFAULT_LINES, kind: "list", text: "Black", timing: "rush" });
+    expect(view.kind === "made" && [view.season.value, view.chosen]).toEqual(["Included", "season"]);
   });
 
-  it("names the rush fee on This season only when Keenan charges one (round 17)", () => {
-    const charged = colourTimingView({ lines: DEFAULT_LINES, kind: "custom", text: "Anthracite grey", timing: "rush", rushFee: 400 });
-    expect(charged.kind === "made" && [charged.season.value, charged.chosen]).toEqual(["$400 rush colour fee", "season"]);
-    // While Spring is picked, This season still says what it would cost, so
-    // tapping it never adds a fee the button didn't show.
-    const lookingAtSpring = colourTimingView({ lines: DEFAULT_LINES, kind: "list", text: "Brown", timing: "factory_order", rushFee: 400 });
-    expect(lookingAtSpring.kind === "made" && [lookingAtSpring.season.value, lookingAtSpring.spring.value, lookingAtSpring.chosen]).toEqual([
-      "$400 rush colour fee",
-      "Included",
-      "spring",
-    ]);
-    // No fee in hand (a saved spring quote opens with none): nothing names one.
-    const spring = colourTimingView({ lines: DEFAULT_LINES, kind: "list", text: "Brown", timing: "factory_order", rushFee: null });
-    expect(JSON.stringify(spring)).not.toMatch(/rush|fee/i);
+  it("never names a fee on the colour: a rush fee is an offer's own line (round 18)", () => {
+    const season = colourTimingView({ lines: DEFAULT_LINES, kind: "custom", text: "Anthracite grey", timing: "rush" });
+    expect(season.kind === "made" && [season.season.value, season.spring.value, season.chosen]).toEqual(["Included", "Included", "season"]);
   });
 });
 

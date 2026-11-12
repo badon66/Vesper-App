@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { commissionFor, commissionQuoteFromRow } from "@/lib/pay/commission";
 import { priceQuote } from "@/lib/pricing";
 import { priceSelection, quoteFromRow } from "@/lib/quote-link/view";
+import { runDisplayName } from "@/lib/quotes/areas";
 import {
   acceptedOption,
   acceptOptions,
@@ -160,13 +161,13 @@ describe("the quote's own prices", () => {
       },
     ] as OfferQuoteRow[]) {
       const link = quoteFromRow(row)!;
-      // Round 17: the link lists every area on its own line; the same cents.
-      expect(priceQuote({ ...quoteInputsFromRow(row), perArea: true })).toEqual(priceSelection(link, null));
+      // Round 18: the link lists the lights by track, each area by its name; the same cents.
+      expect(priceQuote({ ...quoteInputsFromRow(row), areaName: runDisplayName })).toEqual(priceSelection(link, null));
       expect(priceQuote(quoteInputsFromRow(row)).total).toBe(priceSelection(link, null).total);
     }
   });
 
-  it("charge the rush colour fee only on a rush quote, and keep an upper-only line upper-only", () => {
+  it("count an old quote's rush fee only on a rush quote (carried onto every offer, round 18), and keep an upper-only line upper-only", () => {
     expect(quoteInputsFromRow(offerQuote).rushFee).toBeNull();
     expect(quoteInputsFromRow({ ...offerQuote, colour_timing: "rush" }).rushFee).toBe(350);
     expect(quoteInputsFromRow({ ...offerQuote, colour_timing: "someday" }).colourTiming).toBeNull();

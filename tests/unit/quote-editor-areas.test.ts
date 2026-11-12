@@ -90,7 +90,10 @@ describe("the views, drawn", () => {
     expect(lines.back_upper_gable).toEqual({ at: null, feet: 0, measured: false, lit: false });
     // An Other is never a line on the drawings.
     expect(Object.values(lines).some((line) => line.at === 4)).toBe(false);
-    expect(Object.keys(lines)).toHaveLength(10);
+    // Round 18: four views of four lines each, and an old quote's Sides.
+    expect(lines.left_lower).toEqual({ at: null, feet: 0, measured: false, lit: false });
+    expect(lines.right_upper_gable).toEqual({ at: null, feet: 0, measured: false, lit: false });
+    expect(Object.keys(lines)).toHaveLength(18);
   });
 
   it("with no active offer nothing is lit; a run with no feet is an empty line and never lights", () => {
@@ -242,10 +245,16 @@ describe("an area priced Keenan's way", () => {
     });
     // 124 ft at $24 = 2976, 38 ft at $28 = 1064, the shed flat 600, the box, $400 with an upper gable.
     expect(totals.lines.map((line) => [line.label, line.amount])).toEqual([
-      ["Track and lights", 4040],
-      ["Shed", 600],
-      ["Control box", 500],
+      ["Standard track", 4640],
+      ["Smart controller and power supply", 500],
       ["Upper roof access", 400],
+    ]);
+    expect(totals.lines[0].areas?.map((area) => [area.label, area.detail, area.amount])).toEqual([
+      ["Front", "64 ft at $24 a foot", 1536],
+      ["Front gable", "10 ft at $24 a foot", 240],
+      ["Front", "38 ft at $28 a foot", 1064],
+      ["Back", "50 ft at $24 a foot", 1200],
+      ["Shed", "20 ft, flat price", 600],
     ]);
   });
 });

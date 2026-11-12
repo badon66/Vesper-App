@@ -39,7 +39,8 @@ const inputs = (over: Partial<QuoteInputs> = {}): QuoteInputs => ({
   adders: [],
   discounts: [],
   colourTiming: null,
-  rushFee: 350,
+  // Round 18: a rush fee is each offer's own, off unless set.
+  rushFee: null,
   upperAccessFee: 200,
   upperGableAccessFee: 400,
   minJobTotal: 2500,
@@ -88,13 +89,15 @@ describe("the price page's options", () => {
     const front = priceQuote(inputs({ runs: [RUNS[0]], discounts: [{ label: "Neighbour discount", amount: 150 }] }));
     const rows = breakdownRows(front);
     expect(rows.map((row) => row.label)).toEqual([
-      "Track and lights",
-      "Control box",
+      "Standard track",
+      "Smart controller and power supply",
       "Neighbour discount",
       "Before the minimum",
       "To reach our $2,500 minimum",
     ]);
     expect(rows[0]).toMatchObject({ kind: "line", detail: "60 ft at $23 a foot", amount: "$1,380" });
+    // Round 18: the track's areas drop down under it, in the same money words.
+    expect(rows[0].kind === "line" && rows[0].areas).toEqual([{ label: RUNS[0].name, detail: "60 ft", amount: "$1,380" }]);
     expect(rows[2]).toMatchObject({ amount: "−$150" });
     expect(rows[3]).toMatchObject({ kind: "sum", amount: "$1,730" });
     expect(rows[4]).toMatchObject({ kind: "line", minimum: true, amount: "$770" });

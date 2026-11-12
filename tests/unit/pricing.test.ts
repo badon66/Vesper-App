@@ -6,7 +6,10 @@ import {
   guessRunPart,
   hasUpperRun,
   priceQuote,
-  RUSH_COLOUR_LABEL,
+  RUSH_FEE_LABEL,
+  CONTROLLER_LABEL,
+  CONTROLLER_DETAIL,
+  flatLines,
   runPart,
   screenTotal,
   selectRuns,
@@ -14,6 +17,7 @@ import {
   UPPER_ACCESS_LABEL,
   upperAccessAmount,
   type QuoteInputs,
+  type QuoteRun,
 } from "@/lib/pricing";
 
 // The current defaults: $23/ft, $500 box, GST off.
@@ -41,8 +45,8 @@ describe("A plain house", () => {
     const quote = priceQuote(base());
     expect(quote.totalFeet).toBe(100);
     expect(quote.lines.map((line) => [line.label, line.amount])).toEqual([
-      ["Track and lights", 2300],
-      ["Control box", 500],
+      ["Standard track", 2300],
+      [CONTROLLER_LABEL, 500],
     ]);
     expect(quote.subtotal).toBe(2800);
     expect(quote.gst).toBe(0);
@@ -52,7 +56,8 @@ describe("A plain house", () => {
   it("names the breakdown the way Keenan says it", () => {
     const quote = priceQuote(base());
     expect(quote.lines[0].detail).toBe("100 ft at $23 a foot");
-    expect(quote.lines[1].detail).toBe("Always included");
+    // Round 18: the controller says what it is, in Keenan's words.
+    expect(quote.lines[1]).toMatchObject({ label: "Smart controller and power supply", detail: CONTROLLER_DETAIL });
   });
 });
 
@@ -85,39 +90,82 @@ describe("Per-quote price changes", () => {
   it("uses the prices on the quote, not the settings defaults", () => {
     const quote = priceQuote(base({ pricePerFt: 21.5, boxPrice: 450, boxCount: 2 }));
     expect(quote.lines[0].amount).toBe(2150);
-    expect(quote.lines[1]).toMatchObject({ label: "Control boxes (2)", amount: 900 });
+    expect(quote.lines[1]).toMatchObject({ label: "Smart controller and power supply (2)", amount: 900 });
+    expect(quote.lines[1].detail).toBe(`2 at $450. ${CONTROLLER_DETAIL}`);
     expect(quote.subtotal).toBe(3050);
   });
 });
 
-describe("The rush colour fee", () => {
-  // A flat amount a job since 2026-11-04, not a fee per foot.
-  it("adds the flat fee once, only when the colour comes this season", () => {
-    const rush = priceQuote(base({ colourTiming: "rush", rushFee: 350 }));
-    expect(rush.lines.find((line) => line.label === RUSH_COLOUR_LABEL)).toEqual({
-      label: RUSH_COLOUR_LABEL,
-      detail: "Made to order this season",
-      amount: 350,
-    });
-    const named = priceQuote(base({ colourTiming: "rush", rushFee: 350, colourName: "Brown" }));
-    expect(named.lines.find((line) => line.label === RUSH_COLOUR_LABEL)?.detail).toBe("Brown track, made to order this season");
-    expect(rush.subtotal).toBe(3150);
-    const longer = priceQuote(base({ colourTiming: "rush", rushFee: 350, runs: [{ name: "Front", feet: 400, level: "lower" }] }));
-    expect(longer.lines.find((line) => line.label === RUSH_COLOUR_LABEL)?.amount).toBe(350);
-
-    for (const timing of ["factory_order", "stock", null] as const) {
-      const other = priceQuote(base({ colourTiming: timing, rushFee: 350 }));
-      expect(other.lines.some((line) => line.label === RUSH_COLOUR_LABEL)).toBe(false);
-      expect(other.subtotal).toBe(2800);
+describe("The rush fee (round 18)", () => {
+  // An offer's own switch, a flat amount, whatever the colour.
+  it("adds the flat fee once whenever it is set, as \"Rush fee\" with nothing about the colour", () => {
+    for (const timing of ["rush", "factory_order", "stock", null] as const) {
+      const quote = priceQuote(base({ colourTiming: timing, rushFee: 350, colourName: "Brown" }));
+      expect(quote.lines.find((line) => line.label === RUSH_FEE_LABEL)).toEqual({ label: "Rush fee", detail: null, amount: 350 });
+      expect(quote.subtotal).toBe(3150);
     }
+    const longer = priceQuote(base({ rushFee: 350, runs: [{ name: "Front", feet: 400, level: "lower" }] }));
+    expect(longer.lines.find((line) => line.label === RUSH_FEE_LABEL)?.amount).toBe(350);
   });
 
-  it("adds nothing when the fee is not set, even on a rush", () => {
+  it("adds nothing when the fee is not set", () => {
     for (const fee of [null, 0]) {
       const quote = priceQuote(base({ colourTiming: "rush", rushFee: fee }));
       expect(quote.subtotal).toBe(2800);
-      expect(quote.lines.some((line) => line.label === RUSH_COLOUR_LABEL)).toBe(false);
+      expect(quote.lines.some((line) => line.label === RUSH_FEE_LABEL)).toBe(false);
     }
+  });
+});
+
+describe("The breakdown by track (round 18)", () => {
+  const runs: QuoteRun[] = [
+    { name: "Front", feet: 64, level: "lower", area: "front" },
+    { name: "Garage", feet: 30, level: "lower", area: "front", rate: 26 },
+    { name: "Back", feet: 50, level: "lower", area: "back", track: "double", trackRate: 30 },
+    { name: "Peaks", feet: 22, level: "upper", area: "front", gable: true, track: "j", trackRate: 28 },
+    { name: "Shed", feet: 0, level: "lower", area: "other", flat: 150 },
+  ];
+
+  it("groups the lights by track, Standard first, each with its feet, its rate when shared, its total and its areas", () => {
+    const quote = priceQuote(base({ runs, pricePerFt: 24 }));
+    const tracks = quote.lines.filter((line) => line.areas);
+    expect(tracks.map((line) => [line.label, line.detail, line.amount])).toEqual([
+      // 64 ft at $24 + 30 ft at $26, and the shed's flat $150: no one rate.
+      ["Standard track", "94 ft", 64 * 24 + 30 * 26 + 150],
+      ["Double track", "50 ft at $30 a foot", 1500],
+      ["L track (back track)", "22 ft at $28 a foot", 616],
+    ]);
+    expect(tracks[0].areas?.map((area) => [area.label, area.detail, area.amount])).toEqual([
+      ["Front", "64 ft at $24 a foot", 1536],
+      ["Garage", "30 ft at $26 a foot", 780],
+      ["Shed", "Flat price", 150],
+    ]);
+    expect(tracks[1].areas).toEqual([{ label: "Back", detail: "50 ft", amount: 1500 }]);
+  });
+
+  it("adds up to the same total as ever, cent for cent, and lists every area when flattened", () => {
+    const quote = priceQuote(base({ runs, pricePerFt: 24 }));
+    const lights = quote.lines.filter((line) => line.areas).reduce((sum, line) => sum + Math.round(line.amount * 100), 0);
+    const areas = quote.lines.flatMap((line) => line.areas ?? []).reduce((sum, area) => sum + Math.round(area.amount * 100), 0);
+    expect(lights).toBe(areas);
+    expect(quote.subtotal).toBe((64 * 24 + 30 * 26 + 150 + 1500 + 616 + 500) );
+    expect(flatLines(quote.lines).map((line) => line.label)).toEqual(["Front", "Garage", "Shed", "Back", "Peaks", CONTROLLER_LABEL]);
+  });
+
+  it("names each area with the name it is given", () => {
+    const quote = priceQuote(base({ runs: runs.slice(0, 1), pricePerFt: 24, areaName: (run) => `${run.name} lower` }));
+    expect(quote.lines[0].areas?.[0].label).toBe("Front lower");
+    expect(quote.lines[0].detail).toBe("64 ft at $24 a foot");
+  });
+
+  it("shows Standard track at 0 ft before anything is measured", () => {
+    const quote = priceQuote(base({ runs: [], pricePerFt: 24 }));
+    expect(quote.lines[0]).toMatchObject({ label: "Standard track", detail: "0 ft at $24 a foot", amount: 0, areas: [] });
+  });
+
+  it("uses Keenan's controller words from Settings", () => {
+    const quote = priceQuote(base({ controller: { label: "Controller", detail: "Runs from your phone." } }));
+    expect(quote.lines[1]).toMatchObject({ label: "Controller", detail: "Runs from your phone.", amount: 500 });
   });
 });
 
@@ -221,8 +269,8 @@ describe("Todd Dean's quote, as a new quote would price it", () => {
       }),
     );
     expect(quote.lines.map((line) => [line.label, line.amount])).toEqual([
-      ["Track and lights", 3960],
-      ["Control box", 500],
+      ["Standard track", 3960],
+      [CONTROLLER_LABEL, 500],
       [UPPER_ACCESS_LABEL, 400],
       ["Family & Friends Discount", -300],
     ]);
@@ -357,7 +405,7 @@ describe("The quote link's choices", () => {
   it("keeps the control box and every discount whatever they switch off", () => {
     const small = priceQuote(house({ runs: selectRuns(house().runs, [2]) }));
     const labels = small.lines.map((line) => line.label);
-    expect(labels).toContain("Control box");
+    expect(labels).toContain(CONTROLLER_LABEL);
     expect(labels).toContain("Neighbour discount");
     expect(small.totalFeet).toBe(30);
   });
