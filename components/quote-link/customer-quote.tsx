@@ -129,6 +129,8 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   const seeIt = showsSeeIt(view.pictures, shown.length);
   const totals: QuoteTotals | null = selected?.totals ?? null;
   const name = selected ? customerChoice(selected.offer.name) : "";
+  // Inside a sentence their own build reads "your own option".
+  const nameInSentence = selected && isCustomerOffer(selected.offer) ? customerChoiceInSentence(selected.offer.name) : name;
   const total = totals ? screenTotal(totals.subtotal, quote.gstEnabled) : "";
   const minimum = quote.minJobTotal && quote.minJobTotal > 0 ? quote.minJobTotal : null;
   const atMinimum = Boolean(totals?.minimumApplied) && minimum !== null;
@@ -423,7 +425,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
               ) : null}
 
               <h3 className="mt-8 text-lg font-bold text-pretty" data-testid="whats-in">
-                {fillLine(words.whats_in, { name })}
+                {fillLine(words.whats_in, { name: nameInSentence })}
               </h3>
               {/* With a list, each row already gives its option's feet. */}
               {many ? null : (
@@ -495,7 +497,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
           <AgreementSection
             agreement={view.agreement}
             words={words}
-            optionLabel={name}
+            optionLabel={nameInSentence}
             optionTotal={total}
             copyHref={`/q/${token}/agreement`}
             disabled={sending}
