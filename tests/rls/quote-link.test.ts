@@ -266,6 +266,8 @@ describe("what a token shows", () => {
         "next_steps",
         // Round 17: where they're at (the site visit and Installed).
         "progress",
+        // Round 18: when and what Keenan changed after the yes.
+        "revised",
         "gallery",
       ].sort(),
     );

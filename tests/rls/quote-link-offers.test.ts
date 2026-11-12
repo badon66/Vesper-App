@@ -147,7 +147,7 @@ const PAGE_KEYS = [
   "warranty",
 ];
 // Round 17: where they're at (the site visit and Installed).
-const PAGE_KEYS_PART_TWO = ["next_steps", "progress"];
+const PAGE_KEYS_PART_TWO = ["next_steps", "progress", "revised"];
 
 // Calgary's date the way the app works it out: UTC-6 for good since
 // Alberta stopped changing clocks on 2026-11-01 (see lib/time.ts).
