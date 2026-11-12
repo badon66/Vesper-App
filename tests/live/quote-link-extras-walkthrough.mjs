@@ -347,12 +347,14 @@ try {
   check("Sign saves it and says who signed and the date, with the year", /Signed by Test Customer on [A-Z][a-z]+ \d{1,2}, \d{4}\./.test(signedLine), signedLine.slice(0, 80));
   const { data: signature } = await admin.from("agreement_signatures").select("signer_name, offer_id, offer_name, quote_snapshot").eq("lead_id", staged.leadId).single();
   check("the signing is saved with the option and a copy of the quote", signature?.signer_name === "Test Customer" && signature?.offer_id === "customer" && Array.isArray(signature?.quote_snapshot?.runs), JSON.stringify({ name: signature?.signer_name, offer: signature?.offer_id }));
-  const copy = await page.request.get(`${base}/q/${staged.token}/agreement`);
-  const copyBody = await copy.body();
-  check("their signed copy downloads as a PDF", copy.ok() && copy.headers()["content-type"] === "application/pdf" && copyBody.subarray(0, 5).toString() === "%PDF-", `${copy.status()} ${copyBody.length} bytes`);
+  // Fetched from Node (through the proxy, where there is one): their own
+  // copy needs nothing but the link.
+  const copy = await fetch(`${base}/q/${staged.token}/agreement`);
+  const copyBody = Buffer.from(await copy.arrayBuffer());
+  check("their signed copy downloads as a PDF", copy.ok && copy.headers.get("content-type") === "application/pdf" && copyBody.subarray(0, 5).toString() === "%PDF-", `${copy.status} ${copyBody.length} bytes`);
   // The logo is about 20 KB of the file; without it (typed name instead) the PDF is under 10 KB.
   check("the signed copy carries the real logo", copyBody.length > 20_000, `${copyBody.length} bytes`);
-  if (copy.ok()) await writeFile(`${out}/${tag}-signed-copy.pdf`, copyBody);
+  if (copy.ok) await writeFile(`${out}/${tag}-signed-copy.pdf`, copyBody);
   const twice = await anon.rpc("quote_link_sign_agreement", { p_token: staged.token, p_name: "Someone Else", p_offer: "full", p_signature: `data:image/png;base64,${"A".repeat(300)}` });
   check("a second signing on the same link is refused", twice.data?.ok === false && twice.data?.state === "already_signed", JSON.stringify(twice.data));
   const { data: signedEvents } = await admin.from("lead_events").select("payload").eq("lead_id", staged.leadId).eq("type", "agreement_signed");
@@ -380,8 +382,13 @@ try {
     if (agreementOffered) {
       check("Keenan's lead page shows the signed agreement, with the date and the option", /Signed by Test Customer [A-Z][a-z]+ \d{1,2}, \d{4}, .*their own option\. Signed PDF\./.test(cardText), cardText.slice(0, 260));
       const href = await owner.getByTestId("link-extras-signed").locator("a").first().getAttribute("href");
-      const pdf = await owner.request.get(`${base}${href}`);
-      check("the signed PDF opens from the lead page", pdf.ok() && (await pdf.body()).subarray(0, 5).toString() === "%PDF-", String(pdf.status()));
+      // Fetched in Keenan's own page, so it carries his session.
+      const pdf = await owner.evaluate(async (path) => {
+        const response = await fetch(path);
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        return { status: response.status, head: String.fromCharCode(...bytes.slice(0, 5)), size: bytes.length };
+      }, href);
+      check("the signed PDF opens from the lead page", pdf.status === 200 && pdf.head === "%PDF-", `${pdf.status} ${pdf.size} bytes`);
       const timeline = (await owner.locator("body").innerText()).replace(/\s+/g, " ");
       check("the lead's timeline says they signed", timeline.includes("Signed the agreement for Custom quote (from the customer), as Test Customer."));
     }
