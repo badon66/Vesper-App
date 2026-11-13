@@ -172,13 +172,18 @@ export function cleanViewName(value: unknown, kind: Exclude<AreaKind, "other">):
   return text === "" || text.toLowerCase() === VIEW_TITLES[kind].toLowerCase() ? null : text;
 }
 
-// Whether Keenan has renamed this run's line: a name that isn't its area's
-// standard name. A run from before round 11 (no area tag) reads as typed.
+// Whether Keenan has renamed this run's line: a name that is neither its
+// area's standard name as saved ("Front", "Front gable") nor its full name
+// ("Front lower", "Front upper gable"). Round 19: this holds for a run from
+// before round 11 (no area tag) too, so an old "Front gable" reads with its
+// level like any other.
 export function lineRenamed(run: QuoteRun): boolean {
   const key = areaKeyOf(run);
   if (!key) return false;
-  const name = run.name.trim();
-  return name !== "" && name.toLowerCase() !== STANDARD_NAMES[key].toLowerCase();
+  const name = run.name.trim().toLowerCase();
+  if (name === "") return false;
+  const kind = kindOfKey(key);
+  return name !== STANDARD_NAMES[key].toLowerCase() && name !== defaultLineName(key, VIEW_TITLES[kind]).toLowerCase();
 }
 
 // The name a view goes by on this quote: Keenan's ("Street side") when he
@@ -202,14 +207,15 @@ export function runLineLabel(run: QuoteRun): string {
   return lineLabel(key, count);
 }
 
-// A run's name wherever it is read on its own (round 18): the breakdown,
-// Build your own, the link, the signed copy, the offer's chips. A line under
-// its standard name reads with its view ("Front lower", "Street side upper
-// gables (2)"); a line Keenan renamed reads as he named it ("Garage peak");
-// a run from an older quote with no area tag reads exactly as typed.
+// A run's name wherever it is read on its own (round 18; round 19 made it
+// the one name everywhere): the breakdown, Build your own, the link, the
+// booking's confirmation, the timeline, the signed copy, the offer cards.
+// A line under its standard name reads with its view and level ("Front
+// lower", "Front upper gable", "Street side upper gables (2)"), so a gable
+// always says upper or lower; a line Keenan renamed, or an old run with a
+// name of its own ("Garage"), reads as named.
 export function runDisplayName(run: QuoteRun): string {
   const name = run.name.trim();
-  if (!run.area) return name;
   const key = areaKeyOf(run);
   if (!key) return name || "Other";
   const count = gableCount(run);

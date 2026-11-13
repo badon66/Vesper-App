@@ -37,6 +37,7 @@ import {
   colourSectionLines,
   phoneHref,
   priceHoldPassed,
+  runName,
   seeItPicture,
   showsSeeIt,
   smsWithBody,
@@ -156,11 +157,15 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
     timing: quote.colourTiming,
   });
   // Round 17: the Christmas banner, by the date for their own track colour.
-  const banner = christmasBanner({
-    today: view.today,
-    christmas: view.christmas,
-    track: trackColourKind({ name: quote.trackColourName, custom: quote.trackCustom }),
-  });
+  // Round 19: once they've booked it leaves the page; the tracker shows
+  // they're in.
+  const banner = booked
+    ? null
+    : christmasBanner({
+        today: view.today,
+        christmas: view.christmas,
+        track: trackColourKind({ name: quote.trackColourName, custom: quote.trackCustom }),
+      });
   // On a laptop the picture gets its own column (2026-11-12).
   const laptopPicture = Boolean(view.mockupUrl) || (seeIt && selected !== null);
   const totals: QuoteTotals | null = selected?.totals ?? null;
@@ -168,6 +173,9 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   // Inside a sentence their own build reads "your own option".
   const nameInSentence = selected && isCustomerOffer(selected.offer) ? customerChoiceInSentence(selected.offer.name) : name;
   const total = totals ? screenTotal(totals.subtotal, quote.gstEnabled) : "";
+  // Round 19: their own option names its lines, the way the quote editor
+  // names them ("Front lower, Front upper gable and Back lower").
+  const ownLines = selected && isCustomerOffer(selected.offer) ? lineList(quote.runs, selected.offer.runs) : null;
   const minimum = quote.minJobTotal && quote.minJobTotal > 0 ? quote.minJobTotal : null;
   const atMinimum = Boolean(totals?.minimumApplied) && minimum !== null;
   const holdPassed = priceHoldPassed(view.validUntil, view.today);
@@ -185,7 +193,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   });
 
   const [phase, setPhase] = useState<"quote" | "confirm" | "sending" | "thanks" | "closed">("quote");
-  const [thanks, setThanks] = useState<{ option: string; total: string; preview: boolean } | null>(null);
+  const [thanks, setThanks] = useState<{ option: string; total: string; preview: boolean; lines: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [slow, setSlow] = useState(false);
   const sending = phase === "sending";
@@ -249,7 +257,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
           setBooked({ at: new Date().toISOString(), option: result.option, offer });
           if (building) setSavedBuild(ownRuns);
         }
-        setThanks({ option: result.option, total: result.total, preview: Boolean(result.preview) });
+        setThanks({ option: result.option, total: result.total, preview: Boolean(result.preview), lines: building ? lineList(quote.runs, ownRuns) : ownLines });
         setPhase("thanks");
         window.scrollTo({ top: 0 });
       } else if (result.code === "closed") {
@@ -695,7 +703,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
         }
       >
         <div className="flex flex-col gap-4 text-base">
-          <ChoiceCard option={name} total={total} testIds={{ option: "confirm-option", total: "confirm-total" }} />
+          <ChoiceCard option={name} lines={ownLines} total={total} testIds={{ option: "confirm-option", lines: "confirm-lines", total: "confirm-total" }} />
           {holdPassed && view.validUntil ? (
             <p className="font-semibold text-pretty">
               Prices may have changed since {formatFullDate(view.validUntil)}. We’ll confirm before booking.
@@ -1071,8 +1079,27 @@ function OptionRow({
   );
 }
 
-// "Your choice" and its total, on the confirm sheet and the thank-you.
-function ChoiceCard({ option, total, testIds }: { option: string; total: string; testIds: { option: string; total: string } }) {
+// The lines of an option in words, by the quote editor's own names: "Front
+// lower, Front upper gable and Back lower" (round 19).
+function lineList(runs: QuoteRun[], positions: readonly number[]): string | null {
+  const names = [...new Set(positions)].filter((at) => at >= 0 && at < runs.length).sort((a, b) => a - b).map((at) => runName(runs[at], at));
+  if (names.length === 0) return null;
+  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+// "Your choice" and its total, on the confirm sheet and the thank-you; their
+// own option with its lines under its name.
+function ChoiceCard({
+  option,
+  lines = null,
+  total,
+  testIds,
+}: {
+  option: string;
+  lines?: string | null;
+  total: string;
+  testIds: { option: string; lines: string; total: string };
+}) {
   return (
     <dl className="flex flex-col divide-y rounded-md border">
       <div className="flex flex-col gap-0.5 px-4 py-3">
@@ -1080,6 +1107,11 @@ function ChoiceCard({ option, total, testIds }: { option: string; total: string;
         <dd className="font-semibold text-pretty" data-testid={testIds.option}>
           {customerChoice(option)}
         </dd>
+        {lines ? (
+          <dd className="text-base text-pretty text-muted-foreground" data-testid={testIds.lines}>
+            {lines}
+          </dd>
+        ) : null}
       </div>
       {total ? (
         <div className="flex flex-col gap-0.5 px-4 py-3">
@@ -1458,7 +1490,7 @@ function ThankYou({
   onBack,
 }: {
   firstName: string;
-  thanks: { option: string; total: string; preview: boolean };
+  thanks: { option: string; total: string; preview: boolean; lines: string | null };
   // The install day planned at the meeting, if any: Keenan confirms it
   // rather than setting one.
   installOn: string | null;
@@ -1488,7 +1520,7 @@ function ThankYou({
           There’s nothing to sign or pay today. No payment until your install is complete.
         </p>
       </div>
-      <ChoiceCard option={thanks.option} total={thanks.total} testIds={{ option: "thanks-option", total: "thanks-total" }} />
+      <ChoiceCard option={thanks.option} lines={thanks.lines} total={thanks.total} testIds={{ option: "thanks-option", lines: "thanks-lines", total: "thanks-total" }} />
       <div className="flex flex-col gap-3">
         <p className="font-semibold text-pretty">Changed your mind? Call or text Keenan.</p>
         <ContactButtons company={company} />

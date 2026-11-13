@@ -1,7 +1,9 @@
 import { photoSlotLabel, type PhotoSlot } from "@/lib/leads/door";
 import { formatMeetingTime, MEETING_STATUS_LABELS, type MeetingStatus } from "@/lib/schedule/meetings";
 import { STATUS_LABELS, type LeadStatus } from "@/lib/leads/status";
-import { choiceLabel } from "@/lib/quote-link/view";
+import type { QuoteRun } from "@/lib/pricing";
+import { choiceLabel, runName } from "@/lib/quote-link/view";
+import { CUSTOMER_OFFER_NAME } from "@/lib/quotes/offers";
 import { cancelWindowWords, isOutcomeReason, plannedInstallLine } from "@/lib/quotes/outcome";
 import { formatDay } from "@/lib/time";
 import type { Database, Json } from "@/types/database";
@@ -79,8 +81,21 @@ const sentence = (text: string) => (text.endsWith(".") ? text : `${text}.`);
 const instantOf = (value: Json | undefined): string | null =>
   typeof value === "string" && !Number.isNaN(Date.parse(value)) ? new Date(value).toISOString() : null;
 
+// The lines a booking covered, by the quote editor's own names (round 19),
+// read from the quote's runs where the entry kept its positions; null when
+// it didn't, or the quote isn't readable here (a setter never reads quotes).
+function bookedLines(payload: { [key: string]: Json | undefined }, runs: readonly QuoteRun[] | null): string | null {
+  if (!runs || !Array.isArray(payload.positions)) return null;
+  const names = payload.positions
+    .filter((at): at is number => typeof at === "number" && Number.isInteger(at) && at >= 0 && at < runs.length)
+    .map((at) => runName(runs[at], at));
+  return names.length > 0 ? joinList(names) : null;
+}
+
 // One plain sentence per timeline entry. Notes are returned as written.
-export function describeEvent(event: TimelineEvent): string {
+// runs: the lead's quote's runs where the reader may see them (Keenan), to
+// name a customer's own build by its lines.
+export function describeEvent(event: TimelineEvent, runs: readonly QuoteRun[] | null = null): string {
   const payload = payloadObject(event.payload);
   // Read as text: round 8's quote_cancelled and quote_acceptance_undone are
   // matched by name, whether or not the generated types have caught up.
@@ -127,14 +142,36 @@ export function describeEvent(event: TimelineEvent): string {
       return "Turned off the quote link.";
     case "install_requested": {
       const option = typeof payload.option === "string" && payload.option ? payload.option : null;
+      // Round 19: their own build reads as theirs, with its lines.
+      if (option === CUSTOMER_OFFER_NAME) {
+        const lines = bookedLines(payload, runs);
+        return lines ? `Tapped Book my install: their own option, ${lines}.` : "Tapped Book my install: their own option.";
+      }
       return option ? `Tapped Book my install: ${sentence(choiceLabel(option))}` : "Tapped Book my install.";
+    }
+    // The site visit (round 19): set or moved, cleared, done, or Done undone.
+    case "site_visit": {
+      const day = typeof payload.visit_on === "string" && /^\d{4}-\d{2}-\d{2}$/.test(payload.visit_on) ? formatDay(payload.visit_on) : null;
+      switch (payload.change) {
+        case "set":
+          return day ? `Set the site visit for ${day}.` : "Set the site visit.";
+        case "cleared":
+          return "Took the site visit day off.";
+        case "done":
+          return "Marked the site visit done.";
+        case "not_done":
+          return "Marked the site visit not done yet.";
+        default:
+          return "Changed the site visit.";
+      }
     }
     // The agreement signed on their link (take 3): the option and the name
     // they typed, never a price.
     case "agreement_signed": {
       const option = typeof payload.option === "string" && payload.option ? payload.option : null;
       const signer = typeof payload.signer === "string" && payload.signer ? payload.signer : null;
-      const what = option ? `Signed the agreement for ${choiceLabel(option)}` : "Signed the agreement";
+      // Round 19: their own build reads as theirs, as on Book my install.
+      const what = option ? `Signed the agreement for ${option === CUSTOMER_OFFER_NAME ? "their own option" : choiceLabel(option)}` : "Signed the agreement";
       return signer ? `${what}, as ${signer}.` : `${what}.`;
     }
     // A quote's outcome (round 8). Setters read these, so the payload holds

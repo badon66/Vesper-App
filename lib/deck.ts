@@ -278,7 +278,8 @@ export const DECK_LINE_DEFAULTS = {
   // Round 18: J track is "L track (back track)".
   link_track_title: "About your track",
   link_track_hat: "Our standard track sits under the edge of your roof with the lights built in.",
-  link_track_double: "Double track is for parts of a roofline where our standard track is not the right fit.",
+  // Round 19: Keenan's own words for Double track.
+  link_track_double: "Double track is two pieces: a base that fixes to your house and a cover with the lights built in that fits over it, so you never see a screw.",
   link_track_j: "L track (back track) is for parts of a roofline where our standard track is not the right fit, most often upper gables.",
   link_build_title: "Build your own",
   link_build_note: "Start from the option on screen and tick the parts you want. The price updates as you go.",
@@ -388,9 +389,10 @@ export const LINE_SPECS: Record<DeckLineKey, LineSpec> = {
   link_something_else: { group: "link", label: "Under the options", words: 12 },
   link_colour_done: { group: "link", label: "What happens next, step 1, once initialled", words: 12, fill: ["colour"], retired: true },
   link_track_title: { group: "link", label: "About your track: the heading", words: LABEL },
-  link_track_hat: { group: "link", label: "About your track: Standard track", words: SENTENCE },
-  link_track_double: { group: "link", label: "About your track: Double track", words: SENTENCE },
-  link_track_j: { group: "link", label: "About your track: L track (back track)", words: SENTENCE },
+  // Round 19: a track's words may run to 35, room for how its pieces fit.
+  link_track_hat: { group: "link", label: "About your track: Standard track", words: 35 },
+  link_track_double: { group: "link", label: "About your track: Double track", words: 35 },
+  link_track_j: { group: "link", label: "About your track: L track (back track)", words: 35 },
   link_build_title: { group: "link", label: "Build your own: the option's name", words: LABEL },
   link_build_note: { group: "link", label: "Build your own: how it works", words: SENTENCE },
   link_docs_title: { group: "link", label: "Documents: the heading", words: LABEL },

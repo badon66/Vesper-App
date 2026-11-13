@@ -141,7 +141,8 @@ describe("what they switched on", () => {
   it("names the option in words, never a price, the way the database does", () => {
     expect(optionName(quote.runs, null)).toBe("Recommended package");
     expect(optionName(quote.runs, [0, 1, 2, 3])).toBe("Recommended package");
-    expect(optionName(quote.runs, [2, 0])).toBe("Start smaller: Front, Garage");
+    // Round 19: each line by the quote editor's own name.
+    expect(optionName(quote.runs, [2, 0])).toBe("Start smaller: Front lower, Garage");
     expect(optionName(quote.runs, [3])).toBe("Start smaller: Run 4");
   });
 

@@ -95,7 +95,7 @@ describe("the runs in words", () => {
     expect(optionWords(runs, null)).toEqual({ label: "Full quote", detail: "3 runs, 200 ft" });
     expect(optionWords(runs, [0, 1, 2])).toEqual({ label: "Full quote", detail: "3 runs, 200 ft" });
     expect(optionWords(runs, [1])).toEqual({ label: "Garage only", detail: "1 run, 60 ft" });
-    expect(optionWords(runs, [0, 1])).toEqual({ label: "Front and Garage", detail: "2 runs, 160 ft" });
+    expect(optionWords(runs, [0, 1])).toEqual({ label: "Front lower and Garage", detail: "2 runs, 160 ft" });
     // Runs no longer on the quote read as the full quote, as round 8 did.
     expect(optionWords(runs, [2, 5])).toEqual({ label: "Full quote", detail: "3 runs, 200 ft" });
     expect(optionWords(runsFromJson([{ name: "Front", feet: 90 }]), null)).toEqual({
@@ -299,7 +299,7 @@ describe("what they said yes to, on the card", () => {
   });
 
   it("falls back to the runs in words when no offer matches", () => {
-    expect(acceptedOption(offerQuote, [0, 2])).toEqual({ label: "Front and Upper front", detail: "2 runs, 100 ft" });
+    expect(acceptedOption(offerQuote, [0, 2])).toEqual({ label: "Front lower and Upper front", detail: "2 runs, 100 ft" });
     expect(acceptedOption(offerQuote, [2])).toEqual({ label: "Upper front only", detail: "1 run, 40 ft" });
     expect(acceptedOption({ ...offerQuote, offers: [{ id: "lower", name: "Lower level", runs: [0, 1] }] }, null)).toEqual({
       label: "Full quote",

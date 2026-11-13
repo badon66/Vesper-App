@@ -3223,6 +3223,7 @@ export type Database = {
         | "quote_cancelled"
         | "quote_acceptance_undone"
         | "agreement_signed"
+        | "site_visit"
       hot_button:
         | "no_ladders"
         | "up_for_christmas"
@@ -3441,6 +3442,7 @@ export const Constants = {
         "quote_cancelled",
         "quote_acceptance_undone",
         "agreement_signed",
+        "site_visit",
       ],
       hot_button: [
         "no_ladders",

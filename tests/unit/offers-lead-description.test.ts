@@ -73,10 +73,13 @@ describe("Lead with this one", () => {
     expect(offersForSave(parsed, 3).filter((offer) => offer.lead).map((offer) => offer.id)).toEqual(["b"]);
   });
 
-  it("opens the link on what they booked, else the starred offer, else the table's choice, else the biggest", () => {
+  it("opens the link on what they booked, else the table's choice, else the starred offer, else the biggest (round 19)", () => {
     const shown = shownOffers(inputs, setLeadOffer(offers, "front"));
     expect(openingOffer(shown, { booked: "lower", meeting: "full" })).toBe("lower");
-    expect(openingOffer(shown, { booked: null, meeting: "full" })).toBe("front");
+    // Their own pick at the table beats a star set in prep.
+    expect(openingOffer(shown, { booked: null, meeting: "full" })).toBe("full");
+    expect(openingOffer(shown, { booked: null, meeting: null })).toBe("front");
+    expect(openingOffer(shown, { booked: null, meeting: "gone" })).toBe("front");
     const plain = shownOffers(inputs, offers);
     expect(openingOffer(plain, { booked: null, meeting: "front" })).toBe("front");
     expect(openingOffer(plain, { booked: null, meeting: null })).toBe("full");

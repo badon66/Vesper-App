@@ -968,6 +968,13 @@ try {
       await textOf(op.getByTestId("quote-outcome-site-visit")),
     );
     await op.getByTestId("quote-outcome").screenshot({ path: `${out}/outcome-owner-site-visit-done-1180.png` }).catch(() => {});
+    // Round 19: each change adds a line to the lead's timeline.
+    const visitTimeline = (await op.locator("main").innerText().catch(() => "")).replace(/\s+/g, " ");
+    check(
+      "round 19: setting the site visit and marking it done each add a line to the lead's timeline",
+      visitTimeline.includes(`Set the site visit for ${formatDay(visitDay)}.`) && visitTimeline.includes("Marked the site visit done."),
+      (visitTimeline.match(/(Set the site visit|Marked the site visit)[^.]*\./g) ?? []).join(" | ") || "no site visit lines",
+    );
     await open(op, `/app/leads/${declinedLead}`);
     check("a declined quote's lead has no site visit row", (await op.getByTestId("quote-outcome-site-visit").count()) === 0);
     const asSetter = createClient(url, anonKey, noSession);

@@ -53,6 +53,8 @@ import {
 } from "@/lib/leads/track-colour";
 import { soffitCodeBlocks, soffitCodes, trackFormKey } from "@/lib/leads/soffit-code";
 import { describeEvent, isCustomerEvent } from "@/lib/leads/timeline";
+import { runsFromJson } from "@/lib/quotes/outcome-card";
+import type { Json } from "@/types/database";
 import { revisionTimelineLine } from "@/lib/quotes/revise";
 import { formatPhone } from "@/lib/phone";
 import { PHOTO_BUCKET } from "@/lib/photos";
@@ -163,6 +165,9 @@ export default async function LeadPage({
   // own leads, or every lead for Keenan; View as shows the viewed setter's.
   const contactShown = maySeeContact(me, row);
   const canEdit = isOwner || row.created_by === me.id || row.assigned_to === me.id;
+  // Round 19: the timeline names a customer's own build by its lines, from
+  // the quote's runs (Keenan's view only; a setter never reads the quote).
+  const timelineRuns = quoteEditor?.draft ? runsFromJson(quoteEditor.draft.runs as Json) : null;
   // Notes on the timeline: the lead's setter and Keenan only (round 6). The
   // database keeps them from other setters; View as, reading with Keenan's
   // session, drops them here for the person viewed.
@@ -602,7 +607,7 @@ export default async function LeadPage({
                 <ul className="flex flex-col gap-2" aria-label="Notes added later">
                   {timelineNotes.map((event) => (
                     <li key={event.id} className="border-l-2 border-border pl-3">
-                      <p className="whitespace-pre-wrap">{describeEvent(event)}</p>
+                      <p className="whitespace-pre-wrap">{describeEvent(event, timelineRuns)}</p>
                       <p className="text-muted-foreground">
                         {event.actor_id === me.id ? "You" : (names.get(event.actor_id ?? "") ?? "Someone")}, {formatDateTime(event.created_at)}
                       </p>
@@ -740,7 +745,7 @@ export default async function LeadPage({
               ) : (
                 <li key={entry.event.id} className="flex flex-col gap-1 border-l-2 border-border pl-3">
                   <p className={entry.event.type === "note" ? "text-sm whitespace-pre-wrap" : "text-sm font-semibold"}>
-                    {describeEvent(entry.event)}
+                    {describeEvent(entry.event, timelineRuns)}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {entry.event.actor_id

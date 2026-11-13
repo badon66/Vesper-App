@@ -589,7 +589,8 @@ try {
     "round 18: See the breakdown on the Full wrap card shows Standard track with its feet, rate and total, closed; a tap lists every area with its feet and price",
     trackClosed &&
       lines.includes("Standard track $3,984 166 ft at $24 a foot") &&
-      JSON.stringify(fullAreas) === JSON.stringify(["Front 64 ft $1,536", "Front upper 52 ft $1,248", "Garage 28 ft $672", "Left gable 22 ft $528"]) &&
+      // Round 19: each line by the editor's own name; an old "Front" is the front lower.
+      JSON.stringify(fullAreas) === JSON.stringify(["Front lower 64 ft $1,536", "Front upper 52 ft $1,248", "Garage 28 ft $672", "Left gable 22 ft $528"]) &&
       !lines.includes("Double track") &&
       !lines.includes("L track"),
     `${lines} | ${JSON.stringify(fullAreas)}`,
@@ -724,7 +725,7 @@ try {
       !(await lineShown(page, "Extra height")) &&
       (await lineShown(page, "Garage corner")) &&
       (await lineShown(page, "Standard track")) &&
-      JSON.stringify(mainAreas) === JSON.stringify(["Front", "Garage"]) &&
+      JSON.stringify(mainAreas) === JSON.stringify(["Front lower", "Garage"]) &&
       (await totalOf(page, "line-total")) === "Total $2,633" &&
       flat(await page.getByTestId("whats-in").innerText()) === fillLine(words("whats_in"), { name: "Main floor" }),
   );
@@ -913,7 +914,9 @@ try {
       requested?.length === 1 &&
       requested[0].payload?.option === "Front only" &&
       JSON.stringify(requested[0].payload?.runs) === JSON.stringify(["Front"]) &&
-      Object.keys(requested[0].payload ?? {}).length === 2 &&
+      // Round 19: and the lines' positions, so the lead page can name them.
+      JSON.stringify(requested[0].payload?.positions) === "[0]" &&
+      Object.keys(requested[0].payload ?? {}).length === 3 &&
       quoteAfter?.status === "draft" &&
       quoteAfter?.accepted_at === null &&
       (earnings ?? []).length === 0,
@@ -940,6 +943,11 @@ try {
       (await page.getByTestId("bar-requested").innerText()).includes("Install requested") &&
       (await page.getByRole("button", { name: "Book my install" }).count()) === 0,
     JSON.stringify(rows),
+  );
+  check(
+    "round 19: once they've booked, the Christmas banner leaves the link (the tracker shows they're in)",
+    (await page.getByTestId("quote-christmas").count()) === 0 && (await page.getByTestId("tracker").count()) === 1,
+    bannerDue ? `the banner showed before booking (${bannerDue.state})` : "no banner was due before booking either",
   );
   await page.screenshot({ path: `${out}/ql-phone-return.png` });
   // Where you're at after booking (round 17): Choose your option is lit and

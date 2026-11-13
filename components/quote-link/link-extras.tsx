@@ -131,32 +131,41 @@ export function BuildYourOwn({
 
 // ---------------------------------------------------------------- About your track
 
-// A simple line drawing of each track, seen end on: the soffit (or, for J
-// track, the face of the trim) in navy, the light in gold.
+// A simple line drawing of each track, seen end on, in one style: the house
+// (the soffit, or the wall) dashed, the track in navy, the light in gold.
+// Round 19: Double track and L track drawn from Keenan's sample case and the
+// supplier's L track diagram. Standard track is as take 3 drew it.
 function TrackDrawing({ track }: { track: TrackType }) {
+  const line = { fill: "none", stroke: NAVY, strokeWidth: 2.5, strokeLinecap: "round", strokeLinejoin: "round" } as const;
   return (
-    <svg viewBox="0 0 120 64" className="h-16 w-28 shrink-0" role="img" aria-label={`${TRACK_NAMES[track]}, seen end on`} data-track-drawing={track}>
+    <svg viewBox="0 0 128 64" className="h-16 w-32 shrink-0" role="img" aria-label={`${TRACK_NAMES[track]}, seen end on`} data-track-drawing={track}>
       {track === "j" ? (
         <>
-          {/* The face of the trim, and the J hooked onto it. */}
-          <line x1="34" y1="4" x2="34" y2="60" stroke={NAVY} strokeWidth="1.5" strokeDasharray="3 3" />
-          <path d="M38 8 V40 Q38 52 50 52 H66 Q76 52 76 42 V32" fill="none" stroke={NAVY} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-          <circle cx="57" cy="42" r="5" fill={GOLD} />
+          {/* The wall (or the back of the fascia under a deep soffit), and
+              the L track against it: a flat back, the light facing down from
+              its bottom, its front curling up and running back to the wall. */}
+          <line x1="40" y1="2" x2="40" y2="62" stroke={NAVY} strokeWidth="1.5" strokeDasharray="3 3" />
+          <path d="M44 8 V46 H70 Q80 46 80 36 V30 Z" {...line} />
+          <path d="M53 46 A6 6 0 0 0 65 46 Z" fill={GOLD} />
         </>
       ) : track === "double" ? (
         <>
-          {/* The soffit, and two channels side by side under it. */}
-          <line x1="4" y1="10" x2="116" y2="10" stroke={NAVY} strokeWidth="1.5" strokeDasharray="3 3" />
-          <path d="M8 14 H20 V40 H54 V14 H66 V40 H100 V14 H112" fill="none" stroke={NAVY} strokeWidth="2.5" strokeLinejoin="round" />
-          <circle cx="37" cy="32" r="5" fill={GOLD} />
-          <circle cx="83" cy="32" r="5" fill={GOLD} />
+          {/* The soffit; the base screwed flat to it; the cover, with the
+              light set into its face, going up over the base, so the run
+              reads as one bar and the screws are hidden. */}
+          <line x1="4" y1="5" x2="124" y2="5" stroke={NAVY} strokeWidth="1.5" strokeDasharray="3 3" />
+          <path d="M42 19 H38 V9 H86 V19 H82" {...line} />
+          <path d="M62 3 V12 M58 12 H66" stroke={NAVY} strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M40 32 H32 V52 H92 V32 H84" {...line} />
+          <path d="M56 52 A6 6 0 0 0 68 52 Z" fill={GOLD} />
+          <path d="M108 48 V26 M103 31 L108 25 L113 31" fill="none" stroke={NAVY} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.6" />
         </>
       ) : (
         <>
-          {/* The soffit, and the hat track's channel under it. */}
-          <line x1="4" y1="10" x2="116" y2="10" stroke={NAVY} strokeWidth="1.5" strokeDasharray="3 3" />
-          <path d="M18 14 H38 V44 H82 V14 H102" fill="none" stroke={NAVY} strokeWidth="2.5" strokeLinejoin="round" />
-          <circle cx="60" cy="35" r="5" fill={GOLD} />
+          {/* The soffit, and the standard track's channel under it. */}
+          <line x1="8" y1="10" x2="120" y2="10" stroke={NAVY} strokeWidth="1.5" strokeDasharray="3 3" />
+          <path d="M22 14 H42 V44 H86 V14 H106" {...line} />
+          <circle cx="64" cy="35" r="5" fill={GOLD} />
         </>
       )}
     </svg>

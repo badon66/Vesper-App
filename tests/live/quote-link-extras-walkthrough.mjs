@@ -322,6 +322,13 @@ try {
   await page.getByTestId("build-areas").waitFor({ timeout: 5000 });
   const areas = await page.getByTestId("build-area").evaluateAll((boxes) => boxes.map((box) => [Number(box.getAttribute("data-position")), box.checked]));
   check("Build your own lists only the measured areas Keenan shows, ticked as the option on screen", JSON.stringify(areas) === JSON.stringify([[0, true], [1, true], [2, true], [3, true]]), JSON.stringify(areas));
+  // Round 19: every line on its own, by the quote editor's own name, a gable with its level.
+  const buildNames = await page.getByTestId("build-area").evaluateAll((boxes) => boxes.map((box) => (box.closest("label")?.querySelector("span.flex-1")?.textContent ?? "").trim()));
+  check(
+    "round 19: Build your own names each line as the quote editor does: Front lower, Front upper gable, Front upper, Back lower",
+    JSON.stringify(buildNames) === JSON.stringify(["Front lower", "Front upper gable", "Front upper", "Back lower"]),
+    JSON.stringify(buildNames),
+  );
   const before = (await page.getByTestId("hero-total").innerText()).trim();
   await page.locator('[data-testid="build-area"][data-position="3"]').click();
   await page.waitForTimeout(300);
@@ -333,9 +340,14 @@ try {
   // Book it.
   await page.getByRole("button", { name: "Book my install" }).click();
   await page.getByTestId("book-confirm").waitFor({ timeout: 5000 });
+  const OWN_LINES = "Front lower, Front upper gable and Front upper";
+  const confirmLines = (await page.getByTestId("confirm-lines").innerText().catch(() => "")).trim();
+  check("round 19: the confirm step names their own option's lines the same way", confirmLines === OWN_LINES, confirmLines);
   await page.waitForTimeout(700);
   await page.getByRole("button", { name: /Yes, book my install/ }).click();
   await page.waitForTimeout(2500);
+  const thanksLines = (await page.getByTestId("thanks-lines").innerText().catch(() => "")).trim();
+  check("and so does the thank-you", thanksLines === OWN_LINES, thanksLines);
   let offers = await offersOf();
   const mine = offers.filter((offer) => offer.from_customer === true);
   check("Book my install saves their build as one offer, Custom quote (from the customer)", mine.length === 1 && mine[0].name === "Custom quote (from the customer)" && JSON.stringify(mine[0].runs) === "[0,1,2]" && offers.filter((o) => !o.from_customer).length === 4, JSON.stringify(offers.map((o) => [o.id, o.runs])));
@@ -416,8 +428,15 @@ try {
       }, href);
       check("the signed PDF opens from the lead page", pdf.status === 200 && pdf.head === "%PDF-", `${pdf.status} ${pdf.size} bytes`);
       const timeline = (await owner.locator("body").innerText()).replace(/\s+/g, " ");
-      check("the lead's timeline says they signed", timeline.includes("Signed the agreement for Custom quote (from the customer), as Test Customer."));
+      check("the lead's timeline says they signed", timeline.includes("Signed the agreement for their own option, as Test Customer."));
     }
+    // Round 19: the timeline names their own build's lines as the editor does.
+    const timelineText = (await owner.locator("body").innerText()).replace(/\s+/g, " ");
+    check(
+      "round 19: Keenan's timeline names their own build by its lines",
+      timelineText.includes("Tapped Book my install: their own option, Front lower, Front upper gable and Front upper."),
+      (timelineText.match(/Tapped Book my install[^.]*\./g) ?? []).join(" | "),
+    );
     await card.screenshot({ path: `${out}/${tag}-lead-card.png` });
     await owner.goto(`${base}/app/leads/${staged.leadId}#edit-quote`, { waitUntil: "networkidle" });
     await owner.getByTestId("quote-sheet").waitFor({ timeout: 20000 });

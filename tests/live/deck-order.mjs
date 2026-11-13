@@ -70,7 +70,7 @@ export const LINE_DEFAULTS = {
   link_track_title: "About your track",
   // Round 18: Standard track and L track (back track).
   link_track_hat: "Our standard track sits under the edge of your roof with the lights built in.",
-  link_track_double: "Double track is for parts of a roofline where our standard track is not the right fit.",
+  link_track_double: "Double track is two pieces: a base that fixes to your house and a cover with the lights built in that fits over it, so you never see a screw.",
   link_track_j: "L track (back track) is for parts of a roofline where our standard track is not the right fit, most often upper gables.",
   link_build_title: "Build your own",
   link_build_note: "Start from the option on screen and tick the parts you want. The price updates as you go.",

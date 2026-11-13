@@ -5,7 +5,7 @@
 // text Keenan sends. No React and no network, so it is unit tested like the
 // pricing it feeds, and the page and the server share it.
 
-import { AREA_KINDS, cleanGableCount, runDisplayName } from "@/lib/quotes/areas";
+import { AREA_KINDS, areaKeyOf, cleanGableCount, runDisplayName } from "@/lib/quotes/areas";
 import { z } from "zod";
 import {
   cleanFeet,
@@ -555,15 +555,17 @@ export function offerChoice(
   return { id: offer.id, name: offer.name, total: screenTotal(totals.subtotal, quote.gstEnabled), totals, offer };
 }
 
-// Which option the page opens on: the one they booked, else the one Keenan
-// leads with (round 17, his star), else the one chosen at the meeting, else
-// the biggest. Null when no option covers a run.
+// Which option the page opens on: the one they booked, else the one chosen
+// at the meeting, else the one Keenan leads with (his star), else the
+// biggest. Null when no option covers a run. Round 19: their own pick at the
+// table goes ahead of the star, which is often set in prep, before they
+// chose.
 export function openingOffer(
   shown: readonly PricedOffer[],
   { booked, meeting }: { booked: string | null; meeting: string | null },
 ): string | null {
   const lead = shown.find((priced) => priced.offer.lead === true)?.offer.id ?? null;
-  for (const id of [booked, lead, meeting]) {
+  for (const id of [booked, meeting, lead]) {
     if (id && shown.some((priced) => priced.offer.id === id)) return id;
   }
   return shown[0]?.offer.id ?? null;
@@ -723,8 +725,11 @@ export function leavesRunsOut(runCount: number, positions: readonly number[] | n
 }
 
 // A run's name, never blank.
+// Round 19: a line by the quote editor's own name ("Front lower", "Front
+// upper gable", Keenan's renames), never blank.
 export function runName(run: QuoteRun, position: number): string {
-  return run.name.trim() || `Run ${position + 1}`;
+  const named = run.name.trim() !== "" || areaKeyOf(run) !== null;
+  return (named ? runDisplayName(run) : "") || `Run ${position + 1}`;
 }
 
 // The option in words, the same way the database names it on Book my

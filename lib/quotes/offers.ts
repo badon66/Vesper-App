@@ -12,7 +12,7 @@
 // customer's link and round 8's Accepted sheet.
 
 import { priceQuote, runPart, selectRuns, totalFeet, type QuoteInputs, type QuoteRun, type QuoteTotals, type RunPart } from "@/lib/pricing";
-import { areaOf, hasArea } from "@/lib/quotes/areas";
+import { areaKeyOf, areaOf, hasArea, runDisplayName } from "@/lib/quotes/areas";
 
 // boxes: this offer's control box count, 1 to 9; null uses the quote's
 // box count (the five seats, 2026-11-10). upperAccess (round 11): the
@@ -302,10 +302,11 @@ export function quickStartRuns(kind: QuickStart, runs: QuoteRun[]): number[] {
   return runs.flatMap((run, at) => (on(run) ? [at] : []));
 }
 
-// A run's name, never blank, the way the customer's link and the database
-// name it (quote_link_run_name).
+// A run's name, never blank (round 19: the quote editor's own name, the
+// same on the link, the Accepted sheet and the timeline).
 export function offerRunName(run: QuoteRun, position: number): string {
-  return run.name.trim() || `Run ${position + 1}`;
+  const named = run.name.trim() !== "" || areaKeyOf(run) !== null;
+  return (named ? runDisplayName(run) : "") || `Run ${position + 1}`;
 }
 
 // What an offer covers, in words, built from its runs, never typed (round

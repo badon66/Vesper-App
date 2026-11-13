@@ -77,11 +77,11 @@ describe("the areas", () => {
     expect(old.map(areaOf)).toEqual(["front", "front", "front", "other", "back", "left", "sides", "back"]);
     expect(old.map(isGable)).toEqual([false, false, false, true, false, false, false, true]);
     expect(old.map(areaKeyOf)).toEqual(["front_lower", "front_lower", "front_upper", null, "back_lower", "left_lower", "sides_lower", "back_upper_gable"]);
-    // Two old runs on one area both stay, each by the name it was typed with
-    // (round 18: a line's name is Keenan's to change, so the name shows as is).
+    // Two old runs on one area both stay: a name of its own reads as typed;
+    // a standard name reads as the editor names the line (round 19).
     expect(runsOnArea(old, "front_lower")).toEqual([0, 1]);
     expect(areaDisplayName(old[1])).toBe("Garage");
-    expect(areaDisplayName(old[0])).toBe("Front");
+    expect(areaDisplayName(old[0])).toBe("Front lower");
     expect(areaDisplayName(tagRun(old[1]))).toBe("Garage");
     // Tagging changes nothing that prices.
     const tagged = old.map(tagRun);
