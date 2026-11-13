@@ -565,6 +565,13 @@ quote_revisions               -- a change Keenan made to a quote after it was ac
 - The guards: `quotes_outcome_guard` and `earnings_guard` let through exactly what `quote_revise` changes, only while it runs (`vesper.quote_revise`, set for its own transaction): an accepted quote's numbers, and a pending commission's amount and base. Everything else about both guards is as it was; a paid earning still never changes.
 - `quote_for_customer(token)` also returns `revised`: `{at, changes}` for an accepted quote Keenan changed since the yes (the last change's time and every change since the yes, in order), else null.
 
+### Round 19: one name per line, the site visit on the timeline (Keenan, 2026-11-13)
+Four migrations, all additive: `r19_booking_positions`, `r19_site_visit_event`, `r19_site_visit_timeline` and `r19_smart_controller_words` (data only).
+
+- `quote_link_book_offer`: the `install_requested` timeline entry's payload also has `positions` (the booked option's positions into the quote's runs; never a price), so the lead page names its lines the quote editor's way. Everything else as round 13 left it.
+- `event_type` gains `site_visit`. `lead_site_visits_log()` (security definer, run only by its trigger after insert or update on `lead_site_visits`) adds a `lead_events` row for each change, `{change: set | cleared | done | not_done, visit_on}`, with the caller as the actor. Read on the timeline like any other entry: Keenan and the lead's own setter; `lead_site_visits` itself stays owner only.
+- `settings.deck`: Keenan's saved words in five places (`lines.price_includes`, `pages.install_day.words`, `pages.install_day.more_text`, `pages.next_steps.more_text`, `pages.what_vesper_is.more_text`) say "smart controller" where they said "control box"; nothing else changed.
+
 ### push_subscriptions
 Web push addresses for members' devices (2026-11-02). Built for Book my install first and for any later alert (the backlog's booking alerts) without changes.
 ```

@@ -518,13 +518,15 @@ try {
     const options = await box(page2, "quote-options");
     const price = await box(page2, "quote-promises");
     const tracker = await box(page2, "tracker");
-    const banner = await box(page2, "quote-christmas");
+    // Round 19: they booked above, so the Christmas banner has left the page.
+    const bannerCount = await page2.getByTestId("quote-christmas").count();
     check(
-      "phone (round 17): the banner at the top, Where you're at under it, then the price, then their house once, in See it on your house",
+      "phone (round 19, booked): no Christmas banner; Where you're at at the top, then the price, then their house once, in See it on your house",
       (await page2.getByTestId("quote-mockup").count()) === 0 &&
-        banner && tracker && price && seeIt &&
-        banner.y < tracker.y && tracker.y < price.y && price.y + price.height <= seeIt.y + 1,
-      JSON.stringify({ banner: banner && Math.round(banner.y), tracker: tracker && Math.round(tracker.y), price: price && Math.round(price.y), seeIt: seeIt && Math.round(seeIt.y) }),
+        bannerCount === 0 &&
+        tracker && price && seeIt &&
+        tracker.y < price.y && price.y + price.height <= seeIt.y + 1,
+      JSON.stringify({ banner: bannerCount, tracker: tracker && Math.round(tracker.y), price: price && Math.round(price.y), seeIt: seeIt && Math.round(seeIt.y) }),
     );
     check("phone: one column, See it on your house above the offers", seeIt && options && options.y > seeIt.y + seeIt.height - 1 && Math.round(options.width) === 390);
     check("phone: the bar keeps Call, Text and Book alone, no option or price in it", !(await page2.getByTestId("bar-summary").isVisible().catch(() => false)));

@@ -292,6 +292,13 @@ Six parts on the `round18` branch. Additive schema changes in four migrations (`
 - [x] An accepted quote stays editable by Keenan; a save updates the quote and the link at once; the link shows "Updated by Keenan on [date]" with the changes listed; the timeline records each change with the old and new totals (owner only); the signed PDF stays as signed; the commission follows until paid, after that the paid row is left alone and Pay shows the difference.
 - [x] Unit tests (sides, names, counts, the split, track sections, the controller, offer fees and charges, the carry-over, the change list), database tests (`tests/rls/round18.test.ts`), and the quote-link, laptop, meeting, quote-outcomes, extras and Black Friday walk-throughs one after another.
 
+### Round 19: one name per line, the tracks drawn from the real thing (Keenan, 2026-11-13; customer facing; merged as soon as it was green, inside the knocking window on Keenan's word, no preview)
+- [x] Build your own lists every measured line on its own by the quote editor's own name (Keenan's renames included); a default gable name always says upper or lower; the same names on the offer cards, the breakdown, the confirmation and thank-you after Book my install, the lead's timeline and the signed PDF.
+- [x] About your track: Double track drawn as its two pieces and how they fit, L track (back track) as the closed wedge from the supplier's diagram; Standard track left as it was; Keenan's words for Double track in Settings.
+- [x] The link opens on what they booked, then the meeting's choice, then the star, then the biggest; the Christmas banner leaves once they've booked; setting a site visit and marking it done each add a timeline line.
+- [x] "Control box" became "smart controller" in the five places Keenan's saved words said it.
+- [x] Unit tests, a database test (`tests/rls/round19.test.ts`), and the link, extras, laptop, meeting, quote-outcomes and Black Friday walk-throughs.
+
 ## M4: Pipeline board and lead detail (iPad and desktop)
 **Parked (Keenan, 2026-11-02).** Not started or planned until Keenan says otherwise.
 - [ ] The board is a Board view inside Leads for the owner on iPad and desktop; phones keep the list
