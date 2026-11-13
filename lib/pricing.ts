@@ -4,11 +4,10 @@
 // cents and rounded per line, so the breakdown always adds up to the total.
 //
 // The formula (CLAUDE.md): total = (total feet x price per foot)
-// + (boxes x box price) + upper access + the rush colour fee + adders
-// - discounts, raised to the minimum job, then GST if enabled. A non-stock
-// colour installed this season adds the flat rush colour fee (2026-11-04,
-// replacing a fee per foot); a stocked colour, or a factory order
-// (spring), adds nothing. Upper access (2026-11-04) follows the runs that
+// + (boxes x box price) + upper access + the rush fee + extra charges
+// - discounts, raised to the minimum job, then GST if enabled. The rush fee
+// is an offer's own switch (round 18, Keenan, 2026-11-12), named "Rush fee"
+// with nothing about the colour. Upper access (2026-11-04) follows the runs that
 // are on: none without an upper run, the upper gable amount when an upper
 // gable is on, otherwise the upper amount. A quote made before then has no
 // amounts, so neither line.
@@ -35,19 +34,30 @@ export type RunPart = (typeof RUN_PARTS)[number];
 // wins. A run from before this has no track and is Hat track.
 export const TRACK_TYPES = ["hat", "double", "j"] as const;
 export type TrackType = (typeof TRACK_TYPES)[number];
-export const TRACK_NAMES: Record<TrackType, string> = { hat: "Hat track", double: "Double track", j: "J track" };
+// Round 18 (Keenan, 2026-11-12): Hat track reads "Standard track", and J
+// track is "L track (back track)" everywhere (the stored value stays "j").
+export const TRACK_NAMES: Record<TrackType, string> = { hat: "Standard track", double: "Double track", j: "L track (back track)" };
 
+// Round 18 (Keenan, 2026-11-12): Left side and Right side are views of
+// their own ("sides" stays for an old quote's one Sides number until Keenan
+// splits it); view is the name Keenan gave the run's view on this quote
+// ("Street side" for Front), kept on each of its runs; count is how many
+// gables a gable line holds (the feet are their total). Neither changes a
+// price. The run's name is its line's name: the standard one until Keenan
+// renames it (lib/quotes/areas.ts).
 export type QuoteRun = {
   name: string;
   feet: number;
   level: "lower" | "upper";
   part?: RunPart | null;
-  area?: "front" | "back" | "sides" | "other" | null;
+  area?: "front" | "back" | "left" | "right" | "sides" | "other" | null;
   gable?: boolean | null;
   rate?: number | null;
   flat?: number | null;
   track?: TrackType | null;
   trackRate?: number | null;
+  view?: string | null;
+  count?: number | null;
 };
 
 // A run's track: Double or J when set, otherwise Hat track.
@@ -84,8 +94,9 @@ export type QuoteInputs = {
   adders: QuoteAdder[];
   discounts: QuoteLineItem[];
   colourTiming: ColourTiming | null;
-  // The flat fee this quote uses when colourTiming is "rush"; ignored
-  // otherwise. Null or 0: no line.
+  // Round 18 (Keenan, 2026-11-12): the rush fee is an offer's own switch
+  // (lib/quotes/offers.ts priceOffer passes it here); more than 0 adds the
+  // "Rush fee" line, whatever the colour. Null or 0: no line.
   rushFee: number | null;
   // The two upper access amounts this quote uses; null on a quote made
   // before 2026-11-04, which has no upper access line.
@@ -102,15 +113,14 @@ export type QuoteInputs = {
   // track, made to order this season", the colour page's own words, round
   // 9); left out, the detail says less.
   colourName?: string | null;
-  // Round 17 (Keenan, 2026-11-12): one lights line per area (its feet, its
-  // track where it isn't Hat track, its price) in place of the grouped
-  // "Track and lights" line. The customer's link and its signed copy read
-  // it this way; the totals are the same cents either way.
-  perArea?: boolean;
-  // Each area's name on its line; left out, the run's own name. The link
-  // passes lib/quotes/areas.ts customerAreaName, so a quote by area reads
-  // "Front lower" and "Front upper", never two lines both called "Front".
+  // Each area's name on its line; left out, the run's own name. Callers
+  // pass lib/quotes/areas.ts runDisplayName, so a quote by area reads
+  // "Front lower" and "Front upper", Keenan's own names, and "Upper gables
+  // (2)", never two lines both called "Front".
   areaName?: (run: QuoteRun) => string;
+  // Round 18: the controller line's words from Settings (deck lines
+  // controller_label and controller_detail); left out, the defaults.
+  controller?: { label: string; detail: string } | null;
 };
 
 export type QuoteLine = {
@@ -118,6 +128,11 @@ export type QuoteLine = {
   detail: string | null;
   // In dollars, already rounded to the cent. Discounts are negative.
   amount: number;
+  // Round 18: a track's line ("Standard track") holds every area on that
+  // track, each with its feet and price, for the drop-down under it. The
+  // line's amount is their sum to the cent.
+  track?: TrackType;
+  areas?: QuoteLine[];
 };
 
 export type QuoteTotals = {
@@ -182,7 +197,12 @@ export function upperAccessAmount(
 // the quote link debate (decisions.md): every dollar line says what it is
 // for where it appears, and never says "level", which reads as a basement.
 export const UPPER_ACCESS_LABEL = "Upper roof access";
-export const RUSH_COLOUR_LABEL = "Rush colour fee";
+// Round 18 (Keenan, 2026-11-12): "Rush fee", with nothing about the colour.
+export const RUSH_FEE_LABEL = "Rush fee";
+// Round 18: the control box says what it is, in Keenan's words from
+// Settings; these are the words until he changes them.
+export const CONTROLLER_LABEL = "Smart controller and power supply";
+export const CONTROLLER_DETAIL = "600 W, Bluetooth and Wi-Fi, all-weather, installs indoors or outdoors. Run it from the app on your phone.";
 
 const usable = (amount: number | null | undefined): number | null =>
   amount !== null && amount !== undefined && Number.isFinite(amount) && amount > 0 ? amount : null;
@@ -278,60 +298,71 @@ export function runLightsCents(run: Pick<QuoteRun, "feet" | "rate" | "flat" | "t
   return cleanFeet(run.feet) * toCents(runRateOf(run, pricePerFt));
 }
 
-// The lights lines: one "Track and lights" line for every Hat track run
-// priced a foot, its detail naming the feet at each rate ("64 ft at $24,
-// 38 ft at $28", or "102 ft at $24 a foot" at one rate), then a line per
-// run on Double or J track, named for its track ("Upper gables": "22 ft of
-// J track at $30 a foot"), then a line per flat-priced Hat track run under
-// its own name. The feet shown are the runs' measured feet.
-function lightsLines(runs: QuoteRun[], pricePerFt: number): { lines: QuoteLine[]; cents: number } {
-  const groups: { rate: number; feet: number }[] = [];
-  const tracks: QuoteLine[] = [];
-  const flats: QuoteLine[] = [];
+// The lights by track (round 18, Keenan, 2026-11-12): one line per track
+// the runs use, Standard track first, then Double track, then L track (back
+// track). Each says its feet, its price a foot when every area on it shares
+// one ("165 ft at $24 a foot", else just the feet), and its total; its areas
+// ride along for the drop-down under it, each with its feet (and its price a
+// foot when the track's areas differ) and its price. A run with no feet and
+// no flat price isn't on the house. A quote with nothing measured still
+// shows Standard track at 0 ft, as the old "Track and lights" line did. The
+// cents per run are the same as ever (runLightsCents), so no total moves.
+export function trackLines(
+  runs: QuoteRun[],
+  pricePerFt: number,
+  nameOf: (run: QuoteRun) => string = (run) => run.name.trim(),
+): { lines: QuoteLine[]; cents: number } {
+  type Section = { feet: number; cents: number; rates: Set<number>; flat: boolean; runs: { run: QuoteRun; feet: number; flat: number | null; cents: number }[] };
+  const sections = new Map<TrackType, Section>();
   let cents = 0;
   for (const run of runs) {
     const feet = cleanFeet(run.feet);
     const flat = runFlatOf(run);
+    if (feet <= 0 && flat === null) continue;
     const track = runTrack(run);
-    if (track !== "hat") {
-      const runCents = runLightsCents(run, pricePerFt);
-      cents += runCents;
-      const name = TRACK_NAMES[track];
-      tracks.push({
-        label: run.name.trim() || "Area",
-        detail: flat !== null ? (feet > 0 ? `${feet} ft of ${name}, flat price` : `${name}, flat price`) : `${feet} ft of ${name} at ${formatMoney(runRateOf(run, pricePerFt))} a foot`,
-        amount: toDollars(runCents),
-      });
-      continue;
-    }
-    if (flat !== null) {
-      const flatCents = toCents(flat);
-      cents += flatCents;
-      flats.push({ label: run.name.trim() || "Area", detail: feet > 0 ? `${feet} ft, flat price` : "Flat price", amount: toDollars(flatCents) });
-      continue;
-    }
-    const rate = runRateOf(run, pricePerFt);
-    const group = groups.find((item) => item.rate === rate);
-    if (group) group.feet += feet;
-    else groups.push({ rate, feet });
-    cents += feet * toCents(rate);
+    const runCents = runLightsCents(run, pricePerFt);
+    cents += runCents;
+    const section = sections.get(track) ?? { feet: 0, cents: 0, rates: new Set<number>(), flat: false, runs: [] };
+    section.feet += feet;
+    section.cents += runCents;
+    if (flat !== null) section.flat = true;
+    else section.rates.add(runRateOf(run, pricePerFt));
+    section.runs.push({ run, feet, flat, cents: runCents });
+    sections.set(track, section);
   }
-  const perFoot = groups.reduce((sum, group) => sum + group.feet * toCents(group.rate), 0);
-  const lines: QuoteLine[] = [];
-  if (groups.length > 0 || (flats.length === 0 && tracks.length === 0)) {
-    const detail =
-      groups.length <= 1
-        ? `${groups[0]?.feet ?? 0} ft at ${formatMoney(groups[0]?.rate ?? pricePerFt)} a foot`
-        : groups.map((group) => `${group.feet} ft at ${formatMoney(group.rate)}`).join(", ");
-    lines.push({ label: "Track and lights", detail, amount: toDollars(perFoot) });
+  if (sections.size === 0) {
+    return {
+      lines: [{ label: TRACK_NAMES.hat, detail: `0 ft at ${formatMoney(pricePerFt)} a foot`, amount: 0, track: "hat", areas: [] }],
+      cents: 0,
+    };
   }
-  return { lines: [...lines, ...tracks, ...flats], cents };
+  const lines = TRACK_TYPES.flatMap((track): QuoteLine[] => {
+    const section = sections.get(track);
+    if (!section) return [];
+    const shared = !section.flat && section.rates.size === 1 ? [...section.rates][0] : null;
+    // Where the track line gives no one rate, each area names its own.
+    const mixed = shared === null;
+    const areas = section.runs.map(({ run, feet, flat, cents: runCents }): QuoteLine => {
+      const detail =
+        flat !== null ? (feet > 0 ? `${feet} ft, flat price` : "Flat price") : mixed ? `${feet} ft at ${formatMoney(runRateOf(run, pricePerFt))} a foot` : `${feet} ft`;
+      return { label: nameOf(run).trim() || "Area", detail, amount: toDollars(runCents) };
+    });
+    return [
+      {
+        label: TRACK_NAMES[track],
+        detail: shared !== null ? `${section.feet} ft at ${formatMoney(shared)} a foot` : `${section.feet} ft`,
+        amount: toDollars(section.cents),
+        track,
+        areas,
+      },
+    ];
+  });
+  return { lines, cents };
 }
 
-// The lights lines one area at a time (round 17): every run with feet or a
-// flat price, under its own name, its feet and its track when it isn't Hat
-// track ("18 ft, J track"), at what it costs. The same cents per run as
-// lightsLines, so the total never moves.
+// The lights lines one area at a time (round 17), kept for anything that
+// wants a flat list: every area under its own name, its feet and its track
+// when it isn't Standard track, at what it costs. The same cents per run.
 export function areaLines(
   runs: QuoteRun[],
   pricePerFt: number,
@@ -352,20 +383,29 @@ export function areaLines(
   return { lines, cents };
 }
 
+// Every line of a breakdown with each track's areas in place of the track's
+// own line: what a flat list (a change list, a test) compares.
+export function flatLines(lines: readonly QuoteLine[]): QuoteLine[] {
+  return lines.flatMap((line) => (line.areas ? line.areas : [line]));
+}
+
 export function priceQuote(inputs: QuoteInputs): QuoteTotals {
   const feet = totalFeet(inputs.runs);
   const lines: QuoteLine[] = [];
 
-  const lights = inputs.perArea ? areaLines(inputs.runs, inputs.pricePerFt, inputs.areaName) : lightsLines(inputs.runs, inputs.pricePerFt);
+  const lights = trackLines(inputs.runs, inputs.pricePerFt, inputs.areaName);
   const trackCents = lights.cents;
   lines.push(...lights.lines);
 
   const boxes = Math.max(0, Math.round(inputs.boxCount));
   const boxCents = toCents(inputs.boxPrice) * boxes;
   if (boxes > 0) {
+    // Round 18: the controller says what it is, in Keenan's words.
+    const label = inputs.controller?.label.trim() || CONTROLLER_LABEL;
+    const detail = inputs.controller ? inputs.controller.detail.trim() : CONTROLLER_DETAIL;
     lines.push({
-      label: boxes === 1 ? "Control box" : `Control boxes (${boxes})`,
-      detail: boxes === 1 ? "Always included" : `${boxes} at ${formatMoney(inputs.boxPrice)}`,
+      label: boxes === 1 ? label : `${label} (${boxes})`,
+      detail: boxes === 1 ? detail || null : [`${boxes} at ${formatMoney(inputs.boxPrice)}.`, detail].filter(Boolean).join(" "),
       amount: toDollars(boxCents),
     });
   }
@@ -381,15 +421,11 @@ export function priceQuote(inputs: QuoteInputs): QuoteTotals {
     lines.push({ label: UPPER_ACCESS_LABEL, detail: overridden ? null : upperAccessDetail(inputs), amount: toDollars(accessCents) });
   }
 
+  // Round 18: an offer's own rush fee, with nothing about the colour.
   let rushCents = 0;
-  if (inputs.colourTiming === "rush" && inputs.rushFee !== null && Number.isFinite(inputs.rushFee) && inputs.rushFee > 0) {
+  if (inputs.rushFee !== null && Number.isFinite(inputs.rushFee) && inputs.rushFee > 0) {
     rushCents = toCents(inputs.rushFee);
-    const colour = inputs.colourName?.trim();
-    lines.push({
-      label: RUSH_COLOUR_LABEL,
-      detail: colour ? `${colour} track, made to order this season` : "Made to order this season",
-      amount: toDollars(rushCents),
-    });
+    lines.push({ label: RUSH_FEE_LABEL, detail: null, amount: toDollars(rushCents) });
   }
 
   let adderCents = 0;

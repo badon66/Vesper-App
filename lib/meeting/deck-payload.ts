@@ -1,5 +1,6 @@
 import "server-only";
 
+import { deckLine, parseDeckLines } from "@/lib/deck";
 import { leadName } from "@/lib/leads/status";
 import { CUSTOM_CHOICE, leadTrackColour, sortTrackColours, trackColourText } from "@/lib/leads/track-colour";
 import {
@@ -215,7 +216,7 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
 // The prices Settings gives a new quote (shared with the lead page's quote
 // editor, lib/quotes/editor-data.ts).
 export const PRICING_SETTINGS =
-  "price_per_ft, box_price, neighbour_discount, gst_enabled, gst_rate, gst_number, rush_colour_fee, upper_access_fee, upper_gable_access_fee, price_hold_days, min_job_total, black_friday_kind, black_friday_value, double_track_per_ft, j_track_per_ft, christmas_banner_on, christmas_book_by_white, christmas_book_by_colour, christmas_season_end, christmas_banner_book_by, christmas_banner_white, christmas_banner_colour, christmas_banner_no_colour, christmas_banner_after";
+  "price_per_ft, box_price, neighbour_discount, gst_enabled, gst_rate, gst_number, rush_colour_fee, upper_access_fee, upper_gable_access_fee, price_hold_days, min_job_total, black_friday_kind, black_friday_value, double_track_per_ft, j_track_per_ft, christmas_banner_on, christmas_book_by_white, christmas_book_by_colour, christmas_season_end, christmas_banner_book_by, christmas_banner_white, christmas_banner_colour, christmas_banner_no_colour, christmas_banner_after, deck";
 
 type PricingRow = {
   price_per_ft: number;
@@ -242,6 +243,8 @@ type PricingRow = {
   christmas_banner_colour?: string;
   christmas_banner_no_colour?: string;
   christmas_banner_after?: string;
+  // Round 18: the deck's words, for the controller line's two lines.
+  deck?: unknown;
 };
 
 // Round 17: the Christmas banner's dates and words while it is on and dated.
@@ -281,7 +284,14 @@ export function pricingFrom(settings: PricingRow): MeetingPayload["pricing"] {
     christmas: christmasFrom(settings),
     // Read on the server only; a browser has no such variable and reads no.
     polishReady: Boolean(process.env.ANTHROPIC_API_KEY?.trim()),
+    controller: controllerFrom(settings.deck),
   };
+}
+
+// Round 18: the controller line's words from Settings (deck lines).
+function controllerFrom(deck: unknown): { label: string; detail: string } {
+  const lines = parseDeckLines(deck && typeof deck === "object" ? (deck as { lines?: unknown }).lines : undefined);
+  return { label: deckLine(lines, "controller_label"), detail: deckLine(lines, "controller_detail") };
 }
 
 const QUOTE_COLUMNS =

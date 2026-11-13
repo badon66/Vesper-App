@@ -53,7 +53,21 @@ import {
   type QuoteInputs,
   type QuoteRun,
 } from "@/lib/pricing";
-import { AREA_KEYS, AREA_LABELS, areaKeyOf, newAreaRun, newOtherRun, runFlat, runRate, runsOnArea, type AreaKey } from "@/lib/quotes/areas";
+import {
+  AREA_KEYS,
+  AREA_LABELS,
+  areaKeyOf,
+  areaOf,
+  kindOfKey,
+  lineLabel,
+  newAreaRun,
+  newOtherRun,
+  runFlat,
+  runRate,
+  runsOnArea,
+  viewName,
+  type AreaKey,
+} from "@/lib/quotes/areas";
 import {
   addRunToOffers,
   cleanOfferName,
@@ -281,8 +295,7 @@ export function areaLines(runs: readonly QuoteRun[]): Record<AreaKey, number[]> 
 // The line's label inside its view: "Lower gable" under Front, "Upper"
 // under Sides. The view's own title says the rest.
 export function areaShortLabel(key: AreaKey): string {
-  const label = AREA_LABELS[key].replace(/^(Front|Back|Sides) /, "");
-  return label.charAt(0).toUpperCase() + label.slice(1);
+  return lineLabel(key);
 }
 
 // A run added at the end: a full wrap stays a full wrap, and an offer that
@@ -309,7 +322,38 @@ export function setAreaFeet(state: RunsAndOffers, key: AreaKey, feet: number): R
   const positions = runsOnArea(state.runs, key);
   if (positions.length > 0) return setRunFeet(state, positions[0], feet);
   const clean = cleanFeet(feet);
-  return clean === 0 ? state : appendRun(state, newAreaRun(key, clean));
+  // A new line on a view Keenan renamed carries the view's name.
+  const kind = kindOfKey(key);
+  const view = viewName(state.runs, kind);
+  return clean === 0 ? state : appendRun(state, newAreaRun(key, clean, view));
+}
+
+// Splitting an old quote's Sides line (round 18, Keenan, 2026-11-12): the
+// Sides run becomes the Left side's line at its level, and a Right side line
+// is added; the feet go half each (the left takes the odd foot) and a flat
+// price splits the same way to the cent, so the total stays exactly where
+// it was until Keenan types the real numbers. Its track and price a foot go
+// with both, and every offer that had the Sides takes both sides.
+export function splitSides(state: RunsAndOffers, at: number): RunsAndOffers {
+  const run = state.runs[at];
+  if (!run || areaOf(run) !== "sides") return state;
+  const feet = cleanFeet(run.feet);
+  const leftFeet = Math.ceil(feet / 2);
+  const rightFeet = feet - leftFeet;
+  const flat = runFlat(run);
+  const leftFlat = flat === null ? null : feet > 0 ? Math.round(flat * 100 * (leftFeet / feet)) / 100 : flat;
+  const rightFlat = flat === null || leftFlat === null ? null : Math.round((flat - leftFlat) * 100) / 100;
+  const carry = { rate: runRate(run), ...(run.track ? { track: run.track, ...(run.trackRate ? { trackRate: run.trackRate } : {}) } : {}) };
+  const upper = run.level === "upper";
+  const left: QuoteRun = { ...newAreaRun(upper ? "left_upper" : "left_lower", leftFeet, viewName(state.runs, "left")), ...carry, flat: leftFlat };
+  const right: QuoteRun = { ...newAreaRun(upper ? "right_upper" : "right_lower", rightFeet, viewName(state.runs, "right")), ...carry, flat: rightFlat };
+  const runs = state.runs.map((item, which) => (which === at ? left : item));
+  const added = runs.length;
+  if (rightFeet === 0 && rightFlat === null) return { runs, offers: state.offers };
+  return {
+    runs: [...runs, right],
+    offers: state.offers.map((offer) => (offer.runs.includes(at) ? { ...offer, runs: [...offer.runs, added] } : offer)),
+  };
 }
 
 // Feet typed on a run's own line: an old quote's extra run on an area, or an

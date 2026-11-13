@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Star, Trash2 } from "lucide-react";
+import { ChevronDown, Plus, Star, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 
 import { polishOfferDescription } from "@/app/(app)/app/leads/polish-actions";
@@ -14,7 +14,18 @@ import { coverageLine } from "@/lib/meeting/price-screen";
 import { cleanFeet, formatMoney, hasUpperRun, screenTotal, selectRuns, type QuoteRun, type QuoteTotals } from "@/lib/pricing";
 import { areaDisplayName, isGable } from "@/lib/quotes/areas";
 import { automaticUpperAccess, moneyText, offerDescriptionIssue, offerNameIssue, toggleOfferRun } from "@/lib/quotes/editor";
-import { canLead, cleanUpperAccess, isCustomerOffer, OFFER_DESCRIPTION_MAX, OFFER_NAME_EDITOR_MAX, ONE_OFFER_SHOWN, type QuoteOffer } from "@/lib/quotes/offers";
+import {
+  canLead,
+  cleanRushFee,
+  cleanUpperAccess,
+  isCustomerOffer,
+  OFFER_CHARGES_MAX,
+  OFFER_DESCRIPTION_MAX,
+  OFFER_NAME_EDITOR_MAX,
+  ONE_OFFER_SHOWN,
+  type OfferCharge,
+  type QuoteOffer,
+} from "@/lib/quotes/offers";
 import { POLISH_WORDS, polishFacts } from "@/lib/quotes/polish";
 import { cn } from "@/lib/utils";
 
@@ -51,6 +62,8 @@ export function OfferCard({
   onLead,
   onDelete,
   polishReady = false,
+  rushFeeDefault = null,
+  accepted = false,
 }: {
   offer: QuoteOffer;
   runs: QuoteRun[];
@@ -75,6 +88,11 @@ export function OfferCard({
   // Round 17: the AI key is in the server's environment; Polish is greyed
   // out until it is, and the description box works as plain text.
   polishReady?: boolean;
+  // Round 18: Settings' rush fee, what the offer's Rush fee switch fills in.
+  rushFeeDefault?: number | null;
+  // Round 18: the option the customer said yes to on an accepted quote: it
+  // stays editable, but it can't be deleted or hidden.
+  accepted?: boolean;
   // Pointer down or focus within the card: it is the active offer.
   onActivate?: () => void;
   onChange: (offer: QuoteOffer) => void;
@@ -130,6 +148,14 @@ export function OfferCard({
   // Upper access: the automatic amount from its areas, or what Keenan typed
   // over it (0 included). The line shows once the offer has an upper area,
   // and while an amount is typed.
+  // Round 18: this offer's own rush fee (its switch; on, Settings' amount
+  // to start, his to type over) and its own extra charges.
+  const fee = cleanRushFee(offer.rushFee);
+  const [feeSwitch, setFeeSwitch] = useState(false);
+  const feeOn = feeSwitch || fee !== null;
+  const feeTyping = useTyping(moneyText(fee));
+  const charges: OfferCharge[] = offer.charges ?? [];
+  const setCharges = (next: OfferCharge[]) => onChange({ ...offer, charges: next });
   const auto = automaticUpperAccess(runs, offer, fees);
   const typed = cleanUpperAccess(offer.upperAccess);
   const showAccess = typed !== null || hasUpperRun(selectRuns(runs, offer.runs));
@@ -179,7 +205,7 @@ export function OfferCard({
                   : "Customers see this name.")}
           </p>
         </div>
-        {!locked ? (
+        {!locked && !accepted ? (
           <button
             type="button"
             onClick={() => (confirmDelete ? onDelete() : setConfirmDelete(true))}
@@ -203,7 +229,7 @@ export function OfferCard({
               <Switch
                 id={showId}
                 checked={!hidden}
-                disabled={locked || (!hidden && !canHide)}
+                disabled={locked || accepted || (!hidden && !canHide)}
                 onCheckedChange={(shown) => onShow(shown)}
                 data-testid="offer-show"
               />
@@ -231,6 +257,11 @@ export function OfferCard({
               </span>
             ) : null}
           </div>
+          {accepted ? (
+            <p className="text-xs font-semibold text-pretty" data-testid="offer-accepted-note">
+              They said yes to this one. A change here updates their link and the commission; their signed agreement stays as signed.
+            </p>
+          ) : null}
           {offer.lead === true && !hidden ? (
             <p className="text-xs text-pretty text-muted-foreground" data-testid="offer-lead-note">
               Listed first, and their link opens on it unless they booked another.
@@ -407,12 +438,70 @@ export function OfferCard({
             </div>
           </div>
         ) : null}
+        <div className="flex flex-col gap-1.5" data-testid="offer-rush">
+          <label className="flex min-h-12 cursor-pointer items-center gap-3 text-sm font-semibold">
+            <Switch
+              checked={feeOn}
+              disabled={locked}
+              onCheckedChange={(on) => {
+                setFeeSwitch(on);
+                onChange({ ...offer, rushFee: on ? cleanRushFee(rushFeeDefault) : null });
+              }}
+              data-testid="offer-rush-switch"
+            />
+            Rush fee
+          </label>
+          {feeOn ? (
+            <MoneyBox
+              label={`Rush fee in ${name}`}
+              value={feeTyping.value}
+              placeholder="0"
+              disabled={locked}
+              onFocus={feeTyping.start}
+              onChange={(text) => {
+                feeTyping.type(text);
+                onChange({ ...offer, rushFee: cleanRushFee(text) });
+              }}
+              onBlur={feeTyping.stop}
+              testId="offer-rush-fee"
+            />
+          ) : null}
+        </div>
         <div className="ml-auto flex flex-col items-end text-right">
           <p className="text-sm text-muted-foreground">{coverage || "No measured areas yet"}</p>
           <p className="text-2xl font-bold tabular-nums" data-testid="offer-total">
             {hasFeet && totals ? screenTotal(totals.subtotal, gstEnabled) : offer.runs.length === 0 ? "Pick the areas" : "Not measured yet"}
           </p>
         </div>
+      </div>
+
+      {/* Round 18: extra charges on this offer only; "Extra work, for every
+          offer" stays in the quote's prices. */}
+      <div className="flex flex-col gap-2" data-testid="offer-charges">
+        {charges.map((charge, at) => (
+          <ChargeLine
+            key={at}
+            number={at + 1}
+            charge={charge}
+            offerName={name}
+            locked={locked}
+            onChange={(next) => setCharges(charges.map((item, which) => (which === at ? next : item)))}
+            onRemove={() => setCharges(charges.filter((_, which) => which !== at))}
+          />
+        ))}
+        {!locked && charges.length < OFFER_CHARGES_MAX ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="self-start"
+            onClick={() => setCharges([...charges, { label: "", amount: 0 }])}
+            data-testid="offer-charge-add"
+          >
+            <Plus aria-hidden="true" className="size-4" />
+            Extra charge
+          </Button>
+        ) : null}
       </div>
 
       {hasFeet && totals ? (
@@ -430,5 +519,64 @@ export function OfferCard({
         </div>
       ) : null}
     </article>
+  );
+}
+
+// One extra charge on an offer: its name (customers read it in the
+// breakdown) and its amount, and Remove.
+function ChargeLine({
+  number,
+  charge,
+  offerName,
+  locked,
+  onChange,
+  onRemove,
+}: {
+  number: number;
+  charge: OfferCharge;
+  offerName: string;
+  locked: boolean;
+  onChange: (next: OfferCharge) => void;
+  onRemove: () => void;
+}) {
+  const amount = useTyping(charge.amount > 0 ? moneyText(charge.amount) : "");
+  const unnamed = charge.label.trim() === "" && charge.amount > 0;
+  return (
+    <div className="flex flex-col gap-1" data-testid="offer-charge">
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={charge.label}
+          placeholder="Extra outlet, a long run of wire"
+          aria-label={`Extra charge ${number} in ${offerName}, its name`}
+          maxLength={80}
+          disabled={locked}
+          aria-invalid={unnamed ? true : undefined}
+          onChange={(event) => onChange({ ...charge, label: event.target.value.replace(/\$/g, "") })}
+          className="min-w-0 flex-1 basis-40"
+          data-testid="offer-charge-name"
+        />
+        <MoneyBox
+          label={`Extra charge ${number} in ${offerName}, its amount`}
+          value={amount.value}
+          placeholder="0"
+          disabled={locked}
+          onFocus={amount.start}
+          onChange={(text) => {
+            amount.type(text);
+            const value = Number(text);
+            onChange({ ...charge, amount: Number.isFinite(value) && value >= 0 ? Math.round(value * 100) / 100 : 0 });
+          }}
+          onBlur={amount.stop}
+          className="w-32"
+          testId="offer-charge-amount"
+        />
+        {!locked ? (
+          <Button type="button" variant="ghost" size="icon" aria-label={`Remove extra charge ${number}`} onClick={onRemove} data-testid="offer-charge-remove">
+            <Trash2 className="size-4" />
+          </Button>
+        ) : null}
+      </div>
+      {unnamed ? <p className="text-xs font-semibold">Name this charge. Customers see it.</p> : null}
+    </div>
   );
 }

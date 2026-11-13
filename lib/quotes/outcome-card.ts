@@ -2,11 +2,14 @@ import { AREA_KINDS } from "@/lib/quotes/areas";
 import { commissionFor, commissionQuoteFromRow, type CommissionQuoteRow } from "@/lib/pay/commission";
 import { RUN_PARTS, formatMoney, priceQuote, resolveDiscounts, screenTotal, selectRuns, totalFeet, trackFields, usablePercent, type ColourTiming, type QuoteAdder, type QuoteInputs, type QuoteLineItem, type QuoteRun } from "@/lib/pricing";
 import {
+  carryQuoteRushFee,
   FULL_WRAP_ID,
   offerCoverage,
   offerForRuns,
   offerRunName,
   parseOffers,
+  priceOffer,
+  sharedRushFee,
   shownOffers,
   type QuoteOffer,
 } from "@/lib/quotes/offers";
@@ -145,13 +148,26 @@ export function quoteInputsFromRow(row: OfferQuoteRow, runs: QuoteRun[] = runsFr
     adders,
     discounts,
     colourTiming,
-    rushFee: colourTiming === "rush" ? maybeAmount(row.rush_fee) : null,
+    // Round 18: the rush fee is each offer's own (offersFromRow carries an
+    // old quote-wide one onto every offer); the whole quote counts one only
+    // when every offer charges it, as the link does.
+    rushFee: sharedRushFee(offersFromRow(row, runs.length)),
     upperAccessFee: maybeAmount(row.upper_access_fee),
     upperGableAccessFee: maybeAmount(row.upper_gable_access_fee),
     minJobTotal: maybeAmount(row.min_job_total),
     gstEnabled: row.gst_enabled === true,
     gstRate: amountOf(row.gst_rate),
   };
+}
+
+// Round 18: a quote row's offers, an old quote-wide rush fee (this season)
+// carried onto every offer, so the Accepted sheet prices each option as
+// the link and the meeting do.
+export function offersFromRow(row: Pick<OfferQuoteRow, "offers" | "colour_timing" | "rush_fee">, runCount: number): QuoteOffer[] {
+  return carryQuoteRushFee(parseOffers(row.offers, runCount), {
+    colourTiming: typeof row.colour_timing === "string" ? row.colour_timing : null,
+    rushFee: typeof row.rush_fee === "number" ? row.rush_fee : null,
+  });
 }
 
 // ------------------------------------------------- discounts per option
@@ -216,11 +232,16 @@ export function acceptedTotals(quote: OfferQuoteRow, offerId: string): { subtota
   const selection = acceptedSelection(quote, offerId);
   if (!selection) return null;
   const inputs = quoteInputsFromRow(quote);
-  const priced = priceQuote({
-    ...inputs,
-    runs: selectRuns(inputs.runs, selection.positions === null ? null : [...selection.positions]),
-    boxCount: selection.boxes ?? inputs.boxCount,
-  });
+  // Round 18: the offer's own rush fee and extra charges count too.
+  const offer = offersFromRow(quote, inputs.runs.length).find((item) => item.id === offerId && item.runs.length > 0);
+  const priced = offer
+    ? priceOffer(inputs, offer)
+    : priceQuote({
+        ...inputs,
+        runs: selectRuns(inputs.runs, selection.positions === null ? null : [...selection.positions]),
+        boxCount: selection.boxes ?? inputs.boxCount,
+      });
+  if (!priced) return null;
   return { subtotal: priced.subtotal, gst: priced.gst, total: priced.total };
 }
 
@@ -296,7 +317,7 @@ export function acceptOptions({
 }): AcceptOption[] {
   const runs = runsFromJson(quote.runs);
   const inputs = quoteInputsFromRow(quote, runs);
-  const offers = parseOffers(quote.offers, runs.length);
+  const offers = offersFromRow(quote, runs.length);
   const bookedId = bookedOfferId(offers, runs.length, link);
   const shown = shownOffers(inputs, offers);
   if (shown.length === 0) {

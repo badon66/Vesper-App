@@ -78,18 +78,23 @@ describe("the seeded deck words and looks", () => {
     const lines = round9.match(/'\{lines\}', \$lines\$([\s\S]*?)\$lines\$::jsonb\)\s+where id = 1\s+and deck -> 'lines' is null;/);
     // Round 10's thank you, round 13's lowest-price line and round 17's
     // lines came later: a deck without them reads ours.
-    const later = new Set(["thanks", "price_lowest", "price_feet", "colour_season_included"]);
+    // Round 18's controller lines came later too.
+    const later = new Set(["thanks", "price_lowest", "price_feet", "colour_season_included", "controller_label", "controller_detail"]);
     const round9Lines = Object.fromEntries(
       Object.entries(DECK_LINE_DEFAULTS).filter(
         ([key]) => (!later.has(key) && !/^link_(track|build|docs|agreement)_/.test(key) && !/^tracker_/.test(key) && !key.startsWith("cover_")) || key === "cover_line",
       ),
     );
-    expect(JSON.parse(lines?.[1] ?? "{}")).toEqual(round9Lines);
+    // Round 18 renamed the control box in the default words only: round 9
+    // seeded this line before that, and a deck keeps the words it has
+    // (Keenan's to change in Settings).
+    const round9Includes = "Every option includes the control box, install by our own crew and our 10-year warranty.";
+    expect(JSON.parse(lines?.[1] ?? "{}")).toEqual({ ...round9Lines, price_includes: round9Includes });
     const pages = Object.fromEntries(Object.entries(after).map(([key, page]) => [key, stored(page)]));
     const seeded = parseDeckWords({
       pages: { ...pages, your_house: JSON.parse(house?.[1] ?? "{}"), next_steps: nextSteps },
       warranty_lines_up_front: 3,
-      lines: JSON.parse(lines?.[1] ?? "{}"),
+      lines: { ...JSON.parse(lines?.[1] ?? "{}"), price_includes: DECK_LINE_DEFAULTS.price_includes },
     });
     expect(seeded).toEqual(DECK_SEED);
   });

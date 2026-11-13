@@ -10,19 +10,8 @@ import { Choice, cleanMoneyInput, DateField, MoneyField, QuietWarning, Stepper }
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import type { LeadMockupItem } from "@/lib/leads/mockup-roles";
-import {
-  colourTimingFor,
-  quoteInputs,
-  quoteMinimum,
-  quoteRushFee,
-  rushFeeOn,
-  withColourTiming,
-  withRushFee,
-  type MeetingPayload,
-  type QuoteUIState,
-} from "@/lib/meeting/state";
+import { colourTimingFor, quoteInputs, quoteMinimum, withColourTiming, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
 import { cleanFeet, defaultValidUntil, formatMoney, percentWords, totalFeet, usablePercent } from "@/lib/pricing";
 import { addQuickStart, editorOffers, editorOrder, offerLitPositions, offerWarnings, percentDiscountWords, typeDiscountAmount } from "@/lib/quotes/editor";
 import {
@@ -65,6 +54,11 @@ export type QuoteEditorProps = {
   // say why at the top.
   locked?: boolean;
   lockedWords?: string;
+  // Round 18 (Keenan, 2026-11-12): an accepted quote stays editable on the
+  // lead page; this names the option they said yes to, which can't be
+  // deleted or hidden, and acceptedWords say what a save does.
+  acceptedOffer?: string | null;
+  acceptedWords?: string;
   // Round 11, the lead page only: the lead's mockups for the photo spot on
   // each offer, who is uploading, and how to catch the page up after a pick
   // or an upload. Meeting mode passes none and shows no spot.
@@ -83,6 +77,8 @@ export function QuoteEditor({
   today,
   locked = false,
   lockedWords,
+  acceptedOffer = null,
+  acceptedWords,
   mockups,
   leadId,
   userId,
@@ -130,6 +126,7 @@ export function QuoteEditor({
   };
   const changeOffer = (offer: QuoteOffer) => setOffers(offers.map((item) => (item.id === offer.id ? offer : item)));
   const deleteOffer = (id: string) => {
+    if (id === acceptedOffer) return;
     if (activeOffer === id) setActiveOffer(null);
     // At least one offer is always shown (round 13): if only hidden ones
     // are left, the first of them shows again.
@@ -141,7 +138,9 @@ export function QuoteEditor({
   // Show to customer (round 13). Hiding the offer chosen at the table
   // drops that choice: the customer no longer sees it.
   const showOffer = (id: string, shown: boolean) =>
-    setOffers(setOfferHidden(offers, id, !shown), !shown && state.chosenOffer === id ? { chosenOffer: null } : {});
+    id === acceptedOffer && !shown
+      ? undefined
+      : setOffers(setOfferHidden(offers, id, !shown), !shown && state.chosenOffer === id ? { chosenOffer: null } : {});
   // Round 17: "Lead with this one", one star per quote. The card moves to
   // the top the next time the list re-sorts, as with any price change.
   const leadOffer = (id: string, lead: boolean) => setOffers(setLeadOffer(offers, lead ? id : null));
@@ -168,6 +167,11 @@ export function QuoteEditor({
       {locked && lockedWords ? (
         <p role="status" className="rounded-md border border-input px-4 py-3 text-base font-semibold text-pretty" data-testid="quote-locked">
           {lockedWords}
+        </p>
+      ) : null}
+      {!locked && acceptedOffer && acceptedWords ? (
+        <p role="status" className="rounded-md border border-input px-4 py-3 text-base font-semibold text-pretty" data-testid="quote-accepted-edit">
+          {acceptedWords}
         </p>
       ) : null}
 
@@ -257,6 +261,8 @@ export function QuoteEditor({
                 onLead={(lead) => leadOffer(offer.id, lead)}
                 onDelete={() => deleteOffer(offer.id)}
                 polishReady={pricing.polishReady === true}
+                rushFeeDefault={pricing.rushFee}
+                accepted={acceptedOffer === offer.id}
               />
             ))}
           </div>
@@ -308,19 +314,13 @@ function Prices({
   const [open, setOpen] = useState(false);
   const inputs = quoteInputs(state, pricing);
   const minimum = quoteMinimum(state, pricing);
-  const rushFee = quoteRushFee(state);
   const timing = colourTimingFor(colourKind, colourText, state.colourTiming);
-  // Round 17: "Charge a rush fee" is off to start; on, it holds the amount
-  // (Settings' to start, his to type over), even while the box is empty.
-  const [feeSwitch, setFeeSwitch] = useState(false);
-  const feeOn = timing === "rush" && (feeSwitch || rushFee !== null);
   const discountCount = inputs.discounts.length;
   const summary = [
     `${formatMoney(inputs.pricePerFt)} a foot`,
-    `${formatMoney(inputs.boxPrice)} a box`,
+    `${formatMoney(inputs.boxPrice)} a controller`,
     minimum ? `${formatMoney(minimum)} minimum` : null,
     discountCount > 0 ? `${discountCount} ${discountCount === 1 ? "discount" : "discounts"}` : null,
-    rushFeeOn(state) ? "rush colour fee" : null,
   ]
     .filter(Boolean)
     .join(", ");
@@ -347,14 +347,14 @@ function Prices({
         <div id="editor-prices-body" className="flex flex-col gap-6">
           <div className="flex flex-wrap items-end gap-5">
             <MoneyField id="editor-ppf" label="Per foot" value={state.pricePerFt} onChange={(value) => set({ pricePerFt: value })} disabled={locked} />
-            <MoneyField id="editor-box" label="Per box" value={state.boxPrice} onChange={(value) => set({ boxPrice: value })} disabled={locked} />
+            <MoneyField id="editor-box" label="Per controller" value={state.boxPrice} onChange={(value) => set({ boxPrice: value })} disabled={locked} />
             <div className="flex flex-col gap-1.5">
-              <p className="text-sm font-semibold">Control boxes</p>
+              <p className="text-sm font-semibold">Controllers</p>
               <Stepper
                 value={Math.min(9, Math.max(1, state.boxCount))}
                 min={1}
                 max={9}
-                label="control boxes, unless an offer says otherwise"
+                label="controllers, unless an offer says otherwise"
                 disabled={locked}
                 onChange={(value) => set({ boxCount: value })}
               />
@@ -396,8 +396,8 @@ function Prices({
             ) : (
               <div className="flex flex-col gap-3">
                 <p className="text-sm text-pretty">{colourText} is made to order. Your price in the meeting sets this too.</p>
-                {/* Round 17 (Keenan, 2026-11-12): this season is included and the
-                    default; spring is included; a rush fee is his choice. */}
+                {/* Round 17: this season is the default, or spring. Round 18: the
+                    rush fee is each offer's own switch, on its card. */}
                 <div className="flex flex-wrap items-center gap-3">
                   <Choice
                     on={timing === "rush"}
@@ -407,52 +407,21 @@ function Prices({
                     }}
                     testId="editor-timing-season"
                   >
-                    {feeOn && rushFee !== null ? `This season, ${formatMoney(rushFee)} rush fee` : "This season, included"}
+                    This season
                   </Choice>
                   <Choice
                     on={timing === "factory_order"}
                     disabled={locked}
                     onToggle={() => {
-                      if (timing === "factory_order") return;
-                      setFeeSwitch(false);
-                      set(withColourTiming("factory_order"));
+                      if (timing !== "factory_order") set(withColourTiming("factory_order"));
                     }}
                     testId="editor-timing-spring"
                   >
-                    Spring, included
+                    Spring
                   </Choice>
                 </div>
-                {timing === "rush" ? (
-                  <div className="flex flex-wrap items-end gap-x-5 gap-y-2">
-                    <label htmlFor="editor-rush-switch" className="flex min-h-12 cursor-pointer items-center gap-3 text-sm font-semibold">
-                      <Switch
-                        id="editor-rush-switch"
-                        checked={feeOn}
-                        disabled={locked}
-                        onCheckedChange={(on) => {
-                          setFeeSwitch(on);
-                          set(withRushFee(on, pricing));
-                        }}
-                        data-testid="editor-rush-switch"
-                      />
-                      Charge a rush fee
-                    </label>
-                    {feeOn ? (
-                      <MoneyField
-                        id="editor-rush"
-                        label="Rush colour fee"
-                        value={state.rushFee}
-                        placeholder="0"
-                        onChange={(value) => set({ rushFee: value })}
-                        disabled={locked}
-                      />
-                    ) : null}
-                  </div>
-                ) : null}
                 <p className="text-xs text-pretty text-muted-foreground" data-testid="editor-rush-note">
-                  {feeOn
-                    ? "Their price includes the rush colour fee, and their link and Your price name it."
-                    : "No rush fee: nothing on their link or in the meeting mentions one."}
+                  A rush fee is switched on per offer, on its card.
                 </p>
               </div>
             )}

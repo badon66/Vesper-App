@@ -198,7 +198,17 @@ describe("the deck's words as a whole", () => {
   });
 
   it("leaves the old four steps' words out of Settings and never blocks a save on them (round 17)", () => {
-    const retired = ["step_colour_label", "step_colour_done", "step_colour_todo", "step_on_day_label", "step_on_day", "step_pay_label", "link_colour_done"];
+    // Round 18 retired the rush colour fee's words: a rush fee is an offer's own line.
+    const retired = [
+      "colour_season_value",
+      "step_colour_label",
+      "step_colour_done",
+      "step_colour_todo",
+      "step_on_day_label",
+      "step_on_day",
+      "step_pay_label",
+      "link_colour_done",
+    ];
     expect(DECK_LINE_KEYS.filter((key) => LINE_SPECS[key].retired)).toEqual(retired);
     const offered = LINE_GROUPS.flatMap((group) => linesIn(group.key));
     for (const key of retired) expect(offered).not.toContain(key);

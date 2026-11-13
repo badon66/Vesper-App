@@ -68,9 +68,10 @@ export const LINE_DEFAULTS = {
   link_mockup_caption: "Our mockup shows every run lit.",
   link_colour_done: "{colour}, confirmed with your initials at the meeting.",
   link_track_title: "About your track",
-  link_track_hat: "Hat track is our standard track. It sits under the edge of your roof with the lights built in.",
+  // Round 18: Standard track and L track (back track).
+  link_track_hat: "Our standard track sits under the edge of your roof with the lights built in.",
   link_track_double: "Double track is for parts of a roofline where our standard track is not the right fit.",
-  link_track_j: "J track is for parts of a roofline where our standard track is not the right fit, most often upper gables.",
+  link_track_j: "L track (back track) is for parts of a roofline where our standard track is not the right fit, most often upper gables.",
   link_build_title: "Build your own",
   link_build_note: "Start from the option on screen and tick the parts you want. The price updates as you go.",
   link_docs_title: "Documents",
@@ -78,7 +79,10 @@ export const LINE_DEFAULTS = {
   link_agreement_note: "Read it, type your name, sign with your finger, then tap Sign.",
   link_agreement_note_mouse: "Read it, type your name, sign with your mouse or trackpad, then click Sign.",
   link_agreement_done: "Signed by {name} on {date}.",
-  price_includes: "Every option includes the control box, install by our own crew and our 10-year warranty.",
+  price_includes: "Every option includes the smart controller, install by our own crew and our 10-year warranty.",
+  // Round 18: the controller's line in every breakdown.
+  controller_label: "Smart controller and power supply",
+  controller_detail: "600 W, Bluetooth and Wi-Fi, all-weather, installs indoors or outdoors. Run it from the app on your phone.",
   // Round 17: the colour timing and Where you're at.
   colour_spring_label: "Install in spring",
   colour_spring_value: "Included",

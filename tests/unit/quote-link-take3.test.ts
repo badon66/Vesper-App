@@ -82,8 +82,14 @@ describe("Build your own", () => {
     expect(built?.offer).toMatchObject({ id: CUSTOMER_OFFER_ID, name: CUSTOMER_OFFER_NAME, runs: [0, 2], boxes: 2, fromCustomer: true });
     // 64 ft at $23, 22 ft of J track at $30, two boxes, upper access with an upper gable.
     expect(built?.totals.subtotal).toBe(64 * 23 + 22 * 30 + 2 * 500 + 400);
-    // Round 17: on the link every area has its own line.
-    expect(built?.totals.lines.map((line) => line.label)).toEqual(["Front lower", "Upper gables", "Control boxes (2)", "Upper roof access"]);
+    // Round 18: a line per track, each area under its track.
+    expect(built?.totals.lines.map((line) => line.label)).toEqual([
+      "Standard track",
+      "L track (back track)",
+      "Smart controller and power supply (2)",
+      "Upper roof access",
+    ]);
+    expect(built?.totals.lines.flatMap((line) => line.areas ?? []).map((area) => area.label)).toEqual(["Front lower", "Upper gables"]);
   });
 
   it("drops areas they can't pick, and nothing ticked is no option", () => {
@@ -141,9 +147,11 @@ describe("About your track", () => {
   });
 
   it("has words for every track, in Settings", () => {
-    expect(DEFAULT_LINES.link_track_hat).toMatch(/Hat track/);
+    // Round 18: Hat track reads Standard track, J track reads L track (back track).
+    expect(DEFAULT_LINES.link_track_hat).toMatch(/standard track/i);
     expect(DEFAULT_LINES.link_track_double).toMatch(/Double track/);
-    expect(DEFAULT_LINES.link_track_j).toMatch(/J track/);
+    expect(DEFAULT_LINES.link_track_j).toMatch(/L track \(back track\)/);
+    expect(Object.values(DEFAULT_LINES).join(" ")).not.toMatch(/\b(Hat|J) track\b/);
   });
 });
 
@@ -243,7 +251,9 @@ describe("the agreement", () => {
       trackColour: "White",
       signedTime: expect.stringMatching(/10:41/),
     });
-    expect(signed?.lines.map((line) => line.label)).toContain("Upper gables");
+    // The same sections as the link, each track's areas listed under it.
+    expect(signed?.lines.map((line) => line.label).slice(0, 2)).toEqual(["Standard track", "L track (back track)"]);
+    expect(signed?.lines[1].areas).toEqual([{ label: "Upper gables", detail: "22 ft", amount: "$660" }]);
     expect(signedFileName(signed!, "2026-11-11")).toBe("Vesper agreement, Jane Smith, 2026-11-11.pdf");
   });
 

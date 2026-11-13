@@ -1712,6 +1712,89 @@ export type Database = {
           },
         ]
       }
+      quote_revisions: {
+        Row: {
+          changes: Json
+          id: string
+          lead_id: string
+          quote_id: string
+          revised_at: string
+          revised_by: string | null
+          total_after: number
+          total_before: number
+        }
+        Insert: {
+          changes?: Json
+          id?: string
+          lead_id: string
+          quote_id: string
+          revised_at?: string
+          revised_by?: string | null
+          total_after: number
+          total_before: number
+        }
+        Update: {
+          changes?: Json
+          id?: string
+          lead_id?: string
+          quote_id?: string
+          revised_at?: string
+          revised_by?: string | null
+          total_after?: number
+          total_before?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_revisions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_contacts"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "quote_revisions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_notes"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "quote_revisions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_revisions_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_revisions_revised_by_fkey"
+            columns: ["revised_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_revisions_revised_by_fkey"
+            columns: ["revised_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_revisions_revised_by_fkey"
+            columns: ["revised_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quotes: {
         Row: {
           accepted_at: string | null
@@ -3020,6 +3103,16 @@ export type Database = {
       quote_offers_one_shown: { Args: { p_offers: Json }; Returns: boolean }
       quote_offers_shown: {
         Args: { p_quote: Database["public"]["Tables"]["quotes"]["Row"] }
+        Returns: Json
+      }
+      quote_revise: {
+        Args: {
+          p_changes: Json
+          p_fields: Json
+          p_quote: string
+          p_total_after: number
+          p_total_before: number
+        }
         Returns: Json
       }
       quote_undo_acceptance: { Args: { p_quote: string }; Returns: undefined }

@@ -19,12 +19,12 @@ describe("what a polish may send", () => {
     expect(facts.totalFeet).toBe(104);
     expect(facts.areas.map((area) => [area.feet, area.track])).toEqual([
       [64, null],
-      [18, "J track"],
+      [18, "L track (back track)"],
       [22, null],
     ]);
     const message = polishMessage(notes, facts);
     expect(message).toContain("Offer: Full front");
-    expect(message).toContain("18 ft, J track");
+    expect(message).toContain("18 ft, L track (back track)");
     expect(message).toContain("Total: 104 ft of lights");
     expect(message).toContain(`Keenan's notes: ${notes}`);
     // The polish never receives a lead: its inputs are an offer and the runs.

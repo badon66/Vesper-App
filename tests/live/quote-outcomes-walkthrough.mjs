@@ -78,6 +78,9 @@ const addDays = (day, n) => {
 // "Nov 16, 2026" (formatDate).
 const formatDay = (day) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" }).format(new Date(`${day}T12:00:00Z`));
+// "November 16, 2026" (lib/time.ts formatFullDate), as the customer's link writes it.
+const fullDate = (day) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", month: "long", day: "numeric", year: "numeric" }).format(new Date(`${day}T12:00:00Z`));
 const shortDay = (day) => new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", month: "short", day: "numeric" }).format(new Date(`${day}T12:00:00Z`));
 const formatDate = (iso) => {
   const moment = new Date(iso);
@@ -229,6 +232,8 @@ async function cleanUp() {
   const leadIds = (rows ?? []).map((row) => row.id);
   await admin.from("earnings").delete().in("profile_id", ids);
   if (leadIds.length > 0) {
+    // Round 18: Keenan's changes after the yes point at the quote and lead.
+    await admin.from("quote_revisions").delete().in("lead_id", leadIds);
     await admin.from("earnings").delete().in("lead_id", leadIds);
     await admin.from("lead_site_visits").delete().in("lead_id", leadIds);
     await admin.from("slot_holds").delete().in("lead_id", leadIds);
@@ -827,6 +832,116 @@ try {
     check("Keenan's looks wrote nothing", (await testFootprint(leadIds)) === looked);
   }
 
+  // ---------------------------------------------------------------- changing the quote after the yes (round 18)
+  // Keenan's editor stays open on an accepted quote (looked at only: the
+  // owner session never saves). The service role stands in for his save,
+  // through the same quote_revise the lead page's editor calls, with the
+  // change list the editor works out (lib/quotes/revise.ts, unit tested).
+  const soldRevisedRuns = [
+    { name: "Front", feet: 70, level: "lower" },
+    { name: "Garage", feet: 40, level: "lower" },
+    { name: "Front upper", feet: 50, level: "upper" },
+  ];
+  const soldRuns = soldRevisedRuns.map((run, at) => (at === 0 ? { ...run, feet: 60 } : run));
+  const SOLD_OFFERS = [
+    { id: "main", name: "Main floor", runs: [0, 1], rush_fee: 350 },
+    { id: "full", name: "Full wrap", runs: [0, 1, 2], rush_fee: 350 },
+  ];
+  const REVISED_OFFERS = SOLD_OFFERS.map((offer) => (offer.id === "main" ? { ...offer, charges: [{ label: "Extra outlet", amount: 150 }] } : offer));
+  const REVISED_CHANGES = ["Front: $1,380 to $1,610 (70 ft)", "Added: Extra outlet, $150"];
+  const REVISED_BASE_CENTS = (70 + 40) * 2300 + 50000 - 15000;
+  {
+    const looked = await testFootprint(leadIds);
+    await op.setViewportSize(IPAD);
+    await open(op, `/app/leads/${soldLead}#edit-quote`);
+    await op.getByTestId("quote-sheet").waitFor({ timeout: 20000 }).catch(() => {});
+    const mainCard = op.locator('[data-offer-card="main"]');
+    const fullCard = op.locator('[data-offer-card="full"]');
+    check(
+      "round 18: on an accepted quote Keenan's editor stays open, saying a save updates the quote and their link",
+      (await op.getByTestId("quote-accepted-edit").count()) === 1 && (await textOf(op.getByTestId("quote-accepted-edit"))).length > 0,
+      await textOf(op.getByTestId("quote-accepted-edit")),
+    );
+    check(
+      "the option they said yes to says so and can't be deleted or hidden; the other can",
+      (await mainCard.getByTestId("offer-accepted-note").count()) === 1 &&
+        (await mainCard.getByTestId("offer-delete").count()) === 0 &&
+        (await fullCard.getByTestId("offer-delete").count()) === 1,
+      `${await textOf(mainCard.getByTestId("offer-accepted-note"))}`,
+    );
+    const rushOn = async (card) => (await card.getByTestId("offer-rush-switch").getAttribute("aria-checked").catch(() => null)) === "true";
+    check(
+      "each offer card has its own Rush fee switch: the quote's old fee is on both offers, $350 each, so no total moved",
+      (await rushOn(mainCard)) &&
+        (await rushOn(fullCard)) &&
+        (await mainCard.getByTestId("offer-rush-fee").inputValue().catch(() => "")) === "350",
+      `${await rushOn(mainCard)} ${await rushOn(fullCard)} ${await mainCard.getByTestId("offer-rush-fee").inputValue().catch(() => "no box")} ${await op.getByTestId("editor-rush-note").count()}`,
+    );
+    check("each offer card has + Extra charge", (await mainCard.getByTestId("offer-charge-add").count()) === 1 && (await fullCard.getByTestId("offer-charge-add").count()) === 1);
+    await op.getByTestId("quote-sheet").screenshot({ path: `${out}/outcome-owner-accepted-editor-1180.png` }).catch(() => {});
+    await open(op, "/app");
+    check("looking at the accepted quote's editor wrote nothing", (await testFootprint(leadIds)) === looked);
+  }
+  {
+    const before = await admin.from("earnings").select("id, amount, base_amount, status").eq("lead_id", soldLead).eq("type", "commission").single();
+    const saved = await admin.rpc("quote_revise", {
+      p_quote: soldQuote,
+      p_fields: { runs: soldRevisedRuns, offers: REVISED_OFFERS, total_feet: 160 },
+      p_changes: REVISED_CHANGES,
+      p_total_before: 9000,
+      p_total_after: 9000,
+    });
+    const after = await admin.from("earnings").select("id, amount, base_amount, status").eq("lead_id", soldLead).eq("type", "commission").single();
+    check(
+      "Keenan's save (the service role standing in) keeps the quote accepted and moves the pending commission to the new numbers: 110 ft and the box, less the discount; the extra charge never counts",
+      !saved.error &&
+        saved.data?.ok === true &&
+        after.data?.id === before.data?.id &&
+        after.data?.status === "pending" &&
+        Number(after.data?.base_amount) === REVISED_BASE_CENTS / 100 &&
+        Number(after.data?.amount) === commissionOn(REVISED_BASE_CENTS),
+      `${saved.error?.message ?? JSON.stringify(saved.data)} | ${JSON.stringify(after.data)}`,
+    );
+    await op.setViewportSize(IPAD);
+    await open(op, `/app/leads/${soldLead}`);
+    check(
+      "the outcome card's commission follows the new numbers",
+      (await textOf(op.getByTestId("quote-outcome-commission"))) === `${money(commissionOn(REVISED_BASE_CENTS))} to ${a.name}, coming once installed.`,
+      await textOf(op.getByTestId("quote-outcome-commission")),
+    );
+    const revisionLine = await textOf(op.getByTestId("timeline-revision").first());
+    check(
+      "Keenan's timeline records the change with the old and new totals",
+      revisionLine.startsWith("Quote changed after the yes: still $9,000.") && REVISED_CHANGES.every((change) => revisionLine.includes(change)),
+      revisionLine,
+    );
+    // The customer's link: "Updated by Keenan on [date]" at the top of the price.
+    const { data: linkRow } = await admin.from("quote_links").select("token").eq("lead_id", soldLead).single();
+    const customerContext = await browser.newContext(narrow);
+    const cp = await customerContext.newPage();
+    await cp.goto(`${base}/q/${linkRow.token}`);
+    await cp.getByTestId("quote-live").waitFor({ timeout: 30000 }).catch(() => {});
+    const updated = await textOf(cp.getByTestId("quote-updated"));
+    const changes = await cp.getByTestId("quote-updated-changes").locator("li").allInnerTexts().catch(() => []);
+    check(
+      "their link says Updated by Keenan on today's date, with what changed listed, in plain words",
+      updated.startsWith(`Updated by Keenan on ${fullDate(today)}`) && JSON.stringify(changes.map(squash)) === JSON.stringify(REVISED_CHANGES) && !/[–—]/.test(updated),
+      `${updated} | ${JSON.stringify(changes)}`,
+    );
+    await cp.getByTestId("quote-updated").screenshot({ path: `${out}/outcome-customer-updated-390.png` }).catch(() => {});
+    await customerContext.close();
+    // Put the quote back, so the rest of the walk-through reads the sale as it was.
+    const back = await admin.rpc("quote_revise", {
+      p_quote: soldQuote,
+      p_fields: { runs: soldRuns, offers: SOLD_OFFERS, total_feet: 150 },
+      p_changes: ["Front: $1,610 to $1,380 (60 ft)", "Removed: Extra outlet, $150"],
+      p_total_before: 9000,
+      p_total_after: 9000,
+    });
+    const restored = await admin.from("earnings").select("amount").eq("lead_id", soldLead).eq("type", "commission").single();
+    check("put back, the pending commission is back to the sale's", !back.error && Number(restored.data?.amount) === soldCommission, back.error?.message ?? JSON.stringify(restored.data));
+  }
+
   // ---------------------------------------------------------------- the site visit (round 17)
   // The service role stands in for Keenan's taps on the card (owner only):
   // a day, then Done. Keenan's session only looks.
@@ -985,6 +1100,48 @@ try {
     );
     const soldPay = await textOf(payLine(page, SOLD_STREET));
     check("the commission line reads Paid with the day", paidRow?.paid_at ? soldPay.includes(`Paid ${formatDate(paidRow.paid_at)}`) : false, soldPay);
+  }
+
+  // ---------------------------------------------------------------- a change after it's paid (round 18)
+  {
+    const changed = await admin.rpc("quote_revise", {
+      p_quote: soldQuote,
+      p_fields: { runs: soldRevisedRuns, offers: SOLD_OFFERS, total_feet: 160 },
+      p_changes: ["Front: $1,380 to $1,610 (70 ft)"],
+      p_total_before: 9000,
+      p_total_after: 9000,
+    });
+    const { data: paidNow } = await admin.from("earnings").select("status, amount, base_amount").eq("id", commissionRow.id).single();
+    check(
+      "a change after the commission is paid leaves the paid row exactly as it was, and says so",
+      !changed.error && changed.data?.paid === true && paidNow?.status === "paid" && Number(paidNow?.amount) === soldCommission,
+      `${changed.error?.message ?? JSON.stringify(changed.data)} | ${JSON.stringify(paidNow)}`,
+    );
+    // The owner's session for the looks above has ended (after View as), so
+    // a second one-time session, view only like the first, is opened for
+    // this one look at Pay and ended straight after.
+    const looked = await testFootprint(leadIds);
+    const payContext = await browser.newContext(phone);
+    ownerSession = await openOwnerSession({ url, anonKey, admin, base, context: payContext });
+    try {
+      const pp = await payContext.newPage();
+      await pp.setViewportSize(IPAD);
+      await open(pp, "/app/admin/pay");
+      const payCard = pp.getByTestId("pay-setter").filter({ hasText: a.name });
+      const nowWould = commissionOn(REVISED_BASE_CENTS);
+      const differenceLine = await textOf(payCard.getByTestId("pay-paid-changed"));
+      check(
+        "Pay shows Keenan the difference on the paid commission: what it would be now, and how much more than paid",
+        differenceLine === `The quote changed after this was paid. It would now be ${payMoney(nowWould)}, ${payMoney(Math.round((nowWould - soldCommission) * 100) / 100)} more than paid.`,
+        differenceLine || (await textOf(payCard)).slice(0, 300),
+      );
+      await payCard.screenshot({ path: `${out}/outcome-owner-pay-difference-1180.png` }).catch(() => {});
+    } finally {
+      await ownerSession.close();
+      ownerSession = null;
+      await payContext.close();
+    }
+    check("looking at Pay wrote nothing", (await testFootprint(leadIds)) === looked);
   }
 
   // ---------------------------------------------------------------- the timeline carries no money
