@@ -1,6 +1,9 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Database, Json } from "@/types/database";
+
+// lib/leads/purge.ts is server code; outside Next its guard is a no-op.
+vi.mock("server-only", () => ({}));
 
 // Round 20 (Keenan, 2026-11-14), deleting a lead, in the database itself:
 //   - only Keenan checks, deletes, restores or lists Deleted; setters and
@@ -10,7 +13,9 @@ import type { Database, Json } from "@/types/database";
 //     freed up;
 //   - restoring brings the lead and its link back, but not the meeting;
 //   - a lead with an accepted quote, or booking pay or commission that
-//     isn't void, can't be deleted.
+//     isn't void, can't be deleted;
+//   - 30 days after it was deleted, the app removes it for good with its
+//     quote, link, meetings, photos and files (lib/leads/purge.ts).
 //
 // Two throwaway setters (one hosts the test evenings, so no time on
 // Keenan's real evenings is touched) and test leads named "TEST LEAD
@@ -169,6 +174,8 @@ afterAll(async () => {
     }
     for (const u of Object.values(users)) {
       if (!u.id) continue;
+      const { data: files } = await admin.storage.from("lead-photos").list(u.id, { limit: 100 });
+      if (files && files.length > 0) await admin.storage.from("lead-photos").remove(files.map((file) => `${u.id}/${file.name}`));
       await u.client.auth.signOut({ scope: "local" });
       await admin.auth.admin.deleteUser(u.id);
     }
@@ -239,6 +246,39 @@ describe("deleting and restoring", () => {
     const types = ((await admin.from("lead_events").select("type").eq("lead_id", lead)).data ?? []).map((event) => event.type);
     expect(types).toEqual(expect.arrayContaining(["lead_deleted", "lead_restored", "meeting_cancelled"]));
     expect(hintOf((await admin.rpc("lead_restore", { p_lead: lead })).error)).toBe("not_deleted");
+  });
+});
+
+describe("after 30 days", () => {
+  it("the lead goes for good with its quote, link, meeting, photo and file; a newer one stays", async () => {
+    const { purgeExpiredLeads } = await import("@/lib/leads/purge");
+    const old = await makeLead("Gone for good");
+    await makeQuote(old);
+    expect((await admin.rpc("issue_quote_link", { p_lead_id: old })).error).toBeNull();
+    await admin.from("quote_links").update({ created_by: users.setter.id }).eq("lead_id", old);
+    const fileId = crypto.randomUUID();
+    const path = `${users.setter.id}/${fileId}.jpg`;
+    const uploaded = await admin.storage.from("lead-photos").upload(path, new Blob([new Uint8Array([255, 216, 255, 217])], { type: "image/jpeg" }));
+    expect(uploaded.error).toBeNull();
+    expect((await admin.from("lead_photos").insert({ lead_id: old, storage_path: path, created_by: users.setter.id, slot: "front" })).error).toBeNull();
+    expect((await admin.rpc("lead_soft_delete", { p_lead: old })).error).toBeNull();
+
+    // One deleted 31 days ago, the restored lead deleted again just now.
+    expect((await admin.from("leads").update({ deleted_at: new Date(Date.now() - 31 * 86_400_000).toISOString() }).eq("id", old)).error).toBeNull();
+    expect((await admin.rpc("lead_soft_delete", { p_lead: lead })).error).toBeNull();
+
+    expect(await purgeExpiredLeads()).toBeGreaterThanOrEqual(1);
+    expect((await admin.from("leads").select("id").eq("id", old)).data ?? []).toEqual([]);
+    expect((await admin.from("quotes").select("id").eq("lead_id", old)).data ?? []).toEqual([]);
+    expect((await admin.from("quote_links").select("id").eq("lead_id", old)).data ?? []).toEqual([]);
+    expect((await admin.from("lead_photos").select("id").eq("lead_id", old)).data ?? []).toEqual([]);
+    expect((await admin.from("lead_events").select("id").eq("lead_id", old)).data ?? []).toEqual([]);
+    const left = await admin.storage.from("lead-photos").list(users.setter.id, { search: fileId });
+    expect((left.data ?? []).length).toBe(0);
+
+    // The one deleted just now is still in Deleted.
+    expect((await admin.from("leads").select("id").eq("id", lead)).data?.length).toBe(1);
+    expect((await admin.rpc("lead_restore", { p_lead: lead })).error).toBeNull();
   });
 });
 
