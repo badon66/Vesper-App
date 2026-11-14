@@ -952,6 +952,8 @@ export type Database = {
           consent_text: boolean
           created_at: string
           created_by: string
+          deleted_at: string | null
+          deleted_by: string | null
           email: string | null
           est_feet: number | null
           first_name: string
@@ -1016,6 +1018,8 @@ export type Database = {
           consent_text?: boolean
           created_at?: string
           created_by: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           email?: string | null
           est_feet?: number | null
           first_name: string
@@ -1080,6 +1084,8 @@ export type Database = {
           consent_text?: boolean
           created_at?: string
           created_by?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           email?: string | null
           est_feet?: number | null
           first_name?: string
@@ -1168,6 +1174,27 @@ export type Database = {
           {
             foreignKeyName: "leads_created_by_fkey"
             columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "profile_names"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_deleted_by_fkey"
+            columns: ["deleted_by"]
             isOneToOne: false
             referencedRelation: "profiles_public"
             referencedColumns: ["id"]
@@ -2876,6 +2903,7 @@ export type Database = {
         Returns: Json
       }
       default_meeting_host: { Args: never; Returns: string }
+      deleted_leads: { Args: never; Returns: Json }
       end_open_knock_sessions: { Args: never; Returns: number }
       end_user_sessions: { Args: { target_user: string }; Returns: number }
       everyone_deciding_of: { Args: { p_lead: string }; Returns: string }
@@ -2898,10 +2926,13 @@ export type Database = {
         | { Args: { p_starts_at: string }; Returns: boolean }
         | { Args: { p_host: string; p_starts_at: string }; Returns: boolean }
       issue_quote_link: { Args: { p_lead_id: string }; Returns: string }
+      lead_delete_check: { Args: { p_lead: string }; Returns: Json }
       lead_mark_installed: {
         Args: { p_lead: string; p_on: string }
         Returns: undefined
       }
+      lead_restore: { Args: { p_lead: string }; Returns: Json }
+      lead_soft_delete: { Args: { p_lead: string }; Returns: Json }
       lead_undo_installed: { Args: { p_lead: string }; Returns: undefined }
       lock_evening: {
         Args: { p_at: string; p_host: string }
@@ -3224,6 +3255,8 @@ export type Database = {
         | "quote_acceptance_undone"
         | "agreement_signed"
         | "site_visit"
+        | "lead_deleted"
+        | "lead_restored"
       hot_button:
         | "no_ladders"
         | "up_for_christmas"
@@ -3443,6 +3476,8 @@ export const Constants = {
         "quote_acceptance_undone",
         "agreement_signed",
         "site_visit",
+        "lead_deleted",
+        "lead_restored",
       ],
       hot_button: [
         "no_ladders",

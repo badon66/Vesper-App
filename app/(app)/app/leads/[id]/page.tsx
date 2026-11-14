@@ -18,6 +18,7 @@ import { BookLeadButton, OpenBookingSheet } from "@/components/booking/book-butt
 import { MockupsCard } from "@/components/leads/mockups-card";
 import { QuoteCard, type QuoteCardProps } from "@/components/quote-link/quote-card";
 import { LinkExtrasCard } from "@/components/leads/link-extras-card";
+import { DeleteLead, type DeleteState } from "@/components/leads/delete-lead";
 import { loadLinkExtras } from "@/lib/quote-link/link-extras-data";
 import { QuoteOutcome } from "@/components/quotes/quote-outcome";
 import { QuoteEditorCard } from "@/components/quotes/quote-editor/quote-editor-sheet";
@@ -121,6 +122,7 @@ export default async function LeadPage({
     cardRows,
     linkExtras,
     revisionRows,
+    deleteCheck,
   ] = await Promise.all([
     supabase.from("leads").select(LEAD_FIELDS).eq("id", id).maybeSingle(),
     supabase.from("lead_photos").select("id, storage_path, slot").eq("lead_id", id).order("created_at"),
@@ -159,6 +161,9 @@ export default async function LeadPage({
           .order("revised_at", { ascending: false })
           .limit(50)
       : Promise.resolve({ data: null }),
+    // Round 20: whether Delete lead is open to Keenan, and what it would
+    // cancel. The owner's only, never under View as.
+    isOwner ? supabase.rpc("lead_delete_check", { p_lead: id }) : Promise.resolve({ data: null }),
   ]);
   if (!row) notFound();
   // Contact privacy (2026-11-04): the phone and email only on the viewer's
@@ -289,6 +294,7 @@ export default async function LeadPage({
   // for. Before there is a quote the page keeps its order, with the empty
   // Quote card after the mockups.
   const quoteFirst = isOwner && quoteOutcome !== null;
+  const deleteState = isOwner ? deleteStateFrom(deleteCheck.data, row.status) : null;
   const quoteCards = (
     <>
       {quoteEditor ? (
@@ -763,8 +769,24 @@ export default async function LeadPage({
           </ol>
         </CardContent>
       </Card>
+
+      {deleteState ? <DeleteLead leadId={lead.id} name={leadName(lead)} state={deleteState} lostReasons={reasons} /> : null}
     </div>
   );
+}
+
+// Round 20: Delete lead's state from lead_delete_check, for Keenan only.
+function deleteStateFrom(answer: unknown, status: string): DeleteState | null {
+  if (!answer || typeof answer !== "object") return null;
+  const value = answer as { ok?: boolean; state?: string; meetings?: unknown };
+  if (value.ok) {
+    const meetings = Array.isArray(value.meetings) ? value.meetings.filter((at): at is string => typeof at === "string") : [];
+    return { kind: "ok", meetings: meetings.map((at) => timePhrase(at)) };
+  }
+  if (value.state === "accepted" || value.state === "pay") {
+    return { kind: "blocked", reason: value.state, closed: ["sold", "installed", "lost"].includes(status) };
+  }
+  return null;
 }
 
 // The Quote card's facts, from the lead's latest quote and its newest link.

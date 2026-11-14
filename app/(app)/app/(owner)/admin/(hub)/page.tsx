@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: "Admin",
 };
 
-// The owner's Admin tab: People, Settings and Pay.
+// The owner's Admin tab: People, Settings, Pay and Deleted (round 20).
 const sections = [
   {
     href: "/app/admin/people",
@@ -22,6 +22,11 @@ const sections = [
     href: "/app/admin/pay",
     title: "Pay",
     text: "What each setter is owed, commission coming and paid. Mark owed lines paid in one batch.",
+  },
+  {
+    href: "/app/admin/deleted",
+    title: "Deleted",
+    text: "Leads you deleted, kept for 30 days. Restore one, or let it go for good.",
   },
 ];
 

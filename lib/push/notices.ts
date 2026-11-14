@@ -92,6 +92,18 @@ export function movedNotice(address: string, when: string, url: string): PushNot
 }
 
 // Keenan cancelled it before its time: the lead goes to Follow up.
+// Round 20: Keenan deleted the lead, which cancels its upcoming booking.
+// The lead page is gone, so it opens Schedule.
+export function leadDeletedNotice(address: string): PushNotice {
+  const url = "/app/schedule";
+  return {
+    title: "Booking cancelled",
+    body: `Keenan cancelled your booking${on(streetOf(address))}. The lead was removed.`,
+    url,
+    tag: `booking-deleted-${streetOf(address) || "lead"}`,
+  };
+}
+
 export function cancelledNotice(address: string, url: string): PushNotice {
   return {
     title: "Booking cancelled",
