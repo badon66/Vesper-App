@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { QuickEditName } from "@/components/leads/quick-edit";
 import type { PrepGlance } from "@/components/meetings/prep-line";
 import { Check, CircleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -54,7 +55,15 @@ export function QuickPickRow({
                 href={`/app/meetings/prep/${item.leadId}`}
                 className="text-base font-semibold text-pretty outline-none after:absolute after:inset-0 after:rounded-xl"
               >
-                {item.name}
+                {/* Round 20: above the card's tap area, so a double tap or a
+                    press and hold on the name edits it in place. */}
+                <QuickEditName
+                  leadId={item.leadId}
+                  name={item.name}
+                  href={`/app/meetings/prep/${item.leadId}`}
+                  canEdit
+                  className="relative z-[1]"
+                />
               </Link>
               <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
                 <span className="font-semibold tabular-nums">{item.when}</span>

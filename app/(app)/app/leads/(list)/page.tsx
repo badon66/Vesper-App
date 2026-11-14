@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { ClearLeadDraft } from "@/components/leads/clear-lead-draft";
 import { LeadsWhoMenu } from "@/components/leads/leads-who-menu";
+import { QuickEditName } from "@/components/leads/quick-edit";
 import { StatusBadge } from "@/components/leads/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -290,7 +291,13 @@ export default async function LeadsPage({
                       className="flex min-h-16 flex-col justify-center gap-0.5 px-4 py-3 outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                     >
                       <span className="flex items-center justify-between gap-2">
-                        <span className="font-semibold">{leadName(lead)}</span>
+                        <QuickEditName
+                          leadId={lead.id}
+                          name={leadName(lead)}
+                          href={`/app/leads/${lead.id}`}
+                          canEdit={owner || mine}
+                          className="font-semibold"
+                        />
                         <StatusBadge status={lead.status} />
                       </span>
                       <span className="text-sm text-muted-foreground">
