@@ -92,6 +92,10 @@ const NO_ANSWER_EDIT = "No answer, so it may have saved. Tap Save again once you
 // says so plainly, like Start a meeting.
 const NO_SIGNAL_NEW = "No signal, so it isn't saved yet. Everything you typed is still here: tap Save again once you have signal. It won't make a copy.";
 const NO_SIGNAL_EDIT = "No signal, so it isn't saved yet. Everything you typed is still here: tap Save again once you have signal.";
+// The save went out and the signal went before the answer came back, so it
+// may or may not have landed.
+const LOST_SIGNAL_NEW = "The signal dropped, so it may not have saved. Everything you typed is still here: tap Save again once you have signal. It won't make a copy.";
+const LOST_SIGNAL_EDIT = "The signal dropped, so it may not have saved. Everything you typed is still here: tap Save again once you have signal.";
 const SAVED_NO_SIGNAL_NEW = "Saved, but there's no signal to open it. Everything you typed is still here: tap Save again once you have signal. It won't make a copy.";
 const SAVED_NO_SIGNAL_EDIT = "Saved, but there's no signal to open the lead. Tap Save again once you have signal.";
 
@@ -386,7 +390,7 @@ export function LeadForm({
     } catch (error) {
       if (isNextNavigation(error)) return;
       const offline = typeof navigator !== "undefined" && navigator.onLine === false;
-      next = { error: offline ? (mode === "create" ? NO_SIGNAL_NEW : NO_SIGNAL_EDIT) : mode === "create" ? NO_ANSWER_NEW : NO_ANSWER_EDIT };
+      next = { error: offline ? (mode === "create" ? LOST_SIGNAL_NEW : LOST_SIGNAL_EDIT) : mode === "create" ? NO_ANSWER_NEW : NO_ANSWER_EDIT };
     }
     if (next.href) {
       if (await hasSignal()) {
