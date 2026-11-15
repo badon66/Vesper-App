@@ -493,7 +493,8 @@ try {
       staleText,
     );
     await phone.getByTestId("status-reopen").click();
-    await phone.waitForTimeout(1500);
+    // Reopen reads the lead again; the panel starts afresh once it has.
+    await phone.getByTestId("status-message").waitFor({ state: "detached", timeout: 20000 }).catch(() => {});
     await settle(phone);
 
     await phone.getByTestId("follow-up-clear").click();
