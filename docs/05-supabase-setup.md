@@ -43,11 +43,11 @@ Sign-up off and the minimum length of 10 were set by Keenan in M1. The rest are 
 | Allow new users to sign up | Off | There is no sign-up. Only the owner creates logins, from People. |
 | Minimum password length | 10 | Must equal `PASSWORD_MIN_LENGTH` in `lib/auth.ts`; change both together. |
 | Password requirements | No required characters, or at most Letters and digits | Generated passwords are three lowercase words and four digits, like `maple-river-stone-4821`. A rule demanding capitals or symbols would refuse them. |
-| Leaked password protection | Off | Available, because the WorkBase organization is on the Pro plan. Turning it on is Keenan's call. If he does, a generated password that turns up in a breach list is refused, and People simply generates another. |
+| Leaked password protection | Off | Available, because the WorkBase organization is on the Pro plan. Turning it on is Keenan's call. If he does, a generated password that turns up in a breach list is refused, and People simply generates another. Supabase's security advisor lists it as a warning while it's off (round 22). |
 | Confirm email | Not relied on | Logins are created already confirmed: by the admin API from People, and by hand with Auto Confirm for the owner. No email is ever sent. |
 | Authentication > URL Configuration > Site URL | The URL of the app that uses the project (production: https://vesper-app-mocha.vercel.app) | Housekeeping only: the app sends no auth emails or links, so no redirect URLs are needed. |
 | JWT signing keys | Asymmetric (ES256), the default for new projects | The app checks tokens locally against the published keys, so no Auth call is needed for that check. A project still on the legacy shared secret works but is slower. |
-| Data API | On, exposing the `public` schema (the defaults) | The app reads and writes through it. |
+| Data API | On, exposing the `public` schema (the defaults) | The app reads and writes through it. Never add the `private` schema (round 22): the views' functions live there, and exposing it would let anyone signed in call them directly. |
 | SMTP and email templates | Not set | The app sends no email of any kind. |
 | Realtime | Not used | |
 

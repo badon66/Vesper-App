@@ -346,13 +346,15 @@ try {
     const touch0 = { pointerType: "touch", pointerId: 7, clientX: x, clientY: y, isPrimary: true, button: 0 };
     const pressedAt = Date.now();
     await held.dispatchEvent("pointerdown", touch0);
-    await dialog.getByTestId("quick-edit-form").waitFor({ timeout: 10000 }).catch(() => {});
+    // The pop-up opens at the half second, then loads its fields.
+    await dialog.waitFor({ timeout: 10000 }).catch(() => {});
     const heldFor = Date.now() - pressedAt;
     await held.dispatchEvent("pointerup", touch0);
+    await dialog.getByTestId("quick-edit-form").waitFor({ timeout: 15000 }).catch(() => {});
     check(
       "press and hold opens it too (and not before the half second)",
       (await dialog.getByTestId("quick-edit-form").isVisible().catch(() => false)) && heldFor >= 450,
-      `${heldFor} ms`,
+      `opened at ${heldFor} ms`,
     );
     await admin.from("leads").update({ last_name: "Changed elsewhere" }).eq("id", quick);
     await dialog.getByLabel("Last name").fill("Mine");
