@@ -414,7 +414,9 @@ function QuickEditForm({
         </div>
       ) : null}
 
-      <div className="sticky bottom-0 -mx-5 -mb-4 flex justify-end gap-3 border-t bg-background px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+      {/* Stuck to the panel's bottom edge (the body's own 16 px padding
+          would otherwise let the note show under it). */}
+      <div className="sticky -bottom-4 z-10 -mx-5 -mb-4 flex justify-end gap-3 border-t bg-background px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
         <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
           Cancel
         </Button>
