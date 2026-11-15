@@ -350,6 +350,19 @@ try {
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await dialog.waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
 
+    // An overdue lead (its follow-up day passed) still saves other changes.
+    await admin.from("leads").update({ follow_up_on: addDays(calgaryDay(), -2) }).eq("id", quick);
+    await open(page, `/app/leads?who=everyone&q=${STREET}`);
+    await name.tap();
+    await page.waitForTimeout(90);
+    await name.tap();
+    await dialog.getByTestId("quick-edit-form").waitFor({ timeout: 15000 }).catch(() => {});
+    await dialog.getByLabel("Email").fill(`overdue-${stamp}@example.com`);
+    await dialog.getByTestId("quick-edit-save").click();
+    await dialog.waitFor({ state: "detached", timeout: 15000 }).catch(() => {});
+    const { data: overdue } = await admin.from("leads").select("email, follow_up_on").eq("id", quick).single();
+    check("an overdue lead keeps its day and still saves another change", overdue?.email === `overdue-${stamp}@example.com` && overdue?.follow_up_on === addDays(calgaryDay(), -2), JSON.stringify(overdue));
+
     await name.tap();
     await page.waitForURL(`**/app/leads/${quick}`, { timeout: 15000 }).catch(() => {});
     check("a single tap on the name still opens the lead", page.url().endsWith(`/app/leads/${quick}`));

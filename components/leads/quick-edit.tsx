@@ -268,6 +268,9 @@ function QuickEditForm({
   return (
     <form
       className="flex flex-col gap-4"
+      // The server checks every field; an overdue lead's own follow-up day
+      // (before today) must not stop the browser from sending the form.
+      noValidate
       onSubmit={(event) => {
         event.preventDefault();
         save();

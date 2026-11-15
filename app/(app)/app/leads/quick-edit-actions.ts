@@ -238,8 +238,10 @@ export async function saveQuickEdit(input: QuickEditInput): Promise<QuickEditRes
     if (to === "follow_up") {
       const day = values.followUpOn;
       if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return { ok: false, message: "Pick the day to follow up." };
-      if (day < calgaryToday()) return { ok: false, message: "Pick today or a later day." };
+      // Only a new day is checked: an overdue lead's own day can stay while
+      // something else on it is edited.
       if (to !== lead.status || day !== lead.follow_up_on) {
+        if (day < calgaryToday()) return { ok: false, message: "Pick today or a later day." };
         update.status = "follow_up";
         update.follow_up_on = day;
       }

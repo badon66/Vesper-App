@@ -78,6 +78,7 @@ export function LinkExtrasCard({ data }: { data: LinkExtrasData }) {
                 <li key={doc.id}>
                   <label className="flex min-h-12 cursor-pointer items-center gap-3 py-1" data-testid="link-extras-standard">
                     <Checkbox
+                      hit
                       checked={doc.on}
                       disabled={busy !== null}
                       onCheckedChange={(checked) => void run(`doc-${doc.id}`, () => setLeadDocument(data.leadId, doc.id, checked === true))}
@@ -95,7 +96,7 @@ export function LinkExtrasCard({ data }: { data: LinkExtrasData }) {
           ) : (
             <p className="text-sm text-pretty text-muted-foreground">
               None yet.{" "}
-              <Link href="/app/admin/settings/documents" className="font-semibold text-foreground underline underline-offset-4">
+              <Link href="/app/admin/settings/documents" className="inline-flex min-h-11 items-center font-semibold text-foreground underline underline-offset-4">
                 Add them in Settings, Documents
               </Link>
               .
@@ -146,7 +147,7 @@ export function LinkExtrasCard({ data }: { data: LinkExtrasData }) {
               ref={fileInput}
               type="file"
               accept={DOCUMENT_ACCEPT}
-              className="text-sm"
+              className="min-h-11 text-sm"
               onChange={(event) => {
                 const chosen = event.target.files?.[0] ?? null;
                 setFile(chosen);
@@ -168,6 +169,7 @@ export function LinkExtrasCard({ data }: { data: LinkExtrasData }) {
           </h3>
           <label className={data.agreement.ready ? "flex min-h-12 cursor-pointer items-center gap-3" : "flex min-h-12 cursor-not-allowed items-center gap-3 opacity-60"}>
             <Checkbox
+              hit
               checked={data.agreement.on}
               disabled={!data.agreement.ready || busy !== null}
               onCheckedChange={(checked) => void run("agreement", () => setAgreementToSign(data.leadId, checked === true))}
@@ -178,7 +180,7 @@ export function LinkExtrasCard({ data }: { data: LinkExtrasData }) {
           </label>
           {data.agreement.ready ? null : (
             <p id="agreement-needs-text" className="text-sm text-muted-foreground" data-testid="link-extras-agreement-needs-text">
-              <Link href="/app/admin/settings/documents" className="underline underline-offset-4">
+              <Link href="/app/admin/settings/documents" className="inline-flex min-h-11 items-center underline underline-offset-4">
                 Add the agreement text in Settings first.
               </Link>
             </p>
