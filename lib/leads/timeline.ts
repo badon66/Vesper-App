@@ -191,6 +191,11 @@ export function describeEvent(event: TimelineEvent, runs: readonly QuoteRun[] | 
     }
     case "quote_acceptance_undone":
       return "Undid the quote's acceptance.";
+    // Round 20: Keenan deleted the lead, then restored it from Deleted.
+    case "lead_deleted":
+      return "Deleted the lead.";
+    case "lead_restored":
+      return "Restored the lead from Deleted.";
     case "edited": {
       const fields = Array.isArray(payload.fields)
         ? payload.fields.filter((field): field is string => typeof field === "string")

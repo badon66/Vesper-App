@@ -10,7 +10,10 @@ import { cn } from "@/lib/utils";
 // with the same 16 px around them as the body has (round 12: the Accepted
 // sheet's footer read tighter than the rest of the sheet at 12 px).
 // It opens with its title in focus, so a phone's keyboard stays down until
-// a field is tapped, and a screen reader reads the title first.
+// a field is tapped, and a screen reader reads the title first. Round 20:
+// however long the body, only the body scrolls; the title and the actions
+// stay on screen (the Accepted sheet ran taller than the iPad, and Mark
+// accepted ended up below it).
 export function DialogPanel({
   open,
   onClose,
@@ -59,13 +62,15 @@ export function DialogPanel({
       )}
     >
       {open ? (
-        <div className="flex max-h-[90dvh] flex-col">
-          <h2 id={titleId} ref={titleRef} tabIndex={-1} className="px-5 pt-5 text-lg font-bold text-balance outline-none">
+        <div className="flex max-h-[90dvh] flex-col overflow-hidden">
+          <h2 id={titleId} ref={titleRef} tabIndex={-1} className="shrink-0 px-5 pt-5 text-lg font-bold text-balance outline-none">
             {title}
           </h2>
-          <div className="overflow-y-auto px-5 py-4">{children}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4" data-dialog-body>
+            {children}
+          </div>
           {actions ? (
-            <div className="flex flex-wrap justify-end gap-3 border-t px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+            <div className="flex shrink-0 flex-wrap justify-end gap-3 border-t px-5 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
               {actions}
             </div>
           ) : null}

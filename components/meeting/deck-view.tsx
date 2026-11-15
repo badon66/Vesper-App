@@ -62,6 +62,8 @@ import {
 } from "@/lib/meeting/state";
 import { useReducedMotion } from "@/lib/motion";
 import { customerOfferName } from "@/lib/quotes/offers";
+import { NO_QUOTE_STAMP } from "@/lib/quotes/stamp";
+import { rememberQuoteStamp } from "@/components/quotes/quote-editor/use-quote-save";
 import { smartApostrophes } from "@/lib/typography";
 import { cn } from "@/lib/utils";
 
@@ -231,6 +233,14 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
   const [start] = useState(() =>
     meeting ? startingPoint(meeting, persist ? readStored(meeting.lead.id) : null, Date.now(), entry === "start") : null,
   );
+  // Round 20: the version of the quote this meeting opened, sent with every
+  // save (the Edit layer's and the table's choice), so a booking, a signing
+  // or the customer's own build landing meanwhile is never written over.
+  const meetingLeadId = meeting?.lead.id ?? null;
+  const meetingStamp = meeting ? (meeting.draft?.stamp ?? NO_QUOTE_STAMP) : null;
+  useEffect(() => {
+    if (meetingLeadId && meetingStamp) rememberQuoteStamp(meetingLeadId, meetingStamp);
+  }, [meetingLeadId, meetingStamp]);
   const [colour] = useState<DeckColour>(() =>
     meeting
       ? { kind: meeting.lead.colourKind, text: meeting.lead.colourText, choice: meeting.colours.choice, ralCode: meeting.colours.ralCode }

@@ -1,6 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { cancelledNotice, movedNotice, outcomeNotice, type OutcomeChange } from "@/lib/push/notices";
+import { cancelledNotice, leadDeletedNotice, movedNotice, outcomeNotice, type OutcomeChange } from "@/lib/push/notices";
 import { sendPush, type PushNotice } from "@/lib/push/send";
 import { formatMeetingTime } from "@/lib/schedule/meetings";
 import type { Database } from "@/types/database";
@@ -13,7 +13,7 @@ import type { Database } from "@/types/database";
 
 type Client = SupabaseClient<Database>;
 
-type Booking = { leadId: string; setterId: string; address: string };
+export type Booking = { leadId: string; setterId: string; address: string };
 
 // The booking's setter (the person whose lead it is, who earns the fee),
 // when that person is an active setter other than whoever is acting.
@@ -82,6 +82,18 @@ export async function notifyMoved(supabase: Client, meetingId: string, actingId:
   const booking = await bookingOf(supabase, meetingId, actingId);
   if (!booking) return;
   await deliver(supabase, booking.setterId, movedNotice(booking.address, formatMeetingTime(newStartsAt), leadUrl(booking.leadId)));
+}
+
+// Round 20: the setters of a lead's upcoming bookings, read before Keenan
+// deletes the lead (after that the lead is out of every read).
+export async function bookingsToTell(supabase: Client, meetingIds: string[], actingId: string): Promise<Booking[]> {
+  const found = await Promise.all(meetingIds.map((meetingId) => bookingOf(supabase, meetingId, actingId)));
+  return found.filter((booking): booking is Booking => booking !== null);
+}
+
+// After Keenan deletes a lead, which cancelled these bookings.
+export async function notifyLeadDeleted(supabase: Client, bookings: Booking[]): Promise<void> {
+  await Promise.all(bookings.map((booking) => deliver(supabase, booking.setterId, leadDeletedNotice(booking.address))));
 }
 
 // After Keenan cancels a setter's booking before its time.

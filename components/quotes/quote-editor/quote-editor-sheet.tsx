@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { EditorClose, EditorSave } from "@/components/quotes/quote-editor/parts";
 import { hasMeasuredRun, QuoteEditor } from "@/components/quotes/quote-editor/quote-editor";
-import { useQuoteSave } from "@/components/quotes/quote-editor/use-quote-save";
+import { rememberQuoteStamp, useQuoteSave } from "@/components/quotes/quote-editor/use-quote-save";
+import { NO_QUOTE_STAMP } from "@/lib/quotes/stamp";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { offersBlock, quoteSummary } from "@/lib/quotes/editor";
@@ -54,6 +55,9 @@ const OPEN_HASH = "#edit-quote";
 
 export function QuoteEditorCard({ leadId, leadName, context, draft, mockups, userId }: QuoteEditorCardProps) {
   const [open, setOpen] = useState(false);
+  // Round 20: the version of the quote this page opened, sent with every save.
+  const stamp = draft?.stamp ?? NO_QUOTE_STAMP;
+  useEffect(() => rememberQuoteStamp(leadId, stamp), [leadId, stamp]);
   // The quote as last saved from this page, until the page's own read
   // catches up with it.
   const [local, setLocal] = useState<{ state: QuoteUIState; savedAt: string } | null>(null);

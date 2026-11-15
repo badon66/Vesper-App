@@ -1,5 +1,6 @@
 import { Check, ChevronDown, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { QuickEditName } from "@/components/leads/quick-edit";
 import { DaySwitch } from "@/components/home/day-switch";
 import { RefreshOnReturn } from "@/components/home/refresh-on-return";
 import { SessionLink } from "@/components/home/session-link";
@@ -249,7 +250,7 @@ function PastRow({ meeting, today }: { meeting: MeetingWithLead; today: string }
         data-testid="past-booking"
       >
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="font-semibold">{leadName(lead)}</span>
+          <QuickEditName leadId={lead.id} name={leadName(lead)} href={`/app/leads/${lead.id}`} canEdit className="font-semibold" />
           <span className="text-sm text-muted-foreground">
             {pastTimeLabel(meeting.starts_at, today)}
             {lead.neighbourhood ? `, ${lead.neighbourhood}` : ""}
@@ -326,7 +327,7 @@ function ComingRow({ meeting }: { meeting: MeetingWithLead }) {
       >
         <span className="flex min-w-0 flex-col gap-0.5">
           <span className="font-bold tabular-nums">{heldTimeLabel(meeting.starts_at)}</span>
-          <span className="font-semibold">{leadName(lead)}</span>
+          <QuickEditName leadId={lead.id} name={leadName(lead)} href={`/app/leads/${lead.id}`} canEdit className="font-semibold" />
           <span className="text-sm text-muted-foreground">
             {lead.neighbourhood || lead.address_line}
             <span aria-hidden="true"> · </span>

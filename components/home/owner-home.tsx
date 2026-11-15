@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { after } from "next/server";
 import { DaySwitch } from "@/components/home/day-switch";
 import { RefreshOnReturn } from "@/components/home/refresh-on-return";
 import { SessionLink } from "@/components/home/session-link";
@@ -7,6 +8,7 @@ import { OutToday } from "@/components/session/out-today";
 import type { SessionProfile } from "@/lib/auth/profile";
 import { outTodayFor } from "@/lib/knock/queries";
 import { namesById, openKnockSession } from "@/lib/leads/queries";
+import { purgeExpiredLeads } from "@/lib/leads/purge";
 import { legs } from "@/lib/schedule/distance";
 import { isLive } from "@/lib/schedule/meetings";
 import { prepFor } from "@/lib/meetings/prep-queries";
@@ -24,6 +26,9 @@ const GONE = new Set(["moved", "cancelled"]);
 // workbench: moved and cancelled bookings stay on Schedule, and the cards
 // are compact (Meeting mode, Navigate, Call), so the evening fits a phone.
 export async function OwnerHome({ profile }: { profile: SessionProfile }) {
+  // Round 20: once the page is sent, leads deleted more than 30 days ago
+  // go for good (lib/leads/purge.ts). Keenan's own Home only.
+  if (profile.role === "owner") after(() => purgeExpiredLeads().then(() => undefined, () => undefined));
   const supabase = await createClient();
   const today = calgaryToday();
   const tomorrow = addDays(today, 1);

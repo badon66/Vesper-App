@@ -175,7 +175,9 @@ function TrackDrawing({ track }: { track: TrackType }) {
 const TRACK_WORDS: Record<TrackType, keyof LinkWords> = { hat: "link_track_hat", double: "link_track_double", j: "link_track_j" };
 
 export function AboutYourTrack({ tracks, words }: { tracks: TrackType[]; words: LinkWords }) {
-  if (tracks.length === 0) return null;
+  // Round 20 (Keenan, 2026-11-14): only when it helps, a quote using Double
+  // or L track; then every track it uses, Standard included.
+  if (!tracks.some((track) => track !== "hat")) return null;
   return (
     <section aria-labelledby="about-track" className="mt-12 px-5" data-testid="about-track">
       <h2 id="about-track" className="text-xl font-bold">

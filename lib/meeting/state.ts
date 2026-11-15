@@ -177,6 +177,9 @@ export type MeetingPayload = {
     acceptedOffer?: string | null;
     // The database's updated_at for the draft.
     updatedAt: string;
+    // Round 20: which version of the quote this is (lib/quotes/stamp.ts),
+    // sent back with every save so nothing newer is written over.
+    stamp?: string;
   } | null;
   today: string;
 };

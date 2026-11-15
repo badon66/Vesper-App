@@ -661,6 +661,8 @@ try {
       .map(([id, el]) => [id, Math.round(el.getBoundingClientRect().top + window.scrollY)]),
   );
   check("the sections in order, top to bottom", order.every(([, top], at) => at === 0 || top > order[at - 1][1]), order.map(([id, top]) => `${id} ${top}`).join(", "));
+  // Round 20: About your track only helps with Double or L track; this quote is Standard track only.
+  check("round 20: a Standard-track-only quote has no About your track section", (await page.getByTestId("about-track").count()) === 0);
   const hrefs = await page.locator("a").evaluateAll((links) => links.map((a) => a.getAttribute("href") ?? ""));
   check(
     "call, text and email Vesper; Text opens with a line about their quote",

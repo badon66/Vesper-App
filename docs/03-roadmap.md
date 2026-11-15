@@ -299,6 +299,14 @@ Six parts on the `round18` branch. Additive schema changes in four migrations (`
 - [x] "Control box" became "smart controller" in the five places Keenan's saved words said it.
 - [x] Unit tests, a database test (`tests/rls/round19.test.ts`), and the link, extras, laptop, meeting, quote-outcomes and Black Friday walk-throughs.
 
+### Round 20: the overlap gap, deleting leads, quick edits, and two leftovers (Keenan, 2026-11-14; merges on green outside the knocking window, no preview, on Keenan's word)
+- [x] A save never wipes something newer: the lead page's quote editor and meeting mode (its Edit layer and its quiet save of the table's choice) carry the version of the quote they opened; when the customer built their own, booked an option or signed on their link, or Keenan saved from another device, the save stops with "This quote changed since you opened it. Reopen it to see the latest, then make your change."
+- [x] Delete lead (Keenan only) at the very bottom of the lead page, one confirm naming any upcoming meeting it cancels; a deleted lead leaves Leads, Home, Meetings, Schedule and search, and its link stops working; Admin > Deleted with Restore (a cancelled meeting stays cancelled); removed for good after 30 days with its quotes, links, photos, mockups and files. A lead with an accepted quote or any pay that isn't void can't be deleted and offers Closed instead.
+- [x] Quick edits: a double tap, double click or press and hold on a lead's name on Leads, Home and Meetings opens a pop-up with the name, phone, email, address, tab, follow-up day and a note, and the setter for Keenan; saves in place, with the same "changed since you opened it" check; setters on their own leads only; no zoom on a double tap.
+- [x] About your track only when the quote uses Double or L track.
+- [x] Pop-ups keep their title and buttons on screen and scroll only their middle, so Mark accepted is reachable on the iPad in both orientations.
+- [x] Unit tests, the database suite (with `tests/rls/round20.test.ts`), a new walk-through (`tests/live/round20-walkthrough.mjs`) and the walk-throughs these touch.
+
 ## M4: Pipeline board and lead detail (iPad and desktop)
 **Parked (Keenan, 2026-11-02).** Not started or planned until Keenan says otherwise.
 - [ ] The board is a Board view inside Leads for the owner on iPad and desktop; phones keep the list

@@ -506,6 +506,29 @@ try {
         (await textOf(op.getByTestId("outcome-accept-commission"))).includes(money(commissionOn(FULL_BASE_CENTS))),
       `${await op.getByTestId("outcome-planned-on").inputValue()} | ${await textOf(op.getByTestId("outcome-accept-commission"))}`,
     );
+    // Round 20: Mark accepted is on screen without scrolling, iPad landscape and portrait.
+    const confirmOnScreen = async () =>
+      sheet.getByTestId("outcome-accept-confirm").evaluate((button) => {
+        const box = button.getBoundingClientRect();
+        const dialog = button.closest("dialog");
+        return {
+          fits: box.top >= 0 && box.bottom <= window.innerHeight && box.height > 0,
+          dialogScrolls: dialog ? dialog.scrollHeight > dialog.clientHeight + 1 : null,
+          bottom: Math.round(box.bottom),
+          height: window.innerHeight,
+        };
+      });
+    const landscape = await confirmOnScreen();
+    await op.setViewportSize({ width: 820, height: 1180 });
+    await op.waitForTimeout(300);
+    const portrait = await confirmOnScreen();
+    await op.setViewportSize(IPAD);
+    await op.waitForTimeout(300);
+    check(
+      "round 20: on the iPad, Mark accepted is on screen without scrolling, in landscape and portrait",
+      landscape.fits && portrait.fits && landscape.dialogScrolls === false && portrait.dialogScrolls === false,
+      JSON.stringify({ landscape, portrait }),
+    );
     await sheet.screenshot({ path: `${out}/outcome-owner-accept-sheet-1180.png` }).catch(() => {});
     await sheet.getByRole("button", { name: "Back" }).click();
     await sheet.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});

@@ -9,6 +9,8 @@ import { quoteLockedWords, type QuoteSaveInput } from "@/lib/quotes/draft";
 import { AREA_KINDS, areaOf, cleanGableCount, cleanViewName, isGable } from "@/lib/quotes/areas";
 import { chosenOfferTotals, cleanCharges, cleanRushFee, NO_OFFER_SHOWN, noOfferShown, OFFERS_MAX, offersForSave, priceOffer } from "@/lib/quotes/offers";
 import { revisionChanges } from "@/lib/quotes/revise";
+import { QUOTE_CHANGED, quoteStamp } from "@/lib/quotes/stamp";
+import { linkMarks } from "@/lib/meeting/deck-payload";
 import { customerInputs, quoteFromRow } from "@/lib/quote-link/view";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/types/database";
@@ -122,6 +124,9 @@ const quoteDraftSchema = z.object({
     .optional(),
   meetingOffer: z.string().trim().min(1).max(40).nullable().optional(),
   meetingInstallOn: z.iso.date().nullable().optional(),
+  // Round 20: the quote's stamp when it was opened (lib/quotes/stamp.ts);
+  // left out by an older copy of the app, which skips the check.
+  stamp: z.string().max(200).nullable().optional(),
 });
 
 export type QuoteDraftInput = z.input<typeof quoteDraftSchema>;
@@ -130,7 +135,7 @@ export type QuoteDraftInput = z.input<typeof quoteDraftSchema>;
 const _sameShape: QuoteDraftInput = {} as QuoteSaveInput;
 void _sameShape;
 export type SaveQuoteResult =
-  | { ok: true; quoteId: string; savedAt: string }
+  | { ok: true; quoteId: string; savedAt: string; stamp?: string }
   | { ok: false; code: string; message: string };
 
 // Saves (or re-saves) the lead's one draft quote, with every price it used
@@ -152,6 +157,7 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     discounts: parsed.data.discounts.map(({ label, amount, percent }) => ({ label, amount, ...(percent ? { percent } : {}) })),
   };
   const locked = { ok: false as const, code: "quote_locked", message: quoteLockedWords(draft.from ?? "meeting") };
+  const changed = { ok: false as const, code: "quote_changed", message: QUOTE_CHANGED };
   // An option's name is read by the customer: the deck's word checks.
   if ((draft.offers ?? []).some((offer) => hasDash(offer.name) || hasExclamation(offer.name))) {
     return { ok: false, code: "bad_input", message: "An option's name has a dash or an exclamation mark. Take it out and save again." };
@@ -275,43 +281,57 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     meeting_install_on: draft.meetingInstallOn ?? null,
   };
 
+  // Round 20 (Keenan, 2026-11-14): a save never wipes something newer. The
+  // quote as it is now, with when the customer last booked and signed on
+  // their link, against the stamp the screen opened with.
+  const [{ data: accepted }, { data: existing }, marks] = await Promise.all([
+    supabase.from("quotes").select("*").eq("lead_id", draft.leadId).eq("status", "accepted").limit(1).maybeSingle(),
+    // One draft per lead, reused on every save.
+    supabase
+      .from("quotes")
+      .select("id, updated_at")
+      .eq("lead_id", draft.leadId)
+      .eq("status", "draft")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    linkMarks(supabase, draft.leadId),
+  ]);
+  const current = accepted ? { id: accepted.id, updatedAt: accepted.updated_at } : existing ? { id: existing.id, updatedAt: existing.updated_at } : null;
+  if (typeof draft.stamp === "string" && draft.stamp !== quoteStamp(current, marks)) return changed;
+
   // Round 18 (Keenan, 2026-11-12): an accepted quote stays editable from
   // the lead page. The save goes through the database's quote_revise, which
   // updates the quote (and so the link) at once, keeps the commission in
   // step until it is paid, and records what changed. Meeting mode, which the
   // customer watches, keeps an accepted quote as agreed.
-  const { data: accepted } = await supabase.from("quotes").select("*").eq("lead_id", draft.leadId).eq("status", "accepted").limit(1).maybeSingle();
   if (accepted) {
     if (draft.from !== "lead") return locked;
-    return reviseAccepted(supabase, accepted, row, draft.leadId);
+    const revised = await reviseAccepted(supabase, accepted, row, draft.leadId);
+    return revised.ok ? { ...revised, stamp: quoteStamp({ id: revised.quoteId, updatedAt: revised.savedAt }, marks) } : revised;
   }
-
-  // One draft per lead, reused on every save.
-  const { data: existing } = await supabase
-    .from("quotes")
-    .select("id")
-    .eq("lead_id", draft.leadId)
-    .eq("status", "draft")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
 
   // savedAt is the database's own updated_at, the same clock the meeting
   // page reads the draft by, so the iPad can tell its own last save from a
-  // newer one made elsewhere.
+  // newer one made elsewhere. Round 20: written only while the draft is
+  // still the one the stamp was checked against, so a change landing in
+  // between (the customer's own build, a save from another device) is never
+  // written over.
   if (existing) {
     const { data: updated, error } = await supabase
       .from("quotes")
       .update(row)
       .eq("id", existing.id)
+      .eq("updated_at", existing.updated_at)
       .select("updated_at")
-      .single();
+      .maybeSingle();
     if (error?.hint === "quote_locked") return locked;
+    if (!error && !updated) return changed;
     if (error || !updated) {
       return { ok: false, code: "save_failed", message: "The draft could not be saved. Check your signal and try again." };
     }
     revalidatePath(`/app/leads/${draft.leadId}`);
-    return { ok: true, quoteId: existing.id, savedAt: updated.updated_at };
+    return { ok: true, quoteId: existing.id, savedAt: updated.updated_at, stamp: quoteStamp({ id: existing.id, updatedAt: updated.updated_at }, marks) };
   }
 
   // The database writes the quote_created timeline event (its id only,
@@ -324,7 +344,7 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     return { ok: false, code: "save_failed", message: "The draft could not be saved. Check your signal and try again." };
   }
   revalidatePath(`/app/leads/${draft.leadId}`);
-  return { ok: true, quoteId: created.id, savedAt: created.updated_at };
+  return { ok: true, quoteId: created.id, savedAt: created.updated_at, stamp: quoteStamp({ id: created.id, updatedAt: created.updated_at }, marks) };
 }
 
 // Saving an accepted quote (round 18). The option they said yes to is

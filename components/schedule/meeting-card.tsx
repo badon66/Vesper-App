@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { QuickEditName } from "@/components/leads/quick-edit";
 import { ConfirmedTick } from "@/components/meetings/confirmed-tick";
 import { PrepLine, type PrepGlance } from "@/components/meetings/prep-line";
 import { BookingActions } from "@/components/schedule/booking-actions";
@@ -123,7 +124,13 @@ export function MeetingCard({
             href={`/app/leads/${lead.id}`}
             className="inline-flex min-h-11 w-fit items-center text-base font-semibold underline underline-offset-4"
           >
-            {leadName(lead)}
+            {/* Round 20: a double tap or press and hold edits it in place. */}
+            <QuickEditName
+              leadId={lead.id}
+              name={leadName(lead)}
+              href={`/app/leads/${lead.id}`}
+              canEdit={isOwner || (viewerId !== null && (lead.created_by === viewerId || lead.assigned_to === viewerId))}
+            />
           </Link>
           <p className="text-sm">
             {lead.address_line}

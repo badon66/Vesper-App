@@ -13,6 +13,7 @@ import { pickEditableQuote, type DeckPayload, type MeetingPayload, type QuoteDra
 import { DECK_BUCKET } from "@/lib/photos-deck";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { blackFridayFrom } from "@/lib/quotes/black-friday";
+import { quoteStamp } from "@/lib/quotes/stamp";
 import { CHRISTMAS_WORD_DEFAULTS, type ChristmasSettings } from "@/lib/quote-link/christmas";
 import type { createClient } from "@/lib/supabase/server";
 import { calgaryToday } from "@/lib/time";
@@ -300,14 +301,27 @@ const QUOTE_COLUMNS =
 // The quote meeting mode and the lead page's editor open (round 9): the
 // accepted one while the lead has one, read only, otherwise its draft (one
 // per lead). Null with neither.
+// When the customer last booked and last signed on their link, for the
+// quote's stamp (round 20, lib/quotes/stamp.ts). Owner only, like the quote.
+export async function linkMarks(supabase: Supabase, leadId: string): Promise<{ bookedAt: string | null; signedAt: string | null }> {
+  const [{ data: link }, { data: signed }] = await Promise.all([
+    supabase.from("quote_links").select("booked_at").eq("lead_id", leadId).not("booked_at", "is", null).order("booked_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("agreement_signatures").select("signed_at").eq("lead_id", leadId).order("signed_at", { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  return { bookedAt: link?.booked_at ?? null, signedAt: signed?.signed_at ?? null };
+}
+
 export async function editableQuotes(supabase: Supabase, leadId: string): Promise<QuoteDraft | null> {
-  const { data } = await supabase
-    .from("quotes")
-    .select(QUOTE_COLUMNS)
-    .eq("lead_id", leadId)
-    .in("status", ["draft", "accepted"])
-    .order("created_at", { ascending: false })
-    .limit(10);
+  const [{ data }, marks] = await Promise.all([
+    supabase
+      .from("quotes")
+      .select(QUOTE_COLUMNS)
+      .eq("lead_id", leadId)
+      .in("status", ["draft", "accepted"])
+      .order("created_at", { ascending: false })
+      .limit(10),
+    linkMarks(supabase, leadId),
+  ]);
   const row = pickEditableQuote(data ?? []);
   if (!row) return null;
   return {
@@ -331,5 +345,6 @@ export async function editableQuotes(supabase: Supabase, leadId: string): Promis
     accepted: row.status === "accepted",
     acceptedOffer: row.status === "accepted" ? row.accepted_offer : null,
     updatedAt: row.updated_at,
+    stamp: quoteStamp({ id: row.id, updatedAt: row.updated_at }, marks),
   };
 }

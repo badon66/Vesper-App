@@ -1,3 +1,4 @@
+import { QuickEditName } from "@/components/leads/quick-edit";
 import { PrepLine, type PrepGlance } from "@/components/meetings/prep-line";
 import { ConfirmedTick } from "@/components/meetings/confirmed-tick";
 import { Button } from "@/components/ui/button";
@@ -61,7 +62,10 @@ export function MeetingItem({
         {item.confirmed ? <ConfirmedTick /> : null}
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <p className={cn("font-semibold text-pretty", compact ? "text-base" : "text-lg")}>{item.name}</p>
+        <p className={cn("font-semibold text-pretty", compact ? "text-base" : "text-lg")}>
+          {/* Round 20: a double tap or press and hold edits it in place. */}
+          <QuickEditName leadId={item.leadId} name={item.name} canEdit />
+        </p>
         <p className="text-pretty text-muted-foreground">{item.address}</p>
         <p className="text-sm text-muted-foreground" data-testid="completeness">
           {item.completeness}
