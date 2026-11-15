@@ -247,8 +247,11 @@ describe("meeting times", () => {
       new Date(Date.UTC(y, mo - 1, d, h + offsetHours, m + k * settings.meeting_slot_minutes)).toISOString(),
     );
   };
+  // Round 22: these helpers run as the caller now and only the database's
+  // own booking functions use them, so the test reads them with the server
+  // key, which sees the settings as those functions do.
   const startsOn = async (day: string) => {
-    const { data, error } = await users.a.client.rpc("slot_starts_on", { p_day: day });
+    const { data, error } = await admin.rpc("slot_starts_on", { p_day: day });
     expect(error).toBeNull();
     return ((data ?? []) as string[]).map((value) => new Date(value).toISOString());
   };
@@ -271,7 +274,7 @@ describe("meeting times", () => {
     const now = new Date("2026-11-03T20:00:00Z");
     const at = (minutes: number) => new Date(now.getTime() + minutes * 60_000).toISOString();
     const problem = async (startsAt: string, owner: boolean) => {
-      const { data, error } = await users.a.client.rpc("slot_time_problem", {
+      const { data, error } = await admin.rpc("slot_time_problem", {
         p_starts_at: startsAt,
         p_now: now.toISOString(),
         p_owner: owner,
@@ -602,7 +605,7 @@ describe("what rules a booking out", () => {
     const notATime = new Date(new Date(pool[0]).getTime() + 10 * 60_000).toISOString();
     expect(hintOf((await book(users.a, { lead: leadA, at: notATime })).error)).toBe("not_a_slot");
 
-    const { data: past } = await users.a.client.rpc("slot_starts_on", {
+    const { data: past } = await admin.rpc("slot_starts_on", {
       p_day: new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10),
     });
     const lastWeek = ((past ?? []) as string[])[0];
@@ -610,7 +613,7 @@ describe("what rules a booking out", () => {
 
     for (let extra = 1; extra <= 7; extra += 1) {
       const day = new Date(Date.now() + (settings.booking_window_days + extra) * 86400_000).toISOString().slice(0, 10);
-      const { data: far } = await users.a.client.rpc("slot_starts_on", { p_day: day });
+      const { data: far } = await admin.rpc("slot_starts_on", { p_day: day });
       const tooFar = ((far ?? []) as string[])[0];
       if (tooFar) {
         expect(hintOf((await book(users.a, { lead: leadA, at: tooFar })).error)).toBe("too_far");

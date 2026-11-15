@@ -111,7 +111,9 @@ describe("lead_contacts", () => {
 });
 
 describe("the public views are read only", () => {
-  const refused = (error: { code?: string } | null) => error?.code === "42501";
+  // Refused either way: no write grant (42501), or, since round 22 when the
+  // views read through a function, a view that can't take writes (55000).
+  const refused = (error: { code?: string } | null) => error?.code === "42501" || error?.code === "55000";
 
   it("refuses inserts, updates and deletes through lead_contacts", async () => {
     const insert = await a.client.from("lead_contacts").insert({ lead_id: NOBODY, phone: "+14035550199" } as never);
