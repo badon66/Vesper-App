@@ -537,7 +537,13 @@ try {
   await page.goto(`${base}/app/leads/${typedLead.id}`);
   await settle(page);
   await page.getByRole("heading", { name: TEST_LEAD }).waitFor({ timeout: 20000 });
-  check("the call button shows the formatted phone", (await page.getByRole("link", { name: "Call (403) 555-0199" }).count()) === 1);
+  // Round 21: the phone, formatted, with Call and Text beside it.
+  check(
+    "the phone shows formatted, with Call and Text",
+    (await page.getByTestId("lead-phone").innerText()).includes("(403) 555-0199") &&
+      (await page.getByTestId("lead-phone").getByRole("link", { name: "Call" }).getAttribute("href"))?.startsWith("tel:") &&
+      (await page.getByTestId("lead-phone").getByRole("link", { name: "Text" }).getAttribute("href"))?.startsWith("sms:"),
+  );
   check("a lead with a typed address says it has no map position yet", (await page.getByText("No map position yet.").count()) === 1);
   const image = page.locator('img[alt="Front photo of the house"]');
   await image.waitFor({ timeout: 20000 });
@@ -563,15 +569,16 @@ try {
   await page.getByText("Added the soffit close-up photo.").waitFor({ timeout: 30000 });
   const { data: soffitPhoto } = await admin.from("lead_photos").select("id").eq("lead_id", typedLead.id).eq("slot", "soffit");
   check("a slot photo taken on the lead page goes into its slot, and the timeline names it", soffitPhoto?.length === 1);
-  const statusGroup = page.locator("fieldset").filter({ has: page.locator("legend", { hasText: /^Status$/ }) });
-  const offered = (await statusGroup.locator("label").allTextContents()).map((t) => t.trim());
+  // Round 21: the status is a dropdown in At a glance.
+  const statusSelect = page.getByTestId("status-select");
+  const offered = (await statusSelect.locator("option:not([disabled])").allTextContents()).map((t) => t.trim());
   check("a setter is offered only New, Follow up and Lost", JSON.stringify(offered) === JSON.stringify(["New", "Follow up", "Lost"]), offered.join(", "));
   await checkTapTargets(page, "the lead page");
-  await statusGroup.getByText("Follow up", { exact: true }).click();
-  const whenGroup = page.locator("fieldset").filter({ has: page.locator("legend", { hasText: "When to follow up?" }) });
-  const whenLabels = (await whenGroup.locator("label").allInnerTexts()).map((t) => t.split("\n")[0].trim());
+  await statusSelect.selectOption("follow_up");
+  const whenGroup = page.getByTestId("status-follow-up");
+  const whenLabels = (await whenGroup.getByRole("radio").allInnerTexts()).map((t) => t.split("\n")[0].trim());
   check("choosing Follow up asks when", JSON.stringify(whenLabels) === JSON.stringify(["Tomorrow", "In 3 days", "Next week", "On a date"]), whenLabels.join(", "));
-  await page.getByRole("button", { name: "Save status" }).click();
+  await page.getByTestId("status-save").click();
   await page.getByText("Moved from New to Follow up.").waitFor({ timeout: 20000 });
   const followEntry = page.locator("li", { hasText: "Moved from New to Follow up." });
   check("a status change shows in the timeline with who and when, your own as You", (await followEntry.innerText()).includes("You,"), (await followEntry.innerText()).replace(/\n/g, " | "));
@@ -580,12 +587,11 @@ try {
   await page.getByText("TEST note (automated). Come back Thursday.").first().waitFor({ timeout: 20000 });
   check("a note shows in the timeline", true);
   check("and in the lead's Notes card (round 6)", (await page.getByTestId("lead-notes").getByText("TEST note (automated). Come back Thursday.").count()) === 1);
-  const statusAgain = page.locator("fieldset").filter({ has: page.locator("legend", { hasText: /^Status$/ }) });
-  await statusAgain.getByText("Lost", { exact: true }).click();
+  await page.getByTestId("status-select").selectOption("lost");
   const waiting = page.getByRole("button", { name: "Pick why it was lost" });
   check("Lost asks for a reason before it can be saved", (await waiting.count()) === 1 && (await waiting.isDisabled()));
-  await page.locator("fieldset", { hasText: "Why was it lost?" }).getByText("Price", { exact: true }).click();
-  await page.getByRole("button", { name: "Save status" }).click();
+  await page.getByTestId("status-lost-reason").locator("select").selectOption({ label: "Price" });
+  await page.getByTestId("status-save").click();
   await page.getByText("Moved from Follow up to Lost. Reason: price.").waitFor({ timeout: 20000 });
   check("Lost with a reason shows in the timeline", true);
   await page.screenshot({ path: `${out}/m2-lead-page.png`, fullPage: true });

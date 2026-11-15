@@ -671,7 +671,7 @@ try {
   );
   check(
     "To be completed is there, closed, with its count: 8 left",
-    afterPhone !== null && afterPhone.open === false && afterPhone.summary === "To be completed (8)",
+    afterPhone !== null && afterPhone.open === false && afterPhone.summary === "8 things to finish",
     JSON.stringify(afterPhone),
   );
   check("Before you book is gone from the lead page", (await page.getByTestId("before-you-book").count()) === 0 && (await page.getByText("Before you book", { exact: true }).count()) === 0);
@@ -713,7 +713,7 @@ try {
   const afterName = await toBeCompleted(page);
   check(
     "the name saves, the flag clears itself, and the count drops to 7",
-    named?.first_name === TEST_LEAD && named?.name_to_come === false && afterName?.summary === "To be completed (7)",
+    named?.first_name === TEST_LEAD && named?.name_to_come === false && afterName?.summary === "7 things to finish",
     `${JSON.stringify(named)}; ${afterName?.summary}`,
   );
 
@@ -730,7 +730,7 @@ try {
   await editQuestion(page, "q-owns_home").getByText("Yes", { exact: true }).click();
   await saveEdit(page, leadA);
   const afterOwns = await toBeCompleted(page);
-  check("owns the home saves on its own, and the count drops to 6", (await leadRow(leadA))?.owns_home === true && afterOwns?.summary === "To be completed (6)", afterOwns?.summary);
+  check("owns the home saves on its own, and the count drops to 6", (await leadRow(leadA))?.owns_home === true && afterOwns?.summary === "6 things to finish", afterOwns?.summary);
 
   // From the bar again: wants a price, and the other questions while there.
   await openPanel(page);
@@ -753,7 +753,7 @@ try {
   await editQuestion(page, "q-looked_into_before").getByText("New to them", { exact: true }).click();
   await saveEdit(page, leadA);
   const afterQuestions = await toBeCompleted(page);
-  check("four answers at once, and the count drops to 2", afterQuestions?.summary === "To be completed (2)", afterQuestions?.summary);
+  check("four answers at once, and the count drops to 2", afterQuestions?.summary === "2 things to finish", afterQuestions?.summary);
 
   await page.getByTestId("to-be-completed-summary").click();
   await page.locator('[data-testid="to-be-completed"] li[data-item="soffit_colour"] a').click();
@@ -766,7 +766,7 @@ try {
   await editQuestion(page, "q-soffit_colour").getByText("Not sure", { exact: true }).click();
   await saveEdit(page, leadA);
   const afterSoffit = await toBeCompleted(page);
-  check("the soffit saves, and only the photos are left: 1", afterSoffit?.summary === "To be completed (1)" && JSON.stringify(afterSoffit?.items) === JSON.stringify(["photos"]), JSON.stringify(afterSoffit));
+  check("the soffit saves, and only the photos are left: 1", afterSoffit?.summary === "1 thing to finish" && JSON.stringify(afterSoffit?.items) === JSON.stringify(["photos"]), JSON.stringify(afterSoffit));
 
   // Photos: the lead page's Photos card.
   await page.getByTestId("to-be-completed-summary").click();
@@ -814,7 +814,7 @@ try {
   const topB = squash(await page.getByTestId("lead-address-top").innerText().catch(() => ""));
   check(
     "the address saves with its map position, the flag clears, the top of the page shows it, and the count drops from 7 to 6",
-    placedB?.address_line === ADDRESS_B && placedB?.address_to_come === false && placedB?.lat !== null && topB.startsWith(ADDRESS_B) && afterAddress?.summary === "To be completed (6)",
+    placedB?.address_line === ADDRESS_B && placedB?.address_to_come === false && placedB?.lat !== null && topB.startsWith(ADDRESS_B) && afterAddress?.summary === "6 things to finish",
     `${JSON.stringify(placedB)}; ${topB}; ${afterAddress?.summary}`,
   );
   await page.getByTestId("to-be-completed-summary").click();
@@ -833,7 +833,7 @@ try {
     .click();
   await saveEdit(page, leadB);
   const afterRestB = await toBeCompleted(page);
-  check("the rest in one save leaves only the photos: 1", afterRestB?.summary === "To be completed (1)", afterRestB?.summary);
+  check("the rest in one save leaves only the photos: 1", afterRestB?.summary === "1 thing to finish", afterRestB?.summary);
   const stillB = await barOf(page);
   check("the bar still says 1 booking to finish", stillB?.count === "1", JSON.stringify(stillB));
   const photosInB = await uploadGuidedPhotos(page, leadB);

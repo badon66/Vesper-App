@@ -307,6 +307,12 @@ Six parts on the `round18` branch. Additive schema changes in four migrations (`
 - [x] Pop-ups keep their title and buttons on screen and scroll only their middle, so Mark accepted is reachable on the iPad in both orientations.
 - [x] Unit tests, the database suite (with `tests/rls/round20.test.ts`), a new walk-through (`tests/live/round20-walkthrough.mjs`) and the walk-throughs these touch.
 
+### Round 21: the lead page, tight and useful at the top (Keenan, 2026-11-15; looks and layout plus the status dropdown; merges on green outside the knocking window, no preview)
+- [x] On an iPad or laptop the top is two columns: the name, the address (tap for directions), the phone with Call and Text, and the email on the left; At a glance on the right, each line only when it applies (status, follow-up, next meeting with Start, quote, their link, site visit, install day, the everyone-who-decides warning, things to finish). Stacked in the same order on a phone.
+- [x] The status dropdown in At a glance: Follow up asks when, Lost asks why; Meeting booked, Sold and Installed show what sets them and can't be picked; setters on their own leads with today's choices; the same "changed since you opened it" check as quick edit.
+- [x] Tighter, even spacing in and between the cards; Find out beside From the door and House, Notes beside Track colour, photos four across on a wide screen; every tap target at least 44 px.
+- [x] Unit tests and a new walk-through (`tests/live/round21-walkthrough.mjs`: iPad both ways and a phone, a full lead and a nearly empty one), and the walk-throughs that visit the lead page.
+
 ## M4: Pipeline board and lead detail (iPad and desktop)
 **Parked (Keenan, 2026-11-02).** Not started or planned until Keenan says otherwise.
 - [ ] The board is a Board view inside Leads for the owner on iPad and desktop; phones keep the list

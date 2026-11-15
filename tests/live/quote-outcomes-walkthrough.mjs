@@ -444,7 +444,8 @@ try {
   ownerSession = await openOwnerSession({ url, anonKey, admin, base, context: ownerContext });
   op = await ownerContext.newPage();
   await op.setViewportSize(IPAD);
-  const statusMenu = (where) => where.locator("fieldset").filter({ has: where.locator("legend", { hasText: /^Status$/ }) });
+  // Round 21: the status is a dropdown in At a glance.
+  const statusMenu = (where) => where.getByTestId("status-select");
   {
     const looked = await testFootprint(leadIds);
     await open(op, `/app/leads/${soldLead}`);
@@ -461,8 +462,9 @@ try {
     check(
       "the status menu no longer offers Sold or Installed; Lost and the earlier statuses stay",
       (await statusMenu(op).count()) === 1 &&
-        (await statusMenu(op).locator('input[value="sold"], input[value="installed"]').count()) === 0 &&
-        (await statusMenu(op).locator('input[value="lost"]').count()) === 1,
+        (await statusMenu(op).isEnabled()) &&
+        (await statusMenu(op).locator('option[value="sold"]:not([disabled]), option[value="installed"]:not([disabled])').count()) === 0 &&
+        (await statusMenu(op).locator('option[value="lost"]:not([disabled])').count()) === 1,
     );
     await card.screenshot({ path: `${out}/outcome-owner-open-1180.png` }).catch(() => {});
 
@@ -797,7 +799,7 @@ try {
     );
     check(
       "on a Sold lead the status menu gives way to a pointer to the outcome card",
-      (await op.getByTestId("status-from-outcome").count()) === 1 && (await statusMenu(op).count()) === 0,
+      (await op.getByTestId("status-from-outcome").count()) === 1 && (await statusMenu(op).isDisabled()),
     );
     check("no sideways scroll on Keenan's lead page at 1180 wide", (await sideways(op)) === 0);
     await checkTargets(op, '[data-testid="quote-outcome"]', "the outcome card at 1180 wide");
@@ -821,7 +823,9 @@ try {
     );
     check(
       "a Lost lead keeps the status menu, without Sold or Installed",
-      (await statusMenu(op).count()) === 1 && (await statusMenu(op).locator('input[value="sold"], input[value="installed"]').count()) === 0,
+      (await statusMenu(op).count()) === 1 &&
+        (await statusMenu(op).isEnabled()) &&
+        (await statusMenu(op).locator('option[value="sold"]:not([disabled]), option[value="installed"]:not([disabled])').count()) === 0,
     );
     await op.getByTestId("quote-outcome").screenshot({ path: `${out}/outcome-owner-declined-1180.png` }).catch(() => {});
     await open(op, `/app/leads/${cancelledLead}`);

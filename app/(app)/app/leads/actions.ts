@@ -20,6 +20,7 @@ import {
   type LeadFormErrors,
 } from "@/lib/leads/schema";
 import { followUpDateFor } from "@/lib/leads/attention";
+import { LEAD_CHANGED } from "@/lib/leads/quick-edit";
 import { canChangeStatus, leadName, STATUS_LABELS } from "@/lib/leads/status";
 import { trackColourChoiceSchema } from "@/lib/leads/track-colour";
 import { GPS_MAX_ACCURACY_M, inCalgaryArea, NEARBY_LEAD_M } from "@/lib/geo";
@@ -31,7 +32,7 @@ import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 import { Constants } from "@/types/database";
 
 export type LeadFormState = { error?: string; errors?: LeadFormErrors };
-export type SimpleState = { ok?: boolean; error?: string };
+export type SimpleState = { ok?: boolean; error?: string; changed?: boolean };
 export type DuplicateLead = {
   id: string;
   name: string;
@@ -181,6 +182,10 @@ const statusSchema = z.object({
   lost_reason: z.string().trim().max(200).optional(),
   follow_up: z.string().max(20).optional(),
   follow_up_date: z.string().max(20).optional(),
+  // Round 21: the lead page's At a glance sends the lead's updated_at from
+  // when the page opened, so a change made elsewhere meanwhile (a quick
+  // edit, another device) is never written over.
+  stamp: z.string().min(10).max(64).optional(),
 });
 
 // Error codes from the leads guard and its checks, in plain words.
@@ -203,19 +208,22 @@ export async function changeLeadStatus(
     lost_reason: formData.get("lost_reason") ?? undefined,
     follow_up: formData.get("follow_up") ?? undefined,
     follow_up_date: formData.get("follow_up_date") ?? undefined,
+    stamp: formData.get("stamp") ?? undefined,
   });
   if (!parsed.success) return { error: "Pick a status." };
-  const { id, status } = parsed.data;
+  const { id, status, stamp } = parsed.data;
 
   const supabase = await createClient();
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, status, created_by, assigned_to, follow_up_on")
+    .select("id, status, created_by, assigned_to, follow_up_on, updated_at")
     .eq("id", id)
     .maybeSingle();
   if (!lead) return { error: "That lead was not found." };
   const mine = me.role === "owner" || lead.created_by === me.id || lead.assigned_to === me.id;
   if (!mine) return { error: NOT_YOURS };
+  const changed = { error: LEAD_CHANGED, changed: true };
+  if (stamp && lead.updated_at !== stamp && Date.parse(lead.updated_at) !== Date.parse(stamp)) return changed;
 
   // Follow up needs a day to come back, worked out here in Calgary time.
   let followUpOn: string | null = null;
@@ -232,13 +240,11 @@ export async function changeLeadStatus(
   if (lead.status === status) {
     if (status !== "follow_up" || followUpOn === lead.follow_up_on) return { ok: true };
     // Moving the follow-up day on a lead that stays in Follow up.
-    const { data, error } = await supabase
-      .from("leads")
-      .update({ follow_up_on: followUpOn })
-      .eq("id", id)
-      .select("id");
+    let moving = supabase.from("leads").update({ follow_up_on: followUpOn }).eq("id", id);
+    if (stamp) moving = moving.eq("updated_at", lead.updated_at);
+    const { data, error } = await moving.select("id");
     if (error) return { error: statusSaveError(error.code) };
-    if (!data || data.length === 0) return { error: NOT_YOURS };
+    if (!data || data.length === 0) return stamp ? changed : { error: NOT_YOURS };
     revalidatePath("/app/leads");
     revalidatePath(`/app/leads/${id}`);
     return { ok: true };
@@ -275,13 +281,11 @@ export async function changeLeadStatus(
     lostReason = chosen;
   }
 
-  const { data, error } = await supabase
-    .from("leads")
-    .update({ status, lost_reason: lostReason, follow_up_on: followUpOn })
-    .eq("id", id)
-    .select("id");
+  let changing = supabase.from("leads").update({ status, lost_reason: lostReason, follow_up_on: followUpOn }).eq("id", id);
+  if (stamp) changing = changing.eq("updated_at", lead.updated_at);
+  const { data, error } = await changing.select("id");
   if (error) return { error: statusSaveError(error.code) };
-  if (!data || data.length === 0) return { error: NOT_YOURS };
+  if (!data || data.length === 0) return stamp ? changed : { error: NOT_YOURS };
 
   revalidatePath("/app/leads");
   revalidatePath(`/app/leads/${id}`);

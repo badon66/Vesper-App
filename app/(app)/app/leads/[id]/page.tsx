@@ -1,4 +1,4 @@
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Mail, MapPin, MessageSquare, Phone } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -11,8 +11,8 @@ import { MeetingCard } from "@/components/schedule/meeting-card";
 import { PhotoPicker } from "@/components/leads/photo-picker";
 import { PhotoSlots } from "@/components/leads/photo-slots";
 import { SoffitCode } from "@/components/leads/soffit-code";
-import { StatusBadge } from "@/components/leads/status-badge";
-import { StatusControl } from "@/components/leads/status-control";
+import { AtAGlance, GlanceRow } from "@/components/leads/at-a-glance";
+import { LeadStatusPanel } from "@/components/leads/lead-status-panel";
 import { TrackColourForm } from "@/components/leads/track-colour-form";
 import { BookLeadButton, OpenBookingSheet } from "@/components/booking/book-buttons";
 import { MockupsCard } from "@/components/leads/mockups-card";
@@ -59,15 +59,16 @@ import type { Json } from "@/types/database";
 import { revisionTimelineLine } from "@/lib/quotes/revise";
 import { formatPhone } from "@/lib/phone";
 import { PHOTO_BUCKET } from "@/lib/photos";
-import { mapsLink } from "@/lib/places";
 import { createClient } from "@/lib/supabase/server";
-import { followUpSentence } from "@/lib/leads/attention";
 import { maySeeContact, NO_CONTACT } from "@/lib/leads/contact-rules";
 import { contactFor } from "@/lib/leads/contacts";
 import { NO_NOTES, notesFor } from "@/lib/leads/notes";
 import { LEAD_FIELDS } from "@/lib/leads/fields";
 import { guidedPhotoCount, toFinish } from "@/lib/leads/to-finish";
-import { calgaryToday, formatDate, formatDateTime, requestTime } from "@/lib/time";
+import { calgaryToday, formatDate, formatDateTime, formatDay, requestTime } from "@/lib/time";
+import { canPickStatus, linkOpenedLine, statusOptions } from "@/lib/leads/glance";
+import { everyoneDecidingLine, everyoneDecidingOf } from "@/lib/meetings/everyone-deciding";
+import { navigateUrl } from "@/lib/schedule/distance";
 import { screenTotal, totalFeet } from "@/lib/pricing";
 import { quoteBaseUrl, requestOrigin } from "@/lib/quote-link/server";
 import { loadQuoteOutcome } from "./quote-outcome-data";
@@ -265,9 +266,8 @@ export default async function LeadPage({
   const today = calgaryToday();
   const followUp = lead.status === "follow_up" && lead.follow_up_on ? lead.follow_up_on : null;
 
-  // What happens next, said at the top (2026-11-03): the booked time, the
-  // follow-up day, why it was lost, or that Keenan takes it from here.
-  const lostLine = lead.status === "lost" ? sentence(lead.lost_reason ? `Lost: ${lead.lost_reason}` : "Lost") : null;
+  // Under the status in At a glance (round 21): that Keenan takes it from
+  // here, for a setter whose lead has moved past their steps.
   const laterLine =
     choices.length === 0 && !["new", "follow_up", "meeting_booked", "lost"].includes(lead.status)
       ? `This lead is at ${STATUS_LABELS[lead.status]}. Keenan takes it from here.`
@@ -295,6 +295,43 @@ export default async function LeadPage({
   // Quote card after the mockups.
   const quoteFirst = isOwner && quoteOutcome !== null;
   const deleteState = isOwner ? deleteStateFrom(deleteCheck.data, row.status) : null;
+
+  // Round 21 (Keenan, 2026-11-15): At a glance, each line only when it
+  // applies. The quote, their link and the site visit are Keenan's only.
+  const statusOptionList = statusOptions(me.role, lead.status);
+  const quoteGlance = ((): { text: string; note: string | null; accepted: boolean } | null => {
+    if (!isOwner) return null;
+    const outcome = quoteOutcome?.quote;
+    if (outcome?.status === "accepted") {
+      const label = outcome.option?.label ?? "The quote";
+      const total = quoteOutcome?.options.find((option) => option.label === label)?.total ?? null;
+      return { text: total ? `${label}, ${total}` : label, note: "Accepted", accepted: true };
+    }
+    if (outcome?.status === "declined") return { text: "Declined", note: null, accepted: false };
+    if (outcome?.status === "cancelled") return { text: "Cancelled after the yes", note: null, accepted: false };
+    if (!quoteCard?.quote) return null;
+    const link = quoteCard.link;
+    if (!link) return { text: "Not sent yet", note: null, accepted: false };
+    if (link.booked) {
+      return { text: link.booked.total ? `${link.booked.option}, ${link.booked.total}` : link.booked.option, note: "Booked on their link, not accepted yet", accepted: false };
+    }
+    if (link.looking) return { text: `${link.looking.option}, ${link.looking.total}`, note: "Looking at it on their link", accepted: false };
+    return { text: "Sent, nothing picked yet", note: null, accepted: false };
+  })();
+  const linkGlance = isOwner && quoteCard?.link
+    ? quoteCard.link.live
+      ? { text: linkOpenedLine(quoteCard.link.views, quoteCard.link.lastViewedAt, today), opened: quoteCard.link.views > 0 }
+      : { text: "Turned off", opened: false }
+    : null;
+  const visit = isOwner ? quoteOutcome?.siteVisit : null;
+  const siteVisitGlance = visit?.on ? (visit.doneAt ? `Done, ${formatDay(visit.on)}` : formatDay(visit.on)) : null;
+  const installGlance =
+    lead.status === "installed" && lead.installed_at
+      ? `Installed ${formatDate(lead.installed_at)}`
+      : lead.install_on && (lead.status === "sold" || lead.status === "installed")
+        ? `Planned for ${formatDay(lead.install_on)}`
+        : null;
+  const everyoneGlance = liveMeeting ? everyoneDecidingLine(everyoneDecidingOf(liveMeeting.everyone_deciding)) : null;
   const quoteCards = (
     <>
       {quoteEditor ? (
@@ -330,102 +367,211 @@ export default async function LeadPage({
   );
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-col gap-2">
-        <Link
-          href="/app/leads"
-          className="inline-flex min-h-11 w-fit items-center gap-1 text-sm font-semibold text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <ChevronLeft aria-hidden="true" className="size-4" />
-          Leads
-        </Link>
-        {/* The address sits right under the name (Keenan, 2026-11-10), the
-            neighbourhood quietly after it. A name or an address still to
-            come reads as itself, a step quieter. */}
-        <div className="flex flex-col gap-0.5">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className={lead.name_to_come ? "text-2xl font-bold text-muted-foreground" : "text-2xl font-bold"}>
-              {leadName(lead)}
-            </h1>
-            <StatusBadge status={lead.status} />
-          </div>
+    <div
+      // Round 21 (Keenan, 2026-11-15): tighter, even spacing between and
+      // inside every card on the lead page.
+      className="flex flex-col gap-4 [&_[data-slot=card-content]]:px-4 [&_[data-slot=card-header]]:px-4 [&_[data-slot=card-title]]:text-lg [&_[data-slot=card]]:gap-3 [&_[data-slot=card]]:py-4 sm:[&_[data-slot=card-content]]:px-5 sm:[&_[data-slot=card-header]]:px-5"
+      data-testid="lead-page"
+    >
+      <Link
+        href="/app/leads"
+        className="-mb-2 inline-flex min-h-11 w-fit items-center gap-1 text-sm font-semibold text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <ChevronLeft aria-hidden="true" className="size-4" />
+        Leads
+      </Link>
+
+      {/* Round 21 (Keenan, 2026-11-15): the top in two columns on an iPad or
+          laptop: who and how to reach them on the left, At a glance on the
+          right. On a phone the two stack in the same order. */}
+      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-start lg:grid-cols-[minmax(0,1fr)_24rem]" data-testid="lead-top">
+        <div className="flex min-w-0 flex-col gap-1">
+          {/* The address sits right under the name (Keenan, 2026-11-10). A
+              name or an address still to come reads as itself, a step
+              quieter. */}
+          <h1 className={lead.name_to_come ? "text-2xl font-bold text-muted-foreground" : "text-2xl font-bold"}>{leadName(lead)}</h1>
           <p className="text-base text-pretty" data-testid="lead-address-top">
-            <span className={lead.address_to_come ? "text-muted-foreground" : "font-semibold"}>{lead.address_line}</span>
-            {lead.neighbourhood ? <span className="text-muted-foreground">, {lead.neighbourhood}</span> : null}
+            {lead.address_to_come && lead.lat === null ? (
+              <span className="text-muted-foreground">{lead.address_line}</span>
+            ) : (
+              <a
+                href={navigateUrl(lead)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-h-11 items-center gap-1.5 underline-offset-4 hover:underline"
+                aria-label={`Directions to ${lead.address_line}`}
+              >
+                <MapPin aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+                <span>
+                  <span className={lead.address_to_come ? "text-muted-foreground" : "font-semibold"}>{lead.address_line}</span>
+                  {lead.neighbourhood ? <span className="text-muted-foreground">, {lead.neighbourhood}</span> : null}
+                </span>
+              </a>
+            )}
           </p>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Added by {lead.created_by === me.id ? "you" : owner} on {formatDate(lead.created_at)}
-          {session ? `, while knocking in ${session.neighbourhood}` : ""}.
-        </p>
-        <p className="text-sm text-muted-foreground">
-          <a href="#find-out" className="inline-flex min-h-11 items-center underline underline-offset-4" data-testid="completeness">
-            {completenessLabel(lead)}
-          </a>
-        </p>
-        {followUp ? (
-          <p className={followUp < today ? "text-base font-bold" : "text-base font-semibold"} data-testid="lead-next">
-            {followUpSentence(followUp, today)}
-          </p>
-        ) : null}
-        {liveMeeting && !justBooked && movedParam !== "1" ? (
-          <p className="text-base font-semibold" data-testid="lead-next">
-            <a href="#meetings" className="inline-flex min-h-11 items-center underline underline-offset-4">
-              {sentence(`Meeting ${timePhrase(liveMeeting.starts_at)}`)}
+          {lead.lat === null ? (
+            <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+              <p className="text-pretty">No map position yet.{canEdit ? " Pick the address from the suggestions in Edit lead." : ""}</p>
+              {canEdit ? <LeadPosition leadId={lead.id} /> : null}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground" data-testid="position-source">
+              Map position: {positionSourceText(lead.position_source, lead.position_accuracy_m)}.
+            </p>
+          )}
+          {contactShown ? (
+            <>
+              {lead.phone ? (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1" data-testid="lead-phone">
+                  <span className="text-base font-semibold tabular-nums">{formatPhone(lead.phone)}</span>
+                  <span className="flex gap-2">
+                    <Button asChild variant="outline" size="sm">
+                      <a href={`tel:${lead.phone}`}>
+                        <Phone aria-hidden="true" className="size-4" />
+                        Call
+                      </a>
+                    </Button>
+                    <Button asChild variant="outline" size="sm">
+                      <a href={`sms:${lead.phone}`}>
+                        <MessageSquare aria-hidden="true" className="size-4" />
+                        Text
+                      </a>
+                    </Button>
+                  </span>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No phone saved.</p>
+              )}
+              {lead.email ? (
+                <a
+                  href={`mailto:${lead.email}`}
+                  className="inline-flex min-h-11 max-w-full items-center truncate font-semibold underline-offset-4 hover:underline"
+                  data-testid="lead-email"
+                >
+                  <Mail aria-hidden="true" className="mr-1.5 size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{lead.email}</span>
+                </a>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-sm text-pretty text-muted-foreground" data-testid="contact-hidden">
+              Phone and email show only to this lead&apos;s own setter.
+            </p>
+          )}
+          <p className="text-sm text-muted-foreground">
+            Added by {lead.created_by === me.id ? "you" : owner} on {formatDate(lead.created_at)}
+            {session ? `, while knocking in ${session.neighbourhood}` : ""}.{" "}
+            <a href="#find-out" className="inline-flex min-h-11 items-center underline underline-offset-4" data-testid="completeness">
+              {completenessLabel(lead)}
             </a>
           </p>
-        ) : null}
-        {lostLine ? (
-          <p className="text-base font-semibold" data-testid="lead-next">
-            {lostLine}
-          </p>
-        ) : null}
-        {laterLine ? (
-          <p className="text-base text-pretty" data-testid="lead-next">
-            {laterLine}
-          </p>
-        ) : null}
-        {!canEdit ? (
-          <p role="status" className="rounded-md bg-muted px-3 py-2 text-sm">
-            Read only. This is {owner}&apos;s lead.
-          </p>
-        ) : null}
-        {justBooked ? (
-          <p role="status" className="rounded-md border border-primary px-3 py-2 text-sm font-semibold" data-testid="booked-notice">
-            {sentence(`Booked for ${formatMeetingTime(justBooked.starts_at)}`)} Confirm the time with the homeowner before you leave.
-          </p>
-        ) : null}
-        {movedParam === "1" && liveMeeting ? (
-          <p role="status" className="rounded-md border border-primary px-3 py-2 text-sm font-semibold">
-            {sentence(`Moved to ${formatMeetingTime(liveMeeting.starts_at)}`)}
-          </p>
-        ) : null}
-        {photosParam === "failed" ? (
-          <p role="alert" className="text-sm font-medium text-destructive">
-            The lead saved, but its photos didn&apos;t attach. Add them again below.
-          </p>
-        ) : null}
-        {canBook && bookParam === "1" ? <OpenBookingSheet leadId={lead.id} backToSession={fromParam === "session"} /> : null}
-        {(bookParam === "1" || photosParam === "failed") && lead.created_by === me.id ? <ClearLeadDraft userId={me.id} /> : null}
-        {/* Gold only for the next step: Book a meeting. Call and Edit are plain. */}
-        {canBook || lead.phone || canEdit ? (
-          <div className="grid grid-cols-2 gap-2 pt-1 sm:flex sm:flex-wrap">
-            {canBook ? <BookLeadButton leadId={lead.id} className="col-span-2 w-full sm:w-fit" /> : null}
-            {lead.phone ? (
-              <Button asChild variant="outline" className={canEdit ? "w-full sm:w-fit" : "col-span-2 w-full sm:w-fit"}>
-                <a href={`tel:${lead.phone}`}>Call {formatPhone(lead.phone)}</a>
-              </Button>
-            ) : null}
-            {canEdit ? (
-              <Button asChild variant="outline" className={lead.phone ? "w-full sm:w-fit" : "col-span-2 w-full sm:w-fit"}>
-                <Link href={`/app/leads/${lead.id}/edit`}>Edit lead</Link>
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
+          {/* Gold only for the next step: Book a meeting. Edit is plain. */}
+          {canBook || canEdit ? (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {canBook ? <BookLeadButton leadId={lead.id} className="w-full sm:w-fit" /> : null}
+              {canEdit ? (
+                <Button asChild variant="outline" className={canBook ? "w-full sm:w-fit" : "w-fit"}>
+                  <Link href={`/app/leads/${lead.id}/edit`}>Edit lead</Link>
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <AtAGlance>
+          <LeadStatusPanel
+            key={`${lead.updated_at}`}
+            leadId={lead.id}
+            stamp={lead.updated_at}
+            current={lead.status}
+            options={statusOptionList}
+            canChange={canEdit && !statusFromOutcome && canPickStatus(statusOptionList, lead.status)}
+            followUpOn={followUp}
+            lostReason={lead.lost_reason}
+            lostReasons={reasons}
+            today={today}
+            note={laterLine}
+            fromOutcome={statusFromOutcome}
+          />
+          {liveMeeting ? (
+            <GlanceRow label="Next meeting" testId="glance-meeting">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <a href="#meetings" className="inline-flex min-h-11 items-center font-semibold underline-offset-4 hover:underline">
+                  {sentence(timePhrase(liveMeeting.starts_at))}
+                </a>
+                {isOwner ? (
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={`/meeting/${lead.id}#start`}>Start</Link>
+                  </Button>
+                ) : null}
+              </div>
+              <p className="text-muted-foreground">
+                Booked by {liveMeeting.booked_by === me.id ? "you" : (names.get(liveMeeting.booked_by) ?? "someone")}
+              </p>
+            </GlanceRow>
+          ) : null}
+          {quoteGlance ? (
+            <GlanceRow label="Quote" testId="glance-quote">
+              <a href="#quote" className="inline-flex min-h-11 items-center font-semibold text-pretty underline-offset-4 hover:underline">
+                {quoteGlance.text}
+              </a>
+              {quoteGlance.note ? <p className={quoteGlance.accepted ? "font-semibold" : "text-muted-foreground"}>{quoteGlance.note}</p> : null}
+            </GlanceRow>
+          ) : null}
+          {linkGlance ? (
+            <GlanceRow label="Their link" testId="glance-link">
+              <p className={linkGlance.opened ? "font-semibold" : "text-muted-foreground"}>{linkGlance.text}</p>
+            </GlanceRow>
+          ) : null}
+          {siteVisitGlance ? (
+            <GlanceRow label="Site visit" testId="glance-site-visit">
+              <a href="#quote-outcome" className="inline-flex min-h-11 items-center font-semibold underline-offset-4 hover:underline">
+                {siteVisitGlance}
+              </a>
+            </GlanceRow>
+          ) : null}
+          {installGlance ? (
+            <GlanceRow label="Install" testId="glance-install">
+              <p className="font-semibold">{installGlance}</p>
+            </GlanceRow>
+          ) : null}
+          {everyoneGlance ? (
+            <GlanceRow label="Heads up" testId="glance-everyone">
+              <a href="#find-out" className="inline-flex min-h-11 items-center font-semibold text-pretty underline-offset-4 hover:underline">
+                {everyoneGlance}
+              </a>
+            </GlanceRow>
+          ) : null}
+          {stillToDo.length > 0 ? (
+            <GlanceRow label="To finish" testId="glance-to-finish">
+              <ToBeCompleted items={stillToDo} />
+            </GlanceRow>
+          ) : null}
+        </AtAGlance>
       </div>
 
-      {stillToDo.length > 0 ? <ToBeCompleted items={stillToDo} /> : null}
+      {!canEdit ? (
+        <p role="status" className="rounded-md bg-muted px-3 py-2 text-sm">
+          Read only. This is {owner}&apos;s lead.
+        </p>
+      ) : null}
+      {justBooked ? (
+        <p role="status" className="rounded-md border border-primary px-3 py-2 text-sm font-semibold" data-testid="booked-notice">
+          {sentence(`Booked for ${formatMeetingTime(justBooked.starts_at)}`)} Confirm the time with the homeowner before you leave.
+        </p>
+      ) : null}
+      {movedParam === "1" && liveMeeting ? (
+        <p role="status" className="rounded-md border border-primary px-3 py-2 text-sm font-semibold">
+          {sentence(`Moved to ${formatMeetingTime(liveMeeting.starts_at)}`)}
+        </p>
+      ) : null}
+      {photosParam === "failed" ? (
+        <p role="alert" className="text-sm font-medium text-destructive">
+          The lead saved, but its photos didn&apos;t attach. Add them again below.
+        </p>
+      ) : null}
+      {canBook && bookParam === "1" ? <OpenBookingSheet leadId={lead.id} backToSession={fromParam === "session"} /> : null}
+      {(bookParam === "1" || photosParam === "failed") && lead.created_by === me.id ? <ClearLeadDraft userId={me.id} /> : null}
 
       {quoteFirst ? quoteCards : null}
 
@@ -454,182 +600,158 @@ export default async function LeadPage({
       {quoteFirst ? null : quoteCards}
       <ScrollToHash />
 
-      {statusFromOutcome ? (
-        <Card data-testid="status-from-outcome">
+      {/* Round 21: short cards side by side on a wide screen. */}
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+        <Card id="find-out" className="scroll-mt-36">
           <CardHeader>
-            <CardTitle>Status</CardTitle>
+            <CardTitle>Find out</CardTitle>
+            <CardDescription>{completenessLabel(lead)}. Not collected doesn&apos;t count.</CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-1 text-sm">
-            <p className="text-pretty">
-              {STATUS_LABELS[lead.status]}. The quote&apos;s outcome sets this lead&apos;s status from here
-              {lead.status === "sold" ? ": Installed, Cancelled and Undo acceptance are on its card." : "."}
-            </p>
-            <a
-              href="#quote-outcome"
-              className="inline-flex min-h-11 w-fit items-center font-semibold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Go to the outcome
-            </a>
-          </CardContent>
-        </Card>
-      ) : canEdit && choices.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <StatusControl
-              key={`${lead.status}-${lead.follow_up_on ?? ""}`}
+          <CardContent className="flex flex-col gap-5">
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-[auto_1fr]" data-testid="find-out-answers">
+              {leadAnswerList(lead).map((item) => (
+                <Fragment key={item.key}>
+                  <dt className="text-muted-foreground">{item.question}</dt>
+                  <dd className={item.state === "answered" ? "font-semibold" : "text-muted-foreground"} data-state={item.state} data-question={item.key}>
+                    {item.state === "answered" ? item.answer : item.state === "not_collected" ? "Not collected" : "Not answered"}
+                  </dd>
+                </Fragment>
+              ))}
+            </dl>
+            {/* 2026-11-09: the soffit's own code from the RAL colour book, right
+                under its colour. Optional, never counted. */}
+            <SoffitCode
               leadId={lead.id}
-              current={lead.status}
-              choices={choices}
-              lostReasons={reasons}
-              followUpOn={lead.follow_up_on}
-              today={today}
+              userId={me.id}
+              blocks={soffitBlocks}
+              canEdit={canEdit}
+              ralNames={canEdit ? Object.fromEntries(ralNames) : {}}
             />
           </CardContent>
         </Card>
-      ) : null}
+        <div className="flex flex-col gap-4">
+          <Card data-testid="setter-notes">
+            <CardHeader>
+              <CardTitle>From the door</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* Round 3 (2026-11-05): the setter's optional notes. Internal: never in meeting mode.
+                  On a phone each label sits above its answer, since "What would
+                  make them say yes" would leave the answers a narrow column. */}
+              <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr] sm:gap-y-2">
+                <dt className="text-muted-foreground">{SETTER_READ_LABEL}</dt>
+                <dd className="mb-2 sm:mb-0" data-testid="setter-read">{setterReadLabel(lead.setter_read) ?? "Not noted"}</dd>
+                <dt className="text-muted-foreground">{HOT_BUTTONS_LABEL}</dt>
+                <dd className="text-pretty" data-testid="hot-buttons">{hotButtonsLabel(lead.hot_buttons) ?? "Not noted"}</dd>
+              </dl>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>House</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                <dt className="text-muted-foreground">House type</dt>
+                <dd>{labelFor(HOUSE_TYPE_OPTIONS, lead.house_type) || "Not noted"}</dd>
+                <dt className="text-muted-foreground">Came from</dt>
+                <dd>{labelFor(SOURCE_OPTIONS, lead.source)}</dd>
+              </dl>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
 
-      {canEdit ? (
-        <Card>
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+        {/* Round 6 (Keenan, 2026-11-07): every note on the lead in one place,
+            for Keenan to read before the meeting: the setter's notes, a note
+            on each answer, and the notes added on the timeline. Only the
+            lead's own setter and Keenan see them. */}
+        <Card id="notes" className="scroll-mt-36" data-testid="lead-notes">
           <CardHeader>
             <CardTitle>Notes</CardTitle>
           </CardHeader>
-          <CardContent>
-            <NoteForm leadId={lead.id} />
+          <CardContent className="flex flex-col gap-3 text-sm">
+            {!contactShown ? (
+              <p className="text-pretty text-muted-foreground" data-testid="notes-hidden">
+                Notes show only to this lead&apos;s own setter and Keenan.
+              </p>
+            ) : (
+              <>
+                {NOTE_KEYS.some((key) => leadNotes.answerNotes[key]) ? (
+                  <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[auto_1fr] sm:gap-y-2" data-testid="answer-notes">
+                    {NOTE_KEYS.filter((key) => leadNotes.answerNotes[key]).map((key) => (
+                      <Fragment key={key}>
+                        <dt className="text-muted-foreground">{NOTE_LABELS[key]}</dt>
+                        <dd className="mb-2 text-pretty whitespace-pre-wrap sm:mb-0" data-note={key}>
+                          {leadNotes.answerNotes[key]}
+                        </dd>
+                      </Fragment>
+                    ))}
+                  </dl>
+                ) : null}
+                {lead.notes ? (
+                  <p className="whitespace-pre-wrap" data-testid="setter-free-notes">
+                    {lead.notes}
+                  </p>
+                ) : null}
+                {timelineNotes.length > 0 ? (
+                  <ul className="flex flex-col gap-2" aria-label="Notes added later">
+                    {timelineNotes.map((event) => (
+                      <li key={event.id} className="border-l-2 border-border pl-3">
+                        <p className="whitespace-pre-wrap">{describeEvent(event, timelineRuns)}</p>
+                        <p className="text-muted-foreground">
+                          {event.actor_id === me.id ? "You" : (names.get(event.actor_id ?? "") ?? "Someone")}, {formatDateTime(event.created_at)}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {!NOTE_KEYS.some((key) => leadNotes.answerNotes[key]) && !lead.notes && timelineNotes.length === 0 ? (
+                  <p className="text-muted-foreground" data-testid="no-notes">
+                    No notes yet. A note on any answer, or one added on the timeline, shows here.
+                  </p>
+                ) : null}
+              </>
+            )}
+            {canEdit ? <NoteForm leadId={lead.id} /> : null}
           </CardContent>
         </Card>
-      ) : null}
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{lead.email ? "Address and email" : "Address"}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2 text-sm">
-          <p className={lead.address_to_come ? "text-base text-muted-foreground" : "text-base font-semibold"}>{lead.address_line}</p>
-          <p className="text-muted-foreground">
-            {[lead.neighbourhood, lead.city, lead.postal_code].filter(Boolean).join(", ")}
-          </p>
-          {/* A placeholder address has nothing to find on a map. */}
-          {lead.address_to_come && lead.lat === null ? null : (
-            <a
-              href={mapsLink(lead)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex min-h-11 w-fit items-center font-semibold underline underline-offset-4"
-            >
-              Open in Google Maps
-            </a>
-          )}
-          {lead.lat === null ? (
-            <p className="text-pretty text-muted-foreground">
-              No map position yet.
-              {canEdit ? " Edit the lead and pick the address from the suggestions to add one." : ""}
-            </p>
-          ) : (
-            <p className="text-muted-foreground" data-testid="position-source">
-              Map position: {positionSourceText(lead.position_source, lead.position_accuracy_m)}.
-            </p>
-          )}
-          {lead.lat === null && canEdit ? <LeadPosition leadId={lead.id} /> : null}
-          {lead.email ? (
-            <a
-              href={`mailto:${lead.email}`}
-              className="inline-flex min-h-11 w-fit items-center font-semibold underline underline-offset-4"
-            >
-              {lead.email}
-            </a>
-          ) : null}
-          {contactShown ? null : (
-            <p className="text-pretty text-muted-foreground" data-testid="contact-hidden">
-              Phone and email show only to this lead&apos;s own setter.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card id="find-out" className="scroll-mt-36">
-        <CardHeader>
-          <CardTitle>Find out</CardTitle>
-          <CardDescription>{completenessLabel(lead)}. Not collected doesn&apos;t count.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-5">
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-[auto_1fr]" data-testid="find-out-answers">
-            {leadAnswerList(lead).map((item) => (
-              <Fragment key={item.key}>
-                <dt className="text-muted-foreground">{item.question}</dt>
-                <dd className={item.state === "answered" ? "font-semibold" : "text-muted-foreground"} data-state={item.state} data-question={item.key}>
-                  {item.state === "answered" ? item.answer : item.state === "not_collected" ? "Not collected" : "Not answered"}
-                </dd>
-              </Fragment>
-            ))}
-          </dl>
-          {/* 2026-11-09: the soffit's own code from the RAL colour book, right
-              under its colour. Optional, never counted. */}
-          <SoffitCode
-            leadId={lead.id}
-            userId={me.id}
-            blocks={soffitBlocks}
-            canEdit={canEdit}
-            ralNames={canEdit ? Object.fromEntries(ralNames) : {}}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Round 6 (Keenan, 2026-11-07): every note on the lead in one place,
-          for Keenan to read before the meeting: the setter's notes, a note
-          on each answer, and the notes added on the timeline. Only the
-          lead's own setter and Keenan see them. */}
-      <Card id="notes" className="scroll-mt-36" data-testid="lead-notes">
-        <CardHeader>
-          <CardTitle>Notes</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 text-sm">
-          {!contactShown ? (
-            <p className="text-pretty text-muted-foreground" data-testid="notes-hidden">
-              Notes show only to this lead&apos;s own setter and Keenan.
-            </p>
-          ) : (
-            <>
-              {NOTE_KEYS.some((key) => leadNotes.answerNotes[key]) ? (
-                <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[auto_1fr] sm:gap-y-2" data-testid="answer-notes">
-                  {NOTE_KEYS.filter((key) => leadNotes.answerNotes[key]).map((key) => (
-                    <Fragment key={key}>
-                      <dt className="text-muted-foreground">{NOTE_LABELS[key]}</dt>
-                      <dd className="mb-2 text-pretty whitespace-pre-wrap sm:mb-0" data-note={key}>
-                        {leadNotes.answerNotes[key]}
-                      </dd>
-                    </Fragment>
-                  ))}
-                </dl>
+        <Card id="track-colour" className="scroll-mt-36">
+          <CardHeader>
+            <CardTitle>Track colour</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 text-sm">
+            <div data-testid="track-colour">
+              <p className={trackColour.kind === "none" ? "text-muted-foreground" : "text-base font-semibold"}>
+                {trackColour.kind === "none" ? sentence(trackColourText(trackColour)) : trackColourText(trackColour)}
+                {trackColour.kind === "list" && trackColour.retired ? " (retired from the list)" : ""}
+              </p>
+              {needsPowderCoating(trackColour) ? (
+                <p className="font-semibold">Needs powder coating.</p>
               ) : null}
-              {lead.notes ? (
-                <p className="whitespace-pre-wrap" data-testid="setter-free-notes">
-                  {lead.notes}
-                </p>
-              ) : null}
-              {timelineNotes.length > 0 ? (
-                <ul className="flex flex-col gap-2" aria-label="Notes added later">
-                  {timelineNotes.map((event) => (
-                    <li key={event.id} className="border-l-2 border-border pl-3">
-                      <p className="whitespace-pre-wrap">{describeEvent(event, timelineRuns)}</p>
-                      <p className="text-muted-foreground">
-                        {event.actor_id === me.id ? "You" : (names.get(event.actor_id ?? "") ?? "Someone")}, {formatDateTime(event.created_at)}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              {!NOTE_KEYS.some((key) => leadNotes.answerNotes[key]) && !lead.notes && timelineNotes.length === 0 ? (
-                <p className="text-muted-foreground" data-testid="no-notes">
-                  No notes yet. A note on any answer, or one added on the timeline, shows here.
-                </p>
-              ) : null}
-            </>
-          )}
-        </CardContent>
-      </Card>
+              <p className="text-muted-foreground">
+                White is the only stock track colour.{isOwner ? "" : " Keenan sets the track colour."}
+              </p>
+            </div>
+            {isOwner ? (
+              <TrackColourForm
+                // Use for the track (2026-11-09) can set the colour from the
+                // soffit code: the form starts again from what is saved then,
+                // and keeps its "Saved." after its own save.
+                key={trackFormKey(soffitBlocks)}
+                leadId={lead.id}
+                options={trackOptions}
+                current={{
+                  choice: lead.track_ral_code ? "custom" : lead.track_colour_id,
+                  ralCode: lead.track_ral_code,
+                }}
+                ralNames={Object.fromEntries(ralNames)}
+              />
+            ) : null}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card id="photos" className="scroll-mt-36">
         <CardHeader>
@@ -661,71 +783,11 @@ export default async function LeadPage({
         </CardContent>
       </Card>
 
-      <Card data-testid="setter-notes">
-        <CardHeader>
-          <CardTitle>From the door</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {/* Round 3 (2026-11-05): the setter's optional notes. Internal: never in meeting mode.
-              On a phone each label sits above its answer, since "What would
-              make them say yes" would leave the answers a narrow column. */}
-          <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr] sm:gap-y-2">
-            <dt className="text-muted-foreground">{SETTER_READ_LABEL}</dt>
-            <dd className="mb-2 sm:mb-0" data-testid="setter-read">{setterReadLabel(lead.setter_read) ?? "Not noted"}</dd>
-            <dt className="text-muted-foreground">{HOT_BUTTONS_LABEL}</dt>
-            <dd className="text-pretty" data-testid="hot-buttons">{hotButtonsLabel(lead.hot_buttons) ?? "Not noted"}</dd>
-          </dl>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>House</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-            <dt className="text-muted-foreground">House type</dt>
-            <dd>{labelFor(HOUSE_TYPE_OPTIONS, lead.house_type) || "Not noted"}</dd>
-            <dt className="text-muted-foreground">Came from</dt>
-            <dd>{labelFor(SOURCE_OPTIONS, lead.source)}</dd>
-          </dl>
-        </CardContent>
-      </Card>
 
-      <Card id="track-colour" className="scroll-mt-36">
-        <CardHeader>
-          <CardTitle>Track colour</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4 text-sm">
-          <div data-testid="track-colour">
-            <p className={trackColour.kind === "none" ? "text-muted-foreground" : "text-base font-semibold"}>
-              {trackColour.kind === "none" ? sentence(trackColourText(trackColour)) : trackColourText(trackColour)}
-              {trackColour.kind === "list" && trackColour.retired ? " (retired from the list)" : ""}
-            </p>
-            {needsPowderCoating(trackColour) ? (
-              <p className="font-semibold">Needs powder coating.</p>
-            ) : null}
-            <p className="text-muted-foreground">
-              White is the only stock track colour.{isOwner ? "" : " Keenan sets the track colour."}
-            </p>
-          </div>
-          {isOwner ? (
-            <TrackColourForm
-              // Use for the track (2026-11-09) can set the colour from the
-              // soffit code: the form starts again from what is saved then,
-              // and keeps its "Saved." after its own save.
-              key={trackFormKey(soffitBlocks)}
-              leadId={lead.id}
-              options={trackOptions}
-              current={{
-                choice: lead.track_ral_code ? "custom" : lead.track_colour_id,
-                ralCode: lead.track_ral_code,
-              }}
-              ralNames={Object.fromEntries(ralNames)}
-            />
-          ) : null}
-        </CardContent>
-      </Card>
+
+
+
 
       <Card>
         <CardHeader>
