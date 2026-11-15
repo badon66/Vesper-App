@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DialogPanel } from "@/components/ui/dialog-panel";
+import { clearOfflineCopies } from "@/lib/offline-copies";
 
 // Sign out asks once (2026-11-03): it sits in the header on every screen,
 // and a setter can't reset their own password, so a stray tap shouldn't
@@ -30,7 +31,14 @@ export function SignOutButton({
         testId="sign-out"
         actions={
           <>
-            <form action={action}>
+            {/* Round 22: the offline copies come off before the session
+                ends, so the device keeps no customer's pages or photos. */}
+            <form
+              action={async () => {
+                await clearOfflineCopies();
+                await action();
+              }}
+            >
               <Button type="submit" variant="outline">
                 Sign out
               </Button>

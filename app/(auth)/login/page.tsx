@@ -7,6 +7,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { LoginForm } from "./login-form";
+import { ClearOfflineCopies } from "@/components/clear-offline-copies";
 
 export const metadata: Metadata = {
   title: "Sign in",
@@ -44,6 +45,7 @@ export default async function LoginPage({
             {notice}
           </p>
         ) : null}
+        <ClearOfflineCopies />
         <LoginForm next={next} />
         <p className="text-sm text-muted-foreground">
           Forgot your password? Ask Keenan.

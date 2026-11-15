@@ -36,6 +36,7 @@ import {
 } from "@/lib/leads/extras";
 import { defaultsFromDraft, draftFromFormData, draftHasContent, draftKey, draftPhotoPaths, readDraft, type LeadDraft } from "@/lib/leads/draft";
 import { timed } from "@/lib/answer-within";
+import { hasSignal } from "@/lib/signal";
 import { takeHandOff } from "@/lib/leads/hand-off";
 import { QUESTION_LABELS, type AnswerNotes, type CountedQuestion } from "@/lib/leads/questions";
 import { ADDRESS_TO_COME, NAME_TO_COME } from "@/lib/leads/to-finish";
@@ -87,6 +88,12 @@ const initialState: LeadFormState = {};
 // the first try made.
 const NO_ANSWER_NEW = "No answer, so it may have saved. Tap Save again once you have signal: it won't make a copy.";
 const NO_ANSWER_EDIT = "No answer, so it may have saved. Tap Save again once you have signal.";
+// Round 22 (Keenan, 2026-11-15): with no signal the form stays as typed and
+// says so plainly, like Start a meeting.
+const NO_SIGNAL_NEW = "No signal, so it isn't saved yet. Everything you typed is still here: tap Save again once you have signal. It won't make a copy.";
+const NO_SIGNAL_EDIT = "No signal, so it isn't saved yet. Everything you typed is still here: tap Save again once you have signal.";
+const SAVED_NO_SIGNAL_NEW = "Saved, but there's no signal to open it. Everything you typed is still here: tap Save again once you have signal. It won't make a copy.";
+const SAVED_NO_SIGNAL_EDIT = "Saved, but there's no signal to open the lead. Tap Save again once you have signal.";
 
 // Next.js's own redirect (or another of its navigations), told apart from a
 // real failure by its own check.
@@ -359,14 +366,35 @@ export function LeadForm({
   // so. Next.js ends a save with a redirect, which arrives as an error while
   // the router is already on its way to where the save lands, so the form
   // stays on "Saving" until the page changes.
+  //
+  // Round 22 (Keenan, 2026-11-15): with no signal at all nothing is sent.
+  // A save that worked comes back with where to go; the form checks for
+  // signal before going, because the next page may need files the phone
+  // hasn't got yet, and without signal it would show "This page couldn't
+  // load" with everything typed gone. Without signal the form stays as it
+  // is, says so, and Save again returns the same lead (its save key).
   async function send(formData: FormData) {
     setPending(true);
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setState({ error: mode === "create" ? NO_SIGNAL_NEW : NO_SIGNAL_EDIT });
+      setPending(false);
+      return;
+    }
     let next: LeadFormState;
     try {
       next = await timed(action(state, formData));
     } catch (error) {
       if (isNextNavigation(error)) return;
-      next = { error: mode === "create" ? NO_ANSWER_NEW : NO_ANSWER_EDIT };
+      const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+      next = { error: offline ? (mode === "create" ? NO_SIGNAL_NEW : NO_SIGNAL_EDIT) : mode === "create" ? NO_ANSWER_NEW : NO_ANSWER_EDIT };
+    }
+    if (next.href) {
+      if (await hasSignal()) {
+        // Saving stays up until the page changes.
+        router.push(next.href);
+        return;
+      }
+      next = { error: mode === "create" ? SAVED_NO_SIGNAL_NEW : SAVED_NO_SIGNAL_EDIT };
     }
     setState(next);
     setPending(false);
