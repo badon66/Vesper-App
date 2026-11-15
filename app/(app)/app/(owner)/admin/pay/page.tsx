@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { requireProfile } from "@/lib/auth/profile";
+import { NotForYourRole } from "@/components/not-for-your-role";
 import Link from "next/link";
 import { MarkPaidForm } from "@/components/pay/mark-paid-form";
 import { commissionFor, commissionQuoteFromRow } from "@/lib/pay/commission";
@@ -24,6 +26,10 @@ const VOID_DAYS = 30;
 // reason. He ticks the owed lines he has paid and marks them paid in one
 // batch. The app records pay; it never moves money.
 export default async function PayPage() {
+  // Round 22: the page checks the role itself, before it reads anything;
+  // the owner layout alone doesn't stop a page from running.
+  const me = await requireProfile();
+  if (me.role !== "owner") return <NotForYourRole />;
   const supabase = await createClient();
   const { data: rows } = await supabase
     .from("earnings")

@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { requireProfile } from "@/lib/auth/profile";
+import { NotForYourRole } from "@/components/not-for-your-role";
 import Link from "next/link";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -30,7 +32,11 @@ const sections = [
   },
 ];
 
-export default function AdminPage() {
+export default async function AdminPage() {
+  // Round 22: the page checks the role itself, before it reads anything;
+  // the owner layout alone doesn't stop a page from running.
+  const me = await requireProfile();
+  if (me.role !== "owner") return <NotForYourRole />;
   return (
     <div className="flex flex-col gap-6">
       <h1 className="text-2xl font-bold">Admin</h1>

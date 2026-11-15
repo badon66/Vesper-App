@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { NotForYourRole } from "@/components/not-for-your-role";
 import { RestoreLeadButton } from "@/components/leads/restore-lead-button";
 import { requireProfile } from "@/lib/auth/profile";
 import { purgeExpiredLeads } from "@/lib/leads/purge";
@@ -27,7 +28,7 @@ type DeletedLead = {
 // else); under View as the viewed person's role applies, so it never shows.
 export default async function DeletedPage() {
   const me = await requireProfile();
-  if (me.role !== "owner") return null;
+  if (me.role !== "owner") return <NotForYourRole />;
   // Leads past their 30 days go for good first, so the list is exact.
   await purgeExpiredLeads().catch(() => 0);
   const supabase = await createClient();
