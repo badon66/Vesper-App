@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import {
   NotAllowedError,
@@ -30,9 +31,13 @@ import { calgaryToday, formatDate } from "@/lib/time";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 import { Constants } from "@/types/database";
 
-// Round 22: a save that worked says where to go next (href) instead of
-// sending the phone there itself, so the form can check for signal first:
-// with none, the form stays as typed and Save again returns the same lead.
+// Round 22: a new lead's save that worked says where to go next (href)
+// instead of sending the phone there itself, so the form can check for
+// signal first: with none, the form stays as typed and Save again returns
+// the same lead. Edit lead still moves on from the server: the edit page is
+// often opened on a field (#lead-phone), and Next.js's router, sent on from
+// the phone, would remember it with that # and open the next field as
+// "#lead-phone#lead-address".
 export type LeadFormState = { error?: string; errors?: LeadFormErrors; href?: string };
 export type SimpleState = { ok?: boolean; error?: string; changed?: boolean };
 export type DuplicateLead = {
@@ -175,7 +180,7 @@ export async function updateLead(
 
   revalidatePath("/app/leads");
   revalidatePath(`/app/leads/${id.data}`);
-  return { href: `/app/leads/${id.data}` };
+  redirect(`/app/leads/${id.data}`);
 }
 
 const statusSchema = z.object({

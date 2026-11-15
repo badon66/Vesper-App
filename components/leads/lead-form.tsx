@@ -96,8 +96,9 @@ const NO_SIGNAL_EDIT = "No signal, so it isn't saved yet. Everything you typed i
 // may or may not have landed.
 const LOST_SIGNAL_NEW = "The signal dropped, so it may not have saved. Everything you typed is still here: tap Save again once you have signal. It won't make a copy.";
 const LOST_SIGNAL_EDIT = "The signal dropped, so it may not have saved. Everything you typed is still here: tap Save again once you have signal.";
+// Only New lead comes back with where to go (Edit lead still moves on from
+// the server; see LeadFormState).
 const SAVED_NO_SIGNAL_NEW = "Saved, but there's no signal to open it. Everything you typed is still here: tap Save again once you have signal. It won't make a copy.";
-const SAVED_NO_SIGNAL_EDIT = "Saved, but there's no signal to open the lead. Tap Save again once you have signal.";
 
 // Next.js's own redirect (or another of its navigations), told apart from a
 // real failure by its own check.
@@ -372,8 +373,8 @@ export function LeadForm({
   // stays on "Saving" until the page changes.
   //
   // Round 22 (Keenan, 2026-11-15): with no signal at all nothing is sent.
-  // A save that worked comes back with where to go; the form checks for
-  // signal before going, because the next page may need files the phone
+  // A new lead's save that worked comes back with where to go; the form
+  // checks for signal before going, because the next page may need files the phone
   // hasn't got yet, and without signal it would show "This page couldn't
   // load" with everything typed gone. Without signal the form stays as it
   // is, says so, and Save again returns the same lead (its save key).
@@ -398,7 +399,7 @@ export function LeadForm({
         router.push(next.href);
         return;
       }
-      next = { error: mode === "create" ? SAVED_NO_SIGNAL_NEW : SAVED_NO_SIGNAL_EDIT };
+      next = { error: SAVED_NO_SIGNAL_NEW };
     }
     setState(next);
     setPending(false);
