@@ -10,13 +10,17 @@ import { Button } from "@/components/ui/button";
 // with its tabs, and says plainly what happened. Nothing typed is lost:
 // New lead and the booking sheet keep what was entered on the phone, and a
 // save that worked stands. Try again reloads the page once there's signal.
+// The errors a missing signal causes: a page's files that didn't arrive, or
+// a request that never got out.
+const NO_SIGNAL = /ChunkLoadError|Loading (CSS )?chunk|Failed to fetch|NetworkError|Load failed|network error/i;
+
 export default function AppError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   const router = useRouter();
   const [busy, start] = useTransition();
   const [offline, setOffline] = useState(false);
 
   useEffect(() => {
-    const check = () => setOffline(navigator.onLine === false || /chunk|fetch|network|load/i.test(error.message));
+    const check = () => setOffline(navigator.onLine === false || error.name === "ChunkLoadError" || NO_SIGNAL.test(error.message));
     check();
     window.addEventListener("online", check);
     window.addEventListener("offline", check);
