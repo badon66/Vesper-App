@@ -498,10 +498,14 @@ describe("Book my install on an offer", () => {
 
     const requested = (await events(leadA)).filter((event) => event.type === "install_requested");
     expect(requested).toEqual([
-      { type: "install_requested", actor_id: null, payload: { option: "Lower level", runs: ["Front", "Garage"] } },
-      { type: "install_requested", actor_id: null, payload: { option: "Full wrap", runs: ["Front", "Garage", "Upper front"] } },
+      // Round 19: the booked option's positions too, so the lead page names its lines (never a price).
+      { type: "install_requested", actor_id: null, payload: { option: "Lower level", runs: ["Front", "Garage"], positions: [0, 1] } },
+      { type: "install_requested", actor_id: null, payload: { option: "Full wrap", runs: ["Front", "Garage", "Upper front"], positions: [0, 1, 2] } },
     ]);
-    expect(JSON.stringify(requested.map((event) => event.payload))).not.toMatch(/\$|\d/);
+    // No amount anywhere; the positions are the only numbers (round 19).
+    expect(
+      JSON.stringify(requested.map((event) => ({ ...(event.payload as Record<string, unknown>), positions: undefined }))),
+    ).not.toMatch(/\$|\d/);
 
     // Never an acceptance, a commission or a change to the quote or the lead.
     expect(await quoteRow(quoteA)).toEqual(quoteBefore);

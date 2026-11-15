@@ -202,8 +202,17 @@ describe("an evening with its own schedule", () => {
     expect(rows.map((row) => row.starts_at)).toEqual([at(day, "16:00"), at(day, "16:40"), at(day, "17:20")]);
     expect(rows.every((row) => row.state === "open")).toBe(true);
 
-    // A time from the usual template is no longer one of the evening's times.
-    const usual = await hold(users.a, at(day, settings.meeting_start.slice(0, 5)));
+    // A time from the usual template is no longer one of the evening's times
+    // (one the evening doesn't share: Settings may start at 4:00 pm too).
+    const own = ["16:00", "16:40", "17:20"];
+    const [startHour, startMinute] = settings.meeting_start.slice(0, 5).split(":").map(Number);
+    const usualTimes = Array.from({ length: settings.meeting_slot_count }, (_, i) => {
+      const minutes = startHour * 60 + startMinute + i * settings.meeting_slot_minutes;
+      return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+    });
+    const elsewhere = usualTimes.find((time) => !own.includes(time));
+    expect(elsewhere).toBeTruthy();
+    const usual = await hold(users.a, at(day, elsewhere as string));
     expect(hintOf(usual.error)).toBe("not_a_slot");
 
     const lead = await readyLead(users.a);
