@@ -111,7 +111,7 @@ export function LeadStatusPanel({
             setPending(null);
             save(next);
           }}
-          className="h-11 w-full max-w-64 rounded-md border border-border bg-background px-3 text-base font-semibold disabled:opacity-100"
+          className="h-11 w-full max-w-64 rounded-md border border-border bg-background px-3 text-base font-semibold disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-100"
           data-testid="status-select"
         >
           {options.map((option) => (
