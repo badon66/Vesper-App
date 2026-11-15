@@ -96,7 +96,7 @@ describe("Notes on a lead", () => {
   });
 
   it("lead_notes is read only", async () => {
-    const { error } = await people.a.client.from("lead_notes").update({ notes: "changed" }).eq("lead_id", leadId);
+    const { error } = await people.a.client.from("lead_notes").update({ notes: "changed" } as never).eq("lead_id", leadId);
     expect(error).not.toBeNull();
     const { data } = await admin.from("leads").select("notes").eq("id", leadId).single();
     expect(data?.notes).toBe("Setter's own notes");

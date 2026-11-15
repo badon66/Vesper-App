@@ -31,7 +31,14 @@ import { calgaryToday, formatDate } from "@/lib/time";
 import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 import { Constants } from "@/types/database";
 
-export type LeadFormState = { error?: string; errors?: LeadFormErrors };
+// Round 22: a new lead's save that worked says where to go next (href)
+// instead of sending the phone there itself, so the form can check for
+// signal first: with none, the form stays as typed and Save again returns
+// the same lead. Edit lead still moves on from the server: the edit page is
+// often opened on a field (#lead-phone), and Next.js's router, sent on from
+// the phone, would remember it with that # and open the next field as
+// "#lead-phone#lead-address".
+export type LeadFormState = { error?: string; errors?: LeadFormErrors; href?: string };
 export type SimpleState = { ok?: boolean; error?: string; changed?: boolean };
 export type DuplicateLead = {
   id: string;
@@ -137,13 +144,13 @@ export async function createLead(
   // sheet for it, on the times, skipping everything already filled in.
   // While knocking, the sheet goes back to Session once it's booked.
   if (formData.get("intent") === "book") {
-    redirect(`/app/leads/${lead.id}?book=1${photosFailed ? "&photos=failed" : ""}${session ? "&from=session" : ""}`);
+    return { href: `/app/leads/${lead.id}?book=1${photosFailed ? "&photos=failed" : ""}${session ? "&from=session" : ""}` };
   }
-  if (photosFailed) redirect(`/app/leads/${lead.id}?photos=failed`);
+  if (photosFailed) return { href: `/app/leads/${lead.id}?photos=failed` };
   // While someone is knocking, the next thing is the next door: back to
   // Session and its counters (Keenan, 2026-11-05), for Keenan too.
   // Otherwise to Leads.
-  redirect(session ? `/app/session?added=${lead.id}` : `/app/leads?added=${lead.id}`);
+  return { href: session ? `/app/session?added=${lead.id}` : `/app/leads?added=${lead.id}` };
 }
 
 export async function updateLead(

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { NotForYourRole } from "@/components/not-for-your-role";
 import {
   Table,
   TableBody,
@@ -19,7 +20,10 @@ export const metadata: Metadata = {
 };
 
 export default async function PeoplePage() {
+  // Round 22: the page checks the role itself, before it reads anything;
+  // the owner layout alone doesn't stop a page from running.
   const me = await requireProfile();
+  if (me.role !== "owner") return <NotForYourRole />;
   const supabase = await createClient();
   const { data: people, error } = await supabase
     .from("profiles")

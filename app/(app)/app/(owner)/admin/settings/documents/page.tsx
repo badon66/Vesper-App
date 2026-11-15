@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { requireProfile } from "@/lib/auth/profile";
+import { NotForYourRole } from "@/components/not-for-your-role";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { LINK_DOCUMENTS_BUCKET, documentFacts } from "@/lib/quote-link/documents";
@@ -14,6 +16,10 @@ import { AgreementTextForm, StandardDocuments } from "./documents-editor";
 export const metadata: Metadata = { title: "Documents" };
 
 export default async function DocumentsSettingsPage() {
+  // Round 22: the page checks the role itself, before it reads anything;
+  // the owner layout alone doesn't stop a page from running.
+  const me = await requireProfile();
+  if (me.role !== "owner") return <NotForYourRole />;
   const supabase = await createClient();
   const [{ data: rows }, { data: settings }] = await Promise.all([
     supabase

@@ -84,6 +84,14 @@ async function open(page, path) {
   await page.goto(`${base}${path}`);
   await settle(page);
 }
+// Round 22: a lead's name answers taps only once the page's script has taken
+// over (data-live); press it only then, so a slow page can't pass for a
+// broken press and hold.
+async function liveName(page, leadId) {
+  const name = page.locator(`[data-testid="quick-edit-name"][data-lead="${leadId}"][data-live="true"]`);
+  await name.waitFor({ timeout: 20000 }).catch(() => {});
+  return name;
+}
 async function signIn(page, person) {
   await open(page, "/login");
   await page.fill("#email", person.email);
@@ -284,6 +292,7 @@ try {
     await signIn(page, people.a);
     await open(page, `/app/leads?who=everyone&q=${STREET}`);
     const name = page.locator(`[data-testid="quick-edit-name"][data-lead="${quick}"]`);
+    await liveName(page, quick);
     check("setter's own lead's name carries the quick edit", (await name.count()) === 1);
     check("another setter's lead's name doesn't", (await page.locator(`[data-testid="quick-edit-name"][data-lead="${other}"]`).count()) === 0);
     const touch = await name.evaluate((el) => getComputedStyle(el).touchAction).catch(() => "");
@@ -325,14 +334,28 @@ try {
     );
 
     // Press and hold, then someone else's change lands before Save.
-    const box = await name.boundingBox();
+    // Round 22: on a freshly opened list (the save above refreshes it, and a
+    // refresh landing mid-hold redraws the name and ends the hold), with the
+    // name live, and the finger held down until the pop-up shows (it opens
+    // at half a second) rather than for a fixed time.
+    await open(page, `/app/leads?who=everyone&q=${STREET}`);
+    const held = await liveName(page, quick);
+    const box = await held.boundingBox();
     const x = box.x + box.width / 2;
     const y = box.y + box.height / 2;
-    await name.dispatchEvent("pointerdown", { pointerType: "touch", clientX: x, clientY: y, isPrimary: true, button: 0 });
-    await page.waitForTimeout(700);
-    await name.dispatchEvent("pointerup", { pointerType: "touch", clientX: x, clientY: y, isPrimary: true, button: 0 });
+    const touch0 = { pointerType: "touch", pointerId: 7, clientX: x, clientY: y, isPrimary: true, button: 0 };
+    const pressedAt = Date.now();
+    await held.dispatchEvent("pointerdown", touch0);
+    // The pop-up opens at the half second, then loads its fields.
+    await dialog.waitFor({ timeout: 10000 }).catch(() => {});
+    const heldFor = Date.now() - pressedAt;
+    await held.dispatchEvent("pointerup", touch0);
     await dialog.getByTestId("quick-edit-form").waitFor({ timeout: 15000 }).catch(() => {});
-    check("press and hold opens it too", await dialog.getByTestId("quick-edit-form").isVisible().catch(() => false));
+    check(
+      "press and hold opens it too (and not before the half second)",
+      (await dialog.getByTestId("quick-edit-form").isVisible().catch(() => false)) && heldFor >= 450,
+      `opened at ${heldFor} ms`,
+    );
     await admin.from("leads").update({ last_name: "Changed elsewhere" }).eq("id", quick);
     await dialog.getByLabel("Last name").fill("Mine");
     await dialog.getByTestId("quick-edit-save").click();
@@ -353,6 +376,7 @@ try {
     // An overdue lead (its follow-up day passed) still saves other changes.
     await admin.from("leads").update({ follow_up_on: addDays(calgaryDay(), -2) }).eq("id", quick);
     await open(page, `/app/leads?who=everyone&q=${STREET}`);
+    await liveName(page, quick);
     await name.tap();
     await page.waitForTimeout(90);
     await name.tap();
@@ -363,6 +387,8 @@ try {
     const { data: overdue } = await admin.from("leads").select("email, follow_up_on").eq("id", quick).single();
     check("an overdue lead keeps its day and still saves another change", overdue?.email === `overdue-${stamp}@example.com` && overdue?.follow_up_on === addDays(calgaryDay(), -2), JSON.stringify(overdue));
 
+    await settle(page);
+    await liveName(page, quick);
     await name.tap();
     await page.waitForURL(`**/app/leads/${quick}`, { timeout: 15000 }).catch(() => {});
     check("a single tap on the name still opens the lead", page.url().endsWith(`/app/leads/${quick}`));
@@ -382,7 +408,7 @@ try {
 
   // Quick edit as Keenan: the Setter picker, then Cancel.
   await open(page, `/app/leads?q=${STREET}`);
-  const ownerName = page.locator(`[data-testid="quick-edit-name"][data-lead="${other}"]`);
+  const ownerName = await liveName(page, other);
   await ownerName.dblclick();
   const ownerDialog = page.getByTestId("quick-edit");
   await ownerDialog.getByTestId("quick-edit-form").waitFor({ timeout: 15000 }).catch(() => {});
@@ -518,7 +544,7 @@ try {
   await viewPage.waitForURL("**/app", { timeout: 30000 });
   await settle(viewPage);
   await open(viewPage, `/app/leads?q=${STREET}`);
-  const viewName = viewPage.locator(`[data-testid="quick-edit-name"][data-lead="${quick}"]`);
+  const viewName = await liveName(viewPage, quick);
   const viewBefore = (await leadRow(quick)).updated_at;
   await viewName.dblclick();
   const viewDialog = viewPage.getByTestId("quick-edit");

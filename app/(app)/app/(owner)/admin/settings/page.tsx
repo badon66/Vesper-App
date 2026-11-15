@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import type { Metadata } from "next";
+import { NotForYourRole } from "@/components/not-for-your-role";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireProfile } from "@/lib/auth/profile";
@@ -20,6 +21,10 @@ export const metadata: Metadata = {
 };
 
 export default async function SettingsPage() {
+  // Round 22: the page checks the role itself, before it reads anything;
+  // the owner layout alone doesn't stop a page from running.
+  const me = await requireProfile();
+  if (me.role !== "owner") return <NotForYourRole />;
   const supabase = await createClient();
   const [{ data: settings, error }, { data: colours }, { data: ral }, { data: deckPhotos }, devices, { count: documentCount }] = await Promise.all([
     supabase.from("settings").select("*").eq("id", 1).single(),
@@ -27,7 +32,7 @@ export default async function SettingsPage() {
     supabase.from("ral_classic_colours").select("code, name"),
     supabase.from("deck_photos").select("slot"),
     // Keenan's own devices, with notifications on.
-    devicesFor({ profile: await requireProfile(), viewingAs: false }),
+    devicesFor({ profile: me, viewingAs: false }),
     // Take 3: the standard documents for quote links.
     supabase.from("link_documents").select("id", { count: "exact", head: true }).is("retired_at", null),
   ]);

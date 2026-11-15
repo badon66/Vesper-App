@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { loadQuickEdit, saveQuickEdit, type QuickEditData } from "@/app/(app)/app/leads/quick-edit-actions";
 import { AddressField, type AddressFieldValue } from "@/components/leads/address-field";
@@ -29,6 +29,8 @@ import { VIEW_AS_READ_ONLY } from "@/lib/view-as";
 const DOUBLE_TAP_MS = 280;
 const HOLD_MS = 500;
 
+const noSubscribe = () => () => {};
+
 export function QuickEditName({
   leadId,
   name,
@@ -48,6 +50,10 @@ export function QuickEditName({
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const held = useRef(false);
   const start = useRef<{ x: number; y: number } | null>(null);
+  // Round 22: "live" once the name answers taps (the page's script has
+  // taken over), so a test presses it only then, never on a name the page
+  // is still drawing.
+  const live = useSyncExternalStore(noSubscribe, () => true, () => false);
 
   useEffect(
     () => () => {
@@ -70,6 +76,7 @@ export function QuickEditName({
         className={cn("cursor-pointer touch-manipulation select-none [-webkit-touch-callout:none]", className)}
         data-testid="quick-edit-name"
         data-lead={leadId}
+        data-live={live ? "true" : undefined}
         title="Double tap to edit"
         onClick={(event) => {
           // Cmd or Ctrl click, middle click and the keyboard open the link

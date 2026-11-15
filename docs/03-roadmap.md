@@ -313,6 +313,14 @@ Six parts on the `round18` branch. Additive schema changes in four migrations (`
 - [x] Tighter, even spacing in and between the cards; Find out beside From the door and House, Notes beside Track colour, photos four across on a wide screen; every tap target at least 44 px.
 - [x] Unit tests and a new walk-through (`tests/live/round21-walkthrough.mjs`: iPad both ways and a phone, a full lead and a nearly empty one), and the walk-throughs that visit the lead page.
 
+### Round 22: hardening, no new features (Keenan, 2026-11-15; merges on green outside the knocking window, no preview)
+- [x] New lead never loses what was typed: with no signal, with the signal dropping mid-save, or with the save landing just before the signal goes, the form stays as typed and says so plainly; Save again returns the same lead (its save key), never a copy. Never "This page couldn't load".
+- [x] Every owner page (the Admin hub, People, Settings, Documents, Pay, Deleted, plus Meetings, prep and meeting mode, which already did) checks the role itself before it reads anything; every owner-only server action already checked it first. A setter, and View as a setter, gets "Not for your role" and none of the owner's data from every page, as a page and as an in-app request; every owner-only action refuses a setter and writes nothing.
+- [x] Signing out (and the sign-in screen) clears the cached meeting pages and photos and the meeting drafts.
+- [x] Supabase's advisors: the five security errors fixed (the views run as the reader through private functions); three helpers no longer run as their owner; nine policies read `auth.uid()` once per query; overlapping policies merged to one per action. Two additive migrations. Left on purpose: the customer link's and the app's own database functions (warnings by design), leaked password protection (Keenan's call in the dashboard), and three information-only notes.
+- [x] Round 20's press and hold step waits for the name to answer taps and holds until the pop-up shows, on a freshly opened list.
+- [x] Unit tests, the database suite (with `tests/rls/round22.test.ts`), a new walk-through (`tests/live/round22-walkthrough.mjs`) and the walk-throughs these touch.
+
 ## M4: Pipeline board and lead detail (iPad and desktop)
 **Parked (Keenan, 2026-11-02).** Not started or planned until Keenan says otherwise.
 - [ ] The board is a Board view inside Leads for the owner on iPad and desktop; phones keep the list
