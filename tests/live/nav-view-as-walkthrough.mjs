@@ -491,21 +491,22 @@ try {
   // 5. Choosing Follow up asks when, and the day can be moved later.
   await page.goto(`${base}/app/leads/${leads.newYoung}`);
   await settle(page);
-  const statusGroup = page.locator("fieldset").filter({ has: page.locator("legend", { hasText: /^Status$/ }) });
-  await statusGroup.getByText("Follow up", { exact: true }).click();
-  const whenGroup = page.locator("fieldset").filter({ has: page.locator("legend", { hasText: "When to follow up?" }) });
-  const whenLabels = (await whenGroup.locator("label").allInnerTexts()).map((t) => t.split("\n")[0].trim());
+  // Round 21: the status is a dropdown in At a glance, the day under it.
+  await page.getByTestId("status-select").selectOption("follow_up");
+  const whenGroup = page.getByTestId("status-follow-up");
+  const whenLabels = (await whenGroup.getByRole("radio").allInnerTexts()).map((t) => t.split("\n")[0].trim());
   check("Follow up offers Tomorrow, In 3 days, Next week or a date", JSON.stringify(whenLabels) === JSON.stringify(["Tomorrow", "In 3 days", "Next week", "On a date"]), whenLabels.join(", "));
-  await whenGroup.getByText("In 3 days", { exact: true }).click();
+  await whenGroup.getByRole("radio", { name: /In 3 days/ }).click();
   await checkTapTargets(page, "a lead with the follow-up choices open");
-  await page.getByRole("button", { name: "Save status" }).click();
-  await page.getByText(`Follow up on ${formatDay(addDays(today, 3))}.`).first().waitFor({ timeout: 20000 });
+  await page.getByTestId("status-save").click();
+  await page.getByTestId("glance-follow-up").getByText(formatDay(addDays(today, 3))).waitFor({ timeout: 20000 });
   const { data: afterFollowUp } = await admin.from("leads").select("status, follow_up_on").eq("id", leads.newYoung).single();
-  check("the lead moves to Follow up three days out, and the timeline says so", afterFollowUp?.status === "follow_up" && afterFollowUp?.follow_up_on === addDays(today, 3), JSON.stringify(afterFollowUp));
-  const whenAgain = page.locator("fieldset").filter({ has: page.locator("legend", { hasText: "When to follow up?" }) });
-  check("on a follow-up the first choice keeps the day", ((await whenAgain.locator("label").first().innerText()).split("\n")[0].trim()) === "Keep");
-  await whenAgain.getByText("Next week", { exact: true }).click();
-  await page.getByRole("button", { name: "Save follow-up day" }).click();
+  check("the lead moves to Follow up three days out, and At a glance says so", afterFollowUp?.status === "follow_up" && afterFollowUp?.follow_up_on === addDays(today, 3), JSON.stringify(afterFollowUp));
+  await page.getByTestId("follow-up-change").click();
+  const whenAgain = page.getByTestId("status-follow-up");
+  check("Change opens on the day it has", (await whenAgain.getByRole("radio", { name: "On a date" }).getAttribute("aria-checked")) === "true" && (await whenAgain.locator('input[type="date"]').inputValue()) === addDays(today, 3));
+  await whenAgain.getByRole("radio", { name: /Next week/ }).click();
+  await page.getByTestId("status-save").click();
   await page.getByText("Changed the follow-up day.").waitFor({ timeout: 20000 });
   const { data: moved } = await admin.from("leads").select("follow_up_on").eq("id", leads.newYoung).single();
   check("moving the day saves it and logs it", moved?.follow_up_on === addDays(today, 7), moved?.follow_up_on);
@@ -1132,12 +1133,14 @@ try {
   await op.getByRole("button", { name: "Add note" }).click();
   const noteNote = await calm(op.locator("main"));
   check("a note sent while viewing reaches the server, which refuses it calmly", noteNote === "View as: nothing was saved.", noteNote);
-  const viewStatus = op.locator("main fieldset").filter({ has: op.locator("legend", { hasText: /^Status$/ }) });
-  await viewStatus.getByText("Lost", { exact: true }).click();
-  await op.locator("main fieldset", { hasText: "Why was it lost?" }).getByText("Price", { exact: true }).click();
-  await op.getByRole("button", { name: "Save status" }).click();
-  await op.waitForTimeout(1500);
-  check("a status change is refused the same way", (await op.locator("main").getByTestId("view-as-nothing-saved").count()) >= 1 && (await op.locator("main").getByRole("alert").count()) === 0);
+  await op.getByTestId("status-select").selectOption("lost");
+  await op.getByTestId("status-lost-reason").locator("select").selectOption({ label: "Price" });
+  await op.getByTestId("status-save").click();
+  await op.getByTestId("status-view-as").waitFor({ timeout: 10000 }).catch(() => {});
+  check(
+    "a status change is refused the same way",
+    (await op.getByTestId("status-view-as").innerText().catch(() => "")).trim() === "View as: nothing was saved." && (await op.locator("main").getByRole("alert").count()) === 0,
+  );
 
   // The soffit colour code (2026-11-09): a new code is refused calmly by the
   // server and stays in the box; a colour book photo is shown, not saved.

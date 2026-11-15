@@ -326,7 +326,8 @@ export function PhotoSlots({
 
   return (
     <div className="flex flex-col gap-3">
-      <ul className="grid grid-cols-2 gap-3" aria-label="Guided photos">
+      {/* Round 21: on the lead page, four across on a wide screen. */}
+      <ul className={mode === "attach" ? "grid grid-cols-2 gap-3 lg:grid-cols-4" : "grid grid-cols-2 gap-3"} aria-label="Guided photos">
         {PHOTO_SLOTS.map(({ slot, label, hint }) => {
           const local = taken[slot];
           const src = local?.preview ?? saved[slot];
