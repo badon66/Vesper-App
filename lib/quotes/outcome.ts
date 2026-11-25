@@ -260,6 +260,9 @@ export const OUTCOME_MESSAGES = {
   bad_date: "Pick the install day: today or earlier.",
   outcome_only: "A quote is accepted, declined or cancelled from its outcome card only.",
   quote_locked: "This quote is accepted, so its numbers are locked. Undo the acceptance to change them.",
+  // Round 23: the install day goes on one of Keenan's open days with room.
+  day_full: "That day is full. Pick another, or give it more jobs on Installs.",
+  day_closed: "That day isn't open for installs. Pick an open day, or open it on Installs.",
 } as const;
 
 export type OutcomeCode = keyof typeof OUTCOME_MESSAGES;

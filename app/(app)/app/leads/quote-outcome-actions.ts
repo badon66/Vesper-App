@@ -50,6 +50,7 @@ function refresh(leadId: string) {
   revalidatePath("/app/meetings");
   revalidatePath("/app/admin/pay");
   revalidatePath("/app/pay");
+  revalidatePath("/app/admin/installs");
 }
 
 const acceptSchema = z.object({
@@ -215,29 +216,28 @@ export async function undoAcceptance(input: z.input<typeof undoSchema>): Promise
 
 const installDaySchema = z.object({ leadId: id, on: day.nullable() });
 
-// The planned install day on a Sold lead, added or changed after the yes
-// (Accepted asks for it too). Only Keenan may set it; the database refuses
-// anyone else (leads_owner_dates). It is a day, never an amount.
+// The lead's install day, set or changed by Keenan at any time (round 23,
+// Keenan, 2026-11-17; before that only on a Sold lead), or taken off. Only
+// Keenan may set it; the database refuses anyone else, and a day that isn't
+// open or is full (day_closed, day_full), under the same lock as the
+// customer's own pick. It is a day, never an amount.
 export async function setInstallDay(input: z.input<typeof installDaySchema>): Promise<OutcomeResult> {
   const refused = await owner();
   if (refused) return refused;
   const parsed = installDaySchema.safeParse(input);
   if (!parsed.success) {
     return parsed.error.issues[0]?.path[0] === "on"
-      ? { ok: false, code: "bad_install_on", message: "Pick the planned install day." }
+      ? { ok: false, code: "bad_install_on", message: "Pick the install day." }
       : { ok: false, code: "no_lead", message: OUTCOME_MESSAGES.no_lead };
   }
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("leads")
-    .update({ install_on: parsed.data.on })
-    .eq("id", parsed.data.leadId)
-    .eq("status", "sold")
-    .select("id");
+  const { data, error } = await supabase.rpc("install_day_set", {
+    p_lead: parsed.data.leadId,
+    p_day: parsed.data.on as string,
+    p_by: "keenan",
+  });
   if (error) return outcomeFailure(error);
-  if (!data || data.length === 0) {
-    return { ok: false, code: "not_sold", message: "The install day goes on a Sold lead. Refresh to see where it stands." };
-  }
+  if ((data as { ok?: boolean } | null)?.ok !== true) return { ok: false, code: "no_lead", message: OUTCOME_MESSAGES.no_lead };
   refresh(parsed.data.leadId);
   return { ok: true };
 }
