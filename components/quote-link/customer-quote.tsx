@@ -3,6 +3,8 @@
 import { Check, ChevronDown, Loader2, Maximize2, MessageSquare, Phone, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { bookCustom, bookInstall, recordVisit, saveSelection, signAgreement } from "@/app/q/[token]/actions";
+import { InstallDayPick } from "@/components/quote-link/install-day-pick";
+import type { LinkInstall } from "@/lib/quote-link/install";
 import { PinchZoom } from "@/components/meeting/pinch-zoom";
 import { Disclosure } from "@/components/quote-link/disclosure";
 import { AboutYourTrack, AgreementSection, BuildYourOwn, BuildYourOwnRow, LinkDocuments, type SignOutcome } from "@/components/quote-link/link-extras";
@@ -69,6 +71,8 @@ type View = CustomerQuote & {
   // Take 3: the documents Keenan ticked or uploaded, and the agreement.
   documents: LinkDocument[];
   agreement: LinkAgreement | null;
+  // Round 23: their install day and Keenan's open days.
+  install: LinkInstall | null;
 };
 
 const sameRuns = (a: readonly number[] | null, b: readonly number[]) =>
@@ -94,6 +98,8 @@ export function CustomerQuoteView({ token, view }: { token: string; view: View }
 
 function LiveQuote({ token, view }: { token: string; view: View }) {
   const { quote, words } = view;
+  // Round 23: their install day, as it stands after a pick on this page.
+  const [installDay, setInstallDay] = useState<string | null>(view.nextSteps.installOn);
   // The options worth showing, biggest first, each with its price. The
   // customer's own last build (take 3) isn't one of Keenan's options: it is
   // Build your own, after them.
@@ -188,7 +194,7 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
     sign: view.agreement !== null,
     siteVisitOn: view.progress.siteVisitOn,
     siteVisitDone: view.progress.siteVisitDone,
-    installOn: view.nextSteps.installOn,
+    installOn: installDay,
     installed: view.progress.installed,
   });
 
@@ -285,10 +291,13 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
   if (phase === "thanks" && thanks) {
     return (
       <ThankYou
+        token={token}
         firstName={view.firstName}
         thanks={thanks}
-        installOn={view.nextSteps.installOn}
+        installOn={installDay}
+        install={view.install}
         company={view.company}
+        onPicked={setInstallDay}
         onBack={backToQuote}
       />
     );
@@ -416,9 +425,12 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
           {booked ? (
             <p role="status" className="mx-5 mt-6 rounded-md border px-4 py-3 text-base text-pretty" data-testid="quote-booked-before">
               On {formatLongDay(calgaryDateOf(booked.at))} you asked us to book your install:{" "}
-              {customerChoiceInSentence(booked.option)}. Keenan will be in touch {inTouchAbout(view.nextSteps.installOn)}.
+              {customerChoiceInSentence(booked.option)}. Keenan will be in touch {inTouchAbout(installDay)}.
             </p>
           ) : null}
+          {/* Round 23: once they've booked (or signed), or said yes at the
+              meeting with a day, their install day. */}
+          {booked || view.install?.day ? <InstallDayPick token={token} initial={view.install} company={view.company} onPicked={setInstallDay} className="mt-6" /> : null}
         </section>
 
         {/* 3. See it on your house (round 13): one picture, the Looks and
@@ -710,10 +722,10 @@ function LiveQuote({ token, view }: { token: string; view: View }) {
             </p>
           ) : null}
           {view.agreement ? (
-            <p className="text-pretty">There’s nothing to pay today. Keenan will be in touch {inTouchAbout(view.nextSteps.installOn)}.</p>
+            <p className="text-pretty">There’s nothing to pay today. Keenan will be in touch {inTouchAbout(installDay)}.</p>
           ) : (
             <p className="text-pretty">
-              There’s nothing to sign or pay today. Keenan will be in touch {inTouchAbout(view.nextSteps.installOn)} and go
+              There’s nothing to sign or pay today. Keenan will be in touch {inTouchAbout(installDay)} and go
               through the agreement.
             </p>
           )}
@@ -740,6 +752,8 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
   const seeIt = agreed !== null && linkLooks(view.pictures).length > 0;
   const laptopPicture = Boolean(view.mockupUrl) || seeIt;
   const textHref = smsWithBody(view.company.phone, `Hi Keenan, a question about the install at ${view.address}: `);
+  // Round 23: their install day, as it stands after a pick on this page.
+  const [installDay, setInstallDay] = useState<string | null>(view.nextSteps.installOn);
   // Round 17: where they're at; step 2 is done once Keenan marks it accepted.
   const tracker = trackerSteps({
     words,
@@ -747,7 +761,7 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
     sign: view.agreement !== null,
     siteVisitOn: view.progress.siteVisitOn,
     siteVisitDone: view.progress.siteVisitDone,
-    installOn: view.nextSteps.installOn,
+    installOn: installDay,
     installed: view.progress.installed,
   });
 
@@ -781,12 +795,14 @@ function AgreedQuote({ token, view }: { token: string; view: View }) {
             ) : null}
             <ul className="mt-5 flex flex-col gap-1.5 text-base" data-testid="agreed-summary">
               {quote.trackColourName ? <li data-testid="agreed-colour">Your track colour: {quote.trackColourName}</li> : null}
-              {view.nextSteps.installOn ? (
-                <li data-testid="agreed-day">Your install day: {formatLongDay(view.nextSteps.installOn)}</li>
-              ) : null}
+              {installDay && !view.install ? <li data-testid="agreed-day">Your install day: {formatLongDay(installDay)}</li> : null}
               <li className="font-semibold">No payment until your install is complete.</li>
             </ul>
           </div>
+          {/* Round 23: their install day, to pick or change on the link. */}
+          {view.install && !view.progress.installed ? (
+            <InstallDayPick token={token} initial={view.install} company={view.company} onPicked={setInstallDay} className="mt-6" />
+          ) : null}
         </section>
 
         {seeIt && agreed ? (
@@ -1483,18 +1499,25 @@ function BookBar({
 }
 
 function ThankYou({
+  token,
   firstName,
   thanks,
   installOn,
+  install,
   company,
+  onPicked,
   onBack,
 }: {
+  token: string;
   firstName: string;
   thanks: { option: string; total: string; preview: boolean; lines: string | null };
-  // The install day planned at the meeting, if any: Keenan confirms it
-  // rather than setting one.
+  // Their install day, if they have one: Keenan confirms it rather than
+  // setting one.
   installOn: string | null;
+  // Round 23: Pick your install day, right after booking.
+  install: LinkInstall | null;
   company: CustomerQuote["company"];
+  onPicked: (day: string) => void;
   onBack: () => void;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
@@ -1521,6 +1544,7 @@ function ThankYou({
         </p>
       </div>
       <ChoiceCard option={thanks.option} lines={thanks.lines} total={thanks.total} testIds={{ option: "thanks-option", lines: "thanks-lines", total: "thanks-total" }} />
+      {thanks.preview ? null : <InstallDayPick token={token} initial={install} company={company} onPicked={onPicked} className="-mx-5" />}
       <div className="flex flex-col gap-3">
         <p className="font-semibold text-pretty">Changed your mind? Call or text Keenan.</p>
         <ContactButtons company={company} />
