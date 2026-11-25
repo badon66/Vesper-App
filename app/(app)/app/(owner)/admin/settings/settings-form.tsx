@@ -284,6 +284,28 @@ export function SettingsForm({ defaults }: { defaults: SettingsFormDefaults }) {
 
       <Card>
         <CardHeader>
+          <CardTitle>Installs</CardTitle>
+          <CardDescription>
+            Install days are opened and closed on the Installs page. These set
+            how many jobs an open day takes unless you give it its own number,
+            and how soon a customer can book: time to prep the track.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-5 sm:grid-cols-3">
+          <Field name="install_jobs_per_day" label="Jobs a day" hint="An open day takes this many installs unless you change that day on the Installs page." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="numeric" min="1" max="20" defaultValue={defaults.install_jobs_per_day} />}
+          </Field>
+          <Field name="install_lead_days_white" label="Earliest day, white track (days out)" hint="The first day a customer can pick, counted from today, when their track is white." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="numeric" min="0" max="60" defaultValue={defaults.install_lead_days_white} />}
+          </Field>
+          <Field name="install_lead_days_colour" label="Earliest day, colour-matched track (days out)" hint="The same for any other colour, or when no colour is set yet." errors={errors}>
+            {(p) => <Input {...p} type="number" inputMode="numeric" min="0" max="60" defaultValue={defaults.install_lead_days_colour} />}
+          </Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Customer quote page</CardTitle>
           <CardDescription>
             What every customer&apos;s quote link shows besides their own quote.

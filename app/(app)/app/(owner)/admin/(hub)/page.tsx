@@ -8,8 +8,14 @@ export const metadata: Metadata = {
   title: "Admin",
 };
 
-// The owner's Admin tab: People, Settings, Pay and Deleted (round 20).
+// The owner's Admin tab: Installs (round 23), People, Settings, Pay and
+// Deleted (round 20).
 const sections = [
+  {
+    href: "/app/admin/installs",
+    title: "Installs",
+    text: "Open and close install days, how many jobs each takes, and who's booked on them. Customers pick from the open days.",
+  },
   {
     href: "/app/admin/people",
     title: "People",
