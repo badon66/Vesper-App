@@ -135,8 +135,12 @@ export type QuoteDraftInput = z.input<typeof quoteDraftSchema>;
 const _sameShape: QuoteDraftInput = {} as QuoteSaveInput;
 void _sameShape;
 export type SaveQuoteResult =
-  | { ok: true; quoteId: string; savedAt: string; stamp?: string }
+  // Round 23: installDay says how the meeting's yes with a day went: the
+  // day is the lead's now, or someone took its last spot first.
+  | { ok: true; quoteId: string; savedAt: string; stamp?: string; installDay?: InstallDayClaim }
   | { ok: false; code: string; message: string };
+
+export type InstallDayClaim = { ok: true; day: string } | { ok: false; message: string };
 
 // Saves (or re-saves) the lead's one draft quote, with every price it used
 // copied onto it. The totals are computed by the same lib/pricing.ts the
@@ -181,7 +185,7 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
   const supabase = await createClient();
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, track_ral_code, track_colour_id, track_colours (name)")
+    .select("id, track_ral_code, track_colour_id, install_on, track_colours (name)")
     .eq("id", draft.leadId)
     .maybeSingle();
   if (!lead) return { ok: false, code: "not_found", message: "That lead was not found." };
@@ -331,7 +335,14 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
       return { ok: false, code: "save_failed", message: "The draft could not be saved. Check your signal and try again." };
     }
     revalidatePath(`/app/leads/${draft.leadId}`);
-    return { ok: true, quoteId: existing.id, savedAt: updated.updated_at, stamp: quoteStamp({ id: existing.id, updatedAt: updated.updated_at }, marks) };
+    const installDay = await claimMeetingDay(supabase, draft, meetingOffer, lead.install_on);
+    return {
+      ok: true,
+      quoteId: existing.id,
+      savedAt: updated.updated_at,
+      stamp: quoteStamp({ id: existing.id, updatedAt: updated.updated_at }, marks),
+      ...(installDay ? { installDay } : {}),
+    };
   }
 
   // The database writes the quote_created timeline event (its id only,
@@ -344,7 +355,38 @@ export async function saveQuoteDraft(input: QuoteDraftInput): Promise<SaveQuoteR
     return { ok: false, code: "save_failed", message: "The draft could not be saved. Check your signal and try again." };
   }
   revalidatePath(`/app/leads/${draft.leadId}`);
-  return { ok: true, quoteId: created.id, savedAt: created.updated_at, stamp: quoteStamp({ id: created.id, updatedAt: created.updated_at }, marks) };
+  const installDay = await claimMeetingDay(supabase, draft, meetingOffer, lead.install_on);
+  return {
+    ok: true,
+    quoteId: created.id,
+    savedAt: created.updated_at,
+    stamp: quoteStamp({ id: created.id, updatedAt: created.updated_at }, marks),
+    ...(installDay ? { installDay } : {}),
+  };
+}
+
+// Round 23 (Keenan, 2026-11-17): a day picked at the meeting counts toward
+// its limit once it's saved with a yes (an option chosen at the table). It
+// becomes the lead's install day through the database's guard, under the
+// day's lock, so the customer's link and Keenan's calendar show it at once.
+// A day picked with no yes stays on the quote only, as before. The lead
+// page's quote editor never claims one.
+async function claimMeetingDay(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  draft: { from?: string | null; meetingInstallOn?: string | null; leadId: string },
+  meetingOffer: string | null,
+  current: string | null,
+): Promise<InstallDayClaim | null> {
+  const day = draft.meetingInstallOn ?? null;
+  if ((draft.from ?? "meeting") !== "meeting" || !meetingOffer || !day || day === current) return null;
+  const { error } = await supabase.rpc("install_day_set", { p_lead: draft.leadId, p_day: day, p_by: "meeting" });
+  if (!error) {
+    revalidatePath("/app/admin/installs");
+    return { ok: true, day };
+  }
+  if (error.hint === "day_full") return { ok: false, message: "That day just filled up. Pick another day." };
+  if (error.hint === "day_closed") return { ok: false, message: "That day isn't open for installs any more. Pick another day." };
+  return { ok: false, message: "The install day didn't save. It saves when the signal's back." };
 }
 
 // Saving an accepted quote (round 18). The option they said yes to is

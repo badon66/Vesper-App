@@ -14,7 +14,8 @@ import { DECK_BUCKET } from "@/lib/photos-deck";
 import { PHOTO_BUCKET } from "@/lib/photos";
 import { blackFridayFrom } from "@/lib/quotes/black-friday";
 import { quoteStamp } from "@/lib/quotes/stamp";
-import { CHRISTMAS_WORD_DEFAULTS, type ChristmasSettings } from "@/lib/quote-link/christmas";
+import { CHRISTMAS_WORD_DEFAULTS, isWhiteTrack, type ChristmasSettings } from "@/lib/quote-link/christmas";
+import { installCalendar, meetingPickDays } from "@/lib/installs/owner-days";
 import type { createClient } from "@/lib/supabase/server";
 import { calgaryToday } from "@/lib/time";
 
@@ -91,7 +92,12 @@ export async function loadDeckPayload(
   });
 }
 
+// Round 23: enough of the calendar for the longest wait (60 days in
+// Settings) plus nine weeks of days.
+const INSTALL_CALENDAR_SPAN = 60 + 63;
+
 export async function loadMeetingPayload(supabase: Supabase, leadId: string): Promise<MeetingPayload | null> {
+  const today = calgaryToday();
   const [
     { data: lead },
     { data: settings },
@@ -105,11 +111,12 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
     { data: linkOptions },
     { data: siteVisit },
     { data: agreementRow },
+    calendar,
   ] = await Promise.all([
       supabase
         .from("leads")
         .select(
-          "id, first_name, last_name, address_line, neighbourhood, soffit_colour, soffit_colour_2, track_colour_id, track_ral_code, track_colour_initials, track_colour_initialled_at, status",
+          "id, first_name, last_name, address_line, neighbourhood, soffit_colour, soffit_colour_2, track_colour_id, track_ral_code, track_colour_initials, track_colour_initialled_at, status, install_on",
         )
         .eq("id", leadId)
         .maybeSingle(),
@@ -135,6 +142,8 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
       supabase.from("lead_link_options").select("agreement_to_sign").eq("lead_id", leadId).maybeSingle(),
       supabase.from("lead_site_visits").select("visit_on, done_at").eq("lead_id", leadId).maybeSingle(),
       supabase.from("settings").select("agreement_text").eq("id", 1).maybeSingle(),
+      // Round 23: Keenan's install calendar from today, for Pick a day.
+      installCalendar(supabase, today, INSTALL_CALENDAR_SPAN),
     ]);
   if (!lead || !settings) return null;
 
@@ -143,6 +152,11 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
   const colourById = new Map(colours.map((colour) => [colour.id, colour]));
   const ralNames = Object.fromEntries((ralRows ?? []).map((row) => [row.code, row.name]));
   const trackColour = leadTrackColour(lead, colourById, new Map(Object.entries(ralNames)));
+  // Round 23: Keenan's open install days for Pick a day, from the earliest
+  // for their track (white is the stock track; any other colour, or none
+  // yet, takes longer to prep), kept on the iPad with the rest.
+  const installKind = trackColour.kind === "list" && isWhiteTrack(trackColour.name) ? "white" : "colour";
+  const installDays = meetingPickDays(calendar, lead.id, today, installKind);
 
   // The customer's mockup, the photo the roofline was traced on, and (round
   // 9) their Front photo when there is no mockup and no trace, for Your
@@ -195,7 +209,11 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
         siteVisitDone: Boolean(siteVisit?.done_at),
         installed: lead.status === "installed",
       },
+      // Round 23: the lead's own install day (picked with a yes, on their
+      // link or by Keenan).
+      installOn: lead.install_on,
     },
+    installDays,
     deck,
     colours: {
       list: colours,
@@ -208,7 +226,7 @@ export async function loadMeetingPayload(supabase: Supabase, leadId: string): Pr
     frontPhotoUrl: front ? (signedLeadPhotos.get(front.storage_path) ?? null) : null,
     pricing: pricingFrom(settings),
     draft,
-    today: calgaryToday(),
+    today,
   };
 }
 
