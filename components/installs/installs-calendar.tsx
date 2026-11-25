@@ -19,7 +19,9 @@ import { cn } from "@/lib/utils";
 // moves anyone.
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const NAMES_SHOWN = 3;
+// Two names and "+1 more" keep a five-week month on an iPad's screen in
+// landscape; the day's panel lists everyone.
+const NAMES_SHOWN = 2;
 const jobs = (count: number) => `${count} ${count === 1 ? "job" : "jobs"}`;
 
 export function InstallsCalendar({
@@ -117,7 +119,7 @@ function DayCell({ view, today, onOpen }: { view: InstallDayView; today: string;
         data-day={view.day}
         data-state={view.open ? (full ? "full" : "open") : "closed"}
         className={cn(
-          "flex h-16 w-full flex-col items-start gap-0.5 overflow-hidden rounded-lg border p-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-32 md:p-2",
+          "flex h-16 w-full flex-col items-start gap-0.5 overflow-hidden rounded-lg border p-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-28 md:p-2",
           view.open ? "border-input bg-card hover:bg-muted/50" : "border-transparent bg-muted/40 text-muted-foreground hover:bg-muted/70",
           view.past && "opacity-60",
           view.day === today && "ring-2 ring-foreground/30",
@@ -135,7 +137,7 @@ function DayCell({ view, today, onOpen }: { view: InstallDayView; today: string;
           <span className="hidden md:inline">{view.open || view.booked.length > 0 ? dayLine(view) : ""}</span>
         </span>
         {shown.length > 0 ? (
-          <span className="hidden min-w-0 flex-col md:flex">
+          <span className="hidden w-full min-w-0 flex-col md:flex">
             {shown.map((job) => (
               <span key={job.id} className="truncate text-sm text-foreground">
                 {job.name}
