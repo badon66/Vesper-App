@@ -304,6 +304,41 @@ export type Database = {
           },
         ]
       }
+      install_days: {
+        Row: {
+          created_at: string
+          day: string
+          job_limit: number | null
+          open: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          day: string
+          job_limit?: number | null
+          open?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          day?: string
+          job_limit?: number | null
+          open?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "install_days_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       knock_sessions: {
         Row: {
           conversations: number
@@ -1596,6 +1631,9 @@ export type Database = {
           hold_grace_minutes: number
           hold_minutes: number
           id: number
+          install_jobs_per_day: number
+          install_lead_days_colour: number
+          install_lead_days_white: number
           j_track_per_ft: number | null
           light_looks: Json
           lost_reasons: string[]
@@ -1657,6 +1695,9 @@ export type Database = {
           hold_grace_minutes?: number
           hold_minutes?: number
           id: number
+          install_jobs_per_day?: number
+          install_lead_days_colour?: number
+          install_lead_days_white?: number
           j_track_per_ft?: number | null
           light_looks?: Json
           lost_reasons?: string[]
@@ -1718,6 +1759,9 @@ export type Database = {
           hold_grace_minutes?: number
           hold_minutes?: number
           id?: number
+          install_jobs_per_day?: number
+          install_lead_days_colour?: number
+          install_lead_days_white?: number
           j_track_per_ft?: number | null
           light_looks?: Json
           lost_reasons?: string[]
@@ -2084,6 +2128,10 @@ export type Database = {
         Returns: Json
       }
       hold_status: { Args: never; Returns: Json }
+      install_day_set: {
+        Args: { p_by?: string; p_day: string; p_lead: string }
+        Returns: Json
+      }
       is_owner: { Args: never; Returns: boolean }
       is_sales_side: { Args: never; Returns: boolean }
       is_template_slot:
@@ -2231,6 +2279,7 @@ export type Database = {
         }
       }
       quote_link_documents: { Args: { p_token: string }; Returns: Json }
+      quote_link_install: { Args: { p_token: string }; Returns: Json }
       quote_link_live: {
         Args: { p_token: string }
         Returns: {
@@ -2263,6 +2312,10 @@ export type Database = {
         }
       }
       quote_link_mockups: { Args: { p_token: string }; Returns: Json }
+      quote_link_pick_install_day: {
+        Args: { p_day: string; p_token: string }
+        Returns: Json
+      }
       quote_link_positions: {
         Args: { p_positions: number[]; p_runs: Json }
         Returns: number[]
@@ -2421,6 +2474,9 @@ export type Database = {
         | "site_visit"
         | "lead_deleted"
         | "lead_restored"
+        | "install_day_picked"
+        | "install_day_changed"
+        | "install_day_cleared"
       hot_button:
         | "no_ladders"
         | "up_for_christmas"
@@ -2642,6 +2698,9 @@ export const Constants = {
         "site_visit",
         "lead_deleted",
         "lead_restored",
+        "install_day_picked",
+        "install_day_changed",
+        "install_day_cleared",
       ],
       hot_button: [
         "no_ladders",
