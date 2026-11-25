@@ -1242,13 +1242,18 @@ try {
   await agreedPage.goto(quoteUrl);
   await settle(agreedPage);
   const agreedText = flat(await agreedPage.locator("body").innerText());
+  // Round 23: the install day is the Your install day section (with Change
+  // your day) rather than a line in the summary.
+  const agreedDayShown =
+    (await totalOf(agreedPage, "agreed-day")) === `Your install day: ${longDay(agreedDay)}` ||
+    ((await agreedPage.getByTestId("agreed-day").count()) === 0 && (await totalOf(agreedPage, "install-day-yours")) === longDay(agreedDay));
   check(
     "after Keenan marks it accepted, the page shows only what was agreed: Your choice and its total, the colour, the install day and no payment until the install",
     (await agreedPage.getByTestId("quote-agreed").count()) === 1 &&
       (await totalOf(agreedPage, "agreed-choice")).includes("Main floor") &&
       (await totalOf(agreedPage, "agreed-total")) === "$2,633" &&
       (await totalOf(agreedPage, "agreed-colour")) === `Your track colour: ${agreedColour.name}` &&
-      (await totalOf(agreedPage, "agreed-day")) === `Your install day: ${longDay(agreedDay)}` &&
+      agreedDayShown &&
       agreedText.includes("No payment until your install is complete."),
     agreedText.slice(0, 300),
   );

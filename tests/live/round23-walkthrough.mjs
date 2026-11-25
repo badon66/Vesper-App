@@ -336,6 +336,19 @@ try {
     }
     check("Installs (iPad): no sideways scroll", (await sideways(page)) <= 0);
     await shot(page, "installs-ipad");
+    const lastMonth = days.at(-1).slice(0, 7);
+    if (lastMonth !== dayA.slice(0, 7)) {
+      await open(page, `/app/admin/installs?m=${lastMonth}`);
+      await shot(page, "installs-ipad-later-month");
+      await open(page, `/app/admin/installs?m=${dayA.slice(0, 7)}`);
+    }
+    const fits = await page.evaluate(() => {
+      // A month that runs to six weeks may scroll a little; five weeks fit.
+      const weeks = document.querySelectorAll('[role="grid"] > [role="row"]').length - 1;
+      const cells = [...document.querySelectorAll('[data-testid="install-day"]')];
+      return weeks > 5 || Math.max(...cells.map((cell) => cell.getBoundingClientRect().bottom)) <= window.innerHeight;
+    });
+    check("Installs (iPad landscape): a five-week month is all on screen", fits);
     await cellA.click();
     const panel = page.getByTestId("install-day-panel");
     await panel.waitFor({ timeout: 5000 }).catch(() => {});
