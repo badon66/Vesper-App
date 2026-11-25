@@ -131,7 +131,8 @@ function DayCell({ view, today, onOpen }: { view: InstallDayView; today: string;
           )}
         >
           <span className="md:hidden">{view.open ? (full ? "Full" : `${view.left} left`) : view.booked.length > 0 ? `${view.booked.length} booked` : ""}</span>
-          <span className="hidden md:inline">{dayLine(view)}</span>
+          {/* A closed day with nothing on it says nothing: its shading does. */}
+          <span className="hidden md:inline">{view.open || view.booked.length > 0 ? dayLine(view) : ""}</span>
         </span>
         {shown.length > 0 ? (
           <span className="hidden min-w-0 flex-col md:flex">

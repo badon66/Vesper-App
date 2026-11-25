@@ -42,22 +42,22 @@ export function parseLinkInstall(data: unknown): LinkInstall | null {
 export const INSTALL_WORDS = {
   pick: "Pick your install day",
   yours: "Your install day",
-  // Keenan's own words (2026-11-17).
-  note: "We'll confirm your day with you a few days before. If the weather won't allow it, we'll move you to the next good day.",
-  none: "Keenan hasn't opened install days yet. He'll be in touch to set your day.",
+  // Keenan’s own words (2026-11-17).
+  note: "We’ll confirm your day with you a few days before. If the weather won’t allow it, we’ll move you to the next good day.",
+  none: "Keenan hasn’t opened install days yet. He’ll be in touch to set your day.",
   change: "Change your day",
   keep: "Keep this day",
-  tooLate: "It's close to your install day, so to change it, call or text Keenan.",
+  tooLate: "It’s close to your install day, so to change it, call or text Keenan.",
   full: "Someone just took that day. Pick another one.",
-  closed: "That day isn't open any more. Pick another one.",
-  failed: "That didn't go through. Check your signal and try again, or call or text us.",
-  preview: "Preview only. You're signed in to Vesper on this device, so nothing was saved.",
+  closed: "That day isn’t open any more. Pick another one.",
+  failed: "That didn’t go through. Check your signal and try again, or call or text us.",
+  preview: "Preview only. You’re signed in to Vesper on this device, so nothing was saved.",
 } as const;
 
 // "The first day you can pick is Tuesday, December 1, so there's time to
 // get your track ready." White and colour-matched track differ in how long.
 export function earliestLine(day: string, longDay: (day: string) => string): string {
-  return `The first day you can pick is ${longDay(day)}, so there's time to get your track ready.`;
+  return `The first day you can pick is ${longDay(day)}, so there’s time to get your track ready.`;
 }
 
 export function pickButtonLabel(day: string | null, current: string | null, shortDay: (day: string) => string): string {

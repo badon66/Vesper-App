@@ -25,8 +25,8 @@ describe("the link's install days", () => {
   });
 
   it("says it plainly, with Keenan's line under the days", () => {
-    expect(INSTALL_WORDS.note).toBe("We'll confirm your day with you a few days before. If the weather won't allow it, we'll move you to the next good day.");
-    expect(earliestLine("2026-12-01", formatLongDay)).toBe("The first day you can pick is Tuesday, December 1, so there's time to get your track ready.");
+    expect(INSTALL_WORDS.note).toBe("We’ll confirm your day with you a few days before. If the weather won’t allow it, we’ll move you to the next good day.");
+    expect(earliestLine("2026-12-01", formatLongDay)).toBe("The first day you can pick is Tuesday, December 1, so there’s time to get your track ready.");
     expect(pickButtonLabel(null, null, formatDay)).toBe("Pick a day above");
     expect(pickButtonLabel("2026-12-02", null, formatDay)).toBe("Book Wed, Dec 2");
     expect(pickButtonLabel("2026-12-03", "2026-12-02", formatDay)).toBe("Move to Thu, Dec 3");
