@@ -58,6 +58,7 @@ export const LINE_DEFAULTS = {
   step_colour_todo: "We confirm it with you from the colour book.",
   step_day_label: "Your install day",
   step_day_none: "We pick the day together.",
+  step_day_note: "We'll confirm your day with you a few days before. If the weather won't allow it, we'll move you to the next good day.",
   step_day_button: "Pick a day",
   step_on_day_label: "On the day",
   step_pay_label: "Paying",

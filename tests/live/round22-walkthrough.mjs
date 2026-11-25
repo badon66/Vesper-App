@@ -184,6 +184,8 @@ async function footprint(leadIds) {
 // setter's own lead, hold, booking or knock session) is for members.
 const OWNER_ACTIONS = {
   "app/(app)/app/(owner)/admin/people/actions.ts": ["createPerson", "resetPassword", "resetWelcome", "setPersonActive", "startViewAs"],
+  // Round 23: Keenan's install calendar.
+  "app/(app)/app/(owner)/admin/installs/actions.ts": ["saveInstallDay"],
   "app/(app)/app/(owner)/admin/settings/actions.ts": ["changeOwnPassword", "updateSettings"],
   "app/(app)/app/(owner)/admin/settings/presentation/actions.ts": ["saveDeck", "addDeckPhoto", "moveDeckPhoto", "removeDeckPhoto", "setDeckPhotoCaption", "setDeckPhotoFocus", "updateReference"],
   "app/(app)/app/(owner)/admin/settings/track-colour-actions.ts": ["addTrackColour", "moveTrackColour", "setTrackColourActive", "updateTrackColour"],

@@ -28,6 +28,7 @@ import { createClient } from "@supabase/supabase-js";
 import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { chromium } from "playwright";
+import { closeOpenedDays, openFreeDays } from "./install-days.mjs";
 import { openOwnerSession } from "./owner-session.mjs";
 
 const base = process.env.BASE ?? "http://localhost:3300";
@@ -256,6 +257,8 @@ async function cleanUp() {
 await mkdir(out, { recursive: true });
 const browser = await chromium.launch();
 let ownerSession = null;
+// Round 23: the install day the walk-through opens for itself.
+let openedDays = [];
 let page = null;
 let op = null;
 
@@ -286,7 +289,10 @@ try {
   const { data: colour } = await admin.from("track_colours").select("id, name").eq("active", true).order("sort_order").limit(1).single();
   if (!colour) throw new Error("no active track colour");
   const today = calgaryDay();
-  const installOn = addDays(today, 7);
+  // Round 23: a lead's install day must be an open day, so the walk-through
+  // opens one Keenan hasn't touched, a week or more out, for the run only.
+  openedDays = await openFreeDays(admin, today, { from: 7, to: 30, count: 1, limits: [5] });
+  const installOn = openedDays[0];
   // The day the crew finished: yesterday, so no clock near midnight can
   // make it later than today in the database.
   const installedDay = addDays(today, -1);
@@ -503,10 +509,11 @@ try {
       `${sources.join(" | ")} ${JSON.stringify(optionRows.map((row) => [row.offer, row.checked]))}`,
     );
     check(
-      "the install day starts from the day picked at the table, and the commission line names the amount for the option on screen (the booked one)",
-      (await op.getByTestId("outcome-planned-on").inputValue()) === installOn &&
+      "the install day starts from the day picked at the table, among the open days, and the commission line names the amount for the option on screen (the booked one)",
+      (await textOf(op.getByTestId("outcome-planned-on"))).startsWith(formatDay(installOn)) &&
+        (await op.locator(`[data-testid="outcome-planned-on-days"] button[data-day="${installOn}"]`).getAttribute("aria-pressed")) === "true" &&
         (await textOf(op.getByTestId("outcome-accept-commission"))).includes(money(commissionOn(FULL_BASE_CENTS))),
-      `${await op.getByTestId("outcome-planned-on").inputValue()} | ${await textOf(op.getByTestId("outcome-accept-commission"))}`,
+      `${await textOf(op.getByTestId("outcome-planned-on"))} | ${await textOf(op.getByTestId("outcome-accept-commission"))}`,
     );
     // Round 20: Mark accepted is on screen without scrolling, iPad landscape and portrait.
     const confirmOnScreen = async () =>
@@ -1240,6 +1247,7 @@ try {
 } finally {
   if (ownerSession) await ownerSession.close().catch(() => {});
   await cleanUp().catch((error) => results.push(`SCRIPT ERROR cleanup: ${error?.message ?? String(error)}`));
+  await closeOpenedDays(admin, openedDays).catch((error) => results.push(`SCRIPT ERROR install days: ${error?.message ?? String(error)}`));
   const { data } = await admin.auth.admin.listUsers({ perPage: 1000 });
   const leftoverUsers = (data?.users ?? []).filter((user) => (user.email ?? "").startsWith("outcome-live-"));
   const { count: leftoverLeads } = await admin.from("leads").select("id", { count: "exact", head: true }).ilike("address_line", `%Outcometest${stamp}%`);

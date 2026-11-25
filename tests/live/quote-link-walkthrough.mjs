@@ -38,6 +38,7 @@ import { mkdir } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
 import { chromium } from "playwright";
 import sharp from "sharp";
+import { closeOpenedDays, openFreeDays } from "./install-days.mjs";
 import { deckLine, expectedBanner, fillLine } from "./deck-order.mjs";
 import { openOwnerSession } from "./owner-session.mjs";
 
@@ -207,6 +208,8 @@ let frontMockupPath = null;
 // Round 13: a phone scene (a look on the link) and the hidden offer's picture.
 let sceneMockupPath = null;
 let pocketMockupPath = null;
+// Round 23: install days must be open days, so the run opens its own.
+let installDays = [];
 
 try {
   // ---------------------------------------------------------------- setup
@@ -1189,7 +1192,12 @@ try {
   // ---------------------------------------------------------------- after the price hold
   // With an install day picked at the meeting too: What happens next shows
   // it, so the confirm step and the thank-you say Keenan confirms that day.
-  await admin.from("quotes").update({ valid_until: addDays(calgaryToday(), -1), meeting_install_on: addDays(calgaryToday(), 6) }).eq("id", quote.data.id);
+  // Round 23: a planned day is the lead's own install day, on a day Keenan
+  // opened; the run opens two of its own.
+  installDays = await openFreeDays(admin, calgaryToday(), { from: 10, to: 45, count: 2 });
+  await admin.from("quotes").update({ valid_until: addDays(calgaryToday(), -1), meeting_install_on: installDays[0] }).eq("id", quote.data.id);
+  const planned = await admin.from("leads").update({ install_on: installDays[0] }).eq("id", leadId);
+  if (planned.error) throw new Error(`planned day: ${planned.error.message}`);
   const later = await browser.newContext(phone);
   const laterPage = await later.newPage();
   await laterPage.goto(quoteUrl);
@@ -1226,7 +1234,7 @@ try {
   const { data: anyColour } = await admin.from("track_colours").select("id, name").eq("active", true).order("sort_order").limit(1).single();
   const agreedColour = colourRow ?? anyColour;
   await admin.from("leads").update({ track_colour_id: agreedColour.id }).eq("id", leadId);
-  const agreedDay = addDays(calgaryToday(), 9);
+  const agreedDay = installDays[1];
   const accepted = await admin.rpc("quote_accept_offer", { p_quote: quote.data.id, p_offer: "main", p_install_on: agreedDay });
   if (accepted.error) throw new Error(`accept: ${accepted.error.message}`);
   const agreedContext = await browser.newContext(phone);
@@ -1307,6 +1315,7 @@ try {
   if (page) await page.screenshot({ path: `${out}/ql-failure.png`, fullPage: true }).catch(() => {});
 } finally {
   if (ownerSession) await ownerSession.close().catch(() => {});
+  await closeOpenedDays(admin, installDays).catch(() => {});
   const stored = [mockupPath, frontMockupPath, sceneMockupPath, pocketMockupPath].filter(Boolean);
   if (stored.length > 0) await admin.storage.from(BUCKET).remove(stored).catch(() => {});
   if (setter.id) {
