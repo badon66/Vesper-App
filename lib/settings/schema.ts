@@ -208,6 +208,11 @@ export const settingsFormSchema = z.object({
   j_track_per_ft: moneyOrUnset,
   service_call_fee: moneyOrUnset,
   price_hold_days: wholeNumber(1, 365),
+  // Round 23 (Keenan, 2026-11-17): installs a day unless a day has its own
+  // number, and the earliest day a customer can pick, in days from today.
+  install_jobs_per_day: wholeNumber(1, 20),
+  install_lead_days_white: wholeNumber(0, 60),
+  install_lead_days_colour: wholeNumber(0, 60),
   // The quote link (2026-11-02): the least a job can cost before GST.
   min_job_total: moneyOrUnset,
   faq_text: z
@@ -369,6 +374,9 @@ export function settingsFormDataToInput(
     j_track_per_ft: text("j_track_per_ft"),
     service_call_fee: text("service_call_fee"),
     price_hold_days: text("price_hold_days"),
+    install_jobs_per_day: text("install_jobs_per_day"),
+    install_lead_days_white: text("install_lead_days_white"),
+    install_lead_days_colour: text("install_lead_days_colour"),
     min_job_total: text("min_job_total"),
     black_friday_kind: text("black_friday_kind") || "none",
     black_friday_value: text("black_friday_value"),
@@ -431,6 +439,9 @@ export function settingsUpdateFromValues(v: SettingsFormValues): SettingsUpdate 
     j_track_per_ft: v.j_track_per_ft,
     service_call_fee: v.service_call_fee,
     price_hold_days: v.price_hold_days,
+    install_jobs_per_day: v.install_jobs_per_day,
+    install_lead_days_white: v.install_lead_days_white,
+    install_lead_days_colour: v.install_lead_days_colour,
     min_job_total: v.min_job_total,
     ...blackFridayColumns(v.black_friday_kind, v.black_friday_value),
     faq_text: v.faq_text,
@@ -496,6 +507,9 @@ export type SettingsFormDefaults = {
   j_track_per_ft: string;
   service_call_fee: string;
   price_hold_days: string;
+  install_jobs_per_day: string;
+  install_lead_days_white: string;
+  install_lead_days_colour: string;
   min_job_total: string;
   black_friday_kind: BlackFridayKindInput;
   black_friday_value: string;
@@ -556,6 +570,9 @@ export function settingsRowToFormDefaults(row: SettingsRow): SettingsFormDefault
     j_track_per_ft: row.j_track_per_ft === null ? "" : row.j_track_per_ft.toFixed(2),
     service_call_fee: row.service_call_fee === null ? "" : row.service_call_fee.toFixed(2),
     price_hold_days: String(row.price_hold_days),
+    install_jobs_per_day: String(row.install_jobs_per_day),
+    install_lead_days_white: String(row.install_lead_days_white),
+    install_lead_days_colour: String(row.install_lead_days_colour),
     min_job_total: row.min_job_total === null ? "" : row.min_job_total.toFixed(2),
     black_friday_kind: row.black_friday_kind === "percent" || row.black_friday_kind === "amount" ? row.black_friday_kind : "none",
     black_friday_value:

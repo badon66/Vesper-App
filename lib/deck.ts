@@ -260,6 +260,9 @@ export const DECK_LINE_DEFAULTS = {
   step_day_label: "Your install day",
   step_day_none: "We pick the day together.",
   step_day_button: "Pick a day",
+  // Round 23 (Keenan, 2026-11-17): under the open days, at the meeting and
+  // on the link.
+  step_day_note: "We'll confirm your day with you a few days before. If the weather won't allow it, we'll move you to the next good day.",
   step_on_day_label: "On the day",
   step_on_day: "A small crew fits the track and plugs in the control box. We clean up and set up the app with you.",
   step_pay_label: "Paying",
@@ -378,6 +381,7 @@ export const LINE_SPECS: Record<DeckLineKey, LineSpec> = {
   step_day_label: { group: "next_steps", label: "The install day", words: LABEL },
   step_day_none: { group: "next_steps", label: "The install day, no day yet", words: 10 },
   step_day_button: { group: "next_steps", label: "The install day, the button", words: 3 },
+  step_day_note: { group: "next_steps", label: "The install day, under the open days", words: SENTENCE },
   step_on_day_label: { group: "next_steps", label: "Step 3", words: LABEL, retired: true },
   step_on_day: { group: "next_steps", label: "Step 3, the line", words: SENTENCE, retired: true },
   step_pay_label: { group: "next_steps", label: "Step 4 (its line is No payment until your install is complete.)", words: LABEL, retired: true },

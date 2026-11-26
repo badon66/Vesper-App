@@ -321,6 +321,13 @@ Six parts on the `round18` branch. Additive schema changes in four migrations (`
 - [x] Round 20's press and hold step waits for the name to answer taps and holds until the pop-up shows, on a freshly opened list.
 - [x] Unit tests, the database suite (with `tests/rls/round22.test.ts`), a new walk-through (`tests/live/round22-walkthrough.mjs`) and the walk-throughs these touch.
 
+### Round 23: install days the customer picks from Keenan's calendar (Keenan, 2026-11-17; customer-facing and it books days, tested properly; merges on green outside the knocking window, no preview, on Keenan's word)
+- [x] Installs, Keenan only: a month view where he taps a day to open or close it, each open day with a jobs limit (Settings' default, 1 to start, or its own), who's booked with each name opening the lead, and the spots left. Closing a day with installs asks first and lists who needs moving; it never moves anyone.
+- [x] The meeting's Pick a day and the link's Pick your install day (once they book or sign) show only open days, full ones greyed with "Full", from 3 days out for white track and 7 for colour-matched (both in Settings), with Keenan's line under them. On the link they see their day later and change it until 2 days before; then call or text Keenan. Keenan changes it any time from the lead.
+- [x] A day counts once saved with a yes at the meeting or picked on the link; the database never lets a day go over its limit, under a lock per day like meeting times.
+- [x] The day on Where you're at, At a glance, the Accepted sheet, the timeline (picked, moved) and the link card's booking box; Keenan's push "[name] picked [day] for their install."
+- [x] Unit tests, the install-day race tests (`tests/rls/round23-install-days.test.ts`: two customers for the last spot, three for two, the meeting against the link), the database suite, a new walk-through (`tests/live/round23-walkthrough.mjs`: phone, 430, iPad and laptop), and the quote link (phone and laptop), meeting and quote outcomes walk-throughs one after another.
+
 ## M4: Pipeline board and lead detail (iPad and desktop)
 **Parked (Keenan, 2026-11-02).** Not started or planned until Keenan says otherwise.
 - [ ] The board is a Board view inside Leads for the owner on iPad and desktop; phones keep the list

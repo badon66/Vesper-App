@@ -8,7 +8,6 @@ import {
   declineQuote,
   markInstalled,
   markNotInstalled,
-  setInstallDay,
   setSiteVisitDay,
   setSiteVisitDone,
   undoAcceptance,
@@ -17,11 +16,14 @@ import { ActionMessage } from "@/components/action-message";
 import { AnswerGroup } from "@/components/leads/answer-group";
 import { TrackColourForm } from "@/components/leads/track-colour-form";
 import { DateField } from "@/components/quotes/quote-editor/parts";
+import { InstallDayChooser } from "@/components/installs/install-day-chooser";
+import { InstallDaySheet } from "@/components/installs/install-day-sheet";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import type { PickDay } from "@/lib/installs/calendar";
 import { STATUS_LABELS, type LeadStatus } from "@/lib/leads/status";
 import {
   installedWords,
@@ -99,6 +101,8 @@ export type QuoteOutcomeData = {
 };
 
 export type QuoteOutcomeProps = QuoteOutcomeData & {
+  // Round 23: Keenan's open install days (from tomorrow), with which are full.
+  installDays: PickDay[];
   // The lead's track colour: Accepted needs one, and asks for it first.
   track: {
     set: boolean;
@@ -128,6 +132,7 @@ export function QuoteOutcome({
   commission,
   track,
   today,
+  installDays,
 }: QuoteOutcomeProps) {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -351,7 +356,7 @@ export function QuoteOutcome({
             ) : null}
             {state === "accepted" ? (
               <>
-                <dt className="self-center text-muted-foreground">Install planned</dt>
+                <dt className="self-center text-muted-foreground">Install day</dt>
                 <dd className="flex flex-wrap items-center gap-x-3" data-testid="quote-outcome-install-on">
                   <span>{installOn ? formatDay(installOn) : "No day yet"}</span>
                   {sold ? (
@@ -532,18 +537,21 @@ export function QuoteOutcome({
           ) : null}
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="outcome-planned-on">Install day, if you have one</Label>
-            {/* In words over the phone's own picker (round 12), like the editor's dates. */}
-            <DateField
-              id="outcome-planned-on"
-              min={today}
-              max={addDays(today, 365)}
-              value={plannedOn}
-              onChange={setPlannedOn}
-              empty="No day yet"
-              testId="outcome-planned-on"
+            <span className="font-semibold" id="outcome-planned-on-label">
+              Install day
+            </span>
+            {/* Round 23: one of Keenan's open install days, the day already
+                picked (at the meeting or on their link) to start. */}
+            <p className="text-muted-foreground text-pretty" data-testid="outcome-planned-on">
+              {plannedOn ? `${formatDay(plannedOn)}. Tap it again for no day yet.` : "No day yet. Pick one of your open days, or add it later."}
+            </p>
+            <InstallDayChooser
+              days={installDays}
+              chosen={plannedOn || null}
+              onChoose={(day) => setPlannedOn(day === plannedOn ? "" : day)}
+              label="Install day"
+              testId="outcome-planned-on-days"
             />
-            <p className="text-muted-foreground">Leave it empty if there&apos;s no day yet. You can add it later.</p>
           </div>
 
           {chosen ? (
@@ -745,44 +753,9 @@ export function QuoteOutcome({
         <ActionMessage text={message} className="mt-4" />
       </DialogPanel>
 
-      {/* The planned install day, added or changed after the yes. */}
-      <DialogPanel
-        open={sheet === "install_on"}
-        onClose={close}
-        title="Planned install day"
-        testId="outcome-install-on-sheet"
-        actions={
-          <>
-            {installOn ? (
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={pending}
-                onClick={() => run(() => setInstallDay({ leadId, on: null }))}
-              >
-                No day yet
-              </Button>
-            ) : null}
-            <Button type="button" variant="outline" onClick={close} disabled={pending}>
-              Back
-            </Button>
-            <Button
-              type="button"
-              disabled={pending || !plannedOn || plannedOn === installOn}
-              data-testid="outcome-install-on-confirm"
-              onClick={() => run(() => setInstallDay({ leadId, on: plannedOn }))}
-            >
-              {pending ? "Saving" : "Save"}
-            </Button>
-          </>
-        }
-      >
-        <div className="flex flex-col gap-1.5 text-sm">
-          <Label htmlFor="outcome-install-on">Install day</Label>
-          <DateField id="outcome-install-on" min={today} max={addDays(today, 365)} value={plannedOn} onChange={setPlannedOn} empty="No day yet" />
-          <ActionMessage text={message} className="mt-3" />
-        </div>
-      </DialogPanel>
+      {/* The install day, added or changed any time (round 23: one of
+          Keenan's open days, through the same sheet as At a glance). */}
+      {sheet === "install_on" ? <InstallDaySheet open onClose={close} leadId={leadId} current={installOn} days={installDays} /> : null}
 
       {/* Round 17: the site visit's day. Their link shows it under Site
           visit until he marks it Done. */}

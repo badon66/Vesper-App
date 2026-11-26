@@ -191,6 +191,22 @@ export function describeEvent(event: TimelineEvent, runs: readonly QuoteRun[] | 
     }
     case "quote_acceptance_undone":
       return "Undid the quote's acceptance.";
+    // Round 23: the install day, picked, moved or taken off, by the customer
+    // on their link, at the meeting, or by Keenan (who: the line under it).
+    case "install_day_picked": {
+      const day = dayIn(payload.day);
+      const where = payload.by === "customer" ? " on their link" : payload.by === "meeting" ? " at the meeting" : "";
+      return day ? `Picked ${day} for the install${where}.` : `Picked the install day${where}.`;
+    }
+    case "install_day_changed": {
+      const day = dayIn(payload.day);
+      const from = dayIn(payload.from);
+      const where = payload.by === "customer" ? " on their link" : payload.by === "meeting" ? " at the meeting" : "";
+      if (day && from) return `Moved the install from ${from} to ${day}${where}.`;
+      return day ? `Moved the install to ${day}${where}.` : `Moved the install day${where}.`;
+    }
+    case "install_day_cleared":
+      return "Took the install day off.";
     // Round 20: Keenan deleted the lead, then restored it from Deleted.
     case "lead_deleted":
       return "Deleted the lead.";
@@ -243,7 +259,16 @@ export function describeEvent(event: TimelineEvent, runs: readonly QuoteRun[] | 
 }
 
 // Events the customer makes on their quote link, with no member behind
-// them: the timeline names the customer instead of "Vesper".
-export function isCustomerEvent(type: TimelineEvent["type"]): boolean {
+// them: the timeline names the customer instead of "Vesper". Round 23: an
+// install day they picked on their link too.
+export function isCustomerEvent(type: TimelineEvent["type"], payload: Json | null = null): boolean {
+  if (type === "install_day_picked" || type === "install_day_changed") {
+    return typeof payload === "object" && payload !== null && !Array.isArray(payload) && payload.by === "customer";
+  }
   return type === "quote_link_opened" || type === "install_requested" || type === "agreement_signed";
+}
+
+// A YYYY-MM-DD day in a payload, in words ("Thu, Dec 10").
+function dayIn(value: unknown): string | null {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? formatDay(value) : null;
 }

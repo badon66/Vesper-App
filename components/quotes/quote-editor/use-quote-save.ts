@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
-import { saveQuoteDraft } from "@/app/(app)/meeting/actions";
+import { saveQuoteDraft, type InstallDayClaim } from "@/app/(app)/meeting/actions";
 import { NO_SIGNAL_SAVE, quoteSaveInput, type SaveFrom } from "@/lib/quotes/draft";
 import { quoteFingerprint, type MeetingPayload, type QuoteUIState } from "@/lib/meeting/state";
 import { stampedUpdatedAt } from "@/lib/quotes/stamp";
@@ -40,7 +40,8 @@ export function rememberQuoteStamp(leadId: string, stamp: string | null | undefi
 
 const NO_SIGNAL_SAVE_HERE = "No signal. Your changes stay here; save again when you're back online.";
 
-export type Saved = { quoteId: string; savedAt: string; fingerprint: string };
+// Round 23: installDay, when the save also claimed the meeting's install day.
+export type Saved = { quoteId: string; savedAt: string; fingerprint: string; installDay?: InstallDayClaim };
 
 export function useQuoteSave({
   leadId,
@@ -77,7 +78,7 @@ export function useQuoteSave({
           return null;
         }
         if (result.stamp) stamps.set(leadId, result.stamp);
-        return { quoteId: result.quoteId, savedAt: result.savedAt, fingerprint };
+        return { quoteId: result.quoteId, savedAt: result.savedAt, fingerprint, ...(result.installDay ? { installDay: result.installDay } : {}) };
       } catch {
         if (!quiet) setMessage(from === "lead" ? NO_SIGNAL_SAVE_HERE : NO_SIGNAL_SAVE);
         return null;

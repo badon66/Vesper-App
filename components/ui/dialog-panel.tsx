@@ -13,7 +13,9 @@ import { cn } from "@/lib/utils";
 // a field is tapped, and a screen reader reads the title first. Round 20:
 // however long the body, only the body scrolls; the title and the actions
 // stay on screen (the Accepted sheet ran taller than the iPad, and Mark
-// accepted ended up below it).
+// accepted ended up below it). Round 23: the body's box is the dialog's
+// height less its border, or a sheet that reaches the limit (the Accepted
+// sheet with its day calendar) scrolls the whole pop-up by those 2 px.
 export function DialogPanel({
   open,
   onClose,
@@ -62,7 +64,7 @@ export function DialogPanel({
       )}
     >
       {open ? (
-        <div className="flex max-h-[90dvh] flex-col overflow-hidden">
+        <div className="flex max-h-[calc(90dvh-2px)] flex-col overflow-hidden">
           <h2 id={titleId} ref={titleRef} tabIndex={-1} className="shrink-0 px-5 pt-5 text-lg font-bold text-balance outline-none">
             {title}
           </h2>

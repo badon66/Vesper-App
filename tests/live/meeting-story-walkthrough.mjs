@@ -31,6 +31,7 @@ import { createClient } from "@supabase/supabase-js";
 import { chromium } from "playwright";
 import sharp from "sharp";
 import { deckLine, deckOrder, fillLine } from "./deck-order.mjs";
+import { closeOpenedDays, openFreeDays } from "./install-days.mjs";
 import { openOwnerSession } from "./owner-session.mjs";
 
 const base = process.env.BASE ?? "http://localhost:3300";
@@ -186,6 +187,8 @@ const browser = await chromium.launch();
 let session = null;
 let page = null;
 let leadId = null;
+// Round 23: the install days the walk-through opens for itself.
+let openedDays = [];
 const paths = [];
 
 // Opens a fresh iPad-sized context on the owner's one-time session.
@@ -359,6 +362,9 @@ try {
   // The meeting: 11 pm on the booking window's last evening, hosted by the
   // throwaway setter, so it never sits on Keenan's evenings.
   const today = calgaryDay();
+  // Round 23: Pick a day shows only Keenan's open days, so the walk-through
+  // opens two of its own that he hasn't touched, ten days or more out.
+  openedDays = await openFreeDays(admin, today, { from: 10, to: 40, count: 2, limits: [5, 5] });
   const lastEvening = addDays(today, 14);
   const startsAt = new Date(`${lastEvening}T23:00:00-06:00`);
   const meeting = await admin
@@ -535,7 +541,18 @@ try {
       await region.getByTestId("next-step-pick-day").click();
       await page.getByTestId("install-day-picker").waitFor({ timeout: 5000 }).catch(() => {});
       await page.waitForTimeout(600);
-      check("Pick a day opens three weeks of days (no day tapped here)", (await page.locator("[data-testid=install-day-picker] button[data-day]").count()) === 21);
+      // Round 23: only Keenan's open days are buttons (ours among them),
+      // none before the earliest; the days between have no button.
+      const dayButtons = await page.locator("[data-testid=install-day-picker] button[data-day]").evaluateAll((els) => els.map((el) => el.getAttribute("data-day")));
+      const { data: openRows } = await admin.from("install_days").select("day").eq("open", true).in("day", dayButtons.length > 0 ? dayButtons : ["1900-01-01"]);
+      const openSet = new Set((openRows ?? []).map((row) => row.day));
+      check(
+        "Pick a day shows only Keenan's open days, the walk-through's among them, never one before the earliest, with Keenan's line under them (no day tapped here)",
+        openedDays.every((day) => dayButtons.includes(day)) &&
+          dayButtons.every((day) => openSet.has(day) && day > addDays(today, 2)) &&
+          flat(await page.getByTestId("install-day-note").innerText().catch(() => "")).replace(/[\u2018\u2019]/g, "'") === flat(deckLine(settings.deck, "step_day_note")),
+        `${dayButtons.join(", ")}`,
+      );
       await shot(page, "meeting-pick-a-day");
       await page.keyboard.press("Escape");
       await page.waitForTimeout(600);
@@ -553,9 +570,13 @@ try {
   await closeOwner(owner.context);
 
   // ---------------------------------------------------------------- the choice at the table (staged by the service role)
-  const tableDay = addDays(today, 10);
+  const tableDay = openedDays[0];
   const staged = await admin.from("quotes").update({ meeting_offer: "main", meeting_install_on: tableDay }).eq("id", quoteId);
   if (staged.error) throw new Error(`meeting choice: ${staged.error.message}`);
+  // Round 23: a yes with a day claims it for the lead, as the meeting's save
+  // does, through the same guard.
+  const claimed = await admin.rpc("install_day_set", { p_lead: leadId, p_day: tableDay, p_by: "meeting" });
+  if (claimed.error) throw new Error(`meeting day: ${claimed.error.message}`);
   owner = await ownerPage();
   page = owner.page;
   looked = await leadFootprint(leadId);
@@ -1025,7 +1046,7 @@ try {
       offered.find((o) => o.checked)?.offer === "front" &&
       (await acceptSheet.locator('[data-testid="outcome-option"][data-offer="main"]').getByTestId("outcome-option-meeting").count()) === 1 &&
       JSON.stringify(sources) === JSON.stringify(["Chosen at the meeting: Main floor", "Booked on their link: Front only"]) &&
-      (await page.getByTestId("outcome-planned-on").inputValue()) === tableDay,
+      (await page.locator(`[data-testid="outcome-planned-on-days"] button[data-day="${tableDay}"]`).getAttribute("aria-pressed")) === "true",
     `${JSON.stringify(offered)} | ${sources.join(" | ")}`,
   );
   await shot(page, "accepted-sheet-1180");
@@ -1043,6 +1064,7 @@ try {
   if (page) await page.screenshot({ path: `${out}/story-failure.png` }).catch(() => {});
 } finally {
   if (session) await session.close().catch(() => {});
+  await closeOpenedDays(admin, openedDays).catch(() => {});
   if (setter.id) {
     const { data: owned } = await admin.from("leads").select("id").eq("created_by", setter.id);
     const ids = (owned ?? []).map((row) => row.id);

@@ -78,8 +78,9 @@ describe("the seeded deck words and looks", () => {
     const lines = round9.match(/'\{lines\}', \$lines\$([\s\S]*?)\$lines\$::jsonb\)\s+where id = 1\s+and deck -> 'lines' is null;/);
     // Round 10's thank you, round 13's lowest-price line and round 17's
     // lines came later: a deck without them reads ours.
-    // Round 18's controller lines came later too.
-    const later = new Set(["thanks", "price_lowest", "price_feet", "colour_season_included", "controller_label", "controller_detail"]);
+    // Round 18's controller lines came later too, and round 23's line under
+    // the install days.
+    const later = new Set(["thanks", "price_lowest", "price_feet", "colour_season_included", "controller_label", "controller_detail", "step_day_note"]);
     const round9Lines = Object.fromEntries(
       Object.entries(DECK_LINE_DEFAULTS).filter(
         ([key]) => (!later.has(key) && !/^link_(track|build|docs|agreement)_/.test(key) && !/^tracker_/.test(key) && !key.startsWith("cover_")) || key === "cover_line",

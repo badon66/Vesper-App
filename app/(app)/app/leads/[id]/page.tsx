@@ -72,6 +72,8 @@ import { navigateUrl } from "@/lib/schedule/distance";
 import { screenTotal, totalFeet } from "@/lib/pricing";
 import { quoteBaseUrl, requestOrigin } from "@/lib/quote-link/server";
 import { loadQuoteOutcome } from "./quote-outcome-data";
+import { InstallDayGlance } from "@/components/installs/install-day-sheet";
+import { ownerPickDays } from "@/lib/installs/owner-days";
 import { loadQuoteEditor } from "@/lib/quotes/editor-data";
 import { loadLeadMockupRows, signLeadMockups } from "@/lib/leads/mockups";
 import {
@@ -200,7 +202,7 @@ export default async function LeadPage({
   // The second round: what needs the lead's own row. Round 6: the notes
   // follow the contact's rule, from lead_notes. The quote's customer link
   // and its outcome (round 8) are the owner's only.
-  const [contact, leadNotes, sessionResult, quoteCardBare, quoteOutcome, ralResult, signedResult, names, mockupData] = await Promise.all([
+  const [contact, leadNotes, sessionResult, quoteCardBare, quoteOutcome, ralResult, signedResult, names, mockupData, installDays] = await Promise.all([
     contactShown ? contactFor(supabase, me, row.id) : NO_CONTACT,
     contactShown ? notesFor(supabase, me, row.id) : NO_NOTES,
     row.knock_session_id
@@ -218,10 +220,12 @@ export default async function LeadPage({
     ]),
     // The mockups' pictures, signed alongside the lead's photos.
     mockupRows ? signLeadMockups(supabase, mockupRows) : null,
+    // Round 23: Keenan's open install days, for changing this lead's day.
+    isOwner ? ownerPickDays(supabase, row.id, calgaryToday()) : null,
   ]);
   const lead = { ...row, ...contact, notes: leadNotes.notes };
   // The customer's own number, for texting the link, comes with the contact.
-  const quoteCard = quoteCardBare ? { ...quoteCardBare, customerPhone: lead.phone } : null;
+  const quoteCard = quoteCardBare ? { ...quoteCardBare, customerPhone: lead.phone, installOn: lead.install_on } : null;
   const meetings = meetingRows.map((meeting) => ({ ...meeting, lead }));
   const liveMeeting = meetings.find((meeting) => isLive(meeting.status));
   const canBook = canEdit && (lead.status === "new" || lead.status === "follow_up") && !liveMeeting;
@@ -325,12 +329,11 @@ export default async function LeadPage({
     : null;
   const visit = isOwner ? quoteOutcome?.siteVisit : null;
   const siteVisitGlance = visit?.on ? (visit.doneAt ? `Done, ${formatDay(visit.on)}` : formatDay(visit.on)) : null;
-  const installGlance =
-    lead.status === "installed" && lead.installed_at
-      ? `Installed ${formatDate(lead.installed_at)}`
-      : lead.install_on && (lead.status === "sold" || lead.status === "installed")
-        ? `Planned for ${formatDay(lead.install_on)}`
-        : null;
+  // Round 23: the install day shows from the moment it's picked (at the
+  // meeting, on their link or by Keenan), not only once Sold; Keenan can
+  // change it any time, or add one once the lead has a quote.
+  const installedGlance = lead.status === "installed" && lead.installed_at ? `Installed ${formatDate(lead.installed_at)}` : null;
+  const installDayShown = !installedGlance && lead.status !== "lost" && (lead.install_on !== null || (isOwner && quoteOutcome !== null));
   const everyoneGlance = liveMeeting ? everyoneDecidingLine(everyoneDecidingOf(liveMeeting.everyone_deciding)) : null;
   const quoteCards = (
     <>
@@ -353,6 +356,7 @@ export default async function LeadPage({
       {quoteOutcome ? (
         <QuoteOutcome
           {...quoteOutcome}
+          installDays={installDays ?? []}
           track={{
             set: trackColour.kind !== "none",
             text: trackColourText(trackColour),
@@ -530,9 +534,13 @@ export default async function LeadPage({
               </a>
             </GlanceRow>
           ) : null}
-          {installGlance ? (
+          {installedGlance ? (
             <GlanceRow label="Install" testId="glance-install">
-              <p className="font-semibold">{installGlance}</p>
+              <p className="font-semibold">{installedGlance}</p>
+            </GlanceRow>
+          ) : installDayShown ? (
+            <GlanceRow label="Install day" testId="glance-install">
+              <InstallDayGlance leadId={lead.id} day={lead.install_on} days={installDays} canChange={isOwner} />
             </GlanceRow>
           ) : null}
           {everyoneGlance ? (
@@ -820,7 +828,7 @@ export default async function LeadPage({
                       ? entry.event.actor_id === me.id
                         ? "You"
                         : (names.get(entry.event.actor_id) ?? "Someone")
-                      : isCustomerEvent(entry.event.type)
+                      : isCustomerEvent(entry.event.type, entry.event.payload)
                         ? lead.first_name
                         : "Vesper"},{" "}
                     {formatDateTime(entry.event.created_at)}

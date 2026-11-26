@@ -3,6 +3,7 @@
 import { Check } from "lucide-react";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import type { InstallDayClaim } from "@/app/(app)/meeting/actions";
 
 import { InitialsConfirm, type Confirmation } from "@/components/meeting/colour-page";
 import { DeckButton, DECK_TYPE, MoreLayer, say, useDeck } from "@/components/meeting/deck-parts";
@@ -112,6 +113,9 @@ export type QuoteScreenProps = {
   } | null;
   // Where a yes goes once the colour is initialled: What happens next.
   onYes?: () => void;
+  // Round 23: how the yes with an install day went (the day is theirs, or
+  // its last spot went first), for What happens next to say.
+  onInstallDay?: (claim: InstallDayClaim) => void;
   // The deck's layer states for the breakdown and the initials, so the
   // pager locks while either is open.
   breakdownLayer?: { open: boolean; set: (open: boolean) => void };
@@ -137,6 +141,7 @@ export function QuoteScreen({
   mockups = [],
   initials = null,
   onYes,
+  onInstallDay,
   breakdownLayer,
   initialsLayer,
 }: QuoteScreenProps) {
@@ -224,6 +229,7 @@ export function QuoteScreen({
     const result = await save(state, { quiet: true, quoteId });
     setPickWaiting(result === null);
     if (result) onSaved(result.quoteId, result.savedAt, result.fingerprint);
+    if (result?.installDay) onInstallDay?.(result.installDay);
   });
   useEffect(() => {
     if (lastPick.current === pickKey) return;

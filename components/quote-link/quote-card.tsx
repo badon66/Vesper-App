@@ -9,7 +9,7 @@ import { DialogPanel } from "@/components/ui/dialog-panel";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { choiceInSentence, phoneHref, quoteLinkMessage } from "@/lib/quote-link/view";
-import { formatDateTime, formatFullDate } from "@/lib/time";
+import { formatDateTime, formatFullDate, formatLongDay } from "@/lib/time";
 
 // Times end in "p.m.", so a sentence ending in one gets no second full stop.
 const sentence = (text: string) => (text.endsWith(".") ? text : `${text}.`);
@@ -47,9 +47,12 @@ export type QuoteCardProps = {
   // them, and the lead page can stop sending them.
   quote: { total?: string; feet?: number; validUntil: string | null; holdPassed: boolean } | null;
   link: QuoteCardLink | null;
+  // Round 23: the lead's install day (picked at the meeting, on their link,
+  // or by Keenan), shown with their booking.
+  installOn?: string | null;
 };
 
-export function QuoteCard({ leadId, firstName, phone, customerPhone, quote, link }: QuoteCardProps) {
+export function QuoteCard({ leadId, firstName, phone, customerPhone, quote, link, installOn = null }: QuoteCardProps) {
   const [sheet, setSheet] = useState<{ link: string; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -132,6 +135,9 @@ export function QuoteCard({ leadId, firstName, phone, customerPhone, quote, link
                 {bookedNow.total ? `, ${bookedNow.total}` : ""}.
               </p>
               <p className="text-muted-foreground">{sentence(formatDateTime(bookedNow.at))}</p>
+              <p className="font-semibold" data-testid="quote-card-install-day">
+                {installOn ? `Install day: ${formatLongDay(installOn)}` : "No install day picked yet."}
+              </p>
             </div>
           ) : null}
           <div className="flex flex-col gap-1.5" data-testid="quote-link-status">

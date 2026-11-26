@@ -19,6 +19,7 @@ import { MoreButton, type MoreState } from "@/components/meeting/deck-pages";
 import { RooflineTracker } from "@/components/quote-link/roofline-tracker";
 import { deckLine, SLOT_BY_KEY, type DeckLines, type PageWords } from "@/lib/deck";
 import { installDayGrid, moreWords, slotView } from "@/lib/meeting/deck-pages";
+import { pickWeeks, type PickDay } from "@/lib/installs/calendar";
 import type { RecapView } from "@/lib/meeting/black-friday-state";
 import type { DeckPayload, TrackerProgress } from "@/lib/meeting/state";
 import { trackerSteps } from "@/lib/quote-link/tracker";
@@ -61,6 +62,11 @@ export type NextStepsPageProps = {
   // Round 17: the agreement tick, the site visit and Installed, from the
   // lead (null in the rehearsal with no lead).
   progress: TrackerProgress | null;
+  // Round 23: Keenan's open install days for this lead (from the earliest
+  // for their track), and what the last save said about the day picked
+  // (its last spot went first). Null: an older copy, the plain grid.
+  installDays?: { earliest: string; days: PickDay[] } | null;
+  dayProblem?: string | null;
   // What we'll need, and the Pick a day layer.
   more: MoreState;
   dayLayer: MoreState;
@@ -77,7 +83,22 @@ function Row({ label, children, testId }: { label: string; children: ReactNode; 
   );
 }
 
-export function NextStepsPage({ deck, words, lines, near, fillEmpty, recap, installOn, today, onInstallOn, progress, more, dayLayer }: NextStepsPageProps) {
+export function NextStepsPage({
+  deck,
+  words,
+  lines,
+  near,
+  fillEmpty,
+  recap,
+  installOn,
+  today,
+  onInstallOn,
+  progress,
+  more,
+  dayLayer,
+  installDays = null,
+  dayProblem = null,
+}: NextStepsPageProps) {
   const hero = slotView(deck, "install_day.hero", fillEmpty);
   const withPicture = slotHasPicture(hero);
   const layer = moreWords(words);
@@ -131,6 +152,11 @@ export function NextStepsPage({ deck, words, lines, near, fillEmpty, recap, inst
               </DeckButton>
             ) : null}
           </div>
+          {dayProblem ? (
+            <p role="alert" className={cn(DECK_TYPE.small, "font-semibold")} data-testid="next-step-day-problem">
+              {say(dayProblem)}
+            </p>
+          ) : null}
         </Row>
       </ul>
       <p className={cn(DECK_TYPE.small, "text-muted-foreground")} data-testid="next-steps-closing">
@@ -185,6 +211,8 @@ export function NextStepsPage({ deck, words, lines, near, fillEmpty, recap, inst
             title={lines.step_day_label}
             today={today}
             chosen={installOn}
+            open={installDays}
+            note={deckLine(lines, "step_day_note")}
             onPick={(day) => {
               onInstallOn(day);
               dayLayer.set(false);
@@ -207,8 +235,27 @@ const asDate = (day: string) => new Date(`${day}T12:00:00Z`);
 // picks a day and closes the layer; No day yet clears it. The chosen day is
 // Night Text with navy text and a tick, never gold. The month shows on the
 // first day and on the 1st.
-function DayPicker({ title, today, chosen, onPick }: { title: string; today: string; chosen: string | null; onPick: (day: string | null) => void }) {
-  const rows = installDayGrid(today);
+// Round 23: with Keenan's open days, only those can be picked; days in
+// between are shaded, and full ones are greyed with "Full". Keenan's line
+// about confirming the day sits under them.
+function DayPicker({
+  title,
+  today,
+  chosen,
+  open,
+  note,
+  onPick,
+}: {
+  title: string;
+  today: string;
+  chosen: string | null;
+  open: { earliest: string; days: PickDay[] } | null;
+  note: string;
+  onPick: (day: string | null) => void;
+}) {
+  const cells = open ? pickWeeks(open.days, chosen) : null;
+  const rows: (string | null)[][] = cells ? cells.map((week) => week.map((cell) => cell?.day ?? null)) : installDayGrid(today);
+  const kindOf = new Map((cells ?? []).flat().flatMap((cell) => (cell ? [[cell.day, cell.kind] as const] : [])));
   const first = rows.flat().find((day): day is string => day !== null) ?? null;
   const chosenRef = useRef<HTMLButtonElement>(null);
   useEffect(() => chosenRef.current?.focus({ preventScroll: true }), []);
@@ -235,25 +282,48 @@ function DayPicker({ title, today, chosen, onPick }: { title: string; today: str
               const isChosen = day === chosen;
               const date = asDate(day);
               const showMonth = day === first || date.getUTCDate() === 1;
+              const kind = kindOf.get(day) ?? "open";
+              if (kind === "closed") {
+                return (
+                  <span
+                    key={day}
+                    role="gridcell"
+                    aria-hidden="true"
+                    className="flex h-[72px] w-full flex-col items-center justify-center rounded-md text-[27px] leading-none text-muted-foreground/50 tabular-nums"
+                  >
+                    {date.getUTCDate()}
+                    {showMonth ? <span className="text-[20px] leading-[22px]">{monthShort.format(date)}</span> : null}
+                  </span>
+                );
+              }
+              const full = kind === "full" && !isChosen;
               return (
                 <span key={day} role="gridcell">
                   <button
                     ref={isChosen ? chosenRef : undefined}
                     type="button"
+                    disabled={full}
                     aria-pressed={isChosen}
-                    aria-label={dayLabel.format(date)}
+                    aria-label={`${dayLabel.format(date)}${full ? ", full" : ""}`}
                     data-day={day}
+                    data-kind={full ? "full" : "open"}
                     onClick={() => onPick(day)}
                     className={cn(
                       "flex h-[72px] w-full flex-col items-center justify-center rounded-md border outline-none [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-card",
-                      isChosen ? "border-foreground bg-foreground text-background" : "border-input bg-background text-foreground active:bg-secondary",
+                      isChosen
+                        ? "border-foreground bg-foreground text-background"
+                        : full
+                          ? "border-transparent bg-muted text-muted-foreground"
+                          : "border-input bg-background text-foreground active:bg-secondary",
                     )}
                   >
                     <span className="flex items-center gap-1 text-[27px] leading-none font-semibold tabular-nums">
                       {date.getUTCDate()}
                       {isChosen ? <Check aria-hidden="true" className="size-5" strokeWidth={2.5} /> : null}
                     </span>
-                    {showMonth ? (
+                    {full ? (
+                      <span className="text-[20px] leading-[22px]">Full</span>
+                    ) : showMonth ? (
                       <span className={cn("text-[20px] leading-[22px]", !isChosen && "text-muted-foreground")}>{monthShort.format(date)}</span>
                     ) : null}
                   </button>
@@ -263,7 +333,15 @@ function DayPicker({ title, today, chosen, onPick }: { title: string; today: str
           </div>
         ))}
       </div>
-      <div className="mt-6">
+      {open && open.days.length === 0 ? (
+        <p className={cn(DECK_TYPE.body, "mt-6 max-w-[1000px]")} data-testid="install-day-none-open">
+          No install days are open yet. We pick the day together.
+        </p>
+      ) : null}
+      <p className={cn(DECK_TYPE.small, "mt-6 max-w-[1000px] text-muted-foreground")} data-testid="install-day-note">
+        {say(note)}
+      </p>
+      <div className="mt-4">
         <DeckButton onClick={() => onPick(null)} aria-pressed={chosen === null} data-testid="install-day-none">
           No day yet
         </DeckButton>

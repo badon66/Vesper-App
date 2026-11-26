@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { commissionAmountCents, commissionFor, commissionLightsCents, commissionQuoteFromRow } from "@/lib/pay/commission";
 import { parseOffers } from "@/lib/quotes/offers";
 import type { Database, Json } from "@/types/database";
+import { closeTestDays, openTestDays } from "./install-test-days";
 
 // Proves round 8 in the database itself (Keenan, 2026-11-09): only Keenan
 // marks a quote Accepted, Declined or Cancelled, undoes an acceptance or
@@ -241,6 +242,9 @@ async function removeEverything() {
   }
 }
 
+// Round 23: install days the tests open for themselves (install-test-days.ts).
+let installDays: string[] = [];
+
 beforeAll(async () => {
   const { data: settings, error: settingsError } = await admin.from("settings").select("commission_rate").eq("id", 1).single();
   if (settingsError || !settings) throw new Error(`settings: ${settingsError?.message}`);
@@ -258,6 +262,9 @@ beforeAll(async () => {
   if (!stock) throw new Error("no active track colour");
   colour = stock;
   reworkFees = !(await admin.from("quotes").select("rush_fee, upper_access_fee, upper_gable_access_fee").limit(1)).error;
+  // Round 23: a lead's install day must be a day Keenan opened, so these
+  // tests open their own, years ahead.
+  installDays = await openTestDays(admin, 8);
 
   for (const key of ["a", "b", "nobody"] as const) {
     const u = users[key];
@@ -276,6 +283,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await removeEverything();
+  await closeTestDays(admin, installDays);
 });
 
 describe("only Keenan marks a quote's outcome", () => {
@@ -348,7 +356,7 @@ describe("Accepted", () => {
   it("moves the lead to Sold and makes one pending commission for the lead's setter, at exactly the formula's amount", async () => {
     const lead = await newLead(users.a);
     const quote = await newQuote(lead);
-    const installOn = calgaryDay(12);
+    const installOn = installDays[0];
     const { data, error } = await accept(quote, { installOn });
     expect(error).toBeNull();
     const amount = amountFor(FULL_BASE_CENTS);
@@ -520,7 +528,7 @@ describe("Cancelled", () => {
     const lead = await newLead(users.a);
     const quote = await newQuote(lead);
     expect(hintOf((await cancel(quote, "timing")).error)).toBe("not_accepted");
-    expect((await accept(quote, { installOn: calgaryDay(20) })).error).toBeNull();
+    expect((await accept(quote, { installOn: installDays[1] })).error).toBeNull();
     expect(hintOf((await cancel(quote, "changed their mind")).error)).toBe("bad_reason");
     expect(hintOf((await cancel(quote, "timing", "A note")).error)).toBe("bad_note");
 
@@ -553,7 +561,7 @@ describe("Undo acceptance", () => {
     const lead = await newLead(users.a);
     await setStatus(lead, "met");
     const quote = await newQuote(lead);
-    expect((await accept(quote, { installOn: calgaryDay(15) })).error).toBeNull();
+    expect((await accept(quote, { installOn: installDays[2] })).error).toBeNull();
 
     expect((await undo(quote)).error).toBeNull();
     expect(await commissions(lead)).toMatchObject([
@@ -566,7 +574,8 @@ describe("Undo acceptance", () => {
       accepted_runs: null,
       lead_status_before: null,
     });
-    expect(await leadRow(lead)).toMatchObject({ status: "met", install_on: null, sold_at: null });
+    // Round 23: the lead keeps its install day (the customer still has it).
+    expect(await leadRow(lead)).toMatchObject({ status: "met", install_on: installDays[2], sold_at: null });
     expect(await lastEvent(lead, "quote_acceptance_undone")).toEqual({ quote_id: quote });
     expect(hintOf((await undo(quote)).error)).toBe("not_undoable");
 
@@ -769,19 +778,21 @@ describe("after the review", () => {
     expect((await leadRow(lead)).status).toBe("met");
   });
 
-  it("a change to the planned install day goes on the timeline; the day set with Accepted does not add a second line", async () => {
+  // Round 23: the install day has its own timeline lines (picked, changed,
+  // taken off) instead of an "edited" entry.
+  it("a change to the planned install day goes on the timeline once, as its own line", async () => {
     const lead = await newLead(users.a);
     const quote = await newQuote(lead);
-    const edits = async () => {
-      const { data } = await admin.from("lead_events").select("payload").eq("lead_id", lead).eq("type", "edited");
-      return (data ?? []).filter((row) => JSON.stringify(row.payload).includes("install_on"));
+    const lines = async () => {
+      const { data } = await admin.from("lead_events").select("type, payload").eq("lead_id", lead).in("type", ["edited", "install_day_picked", "install_day_changed"]).order("created_at");
+      return (data ?? []).filter((row) => row.type !== "edited" || JSON.stringify(row.payload).includes("install_on"));
     };
-    expect((await accept(quote, { installOn: calgaryDay(7) })).error).toBeNull();
-    expect(await edits()).toHaveLength(0);
-    expect((await admin.from("leads").update({ install_on: calgaryDay(9) }).eq("id", lead)).error).toBeNull();
-    const after = await edits();
-    expect(after).toHaveLength(1);
-    expect(after[0].payload).toEqual({ fields: ["install_on"] });
+    expect((await accept(quote, { installOn: installDays[3] })).error).toBeNull();
+    expect((await lines()).map((row) => row.type)).toEqual(["install_day_picked"]);
+    expect((await admin.from("leads").update({ install_on: installDays[4] }).eq("id", lead)).error).toBeNull();
+    const after = await lines();
+    expect(after.map((row) => row.type)).toEqual(["install_day_picked", "install_day_changed"]);
+    expect(after[1].payload).toEqual({ day: installDays[4], from: installDays[3], by: "system" });
   });
 });
 
@@ -808,13 +819,13 @@ describe("accepting an option", () => {
     expect(hintOf((await admin.rpc("quote_accept_offer", { p_quote: quote, p_offer: "nope" })).error)).toBe("bad_offer");
     expect(hintOf((await admin.rpc("quote_accept_offer", { p_quote: quote, p_offer: "empty" })).error)).toBe("bad_runs");
 
-    const { data, error } = await admin.rpc("quote_accept_offer", { p_quote: quote, p_offer: "smaller", p_install_on: calgaryDay(9) });
+    const { data, error } = await admin.rpc("quote_accept_offer", { p_quote: quote, p_offer: "smaller", p_install_on: installDays[5] });
     expect(error).toBeNull();
     const amount = amountFor(OPTION_THREE_BOXES_CENTS);
     expect(data).toEqual({ commission: { profile_id: users.a.id, amount }, reason: null });
     expect(await quoteRow(quote)).toMatchObject({ status: "accepted", accepted_offer: "smaller", accepted_boxes: 3, accepted_runs: [0, 2] });
     expect(await commissions(lead)).toMatchObject([{ base_amount: dollars(OPTION_THREE_BOXES_CENTS), amount, status: "pending" }]);
-    expect(await leadRow(lead)).toMatchObject({ status: "sold", install_on: calgaryDay(9) });
+    expect(await leadRow(lead)).toMatchObject({ status: "sold", install_on: installDays[5] });
     // The timeline names the option, never an amount.
     const event = await lastEvent(lead, "quote_accepted");
     expect(event).toMatchObject({ quote_id: quote, option: "Front and gable" });
@@ -1003,7 +1014,7 @@ describe("who reads what", () => {
   it("every setter reads the planned install date; nobody but Keenan sets it, the sale date or the install date", async () => {
     const lead = await newLead(users.a);
     const quote = await newQuote(lead);
-    const installOn = calgaryDay(30);
+    const installOn = installDays[6];
     expect((await accept(quote, { installOn })).error).toBeNull();
     for (const user of [users.a, users.b]) {
       const { data, error } = await user.client.from("leads").select("id, install_on").eq("id", lead).single();

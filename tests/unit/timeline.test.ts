@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeEvent, type TimelineEvent } from "@/lib/leads/timeline";
+import { describeEvent, isCustomerEvent, type TimelineEvent } from "@/lib/leads/timeline";
 
 const base = { from_status: null, to_status: null, payload: null };
 
@@ -229,5 +229,28 @@ describe("describeEvent", () => {
     );
     expect(describeEvent({ ...base, type: "meeting_outcome", payload: { outcome: "qualified" } })).toBe("Marked the meeting Qualified.");
     expect(describeEvent({ ...base, type: "meeting_booked" })).toBe("Booked a meeting.");
+  });
+});
+
+// Round 23 (Keenan, 2026-11-17): the install day's own lines, and who to
+// name under them.
+describe("the install day on the timeline", () => {
+  it("says when it was picked, moved or taken off, and where", () => {
+    expect(describeEvent({ ...base, type: "install_day_picked", payload: { day: "2026-12-10", by: "customer" } })).toBe(
+      "Picked Thu, Dec 10 for the install on their link.",
+    );
+    expect(describeEvent({ ...base, type: "install_day_picked", payload: { day: "2026-12-10", by: "meeting" } })).toBe(
+      "Picked Thu, Dec 10 for the install at the meeting.",
+    );
+    expect(describeEvent({ ...base, type: "install_day_changed", payload: { day: "2026-12-11", from: "2026-12-10", by: "keenan" } })).toBe(
+      "Moved the install from Thu, Dec 10 to Fri, Dec 11.",
+    );
+    expect(describeEvent({ ...base, type: "install_day_cleared", payload: { by: "keenan" } })).toBe("Took the install day off.");
+  });
+
+  it("names the customer only for a day they picked on their link", () => {
+    expect(isCustomerEvent("install_day_picked", { day: "2026-12-10", by: "customer" })).toBe(true);
+    expect(isCustomerEvent("install_day_changed", { day: "2026-12-10", by: "keenan" })).toBe(false);
+    expect(isCustomerEvent("install_requested")).toBe(true);
   });
 });

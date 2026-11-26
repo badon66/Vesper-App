@@ -58,6 +58,9 @@ const valid = {
   j_track_per_ft: "",
   service_call_fee: "95",
   price_hold_days: "120",
+  install_jobs_per_day: "1",
+  install_lead_days_white: "3",
+  install_lead_days_colour: "7",
   min_job_total: "2500",
   black_friday_kind: "none",
   black_friday_value: "",
@@ -77,6 +80,8 @@ describe("parseSettingsForm", () => {
       expect(result.values.upper_gable_access_fee).toBeNull();
       expect(result.values.service_call_fee).toBe(95);
       expect(result.values.price_hold_days).toBe(120);
+      // Round 23: installs a day and the earliest days, as whole numbers.
+      expect([result.values.install_jobs_per_day, result.values.install_lead_days_white, result.values.install_lead_days_colour]).toEqual([1, 3, 7]);
       expect(result.values.christmas_banner_book_by).toBe("Book by {date} to be lit up for Christmas.");
       expect([result.values.christmas_book_by_white, result.values.christmas_book_by_colour, result.values.christmas_season_end]).toEqual([
         "2026-12-15",
@@ -251,6 +256,7 @@ describe("settingsRowToFormDefaults", () => {
       company: { name: "Vesper", phone: "", email: "", address: "" },
       rush_colour_fee_per_ft: null, service_call_fee: 95, quote_valid_days: 14, min_job_total: null, faq_text: "Q and A",
       rush_colour_fee: 350, upper_access_fee: null, upper_gable_access_fee: 400, price_hold_days: 120,
+      install_jobs_per_day: 2, install_lead_days_white: 3, install_lead_days_colour: 7,
       double_track_per_ft: null, j_track_per_ft: null, agreement_text: null,
       christmas_banner_on: false, christmas_banner_title: "Want them up for Christmas?", christmas_banner_text: "Book now.",
       christmas_book_by_white: "2026-12-15", christmas_book_by_colour: "2026-12-08", christmas_season_end: "2026-12-24", christmas_banner_book_by: "Book by {date} to be lit up for Christmas.", christmas_banner_white: "White line.", christmas_banner_colour: "Colour line.", christmas_banner_no_colour: "No colour line.", christmas_banner_after: "After line.",
@@ -263,6 +269,7 @@ describe("settingsRowToFormDefaults", () => {
     expect(defaults.upper_gable_access_fee).toBe("400.00");
     expect(defaults.service_call_fee).toBe("95.00");
     expect(defaults.price_hold_days).toBe("120");
+    expect([defaults.install_jobs_per_day, defaults.install_lead_days_white, defaults.install_lead_days_colour]).toEqual(["2", "3", "7"]);
     expect([defaults.christmas_banner_on, defaults.christmas_book_by_white, defaults.christmas_season_end, defaults.christmas_banner_after]).toEqual([
       false,
       "2026-12-15",
@@ -306,6 +313,7 @@ const ROW: Parameters<typeof settingsRowToFormDefaults>[0] = {
   meeting_start: "18:00:00", meeting_slot_minutes: 45, meeting_slot_count: 4, distance_warning_km: 10,
   company: "nonsense", rush_colour_fee_per_ft: null, service_call_fee: null, quote_valid_days: 14, min_job_total: 2500, faq_text: "",
   rush_colour_fee: null, upper_access_fee: 200, upper_gable_access_fee: 400, price_hold_days: 120,
+  install_jobs_per_day: 1, install_lead_days_white: 3, install_lead_days_colour: 7,
   double_track_per_ft: null, j_track_per_ft: null, agreement_text: null,
   christmas_banner_on: true, christmas_banner_title: "T", christmas_banner_text: "", product_points: [],
   christmas_book_by_white: null, christmas_book_by_colour: null, christmas_season_end: null, christmas_banner_book_by: "Book by {date}.",

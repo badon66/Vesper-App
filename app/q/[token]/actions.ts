@@ -2,6 +2,8 @@
 
 import { z } from "zod";
 import { sendPush } from "@/lib/push/send";
+import { INSTALL_WORDS, parseLinkInstall, type LinkInstall } from "@/lib/quote-link/install";
+import { formatLongDay } from "@/lib/time";
 import { anonymousClient } from "@/lib/quote-link/server";
 import { customOption, offerChoice, parseCustomerQuote, TOKEN_PATTERN } from "@/lib/quote-link/view";
 import { screenTotal } from "@/lib/pricing";
@@ -216,4 +218,85 @@ export async function signAgreement(value: string, input: { name: string; signat
     }).catch(() => undefined);
   }
   return { ok: true, signerName: n.data, signedAt: new Date().toISOString(), option: signed.option };
+}
+
+// ---------------------------------------------------------------- Pick your install day (round 23)
+
+// Keenan's open days for this link's install, fresh (after a booking, or
+// when the section opens), through the token function.
+export async function loadInstallDays(value: string): Promise<LinkInstall | null> {
+  const t = token.safeParse(value);
+  if (!t.success) return null;
+  const { data, error } = await anonymousClient().rpc("quote_link_install", { p_token: t.data });
+  if (error) return null;
+  return parseLinkInstall(data);
+}
+
+export type PickDayResult =
+  | { ok: true; day: string; preview?: boolean }
+  | { ok: false; code: "full" | "closed" | "too_late" | "too_soon" | "not_booked" | "expired" | "failed"; message: string };
+
+const isoDay = z.iso.date();
+
+// Their install day, picked or changed: one of Keenan's open days with
+// room, on or after the earliest for their track, until 2 days before the
+// day they have. The database checks all of it under the day's lock and
+// hands back Keenan's sealed push addresses; the push names them and the
+// day, never a price.
+export async function pickInstallDay(value: string, day: string): Promise<PickDayResult> {
+  const t = token.safeParse(value);
+  const d = isoDay.safeParse(day);
+  if (!t.success || !d.success) return { ok: false, code: "failed", message: INSTALL_WORDS.failed };
+
+  // Keenan looking at a customer's link while signed in: act it out, write
+  // nothing and notify no one.
+  if (await signedInMember()) {
+    const view = await loadInstallDays(t.data);
+    if (!view) return { ok: false, code: "expired", message: CLOSED };
+    if (view.day && !view.canChange) return { ok: false, code: "too_late", message: INSTALL_WORDS.tooLate };
+    const listed = view.days.find((one) => one.day === d.data);
+    if (!listed) return { ok: false, code: "closed", message: INSTALL_WORDS.closed };
+    if (listed.full) return { ok: false, code: "full", message: INSTALL_WORDS.full };
+    return { ok: true, day: d.data, preview: true };
+  }
+
+  const { data, error } = await anonymousClient().rpc("quote_link_pick_install_day", { p_token: t.data, p_day: d.data });
+  if (error || !data || typeof data !== "object") return { ok: false, code: "failed", message: INSTALL_WORDS.failed };
+  const picked = data as {
+    ok: boolean;
+    state?: string;
+    changed?: boolean;
+    day?: string;
+    from?: string | null;
+    name?: string;
+    lead_id?: string;
+    targets?: { id: string; sealed: string }[];
+  };
+  if (!picked.ok) {
+    switch (picked.state) {
+      case "day_full":
+        return { ok: false, code: "full", message: INSTALL_WORDS.full };
+      case "day_closed":
+      case "too_soon":
+        return { ok: false, code: picked.state === "too_soon" ? "too_soon" : "closed", message: INSTALL_WORDS.closed };
+      case "too_late":
+        return { ok: false, code: "too_late", message: INSTALL_WORDS.tooLate };
+      case "not_booked":
+        return { ok: false, code: "not_booked", message: INSTALL_WORDS.failed };
+      case "expired":
+        return { ok: false, code: "expired", message: CLOSED };
+      default:
+        return { ok: false, code: "failed", message: INSTALL_WORDS.failed };
+    }
+  }
+
+  if (picked.changed && picked.targets && picked.targets.length > 0 && picked.lead_id && picked.day) {
+    await sendPush(picked.targets, {
+      title: `${picked.name ?? "A customer"} picked ${formatLongDay(picked.day)} for their install.`,
+      body: picked.from ? `Moved from ${formatLongDay(picked.from)}.` : "Picked on their link.",
+      url: `/app/leads/${picked.lead_id}`,
+      tag: `install-day-${picked.lead_id}`,
+    }).catch(() => undefined);
+  }
+  return { ok: true, day: picked.day ?? d.data };
 }

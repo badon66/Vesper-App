@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import { getExtrasEnv, getPublicEnv } from "@/lib/env";
 import { PHOTO_BUCKET } from "@/lib/photos";
+import { parseLinkInstall, type LinkInstall } from "@/lib/quote-link/install";
 import {
   documentFileName,
   mainPicture,
@@ -60,6 +61,9 @@ export type LoadedQuote =
       // and the agreement to sign (null: none on this link).
       documents: LinkDocument[];
       agreement: LinkAgreement | null;
+      // Round 23: their install day and Keenan's open days (null: couldn't
+      // be read, so the section stays out of the way).
+      install: LinkInstall | null;
     })
   | ClosedQuote;
 
@@ -76,10 +80,11 @@ export async function loadCustomerQuote(token: string): Promise<LoadedQuote> {
   // The house's mockups (round 10): the Main and the ones for offers. If
   // the list can't be read, the old mockup slot stands in as the Main.
   // Take 3: the documents and the agreement are read at the same time.
-  const [listed, documentList, agreementRead] = await Promise.all([
+  const [listed, documentList, agreementRead, installRead] = await Promise.all([
     anonymousClient().rpc("quote_link_mockups", { p_token: token }),
     anonymousClient().rpc("quote_link_documents", { p_token: token }),
     anonymousClient().rpc("quote_link_agreement", { p_token: token }),
+    anonymousClient().rpc("quote_link_install", { p_token: token }),
   ]);
   const mockups = listed.error
     ? view.mockupPath
@@ -105,7 +110,12 @@ export async function loadCustomerQuote(token: string): Promise<LoadedQuote> {
   const mockupUrl = mainPicture(pictures)?.url ?? null;
   const galleryUrls = (gallery?.data ?? []).flatMap((item) => (item.signedUrl ? [item.signedUrl] : []));
   const agreement = agreementRead.error ? null : parseLinkAgreement(agreementRead.data);
-  return { ...view, mockupUrl, pictures, galleryUrls, documents, agreement };
+  const install = installRead.error ? null : parseLinkInstall(installRead.data);
+  // Round 23: their install day is the lead's own (picked with a yes at the
+  // meeting, on this link, or by Keenan); a day only looked at at the
+  // table, with no yes, isn't theirs.
+  const nextSteps = install ? { ...view.nextSteps, installOn: install.day } : view.nextSteps;
+  return { ...view, nextSteps, mockupUrl, pictures, galleryUrls, documents, agreement, install };
 }
 
 // Each document twice: a link that opens it on the phone and one that

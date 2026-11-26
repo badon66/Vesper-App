@@ -248,6 +248,9 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
   );
   // The quote, with the one colour rule applied to its colour timing (only
   // White is stock), unless it is the accepted quote, which stays as agreed.
+  // Round 23: what the last save said about the day picked at the table,
+  // when its last spot went to someone else first.
+  const [dayProblem, setDayProblem] = useState<string | null>(null);
   const [quote, setQuote] = useState<QuoteUIState | null>(() => {
     const opened = start?.quote ?? null;
     if (!opened || accepted) return opened;
@@ -548,6 +551,7 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
               const to = pages.findIndex((item) => item.key === "next_steps");
               if (to >= 0) goTo(to);
             }}
+            onInstallDay={(claim) => setDayProblem(claim.ok ? null : claim.message)}
           />
         ) : null;
       case "next_steps": {
@@ -563,8 +567,15 @@ function DeckInBrowser({ deck, meeting, mode = "meeting", renderEmptySlot, onExi
             installOn={quote ? shownInstallDay(quote.installOn, today) : null}
             today={today}
             onInstallOn={
-              meeting && quote && !accepted ? (day) => setQuote((now) => (now ? { ...now, installOn: day } : now)) : null
+              meeting && quote && !accepted
+                ? (day) => {
+                    setDayProblem(null);
+                    setQuote((now) => (now ? { ...now, installOn: day } : now));
+                  }
+                : null
             }
+            installDays={meeting?.installDays ?? null}
+            dayProblem={dayProblem}
             progress={meeting?.lead.progress ?? null}
             more={moreOf("next_steps")}
             dayLayer={moreOf("next_steps:day")}

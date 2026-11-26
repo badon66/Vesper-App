@@ -18,7 +18,7 @@ looked_into_before: got_quotes | thought_about_it | new_to_them | quotes_and_tho
 meeting_status:  booked | confirmed | qualified | not_qualified | no_show | cancelled | moved   -- qualified and not_qualified both mean the meeting was held; moved means it was replaced by a meeting at another time; confirmed is unused for now
 map_position_source: picked | device               -- picked from the address suggestions, or the phone's own position at the door
 quote_status:    draft | presented | accepted | declined | expired | cancelled   -- take 1 writes drafts only; round 8 (2026-11-09) adds cancelled (a yes taken back later) and writes accepted, declined and cancelled through the outcome functions only
-event_type:      created | note | status_change | call | text | meeting_booked | meeting_outcome | quote_created | quote_presented | quote_accepted | quote_declined | photo_added | edited | meeting_moved | meeting_cancelled | colour_confirmed | quote_link_created | quote_link_opened | quote_link_revoked | install_requested | quote_cancelled | quote_acceptance_undone   -- meeting_moved and meeting_cancelled added in M3; colour_confirmed added in M5 (the customer initialled the track colour; payload holds the initials and the colour by name, never a price); the four quote link events added 2026-11-02 (payloads hold the link id, or the option they picked in words and the run names, never a price); round 8 (2026-11-09) adds quote_cancelled and quote_acceptance_undone and writes quote_accepted and quote_declined (see `lead_events`)
+event_type:      created | note | status_change | call | text | meeting_booked | meeting_outcome | quote_created | quote_presented | quote_accepted | quote_declined | photo_added | edited | meeting_moved | meeting_cancelled | colour_confirmed | quote_link_created | quote_link_opened | quote_link_revoked | install_requested | quote_cancelled | quote_acceptance_undone | install_day_picked | install_day_changed | install_day_cleared   -- round 23 adds the three install_day events (payload: the day, the day before and who: customer, meeting, keenan or system; never a price); meeting_moved and meeting_cancelled added in M3; colour_confirmed added in M5 (the customer initialled the track colour; payload holds the initials and the colour by name, never a price); the four quote link events added 2026-11-02 (payloads hold the link id, or the option they picked in words and the run names, never a price); round 8 (2026-11-09) adds quote_cancelled and quote_acceptance_undone and writes quote_accepted and quote_declined (see `lead_events`)
 run_level:       lower | upper
 earning_type:    booking | commission
 earning_status:  pending | paid | void
@@ -119,6 +119,27 @@ company jsonb not null               -- name, phone, email, address for PDFs
 updated_at
 ```
 
+### install_days (round 23)
+
+Keenan's install calendar (Keenan, 2026-11-17). A day with no row, or a row that isn't open, takes no installs.
+```
+day date primary key
+open boolean not null default false
+job_limit integer                               -- 1 to 20; null takes settings.install_jobs_per_day
+updated_by uuid references profiles default auth.uid()
+created_at, updated_at
+```
+Owner only: one policy each to read, add and change (round 22's pattern); nobody removes a row from the app. Settings adds `install_jobs_per_day` (1), `install_lead_days_white` (3) and `install_lead_days_colour` (7, also for a lead with no track colour yet).
+
+Rules in the database:
+- `leads_place_install_day` (before insert or update on `leads`, after `leads_guard` and `leads_owner_dates`, which decide who may set the day): a new or changed `install_on` must be an open day with room, checked under a lock per day (`pg_advisory_xact_lock`), so two people can never take a day's last spot; refused with hint `day_closed` or `day_full`. Lost or a deleted lead gives its day back (`install_on` cleared). While the quote outcome functions run (`vesper.quote_outcome` on), a day already picked stays when Accepted gives none and when Undo acceptance runs; going Lost (Declined, Cancelled) still gives it back.
+- `install_days_guard`: an open day's own number can't go below what's booked on it (`below_booked`), under the same lock; closing a day never moves anyone.
+- `leads_log_install_day` (after insert or update on `leads`) writes `install_day_picked` (`{day, by}`), `install_day_changed` (`{day, from, by}`) or `install_day_cleared` (`{by}`), with `by` one of customer, meeting, keenan or system; a day given back by Lost or a delete writes nothing of its own. The general `edited` entry no longer lists `install_on`.
+- Helpers in the `private` schema (not served by the API): `install_day_limit(day)`, `install_day_taken(day, except lead)`, `install_track_kind(lead)` (white when the lead's listed colour's name starts with White; any other colour, a Custom code or none is colour) and `install_earliest(lead)`.
+- `quote_link_install(token)`: anyone with a live link. `{state, ready, day, today, earliest, kind, change_until, can_change, days: [{day, full}]}`: ready once the link is booked (Book my install or a signing), the lead has a day, or the quote is accepted; the open days from the earliest for nine weeks; `full` leaves the lead's own day out of the count; `can_change` until 2 days before their day.
+- `quote_link_pick_install_day(token, day)`: anyone with a live link, once ready; refuses `too_late` (inside 2 days of their day), `too_soon` (before the earliest), `day_closed`, `day_full`, `not_booked`; sets the lead's day as the customer and returns the name, lead id and the sealed push addresses of the person who made the link. Changes nothing else.
+- `install_day_set(lead, day, by default 'keenan')`: Keenan only (or the service role for tests), as the caller (security invoker), so his own rights on `leads` apply; `by` 'meeting' or 'keenan' goes on the timeline. Null takes the day off.
+
 ### track_colours
 Keenan's list of track colours, managed in Settings like the lost reasons. Rows are never deleted: a retired colour stays so old leads keep it, and only active colours can be chosen for a lead.
 ```
@@ -191,7 +212,7 @@ lost_at timestamptz
 follow_up_on date                               -- the day to come back; required while status is follow_up, cleared when it leaves
 sold_at timestamptz
 installed_at timestamptz                        -- round 8: the day Keenan marks the job Installed, at noon Calgary time
-install_on date                                 -- round 8 (2026-11-09): the planned install day, asked when the quote is accepted; read grant to signed-in people; owner only to set
+install_on date                                 -- round 8 (2026-11-09): the planned install day, asked when the quote is accepted; read grant to signed-in people; owner only to set. Round 23: the one spot a job holds on Keenan's calendar (install_days), set with a yes at the meeting, by the customer on their link (through a token function) or by Keenan; guarded by leads_place_install_day
 created_at, updated_at
 ```
 Indexes: `(assigned_to, status)`, `(status, created_at)`, `(lat, lng)`, `place_id`, `knock_session_id`, `(created_by, created_at)`, `follow_up_on` where status is `follow_up`, and a unique index on `save_key` where it is set.
@@ -434,7 +455,7 @@ offers jsonb not null default '[]'               -- round 9 (2026-11-10): [{id, 
                                                  -- that is neither hidden nor the customer's, and drops the rest) and "description" (spaces tidied to one paragraph, at most 400 characters, left out when empty);
                                                  -- quote_offers_shown passes both to the link
 meeting_offer text                               -- round 9: the option chosen at the table (an offer id); prefills Accepted
-meeting_install_on date                          -- round 9: the install day picked at the table; prefills Accepted, never written to the lead before it
+meeting_install_on date                          -- round 9: the install day picked at the table; prefills Accepted. Round 23: saved with a yes (meeting_offer) it is also claimed as the lead's install_on, through install_day_set
 accepted_offer text                              -- round 9: the option Accepted recorded (an offer id); cleared by Undo
 accepted_boxes smallint                          -- round 9: that option's control box count; cleared by Undo
 created_at, updated_at
@@ -663,6 +684,7 @@ Sales users collaborate, so they can read the team's leads, meetings and knock s
 | lead_site_visits (round 17) | select, insert, update; never delete | none |
 | ai_polishes (round 17) | select; rows only through `ai_polish_take()` | none |
 | push_subscriptions | their own rows | their own rows |
+| install_days (round 23) | select, insert, update; never delete | none (the customer's link reads the open days through `quote_link_install`) |
 | earnings | select; writes only through the booking functions and, from round 8, the quote outcome functions and the lead status safety net | select where `profile_id = auth.uid()`; no writes |
 
 The five views (`lead_contacts`, `lead_notes`, `settings_public`, `profiles_public`, `profile_names`) are how sales read the safe parts of tables they can't read themselves. Since round 22 (Keenan, 2026-11-15) each view runs as the person reading it (`security_invoker`) and reads through a security definer function of the same name plus `_visible` in the `private` schema, which the Data API doesn't serve, holding the same rule; that is what Supabase's security advisor asks for, and its five "security definer view" errors are gone. Only signed-in people (and the service role) may use the `private` schema. The views are read only: a write through one is refused ("cannot update view"). `settings_public`, `profiles_public` and `profile_names` return rows only when the caller has an active profile, so a signed-in account without a profile sees nothing. That is safe only while each view and its function expose nothing but the safe columns. Never add a column to a public view without checking this table; a new column goes in both the function and the view. Because the views read through functions, PostgREST can't follow a link from a view back to its table, so never embed a view in another select; read it on its own, as the app does.

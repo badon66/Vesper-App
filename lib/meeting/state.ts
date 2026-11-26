@@ -4,6 +4,7 @@
 // tested like the pricing it feeds.
 
 import type { ChristmasSettings } from "@/lib/quote-link/christmas";
+import type { PickDay } from "@/lib/installs/calendar";
 import type { SoffitColour } from "@/lib/leads/status";
 import type { TrackColour } from "@/lib/leads/track-colour";
 import { areaOf, cleanGableCount, gableCount, isGable, runDisplayName, runFlat, runRate, tagRun } from "@/lib/quotes/areas";
@@ -91,7 +92,14 @@ export type MeetingPayload = {
     // reads "Choose and sign"), the site visit Keenan set on the Outcome
     // card, and whether the lead is Installed. Left out by older copies.
     progress?: TrackerProgress;
+    // Round 23: the lead's own install day (picked with a yes at a
+    // meeting, on their link, or by Keenan). Left out by older copies.
+    installOn?: string | null;
   };
+  // Round 23: Keenan's open install days for Pick a day, from the earliest
+  // for the lead's track, with which are full. Left out by older copies,
+  // which show the plain three weeks of days.
+  installDays?: { earliest: string; days: PickDay[] } | null;
   // The deck's words, Keenan's photos, the looks and the picker (round 7).
   deck: DeckPayload;
   // For changing the colour at the table: Keenan's list (retired ones too,
@@ -193,7 +201,7 @@ export type QuoteDraft = NonNullable<MeetingPayload["draft"]>;
 export type QuoteContext = {
   pricing: MeetingPayload["pricing"];
   today: string;
-  lead: Pick<MeetingPayload["lead"], "colourKind" | "colourText">;
+  lead: Pick<MeetingPayload["lead"], "colourKind" | "colourText" | "installOn">;
 };
 
 // ---------------------------------------------------------------- the quote
@@ -410,7 +418,14 @@ export function quoteStateFromDraft(draft: QuoteDraft, payload: QuoteContext): Q
     ),
     // An accepted quote shows the option they said yes to as the choice.
     chosenOffer: chosenFromDraft(draft),
-    installOn: typeof draft.meetingInstallOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(draft.meetingInstallOn) ? draft.meetingInstallOn : null,
+    // Round 23: the lead's own day first (picked with a yes, on their link or
+    // by Keenan), else the day last picked at the table.
+    installOn:
+      typeof payload.lead.installOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(payload.lead.installOn)
+        ? payload.lead.installOn
+        : typeof draft.meetingInstallOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(draft.meetingInstallOn)
+          ? draft.meetingInstallOn
+          : null,
     ...(draft.minJobTotal !== undefined ? { minJobTotal: feeString(draft.minJobTotal) } : {}),
   };
 }
